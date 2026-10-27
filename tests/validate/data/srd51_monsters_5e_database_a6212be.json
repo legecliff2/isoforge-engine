@@ -9031,6 +9031,257 @@
      ]
     }
    ]
+  },
+  "young-white-dragon": {
+   "name": "Young White Dragon",
+   "size": "Large",
+   "type": "dragon",
+   "ac": [
+    17
+   ],
+   "hp": 133,
+   "hp_roll": "14d10+56",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "40 ft.",
+    "burrow": "20 ft.",
+    "fly": "80 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    18,
+    10,
+    18,
+    6,
+    11,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "cold"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d10+4",
+        "piercing"
+       ],
+       [
+        "1d8",
+        "cold"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "young-brass-dragon": {
+   "name": "Young Brass Dragon",
+   "size": "Large",
+   "type": "dragon",
+   "ac": [
+    17
+   ],
+   "hp": 110,
+   "hp_roll": "13d10+39",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "40 ft.",
+    "burrow": "20 ft.",
+    "fly": "80 ft."
+   },
+   "abilities": [
+    19,
+    10,
+    17,
+    12,
+    11,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "fire"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d10+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "chimera": {
+   "name": "Chimera",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    14
+   ],
+   "hp": 114,
+   "hp_roll": "12d10+48",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    19,
+    11,
+    19,
+    3,
+    14,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Horns",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "1d12+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "wyvern": {
+   "name": "Wyvern",
+   "size": "Large",
+   "type": "dragon",
+   "ac": [
+    13
+   ],
+   "hp": 110,
+   "hp_roll": "13d10+39",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "20 ft.",
+    "fly": "80 ft."
+   },
+   "abilities": [
+    19,
+    10,
+    16,
+    5,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d8+4",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Stinger",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
