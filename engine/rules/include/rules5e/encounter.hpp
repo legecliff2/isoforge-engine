@@ -88,6 +88,9 @@ struct ActionRequest {
     Skill skill = Skill::Athletics;    // AbilityCheck: skill (actor = creature checking)
     int16_t dc = 0;                    // AbilityCheck
     RollMode check_mode = RollMode::Normal;  // AbilityCheck: extra roll-mode source
+    // appended (Keen Senses, CONTENT_CONVENTIONS §29). AbilityCheck of Perception: the senses that check relies on
+    // (kKeenSight / kKeenHearing / kKeenSmell). 0 = the check names no sense, and Keen Senses does not apply. Not folded
+    // into log_hash (same as skill, dc, and check_mode). Refused on any other action or skill.
     // appended (UseFeature): content feature id (opaque to rules; sim's feature registry) and an
     // optional self-heal rolled from the encounter rng. Spends the action, or the bonus action
     // when as_bonus_action (the feature itself grants it). Limited uses: EncounterState::features.
@@ -251,6 +254,9 @@ struct ActionRequest {
     // appended (Tier-A §27, log_hash 0xE2 when set): Attack: on a hit, grapple instead of dealing damage. Legal only with an
     // attack whose Attack::grapple_instead_ok is set. AttackResolved c bit 3 (8) marks a hit resolved this way.
     bool grapple_instead = false;
+    // Keen Senses (CONTENT_CONVENTIONS §29). Declared next to check_mode above; the field is at the end so existing
+    // positional initialisers are unchanged. 0 = the Perception check names no sense.
+    uint8_t perception_senses = 0;
 };
 
 enum class EventKind : uint8_t {

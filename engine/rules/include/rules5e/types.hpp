@@ -47,6 +47,12 @@ constexpr uint32_t bit(DamageType t) { return uint32_t(1) << uint32_t(t); }
 constexpr uint32_t bit(Ability a) { return uint32_t(1) << uint32_t(a); }
 constexpr uint32_t bit(Skill k) { return uint32_t(1) << uint32_t(k); }
 
+// Keen Senses (CONTENT_CONVENTIONS §29). The same bits are Combatant::keen_senses and the senses a Wisdom (Perception)
+// check relies on (ActionRequest::perception_senses).
+constexpr uint8_t kKeenSight = 1;
+constexpr uint8_t kKeenHearing = 2;
+constexpr uint8_t kKeenSmell = 4;
+
 struct DiceExpr {                                  // "2d6+3"; count == 0 means a flat value
     uint8_t count; uint8_t sides; int16_t bonus;
     friend constexpr bool operator==(const DiceExpr&, const DiceExpr&) = default;
@@ -527,6 +533,9 @@ struct FormStats {
     // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
     // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
     std::vector<uint32_t> blocked_features{};
+    // appended (Keen Senses, CONTENT_CONVENTIONS §29): the form's keen_senses. Wild Shape / Polymorph take the beast's;
+    // revert restores the creature's own. 0 = none. Static, not hashed.
+    uint8_t keen_senses = 0;
 };
 
 // 7.2z Danger Sense: advantage on `ability` saves against effects the creature can see (source_seen: the effect's creature is
@@ -739,6 +748,9 @@ struct Combatant {
     // an effect (rules5e::grant_fly / revoke_fly), 0 = none. The creature's fly speed is max(fly_ft, granted_fly_ft).
     uint8_t granted_fly_ft = 0;
     uint32_t granted_fly_src = 0;   // the grant's source (folded with it); revoke_fly(source) only removes a matching grant
+    // appended (Keen Senses, CONTENT_CONVENTIONS §29; static content, never hashed): kKeenSight / kKeenHearing / kKeenSmell.
+    // Advantage on a Wisdom (Perception) check that relies on a listed sense. Not part of passive_perception().
+    uint8_t keen_senses = 0;
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 

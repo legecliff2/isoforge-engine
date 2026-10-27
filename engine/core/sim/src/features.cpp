@@ -1193,6 +1193,22 @@ std::optional<std::string> apply_aura(Archetype& a, const FeatureDecl& f, uint32
     return std::nullopt;
 }
 
+// keen_senses {senses: [sight|hearing|smell]} (CONTENT_CONVENTIONS §29). ORs into Combatant::keen_senses. A declaration
+// whose senses are already set adds nothing. Static data: no hash tag. Bit order matches kKeenSight / Hearing / Smell.
+std::optional<std::string> apply_keen_senses(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": keen_senses needs a monster@5 file";
+    if (a.schema_type != "monster") return f.id + ": keen_senses: only valid on monsters";
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "senses")
+            return f.id + ": keen_senses: unknown key '" + it.key() + "'";
+    uint32_t bits = 0;
+    const auto senses = f.effect.find("senses");
+    if (senses == f.effect.end() || !enum_bits(*senses, {"sight", "hearing", "smell"}, bits))
+        return f.id + ": keen_senses: bad senses";
+    a.base.keen_senses = uint8_t(a.base.keen_senses | uint8_t(bits));
+    return std::nullopt;
+}
+
 std::optional<std::string> apply_save_advantage(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
     if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": save_advantage needs a monster@5 file";
     if (a.schema_type != "monster") return f.id + ": save_advantage: only valid on monsters";
@@ -1271,6 +1287,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("extra_attack", {apply_extra_attack});   // character@4: gated in the hook (the 3 -> 4 kind list is frozen)
     r.add_hook("transparent", {apply_transparent});
     r.add_hook("save_advantage", {apply_save_advantage});   // monster@5 (batch 3): gated in the hook, like transparent
+    r.add_hook("keen_senses", {apply_keen_senses});         // monster@5 (CONTENT_CONVENTIONS §29): gated in the hook
     r.add_hook("aura", {apply_aura});                       // monster@5 (batch 3 ghast Stench): gated in the hook
     r.add_hook("grant_die", {apply_grant_die});         // 7.2za Bardic Inspiration: gated in the hook
     r.add_hook("half_proficiency", {apply_half_proficiency});   // 7.2za Jack of All Trades: gated in the hook
