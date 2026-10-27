@@ -188,11 +188,14 @@ TEST_CASE("altitude: subject_grounded follows contact, so tremorsense misses fly
     REQUIRE(g.c->set_altitude(g.foe, -10, kAltForced));                   // below the surface: in contact
     CHECK(g.c->sight_facts_of(g.me, g.foe).subject_grounded);
 
-    Fight wall({{{10, 4}, tf::kClimbable, 0}}, true);                     // walker standing on a climbable tile
+    Fight floor({{{10, 4}, tf::kClimbable, 0}}, true);                    // climbable but walkable: not a wall
+    REQUIRE(floor.c->set_altitude(floor.foe, 20, kAltForced));
+    CHECK_FALSE(floor.c->airborne(floor.foe));
+    CHECK_FALSE(floor.c->sight_facts_of(floor.me, floor.foe).subject_grounded);
+    Fight wall({{{10, 4}, uint8_t(tf::kBlocksMove | tf::kClimbable), 0}}, true);
     REQUIRE(wall.c->set_altitude(wall.foe, 20, kAltForced));
-    CHECK_FALSE(wall.c->airborne(wall.foe));
     CHECK(wall.c->sight_facts_of(wall.me, wall.foe).subject_grounded);
-    Fight aloft({{{4, 4}, tf::kClimbable, 0}}, true);                     // a flyer on that surface is still airborne
+    Fight aloft({{{4, 4}, uint8_t(tf::kBlocksMove | tf::kClimbable), 0}}, true);   // a flyer on that wall is still airborne
     aloft.fly(20);
     CHECK_FALSE(aloft.c->sight_facts_of(aloft.foe, aloft.me).subject_grounded);
 

@@ -559,19 +559,14 @@ rules5e::SightFacts Combat::sight_facts_of(CombatantId viewer, CombatantId subje
     f.line_of_sight = line_of_sight(viewer, subject);   // altitude PR5: 3D LoS (absolute heights at both ends)
     if (const auto* t = rules5e::find(state_, subject)) {
         f.subject_invisible = t->has(rules5e::Condition::Invisible);
-        // Tremorsense needs the subject in contact with a surface. An airborne flyer is not. A creature
-        // above the ground that is not flying is in contact only while a footprint tile is climbable
-        // (on a wall). On the ground, swimming, or burrowed (alt_ft <= 0) it is. The viewer's own
-        // contact is not part of this fact. Eye height is unchanged.
+        // Tremorsense needs the subject in contact with a surface. An airborne flyer is not. Above the
+        // ground, contact is on_climb_wall (climbable, and no walkable tile). On the ground, swimming,
+        // or burrowed (alt_ft <= 0) it is. The viewer's own contact is not part of this fact. Eye height
+        // is unchanged.
         if (airborne(subject))
             f.subject_grounded = false;
-        else if (t->alt_ft > 0) {
-            f.subject_grounded = false;
-            const int n = footprint_size(subject);
-            for (int dy = 0; dy < n && !f.subject_grounded; ++dy)
-                for (int dx = 0; dx < n && !f.subject_grounded; ++dx)
-                    if (grid_.climbable({sp.x + dx, sp.y + dy})) f.subject_grounded = true;
-        }
+        else if (t->alt_ft > 0)
+            f.subject_grounded = on_climb_wall(sp, footprint_size(subject));
     }
     f.audible = true;            // Silence deafens via rules (kZoneSilence); hearing is not a light fact
 
@@ -2482,6 +2477,16 @@ bool Combat::airborne(CombatantId id) const {
 bool Combat::burrowed(CombatantId id) const {
     const auto* c = rules5e::find(state_, id);
     return c && c->alt_ft < 0 && c->burrow_ft > 0 && !grid_.water(pos(id));
+}
+bool Combat::on_climb_wall(Vec2i anchor, int fp) const {
+    bool wall = false, floor = false;
+    for (int dy = 0; dy < std::max(fp, 1); ++dy)
+        for (int dx = 0; dx < std::max(fp, 1); ++dx) {
+            const Vec2i t{anchor.x + dx, anchor.y + dy};
+            if (grid_.walkable(t)) floor = true;
+            else if (grid_.climbable(t)) wall = true;
+        }
+    return wall && !floor;
 }
 std::vector<Vec2i> Combat::occupied_except(CombatantId id, int abs_ft) const {
     std::vector<Vec2i> out;

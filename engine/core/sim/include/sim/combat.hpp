@@ -483,6 +483,9 @@ private:
     std::vector<rules5e::ZoneChange> zone_changes_for(CombatantId mover, Spot from, Spot to, uint32_t moved_zone = 0,
                                                       const Vec2i* anchor_to = nullptr) const;
     std::vector<std::pair<CombatantId, Vec2i>> forced_placed_;   // hook commits of the step being resolved, in order
+    // Some footprint tile is climbable and none is walkable. Tremorsense contact above the ground and climbing
+    // along a wall both use this. Callers still require alt_ft > 0 and not airborne.
+    bool on_climb_wall(Vec2i anchor, int fp) const;
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
     SubmitResult do_step(Vec2i to, bool allow_squeeze = false, int16_t alt_to = 0);
