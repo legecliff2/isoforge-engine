@@ -188,9 +188,9 @@ class AppendOnly(unittest.TestCase):
                           "ability",   # CONTENT_CONVENTIONS "Attack ability"
                           "also_on_fail_by", "immune_on_success", "target_must_see_source"})   # Tier-A §26
         for k, v in c2["action"]["properties"].items():
-            if k == "kind":   # monster@5 appends "teleport" (batch 3, blink dog); common@2's enum is a strict prefix
+            if k == "kind":   # monster@5 appends "teleport" (batch 3) then "area_effect"; common@2's enum is a strict prefix
                 m_enum, c_enum = m5["action"]["properties"][k]["enum"], v["enum"]
-                self.assertEqual(m_enum, c_enum + ["teleport"], k)
+                self.assertEqual(m_enum, c_enum + ["teleport", "area_effect"], k)
                 continue
             if k == "damage":   # CONTENT_CONVENTIONS 19: items widened to monster_damage (common@2 damage | {flat, type})
                 self.assertEqual(m5["action"]["properties"][k]["items"], {"$ref": "#/$defs/monster_damage"})
@@ -215,7 +215,7 @@ class TagTable(unittest.TestCase):
             local_act = checks_v4.MONSTER_AT5_ACTION_KINDS if typ == "monster" else frozenset()
             self.assertEqual((r4.action_kinds | local_act, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
         self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage", "aura"})
-        self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport"})
+        self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport", "area_effect"})
 
 
 class LightPresetAndVisual(unittest.TestCase):
