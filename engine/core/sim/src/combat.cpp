@@ -557,9 +557,17 @@ rules5e::SightFacts Combat::sight_facts_of(CombatantId viewer, CombatantId subje
     const int dist = distance_tiles(viewer, subject);
     f.distance_ft = uint16_t(std::min(dist * kFeetPerTile, 65535));
     f.line_of_sight = line_of_sight(viewer, subject);   // altitude PR5: 3D LoS (absolute heights at both ends)
-    if (const auto* t = rules5e::find(state_, subject))
+    if (const auto* t = rules5e::find(state_, subject)) {
         f.subject_invisible = t->has(rules5e::Condition::Invisible);
-    f.subject_grounded = true;   // no airborne altitude model yet; tremorsense treats everyone as grounded
+        // Tremorsense needs the subject in contact with a surface. An airborne flyer is not. Above the
+        // ground, contact is on_climb_wall (climbable, and no walkable tile). On the ground, swimming,
+        // or burrowed (alt_ft <= 0) it is. The viewer's own contact is not part of this fact. Eye height
+        // is unchanged.
+        if (airborne(subject))
+            f.subject_grounded = false;
+        else if (t->alt_ft > 0)
+            f.subject_grounded = on_climb_wall(sp, footprint_size(subject));
+    }
     f.audible = true;            // Silence deafens via rules (kZoneSilence); hearing is not a light fact
 
     // LightSample -> TileLight. sim::Light is Dark=0..Bright=2; rules5e::Light is Bright=0..Dark=2.
@@ -1790,9 +1798,9 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
         int target = cur + alt_to;
         uint8_t mode = 0;
         int mult = 1;
-        if (target > 0 || (target >= 0 && cur > 0)) {   // in the air (or on a wall): flight, else climbing terrain
+        if (target > 0 || (target >= 0 && cur > 0)) {   // in the air (or on a wall): flight, else a climbable wall
             if (caps.fly && !prone) mode = 1;
-            else if (grid_.climbable(from)) { mode = caps.climb ? 3 : 0; mult = caps.climb ? 1 : 2; }
+            else if (on_climb_wall(from, footprint_size(mover))) { mode = caps.climb ? 3 : 0; mult = caps.climb ? 1 : 2; }
             else { r.error = prone && caps.fly ? "cannot fly while prone" : "alt_to: needs flight or climbable terrain"; return r; }
         } else if (caps.burrow && !grid_.water(from)) {   // feat/rules-burrow-speed: down into (or up out of) the ground
             if (!grid_.walkable(from)) { r.error = "alt_to: cannot burrow here"; return r; }
@@ -2465,6 +2473,16 @@ bool Combat::burrowed(CombatantId id) const {
     const auto* c = rules5e::find(state_, id);
     return c && c->alt_ft < 0 && c->burrow_ft > 0 && !grid_.water(pos(id));
 }
+bool Combat::on_climb_wall(Vec2i anchor, int fp) const {
+    bool wall = false, floor = false;
+    for (int dy = 0; dy < std::max(fp, 1); ++dy)
+        for (int dx = 0; dx < std::max(fp, 1); ++dx) {
+            const Vec2i t{anchor.x + dx, anchor.y + dy};
+            if (grid_.walkable(t)) floor = true;
+            else if (grid_.climbable(t)) wall = true;
+        }
+    return wall && !floor;
+}
 std::vector<Vec2i> Combat::occupied_except(CombatantId id, int abs_ft) const {
     std::vector<Vec2i> out;
     bool mover_swarm = false;
@@ -2521,22 +2539,23 @@ MoveCaps Combat::caps_of(CombatantId id) const {
 }
 
 // feat/move-modes: the move mode for one step (0 walk, 1 fly, 2 swim, 3 climb, 4 burrow while burrowed), 0xFF when no fitting speed has `cost`
-// feet left, 0xFE when only flight fits and the mover is prone. The terrain picks the speed: open air needs flight; climb
-// terrain uses a climb speed, else flight, else walking (extra cost already priced); water likewise with a swim speed.
+// feet left, 0xFE when only flight fits and the mover is prone. The terrain picks the speed: open air needs flight; a
+// destination that is on_climb_wall (climbable, and no walkable tile) uses a climb speed, else flight, else walking
+// (extra cost already priced); a rise of more than 5 ft is a climb too; water likewise with a swim speed.
 // On plain ground the walking speed, or flight when walking has too little left.
 uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost, int fp_in) const {
     const auto* c = rules5e::find(state_, mover);
     if (!c) return 0xFF;
     const int fp = fp_in > 0 ? fp_in : footprint_size(mover);
-    bool air = false, climb = false, water = false;
+    bool air = false, water = false;
     for (int dy = 0; dy < fp; ++dy)
         for (int dx = 0; dx < fp; ++dx) {
             const Vec2i t{to.x + dx, to.y + dy};
             if (fp > 1 && t.x >= from.x && t.x < from.x + fp && t.y >= from.y && t.y < from.y + fp) continue;
             if (grid_.open_air(t)) air = true;
-            else if (!grid_.walkable(t) && grid_.climbable(t)) climb = true;
             else if (grid_.water(t)) water = true;
         }
+    const bool climb = on_climb_wall(to, fp);   // the whole destination, same predicate as subject_grounded
     std::vector<uint8_t> order;
     const bool high = grid_.has_ground() &&
                       ledge_ft(grid_.footprint_ground_ft(from, fp), grid_.footprint_ground_ft(to, fp)) > kWalkableStepFt;
