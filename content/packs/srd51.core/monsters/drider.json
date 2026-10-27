@@ -1,0 +1,225 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.drider",
+  "name": "Drider",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "monstrosity",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 19,
+    "note": "natural armor"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.longsword",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longbow"
+    }
+  ],
+  "natural_armor": {
+    "base": 16,
+    "dex": true
+  },
+  "hands": 2,
+  "hit_points": {
+    "average": 123,
+    "formula": "13d10+52"
+  },
+  "speed": {
+    "walk": 30,
+    "climb": 30
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 16,
+    "con": 18,
+    "int": 13,
+    "wis": 14,
+    "cha": 12
+  },
+  "skills": {
+    "perception": 5,
+    "stealth": 9
+  },
+  "senses": {
+    "darkvision": 120,
+    "passive_perception": 15
+  },
+  "languages": [
+    "Elvish",
+    "Undercommon"
+  ],
+  "challenge": {
+    "rating": "6",
+    "xp": 2300
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "fey_ancestry",
+      "name": "Fey Ancestry",
+      "description": "The drider has advantage on saving throws against being charmed, and magic can't put the drider to sleep. (The charmed clause is save_advantage. Magic can't put the drider to sleep is descriptive only: no sleep-immunity construct; see docs/SRD_MONSTERS_DEFERRED.md.)",
+      "effect": {
+        "kind": "save_advantage",
+        "save_vs_conditions": [
+          "charmed"
+        ]
+      }
+    },
+    {
+      "id": "innate_spellcasting",
+      "name": "Innate Spellcasting",
+      "description": "The drider's innate spellcasting ability is Wisdom (spell save DC 13). The drider can innately cast the following spells, requiring no material components:\nAt will: dancing lights\n1/day each: darkness, faerie fire\n(Descriptive only: monster spellcasting is slot-based, so this innate list is not a spellcasting entry; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "spider_climb",
+      "name": "Spider Climb",
+      "description": "The drider can climb difficult surfaces, including upside down on ceilings, without needing to make an ability check."
+    },
+    {
+      "id": "sunlight_sensitivity",
+      "name": "Sunlight Sensitivity",
+      "description": "While in sunlight, the drider has disadvantage on attack rolls, as well as on Wisdom (Perception) checks that rely on sight. (Descriptive only: the engine has no light/sunlight model yet, R-G13; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "web_walker",
+      "name": "Web Walker",
+      "description": "The drider ignores movement restrictions caused by webbing."
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The drider makes three attacks, either with its longsword or its longbow. It can replace one of those attacks with a bite attack.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "longsword_x3",
+            "attacks": [
+              "longsword",
+              "longsword",
+              "longsword"
+            ]
+          },
+          {
+            "id": "longsword_x2_bite",
+            "attacks": [
+              "longsword",
+              "longsword",
+              "bite"
+            ]
+          },
+          {
+            "id": "longbow_x3",
+            "attacks": [
+              "longbow",
+              "longbow",
+              "longbow"
+            ]
+          },
+          {
+            "id": "longbow_x2_bite",
+            "attacks": [
+              "longbow",
+              "longbow",
+              "bite"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "str",
+        "damage_ability": "none"
+      },
+      "ability": "str",
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4",
+          "type": "piercing"
+        },
+        {
+          "dice": "2d8",
+          "type": "poison"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one creature. Hit: 2 (1d4) piercing damage plus 9 (2d8) poison damage."
+    },
+    {
+      "id": "longsword",
+      "name": "Longsword",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.longsword",
+      "to_hit": 6,
+      "ability": "str",
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 7 (1d8 + 3) slashing damage, or 8 (1d10 + 3) slashing damage if used with two hands."
+    },
+    {
+      "id": "longsword_two_handed",
+      "name": "Longsword (two hands)",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.longsword",
+      "use": "two_hands",
+      "to_hit": 6,
+      "ability": "str",
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d10+3",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 7 (1d8 + 3) slashing damage, or 8 (1d10 + 3) slashing damage if used with two hands."
+    },
+    {
+      "id": "longbow",
+      "name": "Longbow",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.longbow",
+      "to_hit": 6,
+      "ability": "dex",
+      "range": [
+        150,
+        600
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "piercing"
+        },
+        {
+          "dice": "1d8",
+          "type": "poison"
+        }
+      ],
+      "description": "Ranged Weapon Attack: +6 to hit, range 150/600 ft., one target. Hit: 7 (1d8 + 3) piercing damage plus 4 (1d8) poison damage."
+    }
+  ]
+}
