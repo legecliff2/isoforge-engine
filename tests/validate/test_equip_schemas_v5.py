@@ -188,9 +188,9 @@ class AppendOnly(unittest.TestCase):
                           "ability",   # CONTENT_CONVENTIONS "Attack ability"
                           "also_on_fail_by", "immune_on_success", "target_must_see_source"})   # Tier-A §26
         for k, v in c2["action"]["properties"].items():
-            if k == "kind":   # monster@5 appends "teleport" (batch 3, blink dog); common@2's enum is a strict prefix
+            if k == "kind":   # monster@5 appends "teleport" (batch 3) then "area_effect"; common@2's enum is a strict prefix
                 m_enum, c_enum = m5["action"]["properties"][k]["enum"], v["enum"]
-                self.assertEqual(m_enum, c_enum + ["teleport"], k)
+                self.assertEqual(m_enum, c_enum + ["teleport", "area_effect"], k)
                 continue
             if k == "damage":   # CONTENT_CONVENTIONS 19: items widened to monster_damage (common@2 damage | {flat, type})
                 self.assertEqual(m5["action"]["properties"][k]["items"], {"$ref": "#/$defs/monster_damage"})
@@ -215,7 +215,7 @@ class TagTable(unittest.TestCase):
             local_act = checks_v4.MONSTER_AT5_ACTION_KINDS if typ == "monster" else frozenset()
             self.assertEqual((r4.action_kinds | local_act, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
         self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage", "aura"})
-        self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport"})
+        self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport", "area_effect"})
 
 
 class LightPresetAndVisual(unittest.TestCase):
@@ -423,7 +423,7 @@ class DeriveCheck(unittest.TestCase):
                     if a["kind"] in ("melee_weapon_attack", "ranged_weapon_attack"):
                         flat = all("flat" in c for c in a["damage"][:1])   # CONTENT_CONVENTIONS 19: no die to derive from
                         self.assertTrue("weapon" in a or "natural" in a or flat, f"{f.name}: {a['id']}")
-        self.assertEqual(n, 159)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 9 batch 2 + rat, scorpion (flat) + satyr, ghast (batch 3) + gladiator (riders, §21) + 5 batch 3b (blink dog deferred) + 11 tier B batch d1 + 10 batch D2 + 3 flat-damage batch d3 + acolyte, cult fanatic (casters) + blink dog, mummy (Tier-A b3c) + 6 CR 0 beasts (badger, eagle, owl, quipper, raven, vulture) + 4 CR 1/8 beasts (blood hawk, flying snake, giant crab, stirge) + 5 CR 1/4 batch B (constrictor snake, elk, panther, swarm of bats, swarm of ravens) + 4 CR 1/4 batch A beasts (giant badger, giant bat, giant frog, giant owl) + 4 CR 1/4 batch C (drow, pseudodragon, sprite, steam mephit) + 5 CR 1/2 batch D (giant goat, giant sea horse, giant wasp, swarm of insects, warhorse) + 5 CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) + 5 CR 1/2 batch F (crocodile, darkmantle, rust monster, gray ooze, deep gnome) + 5 CR 1 batch G (lion, tiger, giant eagle, giant vulture, hippogriff) + 6 CR 1 batch H (harpy, dryad, duergar, specter, giant octopus, swarm of quippers) + 6 CR 2 batch J (centaur, griffon, pegasus, ankheg, giant constrictor snake, minotaur skeleton) + 6 CR 2 batch I (polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger, hunter shark) + 4 CR 2 batch K (druid, priest, merrow, wererat) + 5 CR 2 batch L (grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp, ochre jelly)
+        self.assertEqual(n, 163)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 9 batch 2 + rat, scorpion (flat) + satyr, ghast (batch 3) + gladiator (riders, §21) + 5 batch 3b (blink dog deferred) + 11 tier B batch d1 + 10 batch D2 + 3 flat-damage batch d3 + acolyte, cult fanatic (casters) + blink dog, mummy (Tier-A b3c) + 6 CR 0 beasts (badger, eagle, owl, quipper, raven, vulture) + 4 CR 1/8 beasts (blood hawk, flying snake, giant crab, stirge) + 5 CR 1/4 batch B (constrictor snake, elk, panther, swarm of bats, swarm of ravens) + 4 CR 1/4 batch A beasts (giant badger, giant bat, giant frog, giant owl) + 4 CR 1/4 batch C (drow, pseudodragon, sprite, steam mephit) + 5 CR 1/2 batch D (giant goat, giant sea horse, giant wasp, swarm of insects, warhorse) + 5 CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) + 5 CR 1/2 batch F (crocodile, darkmantle, rust monster, gray ooze, deep gnome) + 5 CR 1 batch G (lion, tiger, giant eagle, giant vulture, hippogriff) + 6 CR 1 batch H (harpy, dryad, duergar, specter, giant octopus, swarm of quippers) + 6 CR 2 batch J (centaur, griffon, pegasus, ankheg, giant constrictor snake, minotaur skeleton) + 6 CR 2 batch I (polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger, hunter shark) + 4 CR 2 batch K (druid, priest, merrow, wererat) + 5 CR 2 batch L (grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp, ochre jelly) + 4 CR 3 batch M (giant scorpion, minotaur, hell hound, winter wolf)
         self.assertEqual(core("monsters/goblin.json")["$schema"], "monster@3")   # fl1 compat: left at @3
 
     def test_valid_conversions(self):
