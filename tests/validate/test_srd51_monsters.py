@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 176 authored / 10 deferred): batch 3 and tier-A triage (3: mimic, doppelganger, green hag). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. CR 2 batch K authored druid, priest, merrow and wererat (druid's four missing spells stay in the trait text only; priest Divine Eminence is text only and Religion +4 is the printed total; merrow Pull is text only; wererat is the humanoid form, with shapechange, bite and the curse as text). Sea hag is a new deferral. Mimic stays deferred. CR 2 batch L authored grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp and ochre jelly. Grick's beak-if-tentacles-hit gate stays in the Multiattack description. Gibbering Mouther Blinding Spittle is a point-origin sphere save_effect (recharge 5-6). Will-o'-wisp Consume Life, Ephemeral, Incorporeal Movement, Variable Illumination and Invisibility stay description only on the authored monster. Ochre Jelly Split stays a description-only trait. CR 3 batch M authored giant scorpion, minotaur, hell hound and winter wolf (no new deferrals). Minotaur has no Multiattack (one greataxe or one gore). CR 3 batch N authored manticore, werewolf and phase spider. Manticore Tail Spike Regrowth spike count is description only and the row stays green. Werewolf is the humanoid form (a6212be werewolf-human); hybrid/wolf AC 12, wolf speed 40, bite, claws and the lycanthropy curse stay description only. Phase spider Ethereal Jaunt stays description only (no Ethereal Plane). Stealth +6 is expertise (Dex +2 and 2×PB). CR 4 batch O authored black pudding, elephant and ettin. Black Pudding Corrosive Form contact acid, weapon and armor corrosion, and Split stay description only; condition immunities follow the SRD line (deafened) over a6212be. Elephant Stomp stays description only (no prone-target gate). Ettin battleaxe and morningstar are naturals at the printed 2d8. Chuul and ghost are new deferrals. CR 4 batch P authored wereboar, weretiger, lamia and couatl. Wereboar and weretiger are the humanoid forms (a6212be wereboar-human / weretiger-human); hybrid and animal forms, tusks, bite, claws, lycanthropy and Charge/Pounce stay description only. Wereboar Relentless is live (damage_at_most 14, per_rest short) and keeps the SRD recharge name (a6212be omits it from the trait text, as giant boar). Lamia Innate Spellcasting and Intoxicating Touch stay description only (claws + dagger is the authored multiattack). Couatl Magic Weapons is {kind: magic_weapons}. Bite poisoned 24 hours (14400 rounds) is a save_condition; unconscious-while-poisoned and the wake action stay description only (no zero_hp.while). Constrict grapple restrains and is exclusive; the Medium-or-smaller gate stays in the text. Change Shape does not set shapechanger. Succubus is parked. CR 5 batch Q authored triceratops, giant crocodile and giant shark. Triceratops Stomp stays description only (elephant). Giant crocodile Tail's not-grappled gate stays in the text. Giant shark Blood Frenzy stays description only (hunter shark). Troll, bulette and otyugh are new deferrals. Sea hag, mimic, doppelganger, green hag, succubus, chuul, ghost, troll, bulette and otyugh stay deferred.
-DEFERRED: list[str] = ["bulette", "chuul", "doppelganger", "ghost", "green-hag", "mimic", "otyugh", "sea-hag", "succubus", "troll"]   # docs/SRD_MONSTERS_DEFERRED.md: 176 / 10
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 180 authored / 12 deferred): batch 3 and tier-A triage (3: mimic, doppelganger, green hag). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. CR 2 batch K authored druid, priest, merrow and wererat (druid's four missing spells stay in the trait text only; priest Divine Eminence is text only and Religion +4 is the printed total; merrow Pull is text only; wererat is the humanoid form, with shapechange, bite and the curse as text). Sea hag is a new deferral. Mimic stays deferred. CR 2 batch L authored grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp and ochre jelly. Grick's beak-if-tentacles-hit gate stays in the Multiattack description. Gibbering Mouther Blinding Spittle is a point-origin sphere save_effect (recharge 5-6). Will-o'-wisp Consume Life, Ephemeral, Incorporeal Movement, Variable Illumination and Invisibility stay description only on the authored monster. Ochre Jelly Split stays a description-only trait. CR 3 batch M authored giant scorpion, minotaur, hell hound and winter wolf (no new deferrals). Minotaur has no Multiattack (one greataxe or one gore). CR 3 batch N authored manticore, werewolf and phase spider. Manticore Tail Spike Regrowth spike count is description only and the row stays green. Werewolf is the humanoid form (a6212be werewolf-human); hybrid/wolf AC 12, wolf speed 40, bite, claws and the lycanthropy curse stay description only. Phase spider Ethereal Jaunt stays description only (no Ethereal Plane). Stealth +6 is expertise (Dex +2 and 2×PB). CR 4 batch O authored black pudding, elephant and ettin. Black Pudding Corrosive Form contact acid, weapon and armor corrosion, and Split stay description only; condition immunities follow the SRD line (deafened) over a6212be. Elephant Stomp stays description only (no prone-target gate). Ettin battleaxe and morningstar are naturals at the printed 2d8. Chuul and ghost are new deferrals. CR 4 batch P authored wereboar, weretiger, lamia and couatl. Wereboar and weretiger are the humanoid forms (a6212be wereboar-human / weretiger-human); hybrid and animal forms, tusks, bite, claws, lycanthropy and Charge/Pounce stay description only. Wereboar Relentless is live (damage_at_most 14, per_rest short) and keeps the SRD recharge name (a6212be omits it from the trait text, as giant boar). Lamia Innate Spellcasting and Intoxicating Touch stay description only (claws + dagger is the authored multiattack). Couatl Magic Weapons is {kind: magic_weapons}. Bite poisoned 24 hours (14400 rounds) is a save_condition; unconscious-while-poisoned and the wake action stay description only (no zero_hp.while). Constrict grapple restrains and is exclusive; the Medium-or-smaller gate stays in the text. Change Shape does not set shapechanger. Succubus is parked. CR 5 batch Q authored triceratops, giant crocodile and giant shark. Triceratops Stomp stays description only (elephant). Giant crocodile Tail's not-grappled gate stays in the text. Giant shark Blood Frenzy stays description only (hunter shark). Troll, bulette and otyugh are new deferrals. CR 5 batch R authored earth elemental, fire elemental, salamander and xorn. Earth Glide and Siege Monster stay description only. Fire Form contact fire, Ignite, Illumination and Water Susceptibility stay description only (not emits_light). Salamander Heated Body and the tail's automatic hit stay description only; the spear is srd51.item.spear with weapon_dice_multiplier 2 and a printed extra 1d6 fire, and the tail grapple restrains and is exclusive. Xorn Earth Glide, Treasure Sense and Stone Camouflage stay descriptive and the row stays green. Xorn Claw is the printed 1d6 + 3. Air elemental and water elemental are parked. Sea hag, mimic, doppelganger, green hag, succubus, chuul, ghost, troll, bulette, otyugh, air elemental and water elemental stay deferred.
+DEFERRED: list[str] = ["air-elemental", "bulette", "chuul", "doppelganger", "ghost", "green-hag", "mimic", "otyugh", "sea-hag", "succubus", "troll", "water-elemental"]   # docs/SRD_MONSTERS_DEFERRED.md: 180 / 12
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Table attacks kept verbatim that are not weapon actions. Elephant Stomp is a bonus action
@@ -68,6 +68,10 @@ DEVIATIONS = {
     "wereboar": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be wereboar-human); tusks are not a weapon attack on that form.",
     "weretiger": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be weretiger-human); bite and claw are not weapon attacks on that form.",
     "couatl": "damage_immunities lists psychic only: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (immunities.nonmagical, the mummy/specter qualifier, as an immunity). Bite to_hit: the SRD prints +8 (the table agrees); Dex 20 (+5) + PB 2 = +7. Constrict to_hit: the SRD prints +6 (the table agrees); Str 16 (+3) + PB 2 = +5. Both are approved attack_bonus overrides (printed value wins).",
+    "earth-elemental": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as grick).",
+    "fire-elemental": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as grick).",
+    "salamander": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as grick).",
+    "xorn": "damage_resistances stays empty: the qualified 'nonmagical weapons that aren't adamantine' entry lives in the damage_mitigation trait effect (resistances.nonmagical_not_adamantine on piercing and slashing only, the gargoyle qualifier). Bludgeoning is not in that line.",
     "black-pudding": "condition_immunities: the table omits deafened; the SRD line is blinded, charmed, deafened, exhaustion, frightened, prone (as ochre jelly / gray ooze / gelatinous cube). a6212be drops deafened rather than listing blinded twice (the ochre-jelly mirror shape).",
     "elephant": "Stomp: the table lists +8, 3d10+6 bludgeoning, one prone creature. No prone-target gate, so Stomp stays in the Trampling Charge description and is not an ungated action (unlike elk Hooves). Gore is the authored attack.",
     "triceratops": "Stomp: the table lists +9, 3d10+6 bludgeoning, one prone creature. No prone-target gate, so Stomp stays in the Trampling Charge description and is not an ungated action (as elephant). Gore is the authored attack.",
@@ -75,7 +79,7 @@ DEVIATIONS = {
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
 
-QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow", "mummy", "specter", "grick", "will-o-wisp")
+QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow", "mummy", "specter", "grick", "will-o-wisp", "earth-elemental", "fire-elemental", "salamander", "xorn")
 QUALIFIED_IMMUNITIES = ("wererat", "werewolf", "wereboar", "weretiger", "couatl")
 
 
@@ -2009,9 +2013,177 @@ class MonsterTable(unittest.TestCase):
             self.assertNotIn(idx, TABLE)
             self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
 
+
+    def test_cr5_batch_r(self):
+        # CR 5 batch R. Earth, fire and salamander are honest partials. Xorn stays green.
+        # Air elemental and water elemental are new deferrals. The standing seven stay deferred.
+        # Xorn Claw is the printed 1d6 + 3 (a6212be), not 1d3.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        earth = load("earth-elemental")
+        self.assertEqual((earth["size"], earth["type"], earth["alignment"], earth["hands"]),
+                         ("large", "elemental", "neutral", 0))
+        self.assertEqual(earth["natural_armor"], {"base": 18, "dex": True})
+        self.assertEqual(earth["armor_class"]["value"], 17)
+        self.assertEqual(earth["hit_points"], {"average": 126, "formula": "12d10+60"})
+        self.assertEqual(earth["speed"], {"walk": 30, "burrow": 30})
+        self.assertEqual(earth["damage_vulnerabilities"], ["thunder"])
+        self.assertEqual(earth["damage_immunities"], ["poison"])
+        self.assertNotIn("damage_resistances", earth)
+        self.assertEqual(earth["condition_immunities"],
+                         ["exhaustion", "paralyzed", "petrified", "poisoned", "unconscious"])
+        self.assertEqual(earth["senses"], {"darkvision": 60, "tremorsense": 60, "passive_perception": 10})
+        self.assertIsInstance(earth["senses"]["tremorsense"], int)
+        self.assertEqual(earth["languages"], ["Terran"])
+        self.assertEqual(earth["proficiency_bonus"], 3)
+        self.assertEqual(trait("earth-elemental", "damage_resistances_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", trait("earth-elemental", "earth_glide"))
+        self.assertIn("Descriptive only", trait("earth-elemental", "earth_glide")["description"])
+        self.assertNotIn("effect", trait("earth-elemental", "siege_monster"))
+        self.assertIn("Descriptive only", trait("earth-elemental", "siege_monster")["description"])
+        self.assertEqual(opts("earth-elemental"), {"slam_x2": ["slam", "slam"]})
+        slam = act("earth-elemental", "slam")
+        self.assertEqual(slam["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertNotIn("attack_bonus", slam)
+        self.assertEqual((slam["to_hit"], slam["reach"], slam["damage"]),
+                         (8, 10, [{"dice": "2d8+5", "type": "bludgeoning"}]))
+
+        fire = load("fire-elemental")
+        self.assertEqual((fire["size"], fire["type"], fire["alignment"], fire["hands"]),
+                         ("large", "elemental", "neutral", 0))
+        self.assertNotIn("natural_armor", fire)
+        self.assertEqual(fire["armor_class"], {"value": 13})
+        self.assertEqual(fire["hit_points"], {"average": 102, "formula": "12d10+36"})
+        self.assertEqual(fire["speed"], {"walk": 50})
+        self.assertEqual(fire["damage_immunities"], ["fire", "poison"])
+        self.assertNotIn("damage_resistances", fire)
+        self.assertNotIn("damage_vulnerabilities", fire)
+        self.assertEqual(fire["senses"], {"darkvision": 60, "passive_perception": 10})
+        self.assertEqual(fire["languages"], ["Ignan"])
+        self.assertNotIn("emits_light", fire)
+        self.assertEqual(trait("fire-elemental", "damage_resistances_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", trait("fire-elemental", "fire_form"))
+        self.assertIn("1d10", trait("fire-elemental", "fire_form")["description"])
+        self.assertIn("Descriptive only", trait("fire-elemental", "fire_form")["description"])
+        self.assertNotIn("effect", trait("fire-elemental", "illumination"))
+        self.assertIn("not emits_light", trait("fire-elemental", "illumination")["description"])
+        self.assertNotIn("effect", trait("fire-elemental", "water_susceptibility"))
+        self.assertEqual(opts("fire-elemental"), {"touch_x2": ["touch", "touch"]})
+        touch = act("fire-elemental", "touch")
+        self.assertEqual(touch["natural"], {"dice": "2d6", "ability": "dex"})
+        self.assertNotIn("attack_bonus", touch)
+        self.assertNotIn("on_hit", touch)
+        self.assertEqual((touch["to_hit"], touch["damage"]), (6, [{"dice": "2d6+3", "type": "fire"}]))
+        self.assertIn("1d10", touch["description"])
+        self.assertIn("Descriptive only", touch["description"])
+
+        sal = load("salamander")
+        self.assertEqual((sal["size"], sal["type"], sal["alignment"], sal["hands"]),
+                         ("large", "elemental", "neutral evil", 2))
+        self.assertEqual(sal["natural_armor"], {"base": 13, "dex": True})
+        self.assertEqual(sal["armor_class"]["value"], 15)
+        self.assertEqual(sal["weapon_dice_multiplier"], 2)
+        self.assertEqual(sal["equipment"], [{"item": "srd51.item.spear", "equipped": True}])
+        self.assertEqual(sal["hit_points"], {"average": 90, "formula": "12d10+24"})
+        self.assertEqual(sal["damage_vulnerabilities"], ["cold"])
+        self.assertEqual(sal["damage_immunities"], ["fire"])
+        self.assertNotIn("damage_resistances", sal)
+        self.assertEqual(sal["senses"], {"darkvision": 60, "passive_perception": 10})
+        self.assertEqual(sal["languages"], ["Ignan"])
+        self.assertNotIn("effect", trait("salamander", "heated_body"))
+        self.assertIn("2d6", trait("salamander", "heated_body")["description"])
+        self.assertIn("Descriptive only", trait("salamander", "heated_body")["description"])
+        self.assertNotIn("effect", trait("salamander", "heated_weapons"))
+        self.assertIn("included in the attack", trait("salamander", "heated_weapons")["description"])
+        self.assertEqual(opts("salamander"), {
+            "spear_tail": ["spear", "tail"],
+            "spear_two_handed_tail": ["spear_two_handed", "tail"],
+            "spear_thrown_tail": ["spear_thrown", "tail"],
+        })
+        spear = act("salamander", "spear")
+        two = act("salamander", "spear_two_handed")
+        thrown = act("salamander", "spear_thrown")
+        self.assertEqual(spear["weapon"], "srd51.item.spear")
+        self.assertEqual(spear["ability"], "str")
+        self.assertNotIn("use", spear)
+        self.assertEqual((spear["to_hit"], spear["damage"]), (7, [
+            {"dice": "2d6+4", "type": "piercing"},
+            {"dice": "1d6", "type": "fire"},
+        ]))
+        self.assertEqual((two["use"], two["to_hit"], two["damage"]), ("two_hands", 7, [
+            {"dice": "2d8+4", "type": "piercing"},
+            {"dice": "1d6", "type": "fire"},
+        ]))
+        self.assertEqual((thrown["use"], thrown["range"], thrown["damage"]), ("thrown", [20, 60], [
+            {"dice": "2d6+4", "type": "piercing"},
+            {"dice": "1d6", "type": "fire"},
+        ]))
+        tail = act("salamander", "tail")
+        self.assertEqual(tail["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual((tail["to_hit"], tail["reach"], tail["damage"]), (7, 10, [
+            {"dice": "2d6+4", "type": "bludgeoning"},
+            {"dice": "2d6", "type": "fire"},
+        ]))
+        self.assertEqual(tail["on_hit"], [{
+            "kind": "grapple", "escape_dc": 14, "restrains": True, "exclusive": True,
+        }])
+        self.assertIn("automatically hit", tail["description"])
+        self.assertIn("descriptive only", tail["description"])
+
+        xorn = load("xorn")
+        self.assertEqual((xorn["size"], xorn["type"], xorn["alignment"], xorn["hands"]),
+                         ("medium", "elemental", "neutral", 0))
+        self.assertEqual(xorn["natural_armor"], {"base": 19, "dex": True})
+        self.assertEqual(xorn["armor_class"]["value"], 19)
+        self.assertEqual(xorn["hit_points"], {"average": 73, "formula": "7d8+42"})
+        self.assertEqual(xorn["speed"], {"walk": 20, "burrow": 20})
+        self.assertEqual(xorn["skills"], {"perception": 6, "stealth": 3})
+        self.assertNotIn("passive_perception_reason", xorn)
+        self.assertNotIn("damage_resistances", xorn)
+        self.assertNotIn("damage_immunities", xorn)
+        self.assertNotIn("damage_vulnerabilities", xorn)
+        self.assertEqual(xorn["senses"], {"darkvision": 60, "tremorsense": 60, "passive_perception": 16})
+        self.assertEqual(xorn["languages"], ["Terran"])
+        self.assertEqual(trait("xorn", "damage_resistances_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical_not_adamantine": ["piercing", "slashing"]},
+        })
+        for tid in ("earth_glide", "stone_camouflage", "treasure_sense"):
+            self.assertNotIn("effect", trait("xorn", tid))
+            self.assertNotIn("Descriptive only", trait("xorn", tid)["description"])
+        self.assertEqual(opts("xorn"), {"claw_x3_bite": ["claw", "claw", "claw", "bite"]})
+        claw = act("xorn", "claw")
+        bite = act("xorn", "bite")
+        self.assertEqual(claw["natural"], {"dice": "1d6", "ability": "str"})
+        self.assertEqual((claw["to_hit"], claw["damage"]), (6, [{"dice": "1d6+3", "type": "slashing"}]))
+        self.assertNotIn("1d3", claw["description"])
+        self.assertEqual(bite["natural"], {"dice": "3d6", "ability": "str"})
+        self.assertEqual((bite["to_hit"], bite["damage"]), (6, [{"dice": "3d6+3", "type": "piercing"}]))
+
+        for idx in ("air-elemental", "water-elemental", "chuul", "ghost", "sea-hag", "mimic",
+                    "doppelganger", "green-hag", "succubus"):
+            self.assertNotIn(idx, TABLE)
+            self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
+
+
     def test_authored_and_deferred_split(self):
         have = sorted(p.stem for p in (PACK / "monsters").glob("*.json"))
-        self.assertEqual((len(AUTHORED), len(DEFERRED)), (176, 10))
+        self.assertEqual((len(AUTHORED), len(DEFERRED)), (180, 12))
         self.assertEqual(have, sorted([i.replace("-", "_") for i in AUTHORED] + ["goblin"]))
         for idx in DEFERRED:
             self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
