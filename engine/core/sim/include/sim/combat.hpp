@@ -491,12 +491,13 @@ private:
     bool space_free(CombatantId id, Vec2i t) const;
     struct LedgeAdj { uint16_t fell_ft = 0; bool set_alt = false; int16_t alt_ft = 0; };
     LedgeAdj ledge_adjust(CombatantId id, Vec2i from, Vec2i to) const;
-    void note_ledge(CombatantId id, Vec2i from, Vec2i to, rules5e::ForcedMoveResult& res);
     // Some footprint tile is climbable and none is walkable. A walkable climbable floor is not a wall.
-    // subject_grounded, alt_to's climb branch, and step_mode's wall branch all use this. A ground rise of
-    // more than 5 ft still selects climb mode without this predicate. subject_grounded still requires
-    // alt_ft > 0 and not airborne; alt_to uses the predicate on the tile being climbed.
+    // Shared by subject_grounded, alt_to's climb branch and climb-down clamp, step_mode's wall branch,
+    // step_altitude, step_cost, and ledge_adjust. A ground rise of more than 5 ft still selects climb mode
+    // without this predicate. Callers that mean "already climbing" still require alt_ft > 0 and not airborne;
+    // alt_to uses the predicate on the tile being climbed.
     bool on_climb_wall(Vec2i anchor, int fp) const;
+    void note_ledge(CombatantId id, Vec2i from, Vec2i to, rules5e::ForcedMoveResult& res);
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
     SubmitResult do_step(Vec2i to, bool allow_squeeze = false, int16_t alt_to = 0);
