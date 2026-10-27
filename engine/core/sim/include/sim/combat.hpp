@@ -491,7 +491,8 @@ private:
     bool space_free(CombatantId id, Vec2i t) const;
     struct LedgeAdj { uint16_t fell_ft = 0; bool set_alt = false; int16_t alt_ft = 0; };
     LedgeAdj ledge_adjust(CombatantId id, Vec2i from, Vec2i to) const;
-    // alt_ft > 0, not airborne: in contact with a non-walkable climbable surface (no walkable tile in the footprint).
+    // Some footprint tile is climbable and none is walkable. Tremorsense contact above the ground and climbing
+    // along a wall both use this. Callers still require alt_ft > 0 and not airborne.
     bool on_climb_wall(Vec2i anchor, int fp) const;
     void note_ledge(CombatantId id, Vec2i from, Vec2i to, rules5e::ForcedMoveResult& res);
     SubmitResult finish(rules5e::StepResult sr);

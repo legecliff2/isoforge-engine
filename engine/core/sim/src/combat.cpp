@@ -557,9 +557,17 @@ rules5e::SightFacts Combat::sight_facts_of(CombatantId viewer, CombatantId subje
     const int dist = distance_tiles(viewer, subject);
     f.distance_ft = uint16_t(std::min(dist * kFeetPerTile, 65535));
     f.line_of_sight = line_of_sight(viewer, subject);   // altitude PR5: 3D LoS (absolute heights at both ends)
-    if (const auto* t = rules5e::find(state_, subject))
+    if (const auto* t = rules5e::find(state_, subject)) {
         f.subject_invisible = t->has(rules5e::Condition::Invisible);
-    f.subject_grounded = true;   // no airborne altitude model yet; tremorsense treats everyone as grounded
+        // Tremorsense needs the subject in contact with a surface. An airborne flyer is not. Above the
+        // ground, contact is on_climb_wall (climbable, and no walkable tile). On the ground, swimming,
+        // or burrowed (alt_ft <= 0) it is. The viewer's own contact is not part of this fact. Eye height
+        // is unchanged.
+        if (airborne(subject))
+            f.subject_grounded = false;
+        else if (t->alt_ft > 0)
+            f.subject_grounded = on_climb_wall(sp, footprint_size(subject));
+    }
     f.audible = true;            // Silence deafens via rules (kZoneSilence); hearing is not a light fact
 
     // LightSample -> TileLight. sim::Light is Dark=0..Bright=2; rules5e::Light is Bright=0..Dark=2.

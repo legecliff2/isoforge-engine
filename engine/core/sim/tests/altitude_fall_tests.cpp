@@ -142,6 +142,9 @@ struct Shove {
         for (Vec2i p : {Vec2i{4, 4}, Vec2i{5, 4}})
             chunk.layers[0][std::size_t(p.y * 32 + p.x)].elevation = high;
         chunk.layers[0][std::size_t(4 * 32 + 6)].elevation = dest_elev;
+        // An all-zero chunk@3 map has no ground (flat). A raised tile off the shove path makes has_ground
+        // true so a climber's absolute drop is real, without changing the tiles under anyone.
+        if (high == 0 && dest_elev == 0) chunk.layers[0][0].elevation = 1;
         chunk.spawns.push_back({"test.monster.walker", Vec2i{4, 4}, world::spawn_stable_id(chunk.coord, 0), R"({"team":"a"})"});
         chunk.spawns.push_back({"test.monster." + target_kind, Vec2i{5, 4}, world::spawn_stable_id(chunk.coord, 1), R"({"team":"b"})"});
         chunk.content_hash = world::compute_content_hash(chunk);
