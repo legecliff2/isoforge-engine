@@ -7810,6 +7810,202 @@
      ]
     }
    ]
+  },
+  "giant-scorpion": {
+   "name": "Giant Scorpion",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    15
+   ],
+   "hp": 52,
+   "hp_roll": "7d10+14",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    15,
+    13,
+    15,
+    1,
+    9,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claw",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Sting",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d10+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "minotaur": {
+   "name": "Minotaur",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    14
+   ],
+   "hp": 76,
+   "hp_roll": "9d10+27",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    18,
+    11,
+    16,
+    6,
+    16,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Greataxe",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d12+4",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Gore",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d8+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "hell-hound": {
+   "name": "Hell Hound",
+   "size": "Medium",
+   "type": "fiend",
+   "ac": [
+    15
+   ],
+   "hp": 45,
+   "hp_roll": "7d8+14",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    17,
+    12,
+    14,
+    6,
+    13,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "fire"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "piercing"
+       ],
+       [
+        "2d6",
+        "fire"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "winter-wolf": {
+   "name": "Winter Wolf",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    13
+   ],
+   "hp": 75,
+   "hp_roll": "10d10+20",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    18,
+    13,
+    14,
+    7,
+    12,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "cold"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
