@@ -346,3 +346,80 @@ TEST_CASE("altitude PR2: burrowers tunnel under difficult ground and creatures (
     CHECK(w.vertical(-5).error == "alt_to: cannot go below the ground");   // no burrow speed: cannot burrow
     CHECK(rules5e::move_allowance(w.c->state(), *rules5e::find(w.c->state(), w.me), 4) == -1);
 }
+
+TEST_CASE("altitude: climbing spends the climb speed, and a walker pays double") {
+    const std::vector<Cell> face = {{{4, 4}, uint8_t(tf::kBlocksMove | tf::kClimbable), 0}};
+    Fight c("climber", face, true);
+    REQUIRE(c.vertical(10).ok);
+    CHECK(c.alt() == 10);
+    CHECK(c.last_mode() == 3);
+    CHECK(c.left() == 20);
+    Fight w("walker", face, true);
+    REQUIRE(w.vertical(10).ok);
+    CHECK(w.alt() == 10);
+    CHECK(w.last_mode() == 0);
+    CHECK(w.left() == 10);
+    Fight f("flyer", face, true);   // fly is preferred when the creature can fly
+    REQUIRE(f.vertical(10).ok);
+    CHECK(f.alt() == 10);
+    CHECK(f.last_mode() == 1);
+    REQUIRE(f.vertical(-5).ok);
+    CHECK(f.alt() == 5);
+    CHECK(f.last_mode() == 1);
+}
+
+TEST_CASE("altitude: a climber keeps altitude along a wall, lands on a matching ledge, and falls off") {
+    const uint8_t wall = uint8_t(tf::kBlocksMove | tf::kClimbable);
+    Fight along("climber", {{{4, 4}, wall, 0}, {{5, 4}, wall, 0}, {{6, 4}, wall, 0}}, true);
+    REQUIRE(along.vertical(20).ok);
+    CHECK(along.left() == 10);
+    REQUIRE(along.step({5, 4}).ok);
+    CHECK(along.alt() == 20);
+    CHECK(along.last_mode() == 3);
+    CHECK(along.left() == 5);
+    REQUIRE(along.step({6, 4}).ok);
+    CHECK(along.alt() == 20);
+    CHECK(along.c->abs_height_ft(along.me) == 20);
+    CHECK(along.left() == 0);
+    CHECK(falls_events(*along.c) == 0);
+    along.check_replay();
+
+    Fight ledge("climber", {{{4, 4}, wall, 0}, {{5, 4}, wall, 0}, {{6, 4}, 0, 4}}, true);
+    REQUIRE(ledge.vertical(20).ok);
+    REQUIRE(ledge.step({5, 4}).ok);
+    const int before = ledge.left();
+    REQUIRE(ledge.step({6, 4}).ok);
+    CHECK(before - ledge.left() == 5);
+    CHECK(ledge.alt() == 0);
+    CHECK(ledge.c->abs_height_ft(ledge.me) == 20);
+    CHECK(ledge.last_mode() == 0);
+    CHECK_FALSE(rules5e::find(ledge.c->state(), ledge.me)->has(rules5e::Condition::Prone));
+    CHECK(falls_events(*ledge.c) == 0);
+    ledge.check_replay();
+
+    Fight drop("climber", {{{4, 4}, wall, 0}, {{5, 4}, wall, 0}, {{6, 4}, 0, 0}}, true);
+    REQUIRE(drop.vertical(20).ok);
+    REQUIRE(drop.step({5, 4}).ok);
+    REQUIRE(drop.step({6, 4}).ok);
+    CHECK(drop.alt() == 0);
+    CHECK(rules5e::find(drop.c->state(), drop.me)->has(rules5e::Condition::Prone));
+    CHECK(falls_events(*drop.c) == 1);
+    REQUIRE(drop.c->falls().size() == 1);
+    CHECK(drop.c->falls()[0].fell_ft == 20);
+    drop.check_replay();
+}
+
+TEST_CASE("altitude: a climb down stops at the ground") {
+    Fight c("climber", {{{4, 4}, uint8_t(tf::kBlocksMove | tf::kClimbable), 0}}, true);
+    REQUIRE(c.vertical(15).ok);
+    CHECK(c.alt() == 15);
+    CHECK(c.left() == 15);
+    REQUIRE(c.vertical(-30).ok);
+    CHECK(c.alt() == 0);
+    CHECK(c.left() == 0);
+    CHECK(c.last_mode() == 3);
+    CHECK(c.c->log().back().step.request.alt_to == -15);
+    c.check_replay();
+    Fight w("walker", {{{4, 4}, 0, 0}}, true);
+    CHECK(w.vertical(-5).error == "alt_to: cannot go below the ground");
+}
