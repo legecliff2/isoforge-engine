@@ -2101,8 +2101,8 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         for (std::size_t i = 0; i < s.effects.size();) {
             const ActiveSpellEffect& e = s.effects[i];
             if (e.target != t.id) { ++i; continue; }
-            const SpellDef* d = spell_def(s, e.spell_id);
-            if (!d || !d->ends_on_ally_harm) { ++i; continue; }
+            const SpellDef* spell = spell_def(s, e.spell_id);
+            if (!spell || !spell->ends_on_ally_harm) { ++i; continue; }
             const Combatant* caster = find(s, e.caster);
             if (!caster || caster->team != attacker->team) { ++i; continue; }
             ended.push_back({e.spell_id, e.caster});

@@ -376,9 +376,9 @@ TEST_CASE("7.2zj Fly: willing creatures, legal targets, and a mid-air revoke fal
     std::vector<CombatantId> targets;
     for (const auto& r : legal_actions(listed))
         if (r.kind == ActionKind::CastSpell && r.spell_id == kFly && r.spell_level == 3) targets.push_back(r.target);
-    CHECK(std::find(targets.begin(), targets.end(), 1) != targets.end());
-    CHECK(std::find(targets.begin(), targets.end(), 3) != targets.end());
-    CHECK(std::find(targets.begin(), targets.end(), 2) == targets.end());
+    CHECK(std::find(targets.begin(), targets.end(), CombatantId{1}) != targets.end());
+    CHECK(std::find(targets.begin(), targets.end(), CombatantId{3}) != targets.end());
+    CHECK(std::find(targets.begin(), targets.end(), CombatantId{2}) == targets.end());
 }
 
 TEST_CASE("7.2zj Cone of Cold kills without a frozen statue") {
