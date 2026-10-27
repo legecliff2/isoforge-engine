@@ -33,6 +33,10 @@ ContentLibrary lib() {
     REQUIRE_FALSE(l.add(goblin("flyer", Json::parse(R"({"walk":30,"fly":60})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("swimmer", Json::parse(R"({"walk":30,"swim":30})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("burrower", Json::parse(R"({"walk":30,"burrow":20})")), "monster"));
+    REQUIRE_FALSE(l.add(goblin("climber", Json::parse(R"({"walk":30,"climb":30})")), "monster"));
+    Json big = goblin("large_climber", Json::parse(R"({"walk":30,"climb":30})"));
+    big["size"] = "large";
+    REQUIRE_FALSE(l.add(big, "monster"));
     REQUIRE_FALSE(l.add(goblin("foe", Json::parse(R"({"walk":30})")), "monster"));
     return l;
 }
@@ -215,6 +219,53 @@ TEST_CASE("altitude PR2: alt_to vertical move, 5 ft per 5 ft, folded at 0xD7 onl
     CHECK(w.vertical(5).error == "alt_to: needs flight or climbable terrain");
     CHECK(w.vertical(-5).error == "alt_to: cannot go below the ground");
     CHECK(w.c->log().empty());
+}
+
+TEST_CASE("altitude: vertical climb and wall steps use on_climb_wall") {
+    const uint8_t wall = uint8_t(tf::kBlocksMove | tf::kClimbable);
+    auto grounded = [](const Fight& f) {
+        return f.c->sight_facts_of(f.chunk.spawns[1].stable_id, f.me).subject_grounded;
+    };
+    // A walkable climbable floor is not a wall: a climber cannot alt_to up, and stays in contact.
+    Fight floor("climber", {{{4, 4}, tf::kClimbable, 0}, {{5, 4}, tf::kClimbable, 0}}, true);
+    CHECK(floor.vertical(10).error == "alt_to: needs flight or climbable terrain");
+    CHECK(floor.alt() == 0);
+    CHECK(grounded(floor));
+    REQUIRE(floor.step({5, 4}).ok);   // horizontal on that floor is walking
+    CHECK(floor.last_mode() == 0);
+    CHECK(floor.left() == 25);
+
+    // The same climb on a non-walkable climbable wall, then a step along it. Tremorsense still sees them.
+    Fight face("climber", {{{4, 4}, wall, 0}, {{5, 4}, wall, 0}}, true);
+    REQUIRE(face.vertical(10).ok);
+    CHECK(face.alt() == 10);
+    CHECK(face.last_mode() == 3);
+    CHECK(face.left() == 20);
+    CHECK(grounded(face));
+    REQUIRE(face.step({5, 4}).ok);
+    CHECK(face.last_mode() == 3);
+    CHECK(face.alt() == 10);
+    CHECK(grounded(face));
+    face.check_replay();
+
+    Fight walker("walker", {{{4, 4}, wall, 0}}, true);   // no climb speed: double cost, still the wall predicate
+    REQUIRE(walker.vertical(10).ok);
+    CHECK(walker.last_mode() == 0);
+    CHECK(walker.left() == 10);
+    CHECK(walker.alt() == 10);
+    CHECK(grounded(walker));
+
+    Fight fly("flyer", {{{4, 4}, tf::kClimbable, 0}}, true);   // fly is preferred; a floor is not contact once airborne
+    REQUIRE(fly.vertical(10).ok);
+    CHECK(fly.last_mode() == 1);
+    CHECK_FALSE(grounded(fly));
+
+    // A large footprint that mixes a walkable tile with a wall is not on_climb_wall, so the step is walking.
+    Fight big("large_climber", {{{6, 4}, wall, 0}}, true);
+    REQUIRE(big.c->footprint_size(big.me) == 2);
+    REQUIRE(big.step({5, 4}).ok);
+    CHECK(big.last_mode() == 0);
+    CHECK(big.left() == 25);
 }
 
 TEST_CASE("altitude PR2: airborne flyers pass over low obstacles and creatures they do not overlap") {

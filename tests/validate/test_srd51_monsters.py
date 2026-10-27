@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 163 authored / 4 deferred): batch 3 and tier-A triage (3: mimic, doppelganger, green hag). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. CR 2 batch K authored druid, priest, merrow and wererat (druid's four missing spells stay in the trait text only; priest Divine Eminence is text only and Religion +4 is the printed total; merrow Pull is text only; wererat is the humanoid form, with shapechange, bite and the curse as text). Sea hag is a new deferral. Mimic stays deferred. CR 2 batch L authored grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp and ochre jelly. Grick's beak-if-tentacles-hit gate stays in the Multiattack description. Gibbering Mouther Blinding Spittle is a point-origin sphere save_effect (recharge 5-6). Will-o'-wisp Consume Life, Ephemeral, Incorporeal Movement, Variable Illumination and Invisibility stay description only on the authored monster. Ochre Jelly Split stays a description-only trait. CR 3 batch M authored giant scorpion, minotaur, hell hound and winter wolf (no new deferrals). Minotaur has no Multiattack (one greataxe or one gore). Sea hag, mimic, doppelganger and green hag stay deferred.
-DEFERRED: list[str] = ["doppelganger", "green-hag", "mimic", "sea-hag"]   # docs/SRD_MONSTERS_DEFERRED.md: 163 / 4
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 166 authored / 4 deferred): batch 3 and tier-A triage (3: mimic, doppelganger, green hag). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. CR 2 batch K authored druid, priest, merrow and wererat (druid's four missing spells stay in the trait text only; priest Divine Eminence is text only and Religion +4 is the printed total; merrow Pull is text only; wererat is the humanoid form, with shapechange, bite and the curse as text). Sea hag is a new deferral. Mimic stays deferred. CR 2 batch L authored grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp and ochre jelly. Grick's beak-if-tentacles-hit gate stays in the Multiattack description. Gibbering Mouther Blinding Spittle is a point-origin sphere save_effect (recharge 5-6). Will-o'-wisp Consume Life, Ephemeral, Incorporeal Movement, Variable Illumination and Invisibility stay description only on the authored monster. Ochre Jelly Split stays a description-only trait. CR 3 batch M authored giant scorpion, minotaur, hell hound and winter wolf (no new deferrals). Minotaur has no Multiattack (one greataxe or one gore). CR 3 batch N authored manticore, werewolf and phase spider. Manticore Tail Spike Regrowth spike count is description only and the row stays green. Werewolf is the humanoid form (a6212be werewolf-human); hybrid/wolf AC 12, wolf speed 40, bite, claws and the lycanthropy curse stay description only. Phase spider Ethereal Jaunt stays description only (no Ethereal Plane). Stealth +6 is expertise (Dex +2 and 2×PB). Sea hag, mimic, doppelganger and green hag stay deferred.
+DEFERRED: list[str] = ["doppelganger", "green-hag", "mimic", "sea-hag"]   # docs/SRD_MONSTERS_DEFERRED.md: 166 / 4
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -58,12 +58,13 @@ DEVIATIONS = {
     "grick": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as specter).",
     "will-o-wisp": "damage_resistances lists the five plain types: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as specter). speed.hover is the printed fly hover flag. Shock to_hit: the SRD prints +4 (the table agrees); Dex 28 + PB 2 = +11. Carried as an approved attack_bonus override of +4 (printed value wins).",
     "ochre-jelly": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, charmed, deafened, exhaustion, frightened, prone (as gray ooze / gelatinous cube; same mirror shape as shrieker).",
+    "werewolf": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be werewolf-human); bite and claws are not weapon attacks on that form.",
 }
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
 
 QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow", "mummy", "specter", "grick", "will-o-wisp")
-QUALIFIED_IMMUNITIES = ("wererat",)
+QUALIFIED_IMMUNITIES = ("wererat", "werewolf")
 
 
 def load(idx):
@@ -1491,9 +1492,130 @@ class MonsterTable(unittest.TestCase):
         for idx in ("sea-hag", "mimic", "doppelganger", "green-hag"):
             self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
 
+    def test_cr3_batch_n(self):
+        # CR 3 batch N. Manticore is green: Tail Spike Regrowth's 24-spike count is text only.
+        # Werewolf is the humanoid form (wererat pattern). Phase spider Ethereal Jaunt is text only.
+        # Sea hag, mimic, doppelganger and green hag stay deferred.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        manticore = load("manticore")
+        self.assertEqual((manticore["size"], manticore["type"], manticore["hands"]), ("large", "monstrosity", 0))
+        self.assertEqual(manticore["alignment"], "lawful evil")
+        self.assertEqual(manticore["natural_armor"], {"base": 11, "dex": True})
+        self.assertEqual(manticore["armor_class"]["value"], 14)
+        self.assertEqual(manticore["speed"], {"walk": 30, "fly": 50})
+        self.assertNotIn("hover", manticore["speed"])
+        self.assertEqual(manticore["senses"], {"darkvision": 60, "passive_perception": 11})
+        self.assertEqual(manticore["languages"], [])
+        self.assertNotIn("skills", manticore)
+        self.assertNotIn("effect", trait("manticore", "tail_spike_regrowth"))
+        self.assertIn("unlimited", trait("manticore", "tail_spike_regrowth")["description"])
+        self.assertEqual(opts("manticore"), {
+            "bite_claws": ["bite", "claw", "claw"],
+            "tail_spikes": ["tail_spike", "tail_spike", "tail_spike"],
+        })
+        self.assertEqual(act("manticore", "bite")["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual(act("manticore", "claw")["natural"], {"dice": "1d6", "ability": "str"})
+        spike = act("manticore", "tail_spike")
+        self.assertEqual(spike["kind"], "ranged_weapon_attack")
+        self.assertEqual(spike["natural"], {"dice": "1d8", "ability": "dex"})
+        self.assertEqual((spike["to_hit"], spike["range"], spike["damage"]),
+                         (5, [100, 200], [{"dice": "1d8+3", "type": "piercing"}]))
+        self.assertNotIn("weapon", spike)
+        self.assertNotIn("usage", json.dumps(manticore))
+
+        wolf = load("werewolf")
+        self.assertIs(wolf["shapechanger"], True)
+        self.assertEqual((wolf["size"], wolf["type"], wolf["tags"]), ("medium", "humanoid", ["human", "shapechanger"]))
+        self.assertEqual(wolf["alignment"], "chaotic evil")
+        self.assertEqual((wolf["armor_class"], wolf["hands"], wolf["speed"]), ({"value": 11}, 2, {"walk": 30}))
+        self.assertNotIn("natural_armor", wolf)
+        self.assertEqual(wolf["equipment"], [{"item": "srd51.item.spear", "equipped": True}])
+        self.assertEqual(wolf["skills"], {"perception": 4})
+        self.assertEqual(wolf["senses"], {"passive_perception": 14})
+        self.assertNotIn("darkvision", wolf["senses"])
+        self.assertEqual(wolf["languages"], ["Common"])
+        self.assertNotIn("damage_immunities", wolf)
+        self.assertEqual(trait("werewolf", "damage_immunities_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "immunities": {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", trait("werewolf", "shapechanger"))
+        self.assertNotIn("forms", trait("werewolf", "shapechanger"))
+        self.assertIn("wolf form speed 40", trait("werewolf", "shapechanger")["description"])
+        self.assertIn("hybrid/wolf AC 12", trait("werewolf", "shapechanger")["description"])
+        self.assertNotIn("effect", trait("werewolf", "keen_hearing_and_smell"))
+        self.assertEqual(opts("werewolf"), {
+            "spear_x2": ["spear", "spear"],
+            "spear_two_handed_x2": ["spear_two_handed", "spear_two_handed"],
+            "spear_thrown_x2": ["spear_thrown", "spear_thrown"],
+        })
+        self.assertEqual(act("werewolf", "bite")["kind"], "special")
+        self.assertNotIn("natural", act("werewolf", "bite"))
+        self.assertIn("lycanthropy", act("werewolf", "bite")["description"])
+        self.assertEqual(act("werewolf", "claws")["kind"], "special")
+        self.assertNotIn("natural", act("werewolf", "claws"))
+        self.assertIn("2d4 + 2", act("werewolf", "claws")["description"])
+        spear = act("werewolf", "spear")
+        two = act("werewolf", "spear_two_handed")
+        thrown = act("werewolf", "spear_thrown")
+        self.assertEqual(spear["weapon"], "srd51.item.spear")
+        self.assertEqual(spear["ability"], "str")
+        self.assertEqual((spear["to_hit"], spear["damage"]), (4, [{"dice": "1d6+2", "type": "piercing"}]))
+        self.assertEqual((two["use"], two["to_hit"], two["damage"]),
+                         ("two_hands", 4, [{"dice": "1d8+2", "type": "piercing"}]))
+        self.assertEqual((thrown["use"], thrown["range"], thrown["damage"]),
+                         ("thrown", [20, 60], [{"dice": "1d6+2", "type": "piercing"}]))
+
+        spider = load("phase-spider")
+        self.assertEqual((spider["size"], spider["type"], spider["alignment"], spider["hands"]),
+                         ("large", "monstrosity", "unaligned", 0))
+        self.assertEqual(spider["natural_armor"], {"base": 11, "dex": True})
+        self.assertEqual(spider["armor_class"]["value"], 13)
+        self.assertEqual(spider["speed"], {"walk": 30, "climb": 30})
+        self.assertEqual(spider["skills"], {"stealth": 6})
+        self.assertNotIn("passive_perception_reason", spider)
+        self.assertEqual(spider["senses"], {"darkvision": 60, "passive_perception": 10})
+        self.assertEqual(spider["languages"], [])
+        self.assertNotIn("effect", trait("phase-spider", "ethereal_jaunt"))
+        self.assertIn("no Ethereal Plane", trait("phase-spider", "ethereal_jaunt")["description"])
+        self.assertNotIn("effect", trait("phase-spider", "spider_climb"))
+        self.assertNotIn("effect", trait("phase-spider", "web_walker"))
+        self.assertNotIn("web_sense", {t["id"] for t in spider["traits"]})
+        self.assertNotIn("bonus_actions", spider)
+        self.assertEqual([a["id"] for a in spider["actions"]], ["bite"])
+        bite = act("phase-spider", "bite")
+        self.assertEqual(bite["natural"], {"dice": "1d10", "ability": "str"})
+        self.assertEqual((bite["to_hit"], bite["damage"]), (4, [{"dice": "1d10+2", "type": "piercing"}]))
+        self.assertIn("one creature", bite["description"])
+        self.assertEqual(bite["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "con", "dc": 11},
+            "damage": [{"dice": "4d8", "type": "poison"}],
+            "on_success": "half",
+            "zero_hp": {
+                "condition": "poisoned",
+                "while": "paralyzed",
+                "duration": {"kind": "rounds", "n": 600},
+            },
+        }])
+        self.assertFalse((PACK / "monsters" / "sea_hag.json").exists())
+        self.assertFalse((PACK / "monsters" / "mimic.json").exists())
+        self.assertFalse((PACK / "monsters" / "doppelganger.json").exists())
+        self.assertFalse((PACK / "monsters" / "green_hag.json").exists())
+
     def test_authored_and_deferred_split(self):
         have = sorted(p.stem for p in (PACK / "monsters").glob("*.json"))
-        self.assertEqual((len(AUTHORED), len(DEFERRED)), (163, 4))
+        self.assertEqual((len(AUTHORED), len(DEFERRED)), (166, 4))
         self.assertEqual(have, sorted([i.replace("-", "_") for i in AUTHORED] + ["goblin"]))
         for idx in DEFERRED:
             self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
