@@ -240,8 +240,8 @@ TEST_CASE("7.2zj Charm Person: humanoid, advantage when fighting, ally harm, no 
 
     bool differed = false;
     for (uint64_t seed = 1; seed < 80 && !differed; ++seed) {
-        auto hostile = begin({wiz(1), foe(2)}, seed);
-        auto friendly = begin({wiz(1), foe(2, 0)}, seed);
+        auto hostile = begin({wiz(1), foe(2), foe(3)}, seed);
+        auto friendly = begin({wiz(1), foe(2, 0), foe(3)}, seed);
         auto h = step(hostile, cast(1, kCharm, 2, 1));
         auto f = step(friendly, cast(1, kCharm, 2, 1));
         REQUIRE(h.ok); REQUIRE(f.ok);
@@ -304,6 +304,7 @@ TEST_CASE("7.2zj Suggestion: charm immunity skips the save, deafness refuses, al
 TEST_CASE("7.2zj Calm Emotions: suppress charmed and frightened, resume, and do not resume an expired charm") {
     auto s = begin({wiz(1), foe(2)});
     REQUIRE(step(s, cast(1, kCharm, 2, 1)).ok);
+    s.budget.action = true;
     REQUIRE(step(s, cast(1, kCalm, 2, 2)).ok);
     CHECK_FALSE(find(s, 2)->has(Condition::Charmed));
     const auto* calm = effect_on(s, kCalm, 2);
@@ -329,6 +330,7 @@ TEST_CASE("7.2zj Calm Emotions: suppress charmed and frightened, resume, and do 
     auto gone = begin({wiz(1), foe(2)});
     REQUIRE(step(gone, cast(1, kCharm, 2, 1)).ok);
     for (auto& e : gone.effects) if (e.spell_id == kCharm) e.timed.rounds_left = 1;
+    gone.budget.action = true;
     REQUIRE(step(gone, cast(1, kCalm, 2, 2)).ok);
     CHECK_FALSE(find(gone, 2)->has(Condition::Charmed));
     const int round = gone.round;
