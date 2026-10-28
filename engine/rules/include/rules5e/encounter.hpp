@@ -490,6 +490,16 @@ struct ActiveSpellEffect {
     // attack rolls and ability checks until the start of the caster's next turn.
     uint32_t heated_item = 0, heated_def = 0;
     bool heated_worn = false, while_held = false;
+    // appended (7.2zj; leftover_digest sub-byte 0x60 only when any of these is set). suppress_count: how many Calm Emotions
+    // effects are holding this condition down (the condition bit is off while every holder is suppressed). suppress_mask:
+    // the conditions a Calm Emotions effect is suppressing. suppress_untracked: bits that were on with no effect and no
+    // sourced row, so they resume when this calm ends. granted_fly: the fly speed this effect granted (0 = none).
+    // ends_on_restoration: Greater Restoration ends this effect whatever option it chose (Geas).
+    uint8_t suppress_count = 0;
+    uint32_t suppress_mask = 0;
+    uint32_t suppress_untracked = 0;
+    uint8_t granted_fly = 0;
+    bool ends_on_restoration = false;
 };
 
 // 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).
@@ -830,6 +840,10 @@ struct SourcedCondition {
     bool restrains = false;
     bool exclusive = false;
     bool owns_restrained = false;
+    // appended (7.2zj Calm Emotions; sourced_digest sub-byte 0x60 only when some entry's count is non-zero). While non-zero
+    // the condition bit may be off and charmed_by ignores the entry; prune_sourced keeps it until the calm ends or the
+    // charm effect itself ends.
+    uint8_t suppress_count = 0;
 };
 
 // monster@5 on_hit kind "grapple" (R-G8, appended fields for Druid gap G): the shared grapple rider. escape_dc 0 = contest.

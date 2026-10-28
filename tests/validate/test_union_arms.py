@@ -506,7 +506,12 @@ class ControlConditionsArms(unittest.TestCase):
     """VERSION_BUMP_BATCH 7.2v: additive save-effect keys (spell@1) and their common@2 defs."""
     SAVE = (S({"kind", "ability"}), S({"damage", "on_success", "condition", "repeat_save", "control",
                                          "control_excludes_creature_types", "control_min_int", "destroy_undead_max_cr8",
-                                         "description", "applies_to", "choices", "ends_on"}))   # 7.2ze choices; 7.2zg ends_on
+                                         "description", "applies_to", "choices", "ends_on",
+                                         # 7.2zj. ends_on_ally_harm stays optional for Charm Person and Suggestion.
+                                         # Geas uses ends_on_restoration only.
+                                         "hostile_save_advantage", "ends_on_ally_harm", "suppress_conditions",
+                                         "also_damage", "difficult_terrain", "charm_immune", "ends_on_restoration",
+                                         "caster_sees_target", "requires_hearing"}))   # 7.2ze choices; 7.2zg ends_on
 
     def test_save_arm_keys(self):
         eff = load("spell/v1.schema.json")["$defs"]["effect"]
@@ -515,6 +520,7 @@ class ControlConditionsArms(unittest.TestCase):
         self.assertEqual(set(arm["required"]), set(req))
         self.assertEqual(set(arm["properties"]), set(req | opt))
         self.assertIn({"required": ["control"]}, arm["anyOf"])
+        self.assertIn({"required": ["suppress_conditions"]}, arm["anyOf"])   # 7.2zj Calm Emotions
 
     def test_common_defs(self):
         d = load("common/v2.schema.json")["$defs"]
