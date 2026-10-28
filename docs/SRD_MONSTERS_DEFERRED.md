@@ -1,4 +1,4 @@
-# SRD 5.1 monsters, CR 0-2 first batch: authored vs deferred
+# SRD 5.1 monsters: authored vs deferred
 
 > This work includes material taken from the System Reference Document 5.1 (“SRD 5.1”) by Wizards of the Coast LLC and available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
@@ -6,7 +6,7 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 
 **Source.** Stat blocks come from [5e-bits/5e-database](https://github.com/5e-bits/5e-database) `src/2014/en/5e-SRD-Monsters.json`, commit `a6212be` (the same snapshot as the coverage audit). The key stats of every authored monster are pinned against a verbatim copy of those fields in `tests/validate/data/srd51_monsters_5e_database_a6212be.json` by `tests/validate/test_srd51_monsters.py`.
 
-**Scope rule.** The batch is the 30 CR <= 2 candidates of the T&C content inventory (section 1.3). A monster is authored as `monster@4` only if every combat-relevant SRD mechanic is either (a) carried as data by a construct that `monster@4` / `common@2` and the validator accept today, or (b) a descriptive sense/flavor trait with no combat rule (Keen Smell, False Appearance, Amphibious, ...). Anything else is **deferred, not approximated** (no descriptive stand-in for a mechanic). `monster@4` documents are *validated, not (fully) played*: see "What the sim plays today".
+**Scope rule.** The original batch (T&C-G5) is the 30 CR <= 2 candidates of the T&C content inventory (section 1.3); later rows in this ledger use the same rule. A monster is authored as `monster@4` only if every combat-relevant SRD mechanic is either (a) carried as data by a construct that `monster@4` / `common@2` and the validator accept today, or (b) a descriptive sense/flavor trait with no combat rule (Keen Smell, False Appearance, Amphibious, ...). Anything else is **deferred, not approximated** (no descriptive stand-in for a mechanic). What the sim compiles and applies from that data is "What the sim plays today".
 
 ## Counts
 
@@ -24,25 +24,25 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Bandit | 1/8 | scimitar, light crossbow | |
 | Guard | 1/8 | spear: one-handed, two-handed (`two_handed`), thrown | the SRD "melee or ranged" spear is three actions, as in the equipment/versatile convention of the coverage doc |
 | Skeleton | 1/4 | vulnerability bludgeoning, immunity poison, condition immunities poisoned/exhaustion | |
-| Zombie | 1/4 | Undead Fortitude as `on_event drop_to_zero` (not radiant, not crit, Con save DC 5 + damage taken, `set_hp 1`), immunity poison, poisoned | trigger not played yet (see below) |
-| Giant Poisonous Snake | 1/4 | bite reach 10 + `on_hit save_condition` (Con DC 11, 3d6 poison, half on success) | rider not played yet |
+| Zombie | 1/4 | Undead Fortitude as `on_event drop_to_zero` (not radiant, not crit, Con save DC 5 + damage taken, `set_hp 1`), immunity poison, poisoned | played: the `on_event` compiles and `set_hp 1` applies on `drop_to_zero` (the save predicate included) |
+| Giant Poisonous Snake | 1/4 | bite reach 10 + `on_hit save_condition` (Con DC 11, 3d6 poison, half on success) | played: the bite's `on_hit` `save_condition` compiles and the Constitution save applies |
 | Axe Beak | 1/4 | beak (Large) | |
 | Grimlock | 1/4 | two damage components (bludgeoning + piercing), condition immunity blinded | Blind Senses / Keen senses / Stone Camouflage descriptive (no vision/lighting model, R-G13) |
-| Gnoll | 1/2 | Rampage as `on_event reduce_to_zero` -> `bonus_attack bite` (melee, once per turn); bite, spear (1h / 2h / thrown), longbow | the "move up to half its speed" part of Rampage is the creature's own movement choice and is not encoded; trigger not played yet |
+| Gnoll | 1/2 | Rampage as `on_event reduce_to_zero` -> `bonus_attack bite` (melee, once per turn); bite, spear (1h / 2h / thrown), longbow | the "move up to half its speed" part of Rampage is the creature's own movement choice and is not encoded; the `bonus_attack` bite trigger compiles and applies |
 | Lizardfolk | 1/2 | Multiattack: six options = every pair of the four melee weapons (bite, heavy club, javelin, spiked shield; "each with a different weapon") | AC 15 (natural armor 13, or 15 with the shield; the table lists both, the SRD line is 15) |
 | Black Bear | 1/2 | Multiattack bite + claws | Perception +3 added (SRD block; the table omits it but gives passive 13, and the validator requires 10 + skill) |
-| Scout | 1/2 | Multiattack: 2 melee or 2 ranged (two options); `behavior.ai` = `skirmisher.luau` | only monster given the pack's existing AI script (target selection; fits a ranged skirmisher) |
+| Scout | 1/2 | Multiattack: 2 melee or 2 ranged (two options); `behavior.ai` = `skirmisher.luau` | `skirmisher.luau` is target selection only (the goblin uses the same script). It does not choose attacks, so the built-in policy still opens the melee option and never starts `ranged` |
 | Animated Armor | 1 | Multiattack slam x2, immunities poison/psychic, 8 condition immunities | Antimagic Susceptibility is descriptive (no antimagic field / dispel in the pack's spells) |
-| Spy | 1 | Multiattack shortsword x2, Cunning Action (`bonus_action_grant` dash/disengage/hide), Sneak Attack as `on_event hit` once per turn, `advantage_or_ally_adjacent`, `extra_damage` 2d6 `same_as_weapon` | no `weapon` predicate: both of the spy's weapons (finesse shortsword, ranged crossbow) qualify; trigger not played yet |
+| Spy | 1 | Multiattack shortsword x2, Cunning Action (`bonus_action_grant` dash/disengage/hide), Sneak Attack as `on_event hit` once per turn, `advantage_or_ally_adjacent`, `extra_damage` 2d6 `same_as_weapon` | no `weapon` predicate: both of the spy's weapons (finesse shortsword, ranged crossbow) qualify; the once-per-turn `extra_damage` trigger compiles and applies |
 | Ogre | 2 | greatclub, javelin (melee and thrown) | |
 | Gargoyle | 2 | `damage_mitigation` (nonmagical not adamantine: bludgeoning, piercing, slashing), immunity poison, condition immunities, Multiattack bite + claws, fly 60 | plain `damage_resistances` stays empty on purpose (it would be unqualified) |
-| Black Dragon Wyrmling | 2 | bite with two damage components; Acid Breath as `save_effect` (Dex DC 11, 5d8 acid, half, line 15 x 5 ft, recharge 5-6), immunity acid | `save_effect` not played yet |
+| Black Dragon Wyrmling | 2 | bite with two damage components; Acid Breath as `save_effect` (Dex DC 11, 5d8 acid, half, line 15 x 5 ft, recharge 5-6), immunity acid | played: Acid Breath compiles as a `save_effect` with `usage` recharge 5-6 and applies when cast |
 | Jackal | 0 | Pack Tactics as trait effect `{ "kind": "pack_tactics" }` (sim #127), bite | Keen Hearing and Smell descriptive (no perception checks in the sim) |
 | Kobold | 1/8 | Pack Tactics (`pack_tactics`), dagger, sling | **partial**: Sunlight Sensitivity (disadvantage on attacks in sunlight) is description only: there is no light / sunlight model or supported effect for it (R-G13), so the kobold attacks normally in sunlight |
 | Wolf | 1/4 | Pack Tactics (`pack_tactics`), bite (knock-prone rider) | authored: the bite carries `on_hit [{"kind": "save_condition", "save": {"ability": "str", "dc": 11}, "apply": [{"condition": "prone"}]}]`, prone untimed (sim #133: applied untracked, ends when the target stands up). Keen Hearing and Smell is `keen_senses` `{hearing, smell}` (CONTENT_CONVENTIONS §30). Dire wolf and the other keen traits stay description-only until that effect is added |
 | Dire Wolf | 1 | Pack Tactics (`pack_tactics`), bite (knock-prone rider) | authored, as wolf (Str DC 13, prone untimed). Keen Hearing and Smell descriptive |
 | Orc | 1/2 | Aggressive as trait effect `{ "kind": "aggressive" }` (sim #129: bonus-action Dash toward a visible hostile; the built-in AI uses it), greataxe, javelin (melee and thrown) | |
-| Berserker | 2 | Reckless as trait effect `{ "kind": "reckless_attack" }` (sim #129), greataxe | the sim applies Reckless when the caller declares `ActionRequest::reckless` on the first attack; the built-in AI never declares it, so an AI-driven berserker attacks without it (a choice the AI does not make yet, not a content gap) |
+| Berserker | 2 | Reckless as trait effect `{ "kind": "reckless_attack" }` (sim #129), greataxe | the sim applies Reckless when `ActionRequest::reckless` is set on the turn's first attack. The built-in AI sets it on that first melee attack (`driver.cpp` `next_command`); a ranged attack does not |
 | Boar | 1/4 | Charge as `on_event hit` once per turn (`weapon melee` + `moved_at_least_ft 20`: +1d6 slashing, Str DC 11 prone untimed); Relentless as `on_event drop_to_zero` (`damage_at_most 7`, `usage per_rest 1 short`, `set_hp 1`) (#158), tusk | **partial**: "straight toward the target" isn't checked (the predicate counts movement only) |
 | Hobgoblin | 1/2 | Martial Advantage as `on_event hit` once per turn (`weapon_attack` + `ally_near_target`, +2d6) (#158); longsword (1h / 2h), longbow | the sim's ally fact skips incapacitated allies (the SRD's "isn't incapacitated" clause) |
 | Bugbear | 1 | Surprise Attack as `on_event hit` (`target_surprised`, +2d6) (#158); morningstar, javelin (melee and thrown) | Brute is baked into the printed dice (description only). **partial**: "during the first round" relies on surprise lasting only for round 1 |
@@ -180,7 +180,7 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Will-o'-Wisp | 2 | Shock is the printed melee spell attack, encoded as `melee_weapon_attack` so it derives (as specter Life Drain): natural 2d8 Dex, `damage_ability: none`, `attack_bonus` +4 (Dex 28 + PB 2 = +11; printed +4 / 2d8 lightning); walk 0, fly 50, `hover: true`; resist acid, cold, fire, necrotic, thunder + `damage_mitigation` nonmagical BPS; immune lightning, poison; condition immunities as printed; darkvision 120 | **partial**: Consume Life, Ephemeral, Incorporeal Movement, Variable Illumination and Invisibility are description only (no bonus-action kill, no invisibility, no variable light). Not parked. Consume Life is not parked alone |
 | Ochre Jelly | 2 | Pseudopod natural 2d6 Str (+4 / 2d6 + 2 bludgeoning + 1d6 acid, gray ooze); walk 10, climb 10; blindsight 60; resist acid; immune lightning and slashing; condition immunities blinded, charmed, deafened, exhaustion, frightened, prone | **partial**: Split is a description-only trait (no creature-spawn construct; rust Antennae honesty). Amorphous and Spider Climb descriptive. a6212be lists blinded twice and omits deafened; the content follows the SRD line (as shrieker). The blindsight parenthetical "blind beyond this radius" is the integer 60 (as gray ooze) |
 | Giant Scorpion | 3 | Multiattack one option claw ×2 + sting; Claw natural 1d8 Str (+4 / 1d8 + 2) with `on_hit` grapple `escape_dc` 12 and `max_grapples` 2 (giant crab, no `restrains`); Sting natural 1d10 Str (+4 / 1d10 + 2) with `on_hit save_condition` Con DC 12, 4d10 poison, half (scorpion / giant spider, no `zero_hp`); `natural_armor` base 14 + Dex (printed AC 15); walk 40; blindsight 60 | complete. HP 52 (7d10 + 14). The two-claws wording is `max_grapples` 2 |
-| Minotaur | 3 | `natural_armor` base 14 + Dex (printed AC 14); Greataxe `srd51.item.greataxe` (`use: two_hands`, `weapon_dice_multiplier` 2, hands 2, equipped; Str +6 / 2d12 + 4; minotaur skeleton weapon pattern, one attack, not a natural attack); Gore natural 2d8 Str (+6 / 2d8 + 4); darkvision 60; Perception +7 (expertise: Wis +3 and 2×PB; printed total, no reason field, as giant owl / death dog); languages Abyssal. Reckless is `{kind: reckless_attack}` (berserker). Charge is the gore's `on_hit` (`moved_at_least_ft` 10: extra 2d8 piercing, Str DC 14 prone untimed). No Multiattack | **partial**: "straight toward" isn't checked (as minotaur skeleton). The failed-save push of up to 10 feet stays in the Charge text (not `forced_move`). Labyrinthine Recall is description only. The AI never declares Reckless (as berserker) |
+| Minotaur | 3 | `natural_armor` base 14 + Dex (printed AC 14); Greataxe `srd51.item.greataxe` (`use: two_hands`, `weapon_dice_multiplier` 2, hands 2, equipped; Str +6 / 2d12 + 4; minotaur skeleton weapon pattern, one attack, not a natural attack); Gore natural 2d8 Str (+6 / 2d8 + 4); darkvision 60; Perception +7 (expertise: Wis +3 and 2×PB; printed total, no reason field, as giant owl / death dog); languages Abyssal. Reckless is `{kind: reckless_attack}` (berserker). Charge is the gore's `on_hit` (`moved_at_least_ft` 10: extra 2d8 piercing, Str DC 14 prone untimed). No Multiattack | **partial**: "straight toward" isn't checked (as minotaur skeleton). The failed-save push of up to 10 feet stays in the Charge text (not `forced_move`). Labyrinthine Recall is description only. The built-in AI declares Reckless on the first melee attack (as berserker) |
 | Hell Hound | 3 | Bite natural 1d8 Str (+5 / 1d8 + 3 piercing + 2d6 fire; mephit / wyrmling two components); Fire Breath `save_effect` origin self, cone 15, Dex DC 12, 6d6 fire, half, recharge min 5 (magma mephit cone + wyrmling recharge); Pack Tactics; immune fire; Perception +5 (expertise: Wis +1 and 2×PB); darkvision 60; walk 50; `natural_armor` base 14 + Dex (printed AC 15); understands Infernal but can't speak it | Keen Hearing and Smell descriptive. Both bite damage lines are in the a6212be damage array |
 | Winter Wolf | 3 | Bite natural 2d6 Str (+6 / 2d6 + 4) with `on_hit save_condition` Str DC 14 prone untimed (wolf / dire wolf); Cold Breath `save_effect` cone 15, Dex DC 12, 4d8 cold, half, recharge min 5 (ice mephit + wyrmling recharge); Pack Tactics; immune cold; Perception +5 (expertise), Stealth +3 (derives: Dex +1 and PB); walk 50; `natural_armor` base 12 + Dex (printed AC 13); languages Common, Giant, Winter Wolf | Keen Hearing and Smell and Snow Camouflage descriptive. a6212be tags Cold Breath `success_type` none; the action text says half, so `on_success` is half (the pin has no breath field) |
 | Manticore | 3 | Multiattack bite + claw ×2 or tail spike ×3; Bite natural 1d8 Str (+5 / 1d8 + 3 piercing); Claw natural 1d6 Str (+5 / 1d6 + 3 slashing); Tail Spike ranged natural 1d8 Dex (+5 / 1d8 + 3 piercing, 100/200, ape Rock); `natural_armor` base 11 + Dex (printed AC 14); walk 30, fly 50 (no hover); darkvision 60 | green; Regrowth spike count description only |
@@ -216,10 +216,48 @@ The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id
 
 Not set: `presentation` (the goblin has none; sprite assets for these monsters do not exist yet). `behavior.ai`: only the scout (above).
 
-### What the sim plays today (main at `0645ace`)
+### What the sim plays today (main at `de0a809b`)
 
-Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
-Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
+Audited against `de0a809b1fe82acacfcc0101ea744bd92920dad6`. The wolf row already records the bite's prone rider as applied (sim #133, untimed, ends when the target stands). This section used to say `on_event`, `on_hit[]`, and `save_effect` with `usage` were carried in `unsupported_features` and ignored. Those shapes compile and apply, on the events below.
+
+Still played, as before: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
+
+`on_event` traits and `on_hit[]` riders compile to `rules5e::Trigger` (`engine/core/sim/src/content.cpp`: `compile_on_event`, `compile_rider`, the `on_hit[]` loop). An `on_hit[]` rider is bound to its attack with `PredicateKind::AttackIs`. `save_effect`, `attack_effect`, `area_effect`, and `teleport` actions compile to synthetic spell defs and `Archetype::save_actions`, including `usage` of `at_will`, `recharge`, `per_day`, `per_rest`, and `pool` when `resources[]` has an integer max (`compile_save_action`, `compile_action_usage`). The built-in AI can cast a save action (`engine/core/sim/src/driver.cpp`, the save-action block): a single-target one in reach before a multiattack; an area one only when the aim catches no ally and at least two hostiles, or one hostile when no attack is legal. Hit and crit riders: rules #82 (9a), rules #86 and sim #90 (9c; the built-in policy declines `choice: ask`). Untimed prone: sim #133. Later monster@5 rider fill: #321, #324 (grapple `restrains` / `exclusive` / `max_grapples`), #326 (Dreadful Glare), #328 (Gladiator), #343 (the #322–#327 remainder). Prefer this table and `docs/CONTENT_CONVENTIONS.md` over older multiattack rows in `docs/SRD_COMBAT_COVERAGE.md`.
+
+| kind | compiles from | applies |
+|---|---|---|
+| `extra_damage` | `on_hit[]` or `on_event` `effects[]` | Hit / Crit (`fire_hit_triggers` in `engine/rules/src/encounter.cpp`) |
+| `save_condition` | same | Hit / Crit, as a synthetic Save |
+| `apply_condition` | same | Hit / Crit, as a synthetic ApplyCondition |
+| `forced_move` | same (`mode` must be `push`) | Hit / Crit, `RiderKind::Effect` |
+| `apply_modifier` | same | Hit / Crit, `RiderKind::Effect` |
+| `spend` | same | paid when that trigger applies (a slot on Hit / Crit; a pool on Hit / Crit and on event triggers) |
+| `heal_self`, `temp_hp` | same | event triggers other than Hit and Crit (`effect_applies`) |
+| `set_hp` | same | `drop_to_zero` only |
+| `bonus_attack` | same | `reduce_to_zero` or `damage_dealt`, and only while the owner is the current actor and still has a bonus action |
+| `area_save` | same | event triggers other than Hit and Crit, and only when `area_targets` is hooked |
+| `grapple` | `on_hit[]` of an `actions[]` weapon attack only (sim #104) | that Attack's hit, via `Archetype::grapple_on_hit` (`engine/core/sim/src/combat.cpp`). Not a trigger. `instead_of_damage` grapples and deals no damage only when the request sets `grapple_instead` (CONTENT_CONVENTIONS §27; vampire spawn claws) |
+
+A rider stored on the wrong event does not fire. `set_hp` on an `on_hit[]` does not fire; the zombie's does, because it is `on_event` `drop_to_zero`. `heal_self`, `temp_hp`, `bonus_attack`, and `area_save` on a Hit trigger do not fire there. `choice: never` does not fire. `choice: ask` on Hit / Crit opens a HitRider window, and the built-in policy declines it (`engine/core/sim/include/sim/driver.hpp`), so it fires only when a policy accepts. Any other `choice` than `auto` on a non-hit event does not fire (`run_event_triggers` skips `choice != 0`).
+
+Listed in `unsupported_features` and skipped (the file still loads):
+
+| shape | listing |
+|---|---|
+| `on_event` `usage` other than `at_will`, `per_day`, `per_rest`, `pool`, `recharge` | `<id> (on_event: unsupported usage)` (`compile_on_event`) |
+| `save_effect` / `attack_effect` / `area_effect` whose condition has no duration the loader times and no repeat save, or `usage: pool` whose `resources[]` max is not an integer | `<id> (save_effect\|attack_effect\|area_effect: unsupported usage or condition duration)` (`compile_save_action`, `compile_action_usage`). Exceptions that do compile: prone with no duration (`kEndsByOwnRules`, sim #133), `until_cured` on blinded, deafened, paralyzed, or poisoned, and an `escape` |
+| reaction `window` other than `damaged`, `ally_attacked`, `roll_attack`; effect other than `reduce_damage`, `impose_disadvantage`, `retaliate`, `attack`, `subtract_roll`; a `usage` the reaction compiler refuses; `source` other than `self`; `visible: false` | `<id> (reaction ...)` (`compile_reactions`) |
+| feature `kind` with no hook | `<id> (<kind>)` |
+
+`recharge` on an `on_event` compiles (`Trigger::recharge_min`). It is not one of the listed-usage cases.
+
+Grapple traps. Do not approximate these (CONTENT_CONVENTIONS §5 and §27; `tools/validate/checks_v4.py` `check_grapple_riders` and `check_item`):
+
+* A `bonus_actions[]` `on_hit` grapple is never read. The validator warns `this grapple rider never applies`.
+* `grapple` inside `on_event` `effects[]` is a load error (`unknown rider kind 'grapple'`).
+* An `item@1` `on_hit` grapple is not read. The validator rejects it (check 17).
+* `instead_of_damage` together with `restrains` is a load error (`on_hit: grapple instead_of_damage can't be combined with restrains`).
+* Vampire spawn claws are the shipped `instead_of_damage` rider. The built-in AI sets `grapple_instead` only when a grappled-by-self attack is still left in the multiattack and in reach (`driver.cpp` `choose_grapple_instead`). Mummy Multiattack (glare plus fist) stays descriptive on the mummy row (CONTENT_CONVENTIONS §26). Do not add an option to stand in for it.
 
 ## Deferred (19)
 
@@ -248,6 +286,8 @@ The last pre-v0.1 deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G
 
 ### Re-check at `cfb5eed` (2026-10-19)
 
+Point-in-time snapshot. Current compile and apply is "What the sim plays today" above. The grapple cell below is the `cfb5eed` state: the kind is a `common@2` rider now (CONTENT_CONVENTIONS §5, sim #104).
+
 All 12 stayed deferred at that point; jackal, kobold, wolf and dire wolf were authored afterwards once #127 landed the `pack_tactics` loader kind. Checked against the sim loader (`engine/core/sim/src/content.cpp`, `features.cpp`), the rules content loader (`engine/rules/content/src/spell_loader.cpp`), `schemas/common/v2.schema.json` / `schemas/monster/v4.schema.json` and `tools/validate_packs.py` / `tools/checks_v4.py`:
 
 | landed mechanic | loads from content? | shape | unblocks |
@@ -267,5 +307,6 @@ All 12 stayed deferred at that point; jackal, kobold, wolf and dire wolf were au
 
 * `srd51.core` is now `api_level` 2 (needed by every `monster@4` document, VERSION_BUMP_BATCH 8.5; PR #72 makes the same one-line change). A C++ host whose maximum API level is 1 refuses the pack; Engine Core is adding level 2.
 * `procgen::spawn_archetypes(1)` is the fixed table `{srd51.monster.goblin}`; nothing here changes it, so procgen outputs and `tests/goldens/stream/*.txt` are untouched. These monsters are not spawned by procgen.
-* The AI chooses an attack/multiattack option by declaration order: lizardfolk opens bite + heavy club; scout opens the melee option (the sim AI never picks a multiattack option containing a ranged attack).
+* Built-in attack policy (`engine/core/sim/src/driver.cpp`, the multiattack loop at lines 858-873): continue a sequence already in progress; otherwise start the first option made only of melee attacks, in declaration order. An option that contains a ranged attack is never started. Lizardfolk therefore opens bite + heavy club. Out of melee reach the same policy may still make one ranged attack. That is not a ranged multiattack. The built-in AI also sets Reckless on the turn's first melee attack when the creature has `reckless_attack` (`next_command`).
+* These CR <= 7 monsters have a multiattack option that the loop never starts: bandit captain `ranged`; centaur `longbow_x2`; drider `longbow_x3` and `longbow_x2_bite`; gladiator `ranged`; manticore `tail_spikes`; medusa `ranged`; merrow `bite_harpoon_thrown`; salamander `spear_thrown_tail`; scout `ranged`; wererat `hand_crossbow_x2` and `shortsword_hand_crossbow`; weretiger `longbow_x2`; werewolf `spear_thrown_x2`; wight `longbow_x2`. Scout's `scripts/ai/skirmisher.luau` (also the goblin's) only implements `choose_target`. It does not override this policy.
 * The adapter reads `damage[0]` plus extra components and hard-codes `finesse = false`; weapon `properties` here (`two_handed`, `thrown`) are descriptive for the adapter.
