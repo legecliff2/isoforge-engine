@@ -769,7 +769,8 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             }
         }
     }
-    // R-G8 grapple / shove / escape (only arise once something grapples; no existing content does):
+    // R-G8 grapple / shove / escape. These come up once a grapple is on the board. Content does grapple
+    // (ankheg bite, giant toad bite, and others):
     //  * held (Grappled with a recorded holder) and the target is out of reach: Escape (takes the action);
     //  * the target holds one of my allies and is within 5 ft: Shove it 5 ft away (breaks the hold when the push lands);
     //  * I hold the target and it is not prone: Shove it prone.
@@ -855,21 +856,40 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         }
     }
     if (me->attacks.empty()) return end;
-    // Declared multiattack (T&C-G1): continue the sequence in progress, else start the first option made
-    // only of melee attacks (declaration order; options with a ranged attack are never picked by the AI).
+    // Declared multiattack (T&C-G1): continue the sequence in progress. To start one, in declaration order:
+    // the first all-melee option (after_action == 0, every attack usable) whose first attack is in melee reach;
+    // else the first all-ranged option under those constraints when can_shoot is true for its first attack.
+    // Mixed melee+ranged options are never started. after_action sequences are never started.
     uint8_t multi = 0;   // ActionRequest::multiattack to send (0 = continue / plain attack)
     if (s.budget.sequence != 0 && s.budget.sequence <= me->multiattacks.size()) {
         if (const int next = rules5e::multiattack_next(me->multiattacks, s.budget.sequence, s.budget.sequence_pos); next >= 0)
             ai = uint8_t(next);
     } else {
+        auto pure = [&](const rules5e::AttackSequence& seq, bool ranged) {
+            if (seq.after_action != 0 || seq.attacks.empty()) return false;
+            for (uint8_t k : seq.attacks)
+                if (k >= me->attacks.size() || me->attacks[k].ranged != ranged || !usable(k)) return false;
+            return true;
+        };
+        int melee_i = -1, ranged_i = -1;
         for (std::size_t i = 0; i < me->multiattacks.size() && i < 255; ++i) {
-            const auto& seq = me->multiattacks[i].attacks;
-            bool melee_only = !seq.empty() && me->multiattacks[i].after_action == 0;
-            for (uint8_t k : seq) melee_only = melee_only && k < me->attacks.size() && !me->attacks[k].ranged && usable(k);
-            if (!melee_only) continue;
-            ai = seq[0];
-            multi = uint8_t(i + 1);
-            break;
+            if (melee_i < 0 && pure(me->multiattacks[i], false)) melee_i = int(i);
+            if (ranged_i < 0 && pure(me->multiattacks[i], true)) ranged_i = int(i);
+        }
+        if (melee_i >= 0) {
+            const uint8_t a0 = me->multiattacks[std::size_t(melee_i)].attacks[0];
+            if (c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[a0].reach_or_range_ft)) {
+                ai = a0;
+                multi = uint8_t(melee_i + 1);
+            }
+        }
+        if (multi == 0 && ranged_i >= 0) {
+            const uint8_t a0 = me->multiattacks[std::size_t(ranged_i)].attacks[0];
+            const bool action_ready = (s.budget.action || s.budget.extra_actions > 0 || s.budget.attacks_remaining > 0) && !no_weapon;
+            if (action_ready && rules5e::is_conscious(*t) && c.can_shoot(self, a0, t->id)) {
+                ai = a0;
+                multi = uint8_t(ranged_i + 1);
+            }
         }
     }
     const int reach = reach_tiles(me->attacks[ai].reach_or_range_ft);
@@ -887,6 +907,16 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             return a;
         }
         return end;
+    }
+    // Ranged multiattack opener past normal range. can_shoot includes long range; the reach test above uses the
+    // attack's normal range, so a legal long-range opener would otherwise become a step or a plain shot.
+    // Continuation (multi == 0) stays on the path below.
+    if (multi != 0 && me->attacks[ai].ranged && can_attack && rules5e::is_conscious(*t) && c.can_shoot(self, ai, t->id)) {
+        Command a;
+        a.request = {self, ActionKind::Attack, t->id};
+        a.request.attack_index = ai;
+        if (s.budget.attacks_remaining == 0) a.request.multiattack = multi;
+        return a;
     }
     // Can't get into melee reach this turn: shoot if a ranged attack is legal (range + LOS),
     // preferring one without disadvantage.
