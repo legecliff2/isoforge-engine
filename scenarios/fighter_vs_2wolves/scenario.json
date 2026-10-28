@@ -1,0 +1,19 @@
+{
+  "$schema": "scenario@1",
+  "id": "sample.fighter_vs_2wolves",
+  "seed": 11,
+  "pack": "sample.vertical_slice",
+  "board": {
+    "map": {}
+  },
+  "party": [
+    {"id": "fighter", "archetype": "srd51.character.fighter_1", "tile": {"x": 8, "y": 8}}
+  ],
+  "monsters": [
+    {"id": "wolf_a", "archetype": "srd51.monster.wolf", "tile": {"x": 9, "y": 8}},
+    {"id": "wolf_b", "archetype": "srd51.monster.wolf", "tile": {"x": 8, "y": 9}}
+  ],
+  "surprise": [],
+  "end_condition": "teams",
+  "round_cap": 20
+}
