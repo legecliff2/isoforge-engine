@@ -178,6 +178,32 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "keen_senses"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/keen_senses_effect"
+                }
+              }
+            }
           }
         ]
       },
@@ -1650,6 +1676,33 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 168
+        }
+      }
+    },
+    "keen_senses_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "senses"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §30; common@2 unchanged): advantage on Wisdom (Perception) checks that rely on a listed sense. SRD Keen Hearing and Smell: {kind keen_senses, senses [hearing, smell]}. Does not change the printed passive Perception.",
+      "properties": {
+        "kind": {
+          "const": "keen_senses"
+        },
+        "senses": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "sight",
+              "hearing",
+              "smell"
+            ]
+          }
         }
       }
     },

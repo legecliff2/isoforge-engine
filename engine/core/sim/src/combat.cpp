@@ -2926,6 +2926,7 @@ rules5e::FormStats stats_of(const rules5e::Combatant& c) {
     f.reactions = c.reactions;
     f.bonus_attacks = c.bonus_attacks;
     f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.burrow_ft = c.burrow_ft; f.hover = c.hover;   // feat/move-modes
+    f.keen_senses = c.keen_senses;   // Keen Senses (§30): the beast's mask, restored from own_stats on revert
     return f;
 }
 }  // namespace

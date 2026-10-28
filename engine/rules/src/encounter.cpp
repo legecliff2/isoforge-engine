@@ -5119,6 +5119,12 @@ ActionRequest decision_request(const NeedsDecision& n, bool react, uint8_t optio
 
 StepResult step(EncounterState& s, const ActionRequest& req) {
     if (req.grapple_instead && req.kind != ActionKind::Attack) return fail("grapple_instead is only valid on an Attack");   // Tier-A §27: never an ignored, hashed flag
+    if (req.perception_senses != 0) {   // Keen Senses (§30): never an ignored flag on a non-Perception check
+        if (req.kind != ActionKind::AbilityCheck || req.skill != Skill::Perception)
+            return fail("perception_senses is only valid on a Wisdom (Perception) check");
+        if (req.perception_senses & ~uint8_t(kKeenSight | kKeenHearing | kKeenSmell))
+            return fail("perception_senses: only sight, hearing, smell");
+    }
     if (req.kind == ActionKind::ReactionDecision) {
         if (!s.pending) return fail("no pending reaction decision");
         const PendingDecision& p = *s.pending;
@@ -5476,7 +5482,22 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         Combatant* c = find_mut(s, req.actor);
         if (!c || c->dead) return fail("bad combatant");
         StepResult out{true, {}, {}};
-        roll_check(s, *c, req.skill, req.dc, req.check_mode, out.events);
+        RollMode mode = req.check_mode;
+        if (req.skill == Skill::Perception && req.perception_senses != 0) {   // Keen Senses (§30)
+            uint8_t relies = req.perception_senses;
+            if (c->has(Condition::Deafened)) relies = uint8_t(relies & ~uint8_t(kKeenHearing));
+            int penalty = 0;
+            bool sight_works = (relies & kKeenSight) != 0;   // no subject: a named sight check is treated as sight working
+            if (req.target != 0) {
+                const Sight v = sight(s, c->id, req.target);   // no hook: Sight{} (everyone sees everyone)
+                penalty = passive_sight_penalty(v, c->sunlight_sensitive);
+                sight_works = v.sense == Sense::Sight;
+            }
+            const KeenPerception kp = keen_perception(c->keen_senses, relies, penalty, sight_works);
+            mode = combine_modes(mode == RollMode::Advantage || kp.mode == RollMode::Advantage,
+                                 mode == RollMode::Disadvantage || kp.mode == RollMode::Disadvantage);
+        }
+        roll_check(s, *c, req.skill, req.dc, mode, out.events);
         return out;
     }
     if (req.kind == ActionKind::ReactionDecision) return fail("no pending reaction decision");
@@ -6025,7 +6046,10 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
                 if (o.id == a.id || o.dead || o.team == a.team) continue;
                 const Sight v = sight(s, o.id, a.id);
                 if (v.can_see) continue;   // can't hide from a creature that sees you
-                if (total >= passive_perception(o, passive_sight_penalty(v, o.sunlight_sensitive))) s.hidden.push_back({a.id, o.id, total});
+                // Keen Senses (§30): the better of the sight passive (penalty included; Keen Sight does not add +5 while
+                // unseen) and the keen hearing/smell passive (+5). No mask: the bonus is the sight penalty, as before.
+                const int bonus = unseen_perception_bonus(o.keen_senses, passive_sight_penalty(v, o.sunlight_sensitive), v.perceives);
+                if (total >= passive_perception(o, bonus)) s.hidden.push_back({a.id, o.id, total});
             }
         } else {
             a.stealth_total = total;
@@ -6890,7 +6914,7 @@ std::vector<CombatantId> surprised_by_stealth(const std::vector<Combatant>& cs, 
     for (const auto& c : cs) {
         if (c.dead) continue;
         bool any_enemy = false, noticed = false;
-        const int passive = passive_perception(c);
+        const int passive = passive_perception(c, keen_surprise_bonus(c.keen_senses, c.has(Condition::Deafened)));
         for (const auto& e : cs) {
             if (e.dead || e.team == c.team) continue;
             any_enemy = true;
@@ -6999,6 +7023,7 @@ FormStats own_stats(const Combatant& c) {
     f.bonus_attacks = c.bonus_attacks;
     f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.burrow_ft = c.burrow_ft; f.hover = c.hover;   // feat/move-modes
     f.ability_reduction = c.ability_reduction;   // batch 3 Strength Drain
+    f.keen_senses = c.keen_senses;   // Keen Senses (§30)
     return f;
 }
 void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_max
@@ -7011,6 +7036,7 @@ void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_m
     c.bonus_attacks = f.bonus_attacks;
     c.fly_ft = f.fly_ft; c.swim_ft = f.swim_ft; c.climb_ft = f.climb_ft; c.burrow_ft = f.burrow_ft; c.hover = f.hover;   // feat/move-modes
     c.ability_reduction = f.ability_reduction;   // batch 3 Strength Drain
+    c.keen_senses = f.keen_senses;   // Keen Senses (§30)
 }
 template <class T> void append_all(std::vector<T>& to, const std::vector<T>& from) { to.insert(to.end(), from.begin(), from.end()); }
 }  // namespace

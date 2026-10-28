@@ -256,11 +256,14 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(bite["on_hit"][0]["damage"], [{"dice": "3d6", "type": "poison"}])
         self.assertEqual((bite["on_hit"][0]["save"], bite["on_hit"][0]["on_success"]), ({"ability": "con", "dc": 11}, "half"))
         self.assertEqual(load("skeleton")["damage_vulnerabilities"], ["bludgeoning"])
-        # Pack Tactics (common@1 open kind pack_tactics, sim #127): one declaration, no fields
-        for idx in ("jackal", "kobold", "wolf", "dire-wolf", "hyena", "tribal-warrior", "vulture", "blood-hawk", "lion"):
+        # Pack Tactics (common@1 open kind pack_tactics, sim #127): one declaration, no fields.
+        # Wolf also stamps Keen Hearing and Smell (CONTENT_CONVENTIONS §30); the others stay description-only.
+        for idx in ("jackal", "kobold", "dire-wolf", "hyena", "tribal-warrior", "vulture", "blood-hawk", "lion"):
             with self.subTest(monster=idx):
                 effs = [t["effect"] for t in load(idx)["traits"] if "effect" in t]
                 self.assertEqual(effs, [{"kind": "pack_tactics"}])
+        self.assertEqual([t["effect"] for t in load("wolf")["traits"] if "effect" in t],
+                         [{"kind": "keen_senses", "senses": ["hearing", "smell"]}, {"kind": "pack_tactics"}])
         # bite knock-prone rider (sim #133): on_hit save_condition, Str DC 11 / 13, prone untimed (ends when the target
         # stands up; applied untracked like Shove)
         for idx, dc in (("wolf", 11), ("dire-wolf", 13), ("mastiff", 11)):

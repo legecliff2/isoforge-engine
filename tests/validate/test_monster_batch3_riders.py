@@ -285,6 +285,38 @@ class Aura(unittest.TestCase):
         self.assertTrue(e, e)
 
 
+class KeenSenses(unittest.TestCase):
+    """SRD 5.1 wolf: "The wolf has advantage on Wisdom (Perception) checks that rely on hearing or smell."
+    monster@5 keen_senses (CONTENT_CONVENTIONS §30)."""
+
+    def test_valid(self):
+        for senses in (["hearing", "smell"], ["sight"]):
+            e, w = run(with_trait({"kind": "keen_senses", "senses": senses}))
+            self.assertEqual(e, [], senses)
+            self.assertFalse([m for m in w if "keen_senses" in m], w)
+
+    def test_duplicate_warns_only_when_no_new_bit(self):
+        both = {"kind": "keen_senses", "senses": ["hearing", "smell"]}
+        _e, w = run(with_trait(both, copy.deepcopy(both)))
+        self.assertTrue([m for m in w if "duplicate keen_senses" in m], w)
+        _e, w = run(with_trait({"kind": "keen_senses", "senses": ["hearing"]},
+                              {"kind": "keen_senses", "senses": ["smell"]}))
+        self.assertFalse([m for m in w if "duplicate" in m], w)
+
+    def test_refused(self):
+        for eff in ({"kind": "keen_senses", "senses": []},
+                    {"kind": "keen_senses"},
+                    {"kind": "keen_senses", "senses": ["hearing", "hearing"]},
+                    {"kind": "keen_senses", "senses": ["taste"]},
+                    {"kind": "keen_senses", "senses": ["hearing"], "note": 1}):
+            e, _w = run(with_trait(eff))
+            self.assertTrue([m for m in e if "keen_senses" in m or "/effect" in m], (eff, e))
+
+    def test_needs_at5(self):
+        e, _w = run(with_trait({"kind": "keen_senses", "senses": ["smell"]}, schema="monster@4"))
+        self.assertTrue([m for m in e if "keen_senses" in m or "monster@5" in m or "/effect" in m], e)
+
+
 class AreaEffect(unittest.TestCase):
     """monster@5 area_effect (AOE_MONSTER_ABILITIES PR2): cone, line, cube, sphere, recharge, save."""
 
