@@ -5,6 +5,8 @@
 // Keys: SPACE step, A autoplay, arrows/W/S pan, wheel or 1/2 zoom, ESC quit.
 // F3: debug equip / inventory view (debug_equip.hpp): UP/DOWN select, TAB next PC, E equip, U unequip, L light state.
 // F4: debug cover overlay (debug_cover.hpp). While it is open and F3 is closed: TAB target, N attacker, M aim tile.
+// F5: player area-spell preview (aoe_preview.hpp). While it is open and F3 is closed, Q cycles the
+// current PC's area spells. The aim is the cursor tile. Nothing is cast.
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -20,6 +22,7 @@
 #include "platform/platform.hpp"
 #include "platform/window.hpp"
 #include "render/device.hpp"
+#include "aoe_preview.hpp"
 #include "debug_cover.hpp"
 #include "debug_equip.hpp"
 #include "session.hpp"
@@ -93,6 +96,7 @@ int main(int argc, char** argv) {
     Vec2f pan{0, 0};
     slice::DebugEquipView equip_view;   // F3 (debug only)
     slice::DebugCoverView cover_view;   // F4 (debug only)
+    slice::AreaTargetView area_view;    // F5 (player area aim; presentation only, does not cast)
     bool autoplay = false;
     uint32_t auto_timer = 0;
     int frame = 0;
@@ -113,6 +117,9 @@ int main(int argc, char** argv) {
         using EqCmd = slice::DebugEquipView::Cmd;
         if (in.was_pressed(platform::Key::F3)) equip_view.handle(EqCmd::Toggle, *session);
         if (in.was_pressed(platform::Key::F4)) cover_view.handle(slice::DebugCoverView::Cmd::Toggle, *session);
+        if (in.was_pressed(platform::Key::F5)) area_view.handle(slice::AreaTargetView::Cmd::Toggle, *session);
+        if (area_view.open() && !equip_view.open() && in.was_pressed(platform::Key::Q))
+            area_view.handle(slice::AreaTargetView::Cmd::NextSpell, *session);
         if (cover_view.open() && !equip_view.open()) {
             using Cv = slice::DebugCoverView::Cmd;
             if (in.was_pressed(platform::Key::Tab)) cover_view.handle(Cv::NextTarget, *session);
@@ -151,6 +158,12 @@ int main(int argc, char** argv) {
         cam.viewport_w = uint32_t(px.x);
         cam.viewport_h = uint32_t(px.y);
         cam.position = {focus.x + pan.x - px.x / (2.f * zoom), focus.y + pan.y - px.y / (2.f * zoom)};
+        // Mouse events are in window points; the camera viewport is pixels. The overlay only reads the tile.
+        const Vec2i pt = window->size();
+        const float mx = pt.x > 0 ? in.mouse_x * float(px.x) / float(pt.x) : in.mouse_x;
+        const float my = pt.y > 0 ? in.mouse_y * float(px.y) / float(pt.y) : in.mouse_y;
+        const Vec2i cursor = view->tile_at_screen({mx, my}, cam);
+        area_view.decorate(*session, vm, cursor, uint32_t(clock.total_ns() / 1000000ull));
 
         if (device->begin_frame()) {
             view->prepare(vm, cam, uint32_t(px.x), uint32_t(px.y));
