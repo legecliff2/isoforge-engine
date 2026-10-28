@@ -1,0 +1,28 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.suggestion",
+  "name": "Suggestion",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "description": "A creature you can see that can hear you must make a Wisdom save or be charmed for up to 8 hours, concentration. Immune to charmed: no save and no effect. Deafened: no save and no effect. The course of action, shared language, and whether the suggestion is reasonable are deferred (the same class of gap as Command). Harm from the caster's team ends it.",
+  "level": 2,
+  "school": "enchantment",
+  "classes": ["bard", "cleric", "sorcerer", "warlock", "wizard"],
+  "casting_time": { "kind": "action" },
+  "range": { "kind": "ranged", "feet": 30 },
+  "components": {
+    "v": true,
+    "m": { "text": "a snake's tongue and either a bit of honeycomb or a drop of sweet oil" }
+  },
+  "duration": { "kind": "hours", "amount": 8, "concentration": true },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "wis",
+      "condition": "charmed",
+      "ends_on_ally_harm": true,
+      "charm_immune": true,
+      "caster_sees_target": true,
+      "requires_hearing": true
+    }
+  ]
+}

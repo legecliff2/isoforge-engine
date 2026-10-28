@@ -1261,3 +1261,124 @@ TEST_CASE("loader: a bare descriptive effect loads, and extra keys, a mix, or an
     empty["effects"] = eng::assets::Json::array();
     bad(empty, "effects missing");
 }
+
+TEST_CASE("loader 7.2zj: monster-combat spells") {
+    const auto root = std::filesystem::path(ENGINE_SOURCE_ROOT) / "tests/validate/fixtures/spell_batch_zj";
+    auto load = [&](const char* name) {
+        std::ifstream in(root / name);
+        REQUIRE(in);
+        const auto j = eng::assets::Json::parse(std::string(std::istreambuf_iterator<char>(in), {}));
+        auto r = spell_from_json(j);
+        INFO(name); INFO(r.error);
+        REQUIRE(r.def);
+        return std::pair{j, r.def};
+    };
+    const auto [charm_j, charm] = load("charm_person.json");
+    CHECK(charm->kind == SpellEffectKind::Save);
+    CHECK(charm->level == 1);
+    CHECK(charm->hostile_save_advantage);
+    CHECK(charm->ends_on_ally_harm);
+    CHECK(charm->caster_sees_target);
+    CHECK(charm->condition == Condition::Charmed);
+    CHECK(charm->target_types == bit(CreatureType::Humanoid));
+    CHECK(charm->upcast_targets == 1);
+    CHECK(charm->expiry == 1);
+    CHECK(charm->duration_rounds == 600);
+
+    const auto suggest = load("suggestion.json").second;
+    CHECK(suggest->charm_immune);
+    CHECK(suggest->requires_hearing);
+    CHECK(suggest->concentration);
+    CHECK(suggest->duration_rounds == 4800);
+
+    const auto calm = load("calm_emotions.json").second;
+    CHECK(calm->suppress_conditions == (bit(Condition::Charmed) | bit(Condition::Frightened)));
+    CHECK(calm->area == AreaShape::Sphere);
+    CHECK(calm->duration_rounds == 10);
+    CHECK_FALSE(calm->applies_condition);
+
+    const auto fly = load("fly.json").second;
+    CHECK(fly->kind == SpellEffectKind::GrantFly);
+    CHECK(fly->fly_ft == 60);
+    CHECK(fly->duration_rounds == 100);
+    CHECK(fly->upcast_targets == 1);
+
+    const auto cone = load("cone_of_cold.json").second;
+    CHECK(cone->dice.count == 8);
+    CHECK(cone->dice.sides == 8);
+    CHECK(cone->damage_type == DamageType::Cold);
+    CHECK(cone->on_save == OnSave::Half);
+    CHECK(cone->upcast_dice == 1);
+    CHECK(cone->area == AreaShape::Cone);
+    CHECK(cone->area_size_ft == 60);
+
+    const auto ice = load("ice_storm.json").second;
+    CHECK(ice->dice.count == 2);
+    CHECK(ice->damage_type == DamageType::Bludgeoning);
+    CHECK(ice->has_also_damage);
+    CHECK(ice->also_dice.count == 4);
+    CHECK(ice->also_dice.sides == 6);
+    CHECK(ice->also_damage_type == DamageType::Cold);
+    CHECK(ice->upcast_dice == 1);
+    CHECK(ice->difficult_until == 1);
+    CHECK((ice->zone.flags & kZoneDifficult) != 0);
+    CHECK(ice->zone.shape == AreaShape::Cylinder);
+    CHECK(ice->zone.size_ft == 20);
+    CHECK(ice->zone.height_ft == 40);
+    CHECK(ice->area_height_ft == 40);
+
+    const auto invis = load("greater_invisibility.json").second;
+    CHECK(invis->kind == SpellEffectKind::ApplyCondition);
+    CHECK(invis->condition == Condition::Invisible);
+    CHECK(invis->ends_on == 0);
+    CHECK(invis->upcast_targets == 1);
+
+    const auto dispel = load("dispel_evil_and_good.json").second;
+    CHECK(dispel->kind == SpellEffectKind::ApplyModifier);
+    CHECK(dispel->modifier.applies_to == ModAppliesTo::Attackers);
+    CHECK(dispel->modifier.mode == RollMode::Disadvantage);
+    CHECK(dispel->range_ft == 0);
+    CHECK(dispel->modifier.from_types == (bit(CreatureType::Celestial) | bit(CreatureType::Elemental) |
+                                          bit(CreatureType::Fey) | bit(CreatureType::Fiend) | bit(CreatureType::Undead)));
+
+    const auto restore = load("greater_restoration.json").second;
+    CHECK(restore->kind == SpellEffectKind::Restore);
+    REQUIRE(restore->restore_options.size() == 10);
+    CHECK(restore->restore_options.front() == RestoreOption::Exhaustion);
+    CHECK(restore->restore_options.back() == RestoreOption::HitPointMaximum);
+    CHECK(restore->material_cost_cp == 10000);
+    CHECK(restore->material_consumed);
+    CHECK(restore->material_item.empty());
+
+    const auto geas = load("geas.json").second;
+    CHECK(geas->casting_time == CastingTime::Minute);
+    CHECK(geas->duration == SpellDuration::Hours);
+    CHECK(geas->duration_amount == 720);
+    CHECK(geas->expiry == 0);
+    CHECK(geas->duration_rounds == 0);
+    CHECK_FALSE(geas->ends_on_ally_harm);
+    CHECK(geas->ends_on_restoration);
+    CHECK(geas->caster_sees_target);
+
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto r = spell_from_json(x);
+        INFO(want); INFO(r.error);
+        CHECK_FALSE(r.def);
+        CHECK(r.error.find(want) != std::string::npos);
+    };
+    auto bare = charm_j;
+    bare["effects"][0].erase("condition");
+    bare["effects"][0].erase("hostile_save_advantage");
+    bare["effects"][0].erase("ends_on_ally_harm");
+    bare["effects"][0].erase("caster_sees_target");
+    bad(bare, "save effect needs damage, condition or control");
+    auto ft = load("fly.json").first;
+    ft["effects"][0]["fly_ft"] = 3;
+    bad(ft, "effect fly_ft must be a positive multiple of 5");
+    ft = load("fly.json").first;
+    ft["effects"] = eng::assets::Json::array({charm_j["effects"][0], ft["effects"][0]});
+    bad(ft, "grant_fly is only allowed as the first effect");
+    auto opt = load("greater_restoration.json").first;
+    opt["effects"][0]["options"] = eng::assets::Json::array();
+    bad(opt, "effect options must be a non-empty list of restoration options");
+}

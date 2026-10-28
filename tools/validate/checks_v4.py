@@ -2512,6 +2512,105 @@ def check_spell_batch_zi(doc: dict) -> list[str]:
     return errs
 
 
+# ---- VERSION_BUMP_BATCH 7.2zj: the spell@1 key names of this batch, in one place (rules5e_content spell_keys_zj.hpp) ----------
+ZJ_KEYS = {"hostile_save_advantage": "hostile_save_advantage", "ends_on_ally_harm": "ends_on_ally_harm",
+           "suppress_conditions": "suppress_conditions", "also_damage": "also_damage",
+           "difficult_terrain": "difficult_terrain", "until_end_of_caster_next_turn": "until_end_of_caster_next_turn",
+           "grant_fly": "grant_fly", "fly_ft": "fly_ft", "restore": "restore", "options": "options",
+           "ends_on_restoration": "ends_on_restoration", "charm_immune": "charm_immune",
+           "caster_sees_target": "caster_sees_target", "requires_hearing": "requires_hearing"}
+
+_RESTORE_OPTIONS = {"exhaustion", "charmed", "petrified", "ability_str", "ability_dex", "ability_con",
+                    "ability_int", "ability_wis", "ability_cha", "hit_point_maximum"}
+
+
+def _zj_lasting(doc: dict) -> bool:
+    dur = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
+    return bool(dur.get("concentration")) or dur.get("kind") in ("rounds", "minutes", "hours")
+
+
+def check_spell_batch_zj(doc: dict) -> list[str]:
+    """7.2zj spell@1 cross-field rules (spell_loader.cpp, same wording). Extra effects are prefixed effects[i]:."""
+    errs: list[str] = []
+    effs = [x for x in (doc.get("effects") or []) if isinstance(x, dict)]
+    for i, e in enumerate(effs):
+        pre = f"effects[{i}]: " if i else ""
+        kind = e.get("kind")
+        if i and any(k in e for k in (
+                ZJ_KEYS["hostile_save_advantage"], ZJ_KEYS["ends_on_ally_harm"], ZJ_KEYS["suppress_conditions"],
+                ZJ_KEYS["also_damage"], ZJ_KEYS["difficult_terrain"], ZJ_KEYS["ends_on_restoration"],
+                ZJ_KEYS["charm_immune"], ZJ_KEYS["caster_sees_target"], ZJ_KEYS["requires_hearing"],
+                ZJ_KEYS["fly_ft"], ZJ_KEYS["options"])):
+            errs.append(f"{pre}monster-combat keys are only allowed on the first effect")
+        if kind == "save":
+            if ZJ_KEYS["hostile_save_advantage"] in e and e[ZJ_KEYS["hostile_save_advantage"]] is not True:
+                errs.append(f"{pre}effect hostile_save_advantage must be true")
+            if ZJ_KEYS["ends_on_ally_harm"] in e and e[ZJ_KEYS["ends_on_ally_harm"]] is not True:
+                errs.append(f"{pre}effect ends_on_ally_harm must be true")
+            if ZJ_KEYS["caster_sees_target"] in e and e[ZJ_KEYS["caster_sees_target"]] is not True:
+                errs.append(f"{pre}effect caster_sees_target must be true")
+            if ZJ_KEYS["requires_hearing"] in e and e[ZJ_KEYS["requires_hearing"]] is not True:
+                errs.append(f"{pre}effect requires_hearing must be true")
+            if ZJ_KEYS["also_damage"] in e and "damage" not in e:
+                errs.append(f"{pre}effect also_damage needs damage")
+            sup = e.get(ZJ_KEYS["suppress_conditions"])
+            if ZJ_KEYS["suppress_conditions"] in e:
+                if "condition" in e:
+                    errs.append(f"{pre}effect suppress_conditions and condition together")
+                ok = isinstance(sup, list) and sup and all(x in ("charmed", "frightened") for x in sup)
+                if not ok:
+                    errs.append(f"{pre}effect suppress_conditions must be a non-empty list of charmed or frightened")
+                elif len(sup) != len(set(sup)):
+                    errs.append(f"{pre}effect suppress_conditions items must be unique")
+            terrain = e.get(ZJ_KEYS["difficult_terrain"])
+            if ZJ_KEYS["difficult_terrain"] in e:
+                if not (isinstance(terrain, dict) and list(terrain) == ["until"] and
+                        terrain.get("until") == ZJ_KEYS["until_end_of_caster_next_turn"]):
+                    errs.append(f"{pre}effect difficult_terrain must be {{until: until_end_of_caster_next_turn}}")
+                elif not isinstance(doc.get("area"), dict):
+                    errs.append(f"{pre}effect difficult_terrain needs an area")
+            if ZJ_KEYS["charm_immune"] in e:
+                if e[ZJ_KEYS["charm_immune"]] is not True:
+                    errs.append(f"{pre}effect charm_immune must be true")
+                elif e.get("condition") != "charmed":
+                    errs.append(f"{pre}effect charm_immune needs condition charmed")
+            if ZJ_KEYS["ends_on_restoration"] in e:
+                if e[ZJ_KEYS["ends_on_restoration"]] is not True:
+                    errs.append(f"{pre}effect ends_on_restoration must be true")
+                elif e.get("condition") != "charmed":
+                    errs.append(f"{pre}effect ends_on_restoration needs condition charmed")
+        if kind == ZJ_KEYS["grant_fly"]:
+            ft = e.get(ZJ_KEYS["fly_ft"])
+            if not (isinstance(ft, int) and not isinstance(ft, bool) and 5 <= ft <= 255 and ft % 5 == 0):
+                errs.append(f"{pre}effect fly_ft must be a positive multiple of 5")
+        if kind == ZJ_KEYS["restore"]:
+            opts = e.get(ZJ_KEYS["options"])
+            if not (isinstance(opts, list) and opts and all(x in _RESTORE_OPTIONS for x in opts)):
+                errs.append(f"{pre}effect options must be a non-empty list of restoration options")
+            elif len(opts) != len(set(opts)):
+                errs.append(f"{pre}effect options items must be unique")
+            elif any(x not in _RESTORE_OPTIONS for x in opts):
+                errs.append(f"{pre}effect options invalid")
+    if not effs:
+        return errs
+    first = effs[0]
+    needs_last = (ZJ_KEYS["ends_on_ally_harm"] in first or ZJ_KEYS["suppress_conditions"] in first or
+                  first.get("kind") == ZJ_KEYS["grant_fly"] or ZJ_KEYS["ends_on_restoration"] in first)
+    if needs_last and not _zj_lasting(doc):
+        if first.get("kind") == ZJ_KEYS["grant_fly"]:
+            errs.append("effect grant_fly needs concentration or a rounds, minutes or hours duration")
+        elif ZJ_KEYS["suppress_conditions"] in first:
+            errs.append("effect suppress_conditions needs concentration or a rounds, minutes or hours duration")
+        elif ZJ_KEYS["ends_on_restoration"] in first:
+            errs.append("effect ends_on_restoration needs concentration or a rounds, minutes or hours duration")
+        else:
+            errs.append("effect ends_on_ally_harm needs concentration or a rounds, minutes or hours duration")
+    if ZJ_KEYS["difficult_terrain"] in first and not isinstance(doc.get("area"), dict):
+        if "effect difficult_terrain needs an area" not in errs:
+            errs.append("effect difficult_terrain needs an area")
+    return errs
+
+
 def check_spell_descriptive(doc: dict) -> list[str]:
     """Text-only spell@1 kind descriptive (spell_loader.cpp, same wording and order).
 

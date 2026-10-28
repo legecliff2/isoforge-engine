@@ -73,6 +73,18 @@ enum class SpellEffectKind : uint8_t {
     // appended (text-only): the spell loads and stays on a creature's spell list, and has no combat mechanic.
     // It is never a legal cast. The effect object carries no other fields, and it is the spell's only effect.
     Descriptive,
+    // appended (7.2zj Fly): a willing creature gains a fly speed of `fly_ft` for the spell (grant_fly / revoke_fly).
+    // First effect only. Willing is the caster's team, including the caster.
+    GrantFly,
+    // appended (7.2zj Greater Restoration): one option from `restore_options`, chosen by ActionRequest::condition_choice
+    // (1 + index, JSON order). First effect only. Touch. Instantaneous.
+    Restore,
+};
+// 7.2zj Greater Restoration options, in the order content lists them (ActionRequest::condition_choice is 1 + index).
+enum class RestoreOption : uint8_t {
+    Exhaustion, Charmed, Petrified,
+    AbilityStr, AbilityDex, AbilityCon, AbilityInt, AbilityWis, AbilityCha,
+    HitPointMaximum,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -505,6 +517,28 @@ struct SpellDef {
     uint8_t also_margin = 0; Condition also_condition = Condition::Paralyzed;
     uint16_t success_immunity_hours = 0; uint8_t success_immunity_scope = 0;
     bool target_sees_source = false;
+    // appended (7.2zj). Zero-default; old spells hash as before. hostile_save_advantage: an opposite-team target saves
+    // at advantage (Charm Person: "you or your companions are fighting it"; same team is the stand-in for not fighting).
+    // ends_on_ally_harm: the effect on a creature ends when a creature of the caster's team deals it damage.
+    // suppress_conditions: a failed save suppresses those conditions for the spell (Calm Emotions; charmed and frightened
+    // only) and they resume when it ends if their source is still there. also_damage: a second damage packet on the same
+    // save, not scaled by upcast_dice (Ice Storm's cold). difficult_until 1: the spell's area is difficult terrain until
+    // the end of the caster's next turn (an ActiveZone, not concentration). fly_ft / restore_options: GrantFly / Restore.
+    // ends_on_restoration: Greater Restoration ends the effect whatever option was chosen (Geas). charm_immune: a creature
+    // immune to charmed is unaffected and makes no save (Suggestion). caster_sees_target / requires_hearing: cast gates.
+    bool hostile_save_advantage = false;
+    bool ends_on_ally_harm = false;
+    uint32_t suppress_conditions = 0;
+    bool has_also_damage = false;
+    DiceExpr also_dice{0, 0, 0};
+    DamageType also_damage_type = DamageType::Cold;
+    uint8_t difficult_until = 0;
+    uint8_t fly_ft = 0;
+    std::vector<RestoreOption> restore_options{};
+    bool ends_on_restoration = false;
+    bool charm_immune = false;
+    bool caster_sees_target = false;
+    bool requires_hearing = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
