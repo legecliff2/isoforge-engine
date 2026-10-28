@@ -404,7 +404,8 @@ REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
 UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "hp_pool", "delayed_damage", "sustained_damage",
                            "summon_weapon", "weapon_smite"),   # 7.2zg Spiritual Weapon; 7.2zh Branding Smite
                   "darts": ("auto_hit",),
-                  "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition", "apply_modifier", "temp_hp")}   # 7.2ze Bless / Bane
+                  "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition", "apply_modifier", "temp_hp",
+                                                             "grant_fly")}   # 7.2ze Bless / Bane; 7.2zj Fly
 
 
 FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage",   # R-G15, spell_loader.cpp
@@ -412,7 +413,8 @@ FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_
                      "weapon_imbue", "duplicates",   # 7.2zf
                      c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"], c4.ZG_KEYS["summon_weapon"], c4.ZG_KEYS["temp_hp"],   # 7.2zg
                      c4.ZH_KEYS["weapon_smite"],   # 7.2zh
-                     c4.ZI_KEYS["stabilize"])   # 7.2zi
+                     c4.ZI_KEYS["stabilize"],   # 7.2zi
+                     c4.ZJ_KEYS["grant_fly"], c4.ZJ_KEYS["restore"])   # 7.2zj
 TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell's duration in rounds
 
 
@@ -434,6 +436,7 @@ def check_spell(doc, errs, ctx):
     errs += c4.check_spell_batch_zg(doc)   # 7.2zg
     errs += c4.check_spell_batch_zh(doc)   # 7.2zh
     errs += c4.check_spell_batch_zi(doc)   # 7.2zi
+    errs += c4.check_spell_batch_zj(doc)   # 7.2zj
     eff = effs[0]   # the first effect carries targeting, scaling and the reaction/duration rules
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
@@ -484,7 +487,8 @@ def check_spell(doc, errs, ctx):
     if (kind == "ac_bonus") != (doc["duration"]["kind"] == "until_start_of_caster_turn"):
         errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
     if "targets" in doc and kind not in ("save", "heal", "apply_condition", "polymorph", "max_hp_bonus",
-                                                 "apply_modifier", c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"]):   # polymorph: its own wording; 7.2zd Aid; 7.2ze Bless / Bane; 7.2zg Slow (6) / Haste (1), as the loader
+                                                 "apply_modifier", c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"],
+                                                 c4.ZJ_KEYS["grant_fly"]):   # polymorph: its own wording; 7.2zd Aid; 7.2ze Bless / Bane; 7.2zg Slow (6) / Haste (1); 7.2zj Fly, as the loader
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
     if kind in TIMED_BY_DURATION and doc["duration"]["kind"] not in ("rounds", "minutes", "hours"):
         errs.append(f"{kind} needs a rounds, minutes or hours duration")

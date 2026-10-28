@@ -1,0 +1,30 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.dispel_evil_and_good",
+  "name": "Dispel Evil and Good",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "description": "For 1 minute, concentration, celestials, elementals, fey, fiends, and undead have disadvantage on attack rolls against you. This is only that always-on disadvantage. It is not immunity to charmed or frightened (that is Protection from Evil and Good). Break Enchantment, Dismissal, and possession are deferred. The material is not consumed.",
+  "level": 5,
+  "school": "abjuration",
+  "classes": ["cleric", "paladin"],
+  "casting_time": { "kind": "action" },
+  "range": { "kind": "self" },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": { "text": "holy water or powdered silver and iron" }
+  },
+  "duration": { "kind": "minutes", "amount": 1, "concentration": true },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "scope": { "from_types": ["celestial", "elemental", "fey", "fiend", "undead"] },
+      "modifier": {
+        "stat": "attack_roll",
+        "mode": "disadvantage",
+        "applies_to": "attackers",
+        "duration": { "kind": "concentration" }
+      }
+    }
+  ]
+}

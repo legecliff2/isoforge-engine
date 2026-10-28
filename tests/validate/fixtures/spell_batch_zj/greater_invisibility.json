@@ -1,0 +1,17 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.greater_invisibility",
+  "name": "Greater Invisibility",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "description": "A creature you touch becomes invisible for 1 minute, concentration. Attacking or casting a spell does not end it. Anything worn or carried is not modelled separately.",
+  "level": 4,
+  "school": "illusion",
+  "classes": ["bard", "sorcerer", "wizard"],
+  "casting_time": { "kind": "action" },
+  "range": { "kind": "touch" },
+  "components": { "v": true, "s": true },
+  "duration": { "kind": "minutes", "amount": 1, "concentration": true },
+  "targets": { "count": 1 },
+  "effects": [{ "kind": "apply_condition", "condition": "invisible" }],
+  "scaling": { "upcast": { "targets": 1 } }
+}
