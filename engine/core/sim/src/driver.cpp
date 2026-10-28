@@ -503,6 +503,51 @@ std::optional<Command> spell_kind_command(const Combat& c, const rules5e::Combat
     return std::nullopt;
 }
 
+// Rampage / bonus_attack_grant. The granted attack index is grant - 1. `who` must be living and in reach
+// (melee) or legal to shoot. `hostile_only` is the retarget scan: another foe, never the charmer. The sticky
+// target itself is not re-checked for hostility (a caller already chose it).
+std::optional<Command> granted_bonus_attack(const Combat& c, CombatantId self, const rules5e::Combatant& me,
+                                            CombatantId who, bool hostile_only) {
+    const auto& s = c.state();
+    if (s.budget.bonus_attack_grant == 0 || !s.budget.bonus_action) return std::nullopt;
+    const uint8_t gi = uint8_t(s.budget.bonus_attack_grant - 1);
+    if (gi >= me.attacks.size()) return std::nullopt;
+    if (equipment_ai_active(c, self) && !attack_usable(s, self, gi)) return std::nullopt;
+    const auto* k = rules5e::find(s, who);
+    if (!k || k->id == self || k->dead || k->gone || !rules5e::is_conscious(*k)) return std::nullopt;
+    if (hostile_only && !c.hostile(self, who)) return std::nullopt;
+    if (hostile_only && rules5e::condition_source(s, self, rules5e::Condition::Charmed) == who) return std::nullopt;
+    const rules5e::Attack& at = me.attacks[gi];
+    const bool ok = at.ranged ? c.can_shoot(self, gi, who)
+                              : c.distance_tiles(self, who) <= reach_tiles(at.reach_or_range_ft);
+    if (!ok) return std::nullopt;
+    Command b;
+    b.request = {self, ActionKind::Attack, who};
+    b.request.attack_index = gi;
+    b.request.as_bonus_action = true;
+    return b;
+}
+
+// Another living hostile the grant can reach: nearest Chebyshev, lowest id on a tie. nullopt = leave it unused.
+std::optional<Command> retarget_bonus_grant(const Combat& c, CombatantId self, const rules5e::Combatant& me) {
+    if (c.state().budget.bonus_attack_grant == 0 || !c.state().budget.bonus_action) return std::nullopt;
+    std::optional<Command> best_cmd;
+    CombatantId best = 0;
+    int best_d = 0;
+    for (const auto& k : c.state().combatants) {
+        if (k.id == self) continue;
+        auto cmd = granted_bonus_attack(c, self, me, k.id, true);
+        if (!cmd) continue;
+        const int d = c.distance_tiles(self, k.id);
+        if (best == 0 || d < best_d || (d == best_d && k.id < best)) {
+            best = k.id;
+            best_d = d;
+            best_cmd = std::move(cmd);
+        }
+    }
+    return best_cmd;
+}
+
 Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     const auto& s = c.state();
     const CombatantId self = rules5e::current_actor(s);
@@ -575,7 +620,12 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     if (!beast_form)
         if (auto x = spell_kind_command(c, *me)) return *x;
     const auto* t = target ? rules5e::find(s, *target) : nullptr;
-    if (!t || t->dead) return end;
+    // Sticky target dead, gone, or missing: the turn would end. A Rampage grant is still spent on another
+    // living hostile the granted attack can reach. No such foe: the grant stays unused.
+    if (!t || t->dead || t->gone) {
+        if (auto b = retarget_bonus_grant(c, self, *me)) return *b;
+        return end;
+    }
     // R-G8 Charmed: the charmer is never attacked (rules refuse it) or targeted with a harmful spell (sim refuses it).
     if (rules5e::condition_source(s, self, rules5e::Condition::Charmed) == t->id) return end;
     // 7.2zc: a movable mark whose creature dropped to 0 hp moves (bonus action) before anything else spends the bonus action.
@@ -753,21 +803,14 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             }
             return cast;
         }
-    // Rampage (trigger rider bonus_attack): while a grant is present, the bonus-action attack is the granted attack index
-    // (grant - 1) against the target if it is in reach (melee) or legal to shoot; otherwise the grant is left unused.
-    if (s.budget.bonus_attack_grant != 0 && s.budget.bonus_action && rules5e::is_conscious(*t)) {
-        const uint8_t gi = uint8_t(s.budget.bonus_attack_grant - 1);
-        if (gi < me->attacks.size() && usable(gi)) {
-            const bool ok = me->attacks[gi].ranged ? c.can_shoot(self, gi, t->id)
-                                                   : c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[gi].reach_or_range_ft);
-            if (ok) {
-                Command b;
-                b.request = {self, ActionKind::Attack, t->id};
-                b.request.attack_index = gi;
-                b.request.as_bonus_action = true;
-                return b;
-            }
-        }
+    // Rampage (trigger rider bonus_attack): the granted attack against the sticky target when that foe is
+    // living and in reach (melee) or legal to shoot. A sticky target that is not living (0 HP, unconscious)
+    // retargets the same way as a dead one. A living sticky target the attack cannot reach yet leaves the
+    // grant unused; the creature keeps closing on that target.
+    if (s.budget.bonus_attack_grant != 0 && s.budget.bonus_action) {
+        if (auto b = granted_bonus_attack(c, self, *me, t->id, false)) return *b;
+        if (!rules5e::is_conscious(*t))
+            if (auto b = retarget_bonus_grant(c, self, *me)) return *b;
     }
     // R-G8 grapple / shove / escape. These come up once a grapple is on the board. Content does grapple
     // (ankheg bite, giant toad bite, and others):
@@ -1143,7 +1186,7 @@ RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_comman
         if (!turn || !(*turn == c.turn_key())) {
             turn = c.turn_key();
             IActorPolicy* p = policy_for(self);
-            target = p ? p->choose_target(c, self) : std::nullopt;
+            target = p ? p->choose_target(c, self) : std::nullopt;   // sticky for this turn; a dead or downed one is retargeted only to spend a bonus_attack grant
         }
         const auto sc = summon_turn_command(c, self);
         const Command cmd = sc ? *sc : next_command(c, target);
