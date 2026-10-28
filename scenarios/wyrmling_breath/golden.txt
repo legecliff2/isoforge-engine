@@ -1,0 +1,13 @@
+scenario sample.wyrmling_breath
+seed 56
+end_condition teams
+round_cap 20
+outcome team_no_conscious
+round 4
+ended 1
+teams_down monsters
+pcs fighter:conscious
+hp fighter=11 wyrmling=0
+surprised -
+digest e3a911c69efcd4bc
+commands 17
