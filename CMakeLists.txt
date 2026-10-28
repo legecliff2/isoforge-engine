@@ -184,6 +184,9 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         add_test(NAME content_validate_spell_batch_zi
                  COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_spell_batch_zi.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME content_validate_spell_batch_zj
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_spell_batch_zj.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME content_validate_spell_imbue_mirror
                  COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_spell_imbue_mirror.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -195,7 +198,7 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                              content_validate_lint content_validate_arms content_validate_migrations
                              content_validate_srd51_monsters content_validate_srd51_classes
                              content_validate_srd51_spells content_validate_v4 content_validate_equipment
-                             content_validate_spell_batch3 content_validate_spell_batch_zg content_validate_spell_batch_zi content_validate_spell_imbue_mirror
+                             content_validate_spell_batch3 content_validate_spell_batch_zg content_validate_spell_batch_zi content_validate_spell_batch_zj content_validate_spell_imbue_mirror
                              PROPERTIES LABELS python_only)
         # Procedurally generated chunks must pass the same validator (schema + content_hash).
         if(TARGET procgen_dump)

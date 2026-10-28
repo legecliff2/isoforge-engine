@@ -1,0 +1,39 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.greater_restoration",
+  "name": "Greater Restoration",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "description": "Touch a creature and end one of: one level of exhaustion, one charm, one petrification, one reduction to an ability score, or a reduction to hit point maximum. One effect only for charmed and petrified. Choosing any option also ends effects marked ends_on_restoration (Geas). Curses and attunement are deferred. Diamond dust is priced and consumed; no item id yet (Tools & Content adds the item). A priced material without an item is unsatisfiable at sim time.",
+  "level": 5,
+  "school": "abjuration",
+  "classes": ["bard", "cleric", "druid"],
+  "casting_time": { "kind": "action" },
+  "range": { "kind": "touch" },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "diamond dust worth at least 100 gp, which the spell consumes",
+      "cost_cp": 10000,
+      "consumed": true
+    }
+  },
+  "duration": { "kind": "instantaneous" },
+  "effects": [
+    {
+      "kind": "restore",
+      "options": [
+        "exhaustion",
+        "charmed",
+        "petrified",
+        "ability_str",
+        "ability_dex",
+        "ability_con",
+        "ability_int",
+        "ability_wis",
+        "ability_cha",
+        "hit_point_maximum"
+      ]
+    }
+  ]
+}
