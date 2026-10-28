@@ -1209,6 +1209,32 @@ std::optional<std::string> apply_keen_senses(Archetype& a, const FeatureDecl& f,
     return std::nullopt;
 }
 
+// regen {amount, suppressed_by} (CONTENT_CONVENTIONS §31). Fills Combatant::regeneration. The rules path
+// (start-of-turn heal, damage-type suppression, 0 HP until a turn starts without regenerating) is unchanged.
+// One regeneration per creature: an identical second declaration adds nothing; a different one is an error.
+// Static config, not hashed. regen_suppressed / regen_down stay the existing rules flags (no SIM_EVENTS tag).
+std::optional<std::string> apply_regen(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": regen needs a monster@5 file";
+    if (a.schema_type != "monster") return f.id + ": regen: only valid on monsters";
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "amount" && it.key() != "suppressed_by")
+            return f.id + ": regen: unknown key '" + it.key() + "'";
+    const auto am = f.effect.find("amount");
+    if (am == f.effect.end() || !am->is_number_integer()) return f.id + ": regen: amount must be an integer 1..32767";
+    const int64_t n = am->get<int64_t>();
+    if (n < 1 || n > 32767) return f.id + ": regen: amount must be an integer 1..32767";
+    uint32_t bits = 0;
+    const auto sup = f.effect.find("suppressed_by");
+    if (sup == f.effect.end() || !enum_bits(*sup, kDamageTypesB3, bits)) return f.id + ": regen: bad suppressed_by";
+    if (a.base.regeneration.amount > 0) {
+        if (a.base.regeneration.amount == int16_t(n) && a.base.regeneration.suppressed_by == bits) return std::nullopt;
+        return f.id + ": regen: a creature has one regeneration";
+    }
+    a.base.regeneration.amount = int16_t(n);
+    a.base.regeneration.suppressed_by = bits;
+    return std::nullopt;
+}
+
 std::optional<std::string> apply_save_advantage(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
     if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": save_advantage needs a monster@5 file";
     if (a.schema_type != "monster") return f.id + ": save_advantage: only valid on monsters";
@@ -1288,6 +1314,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("transparent", {apply_transparent});
     r.add_hook("save_advantage", {apply_save_advantage});   // monster@5 (batch 3): gated in the hook, like transparent
     r.add_hook("keen_senses", {apply_keen_senses});         // monster@5 (CONTENT_CONVENTIONS §30): gated in the hook
+    r.add_hook("regen", {apply_regen});                     // monster@5 (CONTENT_CONVENTIONS §31): gated in the hook
     r.add_hook("aura", {apply_aura});                       // monster@5 (batch 3 ghast Stench): gated in the hook
     r.add_hook("grant_die", {apply_grant_die});         // 7.2za Bardic Inspiration: gated in the hook
     r.add_hook("half_proficiency", {apply_half_proficiency});   // 7.2za Jack of All Trades: gated in the hook

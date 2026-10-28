@@ -719,6 +719,9 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         ks_errs, ks_warns = c4.check_keen_senses(doc, tag)   # Keen Senses (CONTENT_CONVENTIONS §30, monster@5 only)
         errs += [f"{rel}: {m}" for m in ks_errs]
         warns += [f"{rel}: {m}" for m in ks_warns]
+        rg_errs, rg_warns = c4.check_regen(doc, tag)   # Regeneration (CONTENT_CONVENTIONS §31, monster@5 only)
+        errs += [f"{rel}: {m}" for m in rg_errs]
+        warns += [f"{rel}: {m}" for m in rg_warns]
         au_errs, au_warns = c4.check_aura(doc, tag)   # batch 3 aura (ghast Stench, monster@5 only)
         errs += [f"{rel}: {m}" for m in au_errs]
         warns += [f"{rel}: {m}" for m in au_warns]

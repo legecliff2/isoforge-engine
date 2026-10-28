@@ -959,3 +959,21 @@ Hearing can be used when the subject is audible and the viewer is not Deafened. 
 **Forms.** Wild Shape and Polymorph copy the beast's `keen_senses` through `FormStats` and restore the creature's own on revert. A druid in wolf form uses the wolf's hearing and smell. The druid's Wisdom is still the one Wild Shape keeps.
 
 **Not this.** Magic Resistance, elf Perception proficiency, death dog's blanket Perception advantage, revealing a hidden creature by noise, and a smell range.
+
+## 31. Regeneration (monster@5 trait `regen`)
+
+SRD 5.1 troll: "The troll regains 10 hit points at the start of its turn. If the troll takes acid or fire damage, this trait doesn't function at the start of the troll's next turn. The troll dies only if it starts its turn with 0 hit points and doesn't regenerate."
+
+That sentence is the mechanic. The trait name is not. Author it on a monster@5 trait:
+
+```json
+"effect": { "kind": "regen", "amount": 10, "suppressed_by": ["acid", "fire"] }
+```
+
+`amount` is an integer 1..32767, the hit points regained, capped at the creature's hit point maximum. `suppressed_by` is a non-empty unique list of damage types (the common@1 enum). The loader stores one `Combatant::regeneration`: `amount`, and `suppressed_by` as a bitmask over `DamageType` in that enum's order. A second trait with the same amount and the same set adds nothing (validator warning). A second trait that differs is a load error (`a creature has one regeneration`). The loader refuses the kind on a character and on a file below monster@5.
+
+At the start of the creature's turn, a listed damage type taken since its previous turn started suppresses the heal. Any other damage does not. A resistance or immunity that reduces the hit points dealt to 0 leaves that type out of `DamageApplied::types_dealt`, so it does not suppress. Otherwise the creature regains `amount`. Dropping to 0 hit points does not kill it. It stays in the fight until a later turn of its own starts. Suppressed at that start, it dies. Clear at that start, it regenerates and stands. Massive damage still kills at once. A creature with no `regen` effect dies at 0 hit points as usual. The rules tests are `engine/rules/tests/regeneration_tests.cpp`. The content path is `engine/core/sim/tests/regeneration_content_tests.cpp` (`features.cpp` `apply_regen`, dispatched from `content.cpp`).
+
+`amount` and `suppressed_by` are static content, copied onto the combatant at spawn. They are not hashed. `regen_suppressed` and `regen_down` are the existing rules flags for "took a suppressing type since its last turn started" and "at 0 hit points, waiting for its turn." This kind does not fold them and does not claim a `SIM_EVENTS` tag. The next free hash tag stays **0xE3**. A fight whose creatures have no regeneration hashes as before. A completed heal or a death is already in hit points and `dead`. Replay of a loaded regenerator reproduces the heal from a logged hit. The 0 HP death is the same rules path; the sim test sets hit points for that case the way the rules tests do, because a content file has one hit point total.
+
+**Not this kind.** Oni and the shield guardian regain hit points only while they already have at least 1, with no damage-type list and with an ordinary death at 0. Loading `regen` on them would keep them up at 0. Vampire spawn also stops for sunlight, running water, and holy water; radiant damage alone is not that trait, and its death at 0 is ordinary. Rejuvenation (lich, ghost) is a different trait. Wild Shape and Polymorph do not copy `regeneration`: `FormStats` does not carry it, and `build_form` does not write it. No `srd51.monster.troll` file yet. Rules and the loader are ready; the stat block is the content follow-up. A description-only troll would still die at 0 hit points, so the deferred row stays.

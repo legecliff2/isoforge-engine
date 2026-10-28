@@ -317,6 +317,52 @@ class KeenSenses(unittest.TestCase):
         self.assertTrue([m for m in e if "keen_senses" in m or "monster@5" in m or "/effect" in m], e)
 
 
+TROLL = {"kind": "regen", "amount": 10, "suppressed_by": ["acid", "fire"]}
+
+
+class Regen(unittest.TestCase):
+    """SRD 5.1 troll: regain 10 at the start of its turn unless it took acid or fire, and it dies only if it
+    starts its turn at 0 hit points and does not regenerate. monster@5 regen (CONTENT_CONVENTIONS §31)."""
+
+    def test_valid(self):
+        e, w = run(with_trait(dict(TROLL)))
+        self.assertEqual(e, [], e)
+        self.assertFalse([m for m in w if "regen" in m], w)
+        e, w = run(with_trait({"kind": "regen", "amount": 1, "suppressed_by": ["radiant"]}))
+        self.assertEqual(e, [], e)
+        self.assertFalse([m for m in w if "regen" in m], w)
+
+    def test_duplicate_warns_when_the_set_matches(self):
+        _e, w = run(with_trait(dict(TROLL), dict(TROLL)))
+        self.assertEqual(_e, [])
+        self.assertTrue([m for m in w if "duplicate regen" in m], w)
+        swapped = {"kind": "regen", "amount": 10, "suppressed_by": ["fire", "acid"]}
+        _e, w = run(with_trait(dict(TROLL), swapped))
+        self.assertEqual(_e, [])
+        self.assertTrue([m for m in w if "duplicate regen" in m], w)
+
+    def test_different_second_is_an_error(self):
+        other = {"kind": "regen", "amount": 5, "suppressed_by": ["acid", "fire"]}
+        e, _w = run(with_trait(dict(TROLL), other))
+        self.assertTrue([m for m in e if "one regeneration" in m], e)
+
+    def test_refused(self):
+        for eff in ({"kind": "regen", "amount": 0, "suppressed_by": ["fire"]},
+                    {"kind": "regen", "amount": 32768, "suppressed_by": ["fire"]},
+                    {"kind": "regen", "suppressed_by": ["fire"]},
+                    {"kind": "regen", "amount": 10, "suppressed_by": []},
+                    {"kind": "regen", "amount": 10, "suppressed_by": ["fire", "fire"]},
+                    {"kind": "regen", "amount": 10, "suppressed_by": ["holy"]},
+                    {"kind": "regen", "amount": 10, "suppressed_by": ["fire"], "note": 1},
+                    {"kind": "regen", "amount": True, "suppressed_by": ["fire"]}):
+            e, _w = run(with_trait(eff))
+            self.assertTrue([m for m in e if "regen" in m or "/effect" in m], (eff, e))
+
+    def test_needs_at5(self):
+        e, _w = run(with_trait(dict(TROLL), schema="monster@4"))
+        self.assertTrue([m for m in e if "regen" in m or "monster@5" in m or "/effect" in m], e)
+
+
 class AreaEffect(unittest.TestCase):
     """monster@5 area_effect (AOE_MONSTER_ABILITIES PR2): cone, line, cube, sphere, recharge, save."""
 
