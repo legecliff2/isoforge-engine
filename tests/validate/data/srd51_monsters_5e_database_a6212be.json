@@ -9416,6 +9416,124 @@
     }
    ]
   },
+  "young-black-dragon": {
+   "name": "Young Black Dragon",
+   "size": "Large",
+   "type": "dragon",
+   "ac": [
+    18
+   ],
+   "hp": 127,
+   "hp_roll": "15d10+45",
+   "cr": 7,
+   "xp": 2900,
+   "speed": {
+    "walk": "40 ft.",
+    "fly": "80 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    19,
+    14,
+    17,
+    12,
+    11,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "acid"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d10+4",
+        "piercing"
+       ],
+       [
+        "1d8",
+        "acid"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "young-copper-dragon": {
+   "name": "Young Copper Dragon",
+   "size": "Large",
+   "type": "dragon",
+   "ac": [
+    17
+   ],
+   "hp": 119,
+   "hp_roll": "14d10+42",
+   "cr": 7,
+   "xp": 2900,
+   "speed": {
+    "walk": "40 ft.",
+    "climb": "40 ft.",
+    "fly": "80 ft."
+   },
+   "abilities": [
+    19,
+    12,
+    17,
+    16,
+    13,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "acid"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d10+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
   "oni": {
    "name": "Oni",
    "size": "Large",
