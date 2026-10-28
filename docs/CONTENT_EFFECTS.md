@@ -153,7 +153,7 @@ Example: `{ "kind": "keen_senses", "senses": ["hearing", "smell"] }`
 
 ### `regen` (static, monster@5)
 
-`amount` (required, integer 1..32767) and `suppressed_by` (required, a non-empty unique list of damage types). SRD troll Regeneration (CONTENT_CONVENTIONS §31). The loader writes `Combatant::regeneration`. One regeneration per creature: an identical second declaration does nothing (the validator warns); a different one is a load error. Refused below monster@5 and on a character. The 0-HP death rule is part of the effect. Oni, shield guardian, and vampire spawn do not use it. No `SIM_EVENTS` tag.
+`amount` (required, integer 1..32767) and `suppressed_by` (required, a non-empty unique list of damage types). SRD troll Regeneration (CONTENT_CONVENTIONS §31), authored on `srd51.monster.troll`. The loader writes `Combatant::regeneration`. One regeneration per creature: an identical second declaration does nothing (the validator warns); a different one is a load error. Refused below monster@5 and on a character. The 0-HP death rule is part of the effect. Oni, shield guardian, and vampire spawn do not use it. No `SIM_EVENTS` tag.
 
 Example: `{ "kind": "regen", "amount": 10, "suppressed_by": ["acid", "fire"] }`
 

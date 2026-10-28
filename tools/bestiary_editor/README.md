@@ -32,7 +32,7 @@ The window lists the ledger. Partial rows are a subset of Authored (the notes
 cell contains `**partial**`). Parked rows are the Deferred table, ids taken from
 `` `srd51.monster.*` `` backticks. A parked row with no file under
 `content/packs/srd51.core/monsters/` shows the ledger's blocking mechanic and
-does not invent a stat block. Goblin is `monster@3` and is not in the 191, so
+does not invent a stat block. Goblin is `monster@3` and is not in the 192, so
 it is not in this list.
 
 | Demo | Badge | Id | File |
