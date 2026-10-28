@@ -1,0 +1,13 @@
+scenario sample.scout_opens_ranged
+seed 5
+end_condition teams
+round_cap 20
+outcome team_no_conscious
+round 4
+ended 1
+teams_down monsters
+pcs fighter:conscious
+hp fighter=12 scout=0
+surprised -
+digest 16a5afac994bc5b2
+commands 25
