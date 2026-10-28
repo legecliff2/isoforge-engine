@@ -9415,6 +9415,60 @@
      ]
     }
    ]
+  },
+  "oni": {
+   "name": "Oni",
+   "size": "Large",
+   "type": "giant",
+   "ac": [
+    16
+   ],
+   "hp": 110,
+   "hp_roll": "13d10+39",
+   "cr": 7,
+   "xp": 2900,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    19,
+    11,
+    16,
+    14,
+    12,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claw (Oni Form Only)",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "1d8+4",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Glaive",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d10+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
