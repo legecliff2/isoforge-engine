@@ -9282,6 +9282,139 @@
      ]
     }
    ]
+  },
+  "mammoth": {
+   "name": "Mammoth",
+   "size": "Huge",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 126,
+   "hp_roll": "11d12+55",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    24,
+    9,
+    21,
+    3,
+    11,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Gore",
+     "attack_bonus": 10,
+     "damage_options": [
+      [
+       [
+        "4d8+7",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Stomp",
+     "attack_bonus": 10,
+     "damage_options": [
+      [
+       [
+        "4d10+7",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "drider": {
+   "name": "Drider",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    19
+   ],
+   "hp": 123,
+   "hp_roll": "13d10+52",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "30 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    16,
+    16,
+    18,
+    13,
+    14,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d4",
+        "piercing"
+       ],
+       [
+        "2d8",
+        "poison"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Longsword",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "slashing"
+       ]
+      ],
+      [
+       [
+        "1d10+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Longbow",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "piercing"
+       ],
+       [
+        "1d8",
+        "poison"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
