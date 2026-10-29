@@ -1488,6 +1488,44 @@ def _walk_until_cured(node, path: str):
             yield from _walk_until_cured(v, f"{path}/{i}")
 
 
+def check_disease(doc: dict, tag: str) -> list[str]:
+    """B6 bite disease (CONTENT_CONVENTIONS §36). Loader wording from compile_save_action / compile_rider."""
+    errs: list[str] = []
+    schema = str(doc.get("$schema", "") or tag)
+    for path, _owner, _j, r in rider_sites(doc):
+        if not isinstance(r, dict) or "disease" not in r:
+            continue
+        where = path
+        if r.get("kind") != "save_condition" or "/on_hit/" not in path:
+            errs.append(f"{where}: disease is an on_hit save_condition")
+            continue
+        if schema not in MONSTER_SINCE_5:
+            errs.append(f"{where}: disease needs a monster@5 file")
+        dz = r.get("disease")
+        if not isinstance(dz, dict):
+            errs.append(f"{where}: disease must be an object")
+            continue
+        for k in dz:
+            if k not in ("every_hours", "hp_max"):
+                errs.append(f"{where}: disease: unknown key '{k}'")
+        if dz.get("every_hours") != 24:
+            errs.append(f"{where}: disease.every_hours must be 24")
+        hp = dz.get("hp_max")
+        if not isinstance(hp, str) or not hp:
+            errs.append(f"{where}: disease.hp_max must be dice")
+        save = r.get("save") if isinstance(r.get("save"), dict) else {}
+        if save.get("ability") != "con":
+            errs.append(f"{where}: disease needs a Constitution save")
+        apply = r.get("apply") if isinstance(r.get("apply"), list) else []
+        one = len(apply) == 1 and isinstance(apply[0], dict) and apply[0].get("condition") == "poisoned" and \
+            isinstance(apply[0].get("duration"), dict) and apply[0]["duration"].get("kind") == "until_cured"
+        if not one:
+            errs.append(f"{where}: disease needs exactly one until_cured poisoned apply")
+        if r.get("damage"):
+            errs.append(f"{where}: disease takes no damage")
+    return errs
+
+
 def check_until_cured(doc: dict, tag: str) -> list[str]:
     """Batch 3 duration {kind: until_cured} (Lich ruling, death dog): read only in apply[] of a monster's save_condition /
     apply_condition riders and save_effect / attack_effect actions (sim compile_save_action). The condition must be one an

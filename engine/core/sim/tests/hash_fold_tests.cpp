@@ -328,6 +328,36 @@ TEST_CASE("Combat::log_hash: ward_alternate (0xCD) and heal_split (0xCE), 7.2zd,
     CHECK(c0->log_hash() == h0);   // not folded when empty: older logs hash as before
 }
 
+TEST_CASE("Combat::hash: bite disease (0xE3) folds only while a schedule or a reduction exists") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    const auto ch = arena();
+    ecs::Registry r0, r1;
+    auto c0 = Combat::create(r0, ch, l, 9), c1 = Combat::create(r1, ch, l, 9);
+    REQUIRE(c0); REQUIRE(c1);
+    const uint64_t h0 = c0->hash();
+    CHECK(c1->hash() == h0);
+    auto& st = CombatTestAccess::state(*c1);
+    const CombatantId id = st.combatants.front().id;
+    rules5e::Disease d;
+    d.target = id; d.spell_id = 9; d.source = id; d.dc = 15; d.dice = {1, 10, 0};
+    d.condition = rules5e::Condition::Poisoned; d.next_round = 14401; d.interval_rounds = 14400;
+    st.diseases.push_back(d);
+    const uint64_t h1 = c1->hash();
+    CHECK(h1 != h0);
+    st.diseases[0].next_round = 14402;
+    CHECK(c1->hash() != h1);
+    st.diseases.clear();
+    CHECK(c1->hash() == h0);
+    st.combatants.front().disease_hp_max_reduction = 4;
+    const uint64_t h2 = c1->hash();
+    CHECK(h2 != h0);
+    st.combatants.front().disease_hp_max_reduction = 5;
+    CHECK(c1->hash() != h2);
+    st.combatants.front().disease_hp_max_reduction = 0;
+    CHECK(c1->hash() == h0);
+}
+
 TEST_CASE("Combat::log_hash: the chosen condition (0xCF), 7.2ze Blindness/Deafness, folds only for condition: chosen spells") {
     ContentLibrary l;
     REQUIRE(l.load(sample_set()).empty());

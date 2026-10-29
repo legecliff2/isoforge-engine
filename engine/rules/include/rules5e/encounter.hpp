@@ -917,6 +917,25 @@ struct AuraImmunity {
     friend bool operator==(const AuraImmunity&, const AuraImmunity&) = default;
 };
 
+// B6 (CONTENT_CONVENTIONS §36): one SRD bite disease on a creature. Identity is (target, spell_id): a second failed save
+// from the same rider does not stack or reset the clock. next_round is the encounter round when the creature repeats the
+// save (24 hours = disease_hours × 600 rounds). reduction is the hit point maximum this disease has removed; curing it
+// puts that much back. A long rest does not. Sim Combat::hash 0xE3, folded only while a row exists or some
+// disease_hp_max_reduction is non-zero.
+struct Disease {
+    CombatantId target = 0;
+    uint32_t spell_id = 0;
+    CombatantId source = 0;
+    Ability save_ability = Ability::Con;
+    int16_t dc = 0;
+    DiceExpr dice{0, 0, 0};
+    Condition condition = Condition::Poisoned;
+    uint32_t next_round = 0;
+    uint32_t interval_rounds = 0;
+    int16_t reduction = 0;
+    friend bool operator==(const Disease&, const Disease&) = default;
+};
+
 struct EncounterState {
     std::vector<Combatant>       combatants;
     std::vector<InitiativeEntry> order;
@@ -957,6 +976,7 @@ struct EncounterState {
     bool ground_items_seen = false;           // sticky: a ground item has existed (0xD2 keeps folding after a pick-up)
     std::vector<AuraImmunity> aura_immunities;  // appended (batch 3 ghast Stench): per-source immunity after a success; 0xDE
     std::vector<ActionImmunity> action_immunities;  // appended (Tier-A §26 Dreadful Glare): 0xE1, folded only when non-empty
+    std::vector<Disease> diseases;  // appended (B6 bite disease): 0xE3, folded only when non-empty or a reduction is set
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call

@@ -47,7 +47,7 @@ PREDICATE = {("weapon",): (S({"kind", "is"}), S()),
              ("attack_from_feature",): (S({"kind", "feature"}), S())}   # 7.2zb Open Hand
 # when: rider-level predicates (sim #170), read only in on_hit[] of attack actions
 RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale", "when"})),
-         ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success", "when", "zero_hp"})),
+         ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success", "when", "zero_hp", "disease"})),
          ("apply_condition",): (S({"kind", "apply"}), S({"when"})),
          ("heal_self", "temp_hp"): (S({"kind"}), S({"dice", "amount", "amount_from", "when"})),
          ("set_hp",): (S({"kind", "value"}), S({"when"})),
