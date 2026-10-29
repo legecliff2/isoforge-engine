@@ -57,6 +57,15 @@ struct TurnBudget {
     // that option's attacks finish. Cleared when the rider is used or another action is spent. The next turn replaces the
     // budget. Using it does not spend the action. Not hashed (the cast is the logged CastSpell; replay re-arms it).
     uint32_t free_rider = 0;
+    // Appended (B7, Shambling Mound): both-hits Engulf window for the multiattack in progress. engulf_spell is the
+    // ApplyCondition to apply when the sequence finishes with every attack hitting engulf_hit_id. engulf_due is set on the
+    // last attack, before that swing is recorded. A miss or a second target sets engulf_bad. Cleared when the sequence
+    // resolves or the turn budget is replaced. Not hashed (replay re-runs the attacks; the contain effect folds under 0xAC).
+    uint32_t engulf_spell = 0;
+    uint8_t engulf_hits = 0;
+    CombatantId engulf_hit_id = 0;
+    bool engulf_bad = false;
+    bool engulf_due = false;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).

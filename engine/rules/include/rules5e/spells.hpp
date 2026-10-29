@@ -558,6 +558,9 @@ struct SpellDef {
     bool disease = false;
     uint16_t disease_hours = 0;
     DiceExpr disease_dice{0, 0, 0};
+    // appended (B7, Shambling Mound Engulf): this contain refuses a second creature while the user already holds one
+    // (any contain kind). Swallow's one-at-a-time stays contain == 2. Static content: not hashed.
+    bool contain_one = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

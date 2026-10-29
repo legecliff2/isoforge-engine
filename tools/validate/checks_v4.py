@@ -1459,6 +1459,66 @@ def check_teleport_actions(doc: dict, tag: str) -> list[str]:
     return errs
 
 
+def check_engulf_both_hits(doc: dict, tag: str) -> list[str]:
+    """B7 Shambling Mound Engulf (CONTENT_CONVENTIONS §37). Mirrors features.cpp apply_multiattack."""
+    errs: list[str] = []
+    did = doc.get("id", "?")
+    schema = str(doc.get("$schema", "") or tag)
+    monster5 = schema in MONSTER_SINCE_5 or tag in MONSTER_SINCE_5
+    damage_types = {"acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic",
+                    "piercing", "poison", "psychic", "radiant", "slashing", "thunder"}
+    sizes = {"tiny", "small", "medium", "large", "huge", "gargantuan"}
+    for path, _owner, eff in live_effects(doc):
+        if not isinstance(eff, dict) or eff.get("kind") != "multiattack":
+            continue
+        blobs: list[tuple[str, dict]] = []
+        options = eff.get("options")
+        if isinstance(options, list):
+            for j, o in enumerate(options):
+                if isinstance(o, dict):
+                    blobs.append((f"{path}/options/{j}", o))
+        elif "engulf_both_hits" in eff:
+            blobs.append((path, eff))
+        for sub, o in blobs:
+            if "engulf_both_hits" not in o:
+                continue
+            where = f"{sub}: {did}"
+            if not monster5:
+                errs.append(f"{where}: multiattack engulf_both_hits needs a monster@5 file")
+            if "count_dice" in o:
+                errs.append(f"{where}: engulf_both_hits can't be combined with count_dice")
+            if "free_rider" in o:
+                errs.append(f"{where}: engulf_both_hits can't be combined with free_rider")
+            attacks = o.get("attacks")
+            if not isinstance(attacks, list) or len(attacks) < 2:
+                errs.append(f"{where}: engulf_both_hits needs at least two attacks")
+            spec = o.get("engulf_both_hits")
+            if not isinstance(spec, dict):
+                errs.append(f"{where}: engulf_both_hits must be an object")
+                continue
+            for k in spec:
+                if k not in ("max_size", "escape_dc", "while", "damage"):
+                    errs.append(f"{where}: engulf_both_hits: unknown key '{k}'")
+            if spec.get("max_size") not in sizes:
+                errs.append(f"{where}: bad engulf_both_hits max_size")
+            dc = spec.get("escape_dc")
+            if isinstance(dc, bool) or not isinstance(dc, int) or dc < 1 or dc > 30:
+                errs.append(f"{where}: bad engulf_both_hits escape_dc")
+            if spec.get("while") != "blinded":
+                errs.append(f"{where}: engulf_both_hits while must be blinded")
+            dm = spec.get("damage")
+            if not isinstance(dm, dict):
+                errs.append(f"{where}: engulf_both_hits needs damage {{dice, type}}")
+                continue
+            for k in dm:
+                if k not in ("dice", "type"):
+                    errs.append(f"{where}: engulf_both_hits: unknown key '{k}'")
+            dice = dm.get("dice")
+            if not isinstance(dice, str) or not dice or dm.get("type") not in damage_types:
+                errs.append(f"{where}: bad engulf_both_hits damage")
+    return errs
+
+
 def check_multiattack_count(doc: dict, tag: str) -> list[str]:
     """Batch 3 multiattack count_dice (violet fungus "makes 1d4 Rotting Touch attacks"): monster@5 only, and the option
     names exactly one attack (same rule as the sim loader, features.cpp apply_multiattack)."""

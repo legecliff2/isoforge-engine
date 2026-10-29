@@ -1093,3 +1093,45 @@ The clock is the encounter round. 24 hours is 14400 rounds (`hours × 600`, the 
 `Combat::hash` tag **0xE3** folds the rows, then any `disease_hp_max_reduction`, only while one of them exists. Empty state hashes as before. Next free is **0xE4**.
 
 Not this key. Mummy rot lowers the maximum by 3d6 every 24 hours with no repeat save and no cure-on-success; `curse` is still only `no_regain_hp`. Lesser Restoration ends the poisoned condition and does not cure this disease. Lay on Hands' disease spend and Divine Health are not wired. Greater Restoration's hit point maximum option clears Life Drain only. Two `until_cured` poisons without a disease row share one condition bit; curing a disease clears that bit unless another disease row or a tracked effect still applies it. `srd51.monster.otyugh` authors the bite with this object (Con DC 15). Death dog stays on its poisoned-only rider until T&C adds `disease`.
+
+## 37. Both-hits Engulf (monster@5 multiattack `engulf_both_hits`)
+
+SRD 5.1 Shambling Mound Multiattack: "The shambling mound makes two slam attacks. If both attacks hit a Medium or smaller target, the target is grappled (escape DC 14), and the shambling mound uses its Engulf on it." Engulf: "The shambling mound engulfs a Medium or smaller creature grappled by it. The engulfed target is blinded, restrained, and unable to breathe, and it must succeed on a DC 14 Constitution saving throw at the start of each of the mound's turns or take 13 (2d8 + 4) bludgeoning damage. If the mound moves, the engulfed target moves with it. The mound can have only one creature engulfed at a time."
+
+A monster@5 multiattack option may set `engulf_both_hits`. The option lists at least two attacks. When every attack in that option hits the same creature, the engine applies a gelatinous-cube contain (kind `engulf`) to that creature. No save is rolled to avoid it. It is not a `free_rider` and not an action. One attack missing, or the attacks hitting different creatures, does not engulf. A target larger than `max_size` takes the hits' damage and is not engulfed. Ending the turn before the last attack forfeits it.
+
+```json
+"options": [{
+  "id": "slams",
+  "attacks": ["slam", "slam"],
+  "engulf_both_hits": {
+    "max_size": "medium",
+    "escape_dc": 14,
+    "while": "blinded",
+    "damage": {"dice": "2d8+4", "type": "bludgeoning"}
+  }
+}]
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `max_size` | `tiny` .. `gargantuan` | `bad engulf_both_hits max_size` |
+| `escape_dc` | integer 1..30. A Strength check, the cube's escape (special 4) | `bad engulf_both_hits escape_dc` |
+| `while` | `blinded` only | `engulf_both_hits while must be blinded` |
+| `damage` | `{dice, type}` dealt at the start of each of the user's turns | `engulf_both_hits needs damage {dice, type}` / `bad engulf_both_hits damage` |
+
+The condition is restrained. Blinded lasts as long as that effect (`while`, the B3b one-entry rule). Immunity to restrained applies neither. Immunity to blinded still restrains and contains. `contain_one` refuses a second engulf while this user already holds any contained creature. The first one stays. Escape (special 4, Strength vs `escape_dc`) ends restrained, blinded, and the contain. The user's death frees the creature and does not knock it prone (that is swallow).
+
+`count_dice` and `free_rider` cannot combine with this key. Below monster@5 the loader says `multiattack engulf_both_hits needs a monster@5 file`. The synthetic spell id is `<archetype>#<option>#engulf`. It is not in `spells_known` and it is not a `save_action`.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The contain effect's turn-start damage is `damage_when` 3 under the existing 0xAC. Blinded is the effect's `while`, derived from the SpellDef. The both-hits window is `TurnBudget` and is not hashed; replay re-runs the attacks. Next free stays **0xE4**.
+
+Product calls, not a second contain model:
+
+* The printed "grappled (escape DC 14)" is the Strength escape check on the contain. A sourced Grappled condition is not added. Two escapes would be a second action the stat block does not print. Drag-by-grapple is not this sentence.
+* Turn-start damage is automatic, the gelatinous cube's contain damage. The printed "DC 14 Constitution saving throw or take 13 (2d8 + 4)" is not rolled. The dice are the printed `2d8+4`.
+* "Unable to breathe" is the existing suffocation gap (coverage row 11). Not modelled.
+* "If the mound moves, the engulfed target moves with it" is the existing contain carry. `container_of` is set. Sim movement of contained creatures stays pending.
+* Lightning Absorption (lightning damage heals instead) has no peer in tree. It is not this key.
+
+This section does not author `srd51.monster.shambling_mound`. The row stays deferred.

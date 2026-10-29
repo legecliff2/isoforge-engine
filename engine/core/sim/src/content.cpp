@@ -2389,6 +2389,38 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             if (!used.count(kv.first))
                 return a.id + ": rider_only save_effect '" + kv.first + "' must be a multiattack free_rider";
     }
+    // B7: both-hits Engulf. A synthetic ApplyCondition (gelatinous-cube contain, blinded while restrained). Not in
+    // spells_known and not a save_action: the multiattack applies it. No Constitution save (the cube's automatic
+    // turn-start damage). One creature at a time (contain_one).
+    for (std::size_t i = 0; i < a.multiattack_decls.size(); ++i) {
+        const auto& m = a.multiattack_decls[i];
+        if (!m.engulf_both_hits) continue;
+        if (i >= c.multiattacks.size()) return a.id + ": multiattack option '" + m.id + "': engulf_both_hits has no sequence";
+        const auto& spec = *m.engulf_both_hits;
+        rules5e::SpellDef d;
+        d.content_id = a.id + "#" + m.id + "#engulf";
+        d.id = rules5e::spell_id_of(d.content_id);
+        d.level = 0;
+        d.kind = rules5e::SpellEffectKind::ApplyCondition;
+        d.is_spell = false;
+        d.magical = false;
+        d.components = 0;
+        d.targets = 1;
+        d.applies_condition = true;
+        d.condition = rules5e::Condition::Restrained;
+        d.escape_dc = spec.escape_dc;
+        d.contain = 1;
+        d.contain_dice = spec.damage;
+        d.contain_damage_type = spec.damage_type;
+        d.condition_max_size = spec.max_size;
+        d.contain_one = true;
+        d.has_while = true;
+        d.while_condition = rules5e::Condition::Blinded;
+        for (const auto& prev : synth)
+            if (prev.id == d.id) return a.id + ": engulf ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+        c.multiattacks[i].engulf_both = d.id;
+        synth.push_back(std::move(d));
+    }
     // batch 3 ghast Stench: aura traits (built by the "aura" hook) -> synthetic Zone SpellDefs, attached at Combat::create.
     for (auto& d : a.aura_defs) {
         for (const auto& prev : synth)
@@ -2407,6 +2439,9 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 if (const auto* d = spells_->find(id)) old.push_back(*d);
             for (uint32_t id : prev->second.aura_spell_ids)
                 if (const auto* d = spells_->find(id)) old.push_back(*d);
+            for (const auto& m : prev->second.base.multiattacks)   // B7: both-hits Engulf defs live only in the book
+                if (m.engulf_both != 0)
+                    if (const auto* d = spells_->find(m.engulf_both)) old.push_back(*d);
         }
         for (const auto& d : old) spells_->erase(d.id);
         std::vector<uint32_t> added;

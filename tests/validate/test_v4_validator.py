@@ -650,6 +650,35 @@ class RG8GrappleRider(unittest.TestCase):
         checks_v4.check_pull_actions(doc(target_requires_any=["restrained"]), errs)
         self.assertTrue(any("grappled_by_self only" in e for e in errs), errs)
 
+    def test_engulf_both_hits(self):
+        # B7: Shambling Mound. Both slams hit the same creature and the cube's contain applies.
+        spec = {"max_size": "medium", "escape_dc": 14, "while": "blinded",
+                "damage": {"dice": "2d8+4", "type": "bludgeoning"}}
+
+        def doc(schema="monster@5", **opt):
+            option = {"id": "slams", "attacks": ["slam", "slam"], "engulf_both_hits": spec}
+            option.update(opt)
+            return {"$schema": schema, "id": "srd51.monster.shambling_mound",
+                    "traits": [{"id": "multiattack", "name": "Multiattack", "description": "x",
+                                "effect": {"kind": "multiattack", "options": [option]}}]}
+        self.assertEqual(checks_v4.check_engulf_both_hits(doc(), "monster@5"), [])
+        errs = checks_v4.check_engulf_both_hits(doc("monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        errs = checks_v4.check_engulf_both_hits(doc(free_rider="slam"), "monster@5")
+        self.assertTrue(any("can't be combined with free_rider" in e for e in errs), errs)
+        errs = checks_v4.check_engulf_both_hits(doc(count_dice="1d4", attacks=["slam"]), "monster@5")
+        self.assertTrue(any("can't be combined with count_dice" in e for e in errs), errs)
+        one = doc()
+        one["traits"][0]["effect"]["options"][0]["attacks"] = ["slam"]
+        errs = checks_v4.check_engulf_both_hits(one, "monster@5")
+        self.assertTrue(any("at least two attacks" in e for e in errs), errs)
+        bad = doc()
+        bad_spec = dict(spec)
+        bad_spec["while"] = "restrained"
+        bad["traits"][0]["effect"]["options"][0]["engulf_both_hits"] = bad_spec
+        errs = checks_v4.check_engulf_both_hits(bad, "monster@5")
+        self.assertTrue(any("while must be blinded" in e for e in errs), errs)
+
     def test_disease_schedule(self):
         # B6: the otyugh / death dog bite. Schema allows the object; these are the loader's cross-field refusals.
         def doc(schema="monster@5", **extra):

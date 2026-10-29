@@ -4,6 +4,7 @@
 #include <cctype>
 #include <optional>
 #include <set>
+#include <utility>
 
 #include "rules5e/armor.hpp"
 #include "rules5e/font_of_magic.hpp"
@@ -174,7 +175,8 @@ std::optional<std::string> apply_heal_bonus(Archetype& a, const FeatureDecl& f, 
 std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
     // Batch 3 (Lich-approved): an option's `count_dice` ("1d4"; monster@5 only) names ONE attack made a rolled number
     // of times (SRD 5.1 violet fungus: "The violet fungus makes 1d4 Rotting Touch attacks.").
-    struct Opt { std::string id; const Json* list; const Json* count; std::string rider; };
+    // B7: engulf_both_hits on an option (Shambling Mound). Parsed here; content.cpp compiles the SpellDef.
+    struct Opt { std::string id; const Json* list; const Json* count; std::string rider; std::optional<Archetype::EngulfBothSpec> engulf; };
     std::vector<Opt> opts;
     auto count_of = [](const Json& o) -> const Json* { auto c = o.find("count_dice"); return c == o.end() ? nullptr : &*c; };
     auto take_rider = [](const Json& o) -> std::optional<std::string> {
@@ -183,22 +185,62 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
         if (!fr->is_string() || fr->get<std::string>().empty()) return std::nullopt;
         return fr->get<std::string>();
     };
+    auto take_engulf = [](const Json& o, const std::string& where)
+        -> std::pair<std::optional<std::string>, std::optional<Archetype::EngulfBothSpec>> {
+        auto it = o.find("engulf_both_hits");
+        if (it == o.end()) return {std::nullopt, std::nullopt};
+        if (!it->is_object()) return {where + ": engulf_both_hits must be an object", std::nullopt};
+        for (auto k = it->begin(); k != it->end(); ++k)
+            if (k.key() != "max_size" && k.key() != "escape_dc" && k.key() != "while" && k.key() != "damage")
+                return {where + ": engulf_both_hits: unknown key '" + k.key() + "'", std::nullopt};
+        Archetype::EngulfBothSpec spec;
+        static const char* kSizes[] = {"tiny", "small", "medium", "large", "huge", "gargantuan"};
+        const auto ms = it->find("max_size");
+        int sz = -1;
+        if (ms != it->end() && ms->is_string())
+            for (int i = 0; i < 6; ++i) if (ms->get<std::string>() == kSizes[i]) sz = i;
+        if (sz < 0) return {where + ": bad engulf_both_hits max_size", std::nullopt};
+        spec.max_size = int8_t(sz);
+        const auto dc = it->find("escape_dc");
+        if (dc == it->end() || !dc->is_number_integer()) return {where + ": bad engulf_both_hits escape_dc", std::nullopt};
+        const int n = dc->get<int>();
+        if (n < 1 || n > 30) return {where + ": bad engulf_both_hits escape_dc", std::nullopt};
+        spec.escape_dc = int8_t(n);
+        const auto wh = it->find("while");
+        if (wh == it->end() || !wh->is_string() || wh->get<std::string>() != "blinded")
+            return {where + ": engulf_both_hits while must be blinded", std::nullopt};
+        const auto dm = it->find("damage");
+        if (dm == it->end() || !dm->is_object()) return {where + ": engulf_both_hits needs damage {dice, type}", std::nullopt};
+        for (auto k = dm->begin(); k != dm->end(); ++k)
+            if (k.key() != "dice" && k.key() != "type")
+                return {where + ": engulf_both_hits: unknown key '" + k.key() + "'", std::nullopt};
+        auto dice = dm->contains("dice") && (*dm)["dice"].is_string() ? parse_dice((*dm)["dice"].get<std::string>()) : std::nullopt;
+        auto ty = dm->contains("type") && (*dm)["type"].is_string() ? damage_type_from_name((*dm)["type"].get<std::string>()) : std::nullopt;
+        if (!dice || !ty) return {where + ": bad engulf_both_hits damage", std::nullopt};
+        spec.damage = *dice; spec.damage_type = *ty;
+        return {std::nullopt, spec};
+    };
     if (auto o = f.effect.find("options"); o != f.effect.end()) {
         if (!o->is_array() || o->empty()) return f.id + ": multiattack options must be a non-empty array";
         for (const Json& x : *o) {
             if (!x.is_object() || !x.contains("id") || !x["id"].is_string()) return f.id + ": multiattack option needs an id";
+            const std::string oid = x["id"].get<std::string>();
             auto rider = take_rider(x);
-            if (!rider) return f.id + ": multiattack option '" + x.value("id", "") + "': free_rider must name an action";
-            opts.push_back({x["id"].get<std::string>(), &x["attacks"], count_of(x), *rider});
+            if (!rider) return f.id + ": multiattack option '" + oid + "': free_rider must name an action";
+            auto [eerr, spec] = take_engulf(x, f.id + ": multiattack option '" + oid + "'");
+            if (eerr) return *eerr;
+            opts.push_back({oid, &x["attacks"], count_of(x), *rider, spec});
         }
     } else if (auto at = f.effect.find("attacks"); at != f.effect.end()) {
         auto rider = take_rider(f.effect);
         if (!rider) return f.id + ": multiattack free_rider must name an action";
-        opts.push_back({"multiattack", &*at, count_of(f.effect), *rider});
+        auto [eerr, spec] = take_engulf(f.effect, f.id + ": multiattack option 'multiattack'");
+        if (eerr) return *eerr;
+        opts.push_back({"multiattack", &*at, count_of(f.effect), *rider, spec});
     } else {
         return f.id + ": multiattack needs options[] or attacks[]";
     }
-    for (const auto& [oid, list, count, rider] : opts) {
+    for (const auto& [oid, list, count, rider, engulf] : opts) {
         if (oid.empty()) return f.id + ": multiattack option id is empty";
         for (const auto& d : a.multiattack_decls)
             if (d.id == oid) return f.id + ": duplicate multiattack option '" + oid + "'";
@@ -227,6 +269,17 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
             if (d.count_dice.count > 0)
                 return f.id + ": multiattack option '" + oid + "': free_rider can't be combined with count_dice";
             d.free_rider = rider;
+        }
+        if (engulf) {   // B7: both hits on the same creature engulf it. Not a cast.
+            if (a.schema_type != "monster" || (ctx.declared_version != 0 && ctx.declared_version < 5))
+                return f.id + ": multiattack engulf_both_hits needs a monster@5 file";
+            if (d.count_dice.count > 0)
+                return f.id + ": multiattack option '" + oid + "': engulf_both_hits can't be combined with count_dice";
+            if (!d.free_rider.empty())
+                return f.id + ": multiattack option '" + oid + "': engulf_both_hits can't be combined with free_rider";
+            if (d.attacks.size() < 2)
+                return f.id + ": multiattack option '" + oid + "': engulf_both_hits needs at least two attacks";
+            d.engulf_both_hits = *engulf;
         }
         a.multiattack_decls.push_back(std::move(d));
     }
