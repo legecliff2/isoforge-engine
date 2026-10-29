@@ -139,6 +139,9 @@ struct Attack {
     // carries an on_hit grapple rider with instead_of_damage, so ActionRequest::grapple_instead is legal with it. Set by the sim
     // loader. Content-derived: not hashed.
     bool grapple_instead_ok = false;
+    // B5: on_hit grapple no_damage. A hit deals no damage and the grapple applies. Not a request choice, so it is not
+    // ActionRequest::grapple_instead and not log_hash 0xE2. Content-derived: not hashed.
+    bool grapple_no_damage = false;
 };
 inline constexpr int8_t kAttackAbilityFinesse = 6;
 inline constexpr int8_t kAttackAbilityNone = 7;

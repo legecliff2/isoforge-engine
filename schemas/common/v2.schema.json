@@ -1091,6 +1091,11 @@
           "default": false,
           "description": "grapple (Tier-A CONTENT_CONVENTIONS §27, monster@5 only): SRD \"Instead of dealing damage, the X can grapple the target\" (vampire spawn Claws). The attacker chooses per hit (ActionRequest::grapple_instead): a hit with the choice deals no damage and grapples; without it, it deals damage and does not grapple. Can't be combined with restrains."
         },
+        "no_damage": {
+          "type": "boolean",
+          "default": false,
+          "description": "grapple (B5, monster@5 only): the hit always deals no damage and grapples (SRD roper Tendril). Not a choice. Can combine with restrains. Can't combine with instead_of_damage. The attack lists no damage array. Not hashed; not ActionRequest::grapple_instead."
+        },
         "max_size": {
           "enum": [
             "tiny",
@@ -1479,6 +1484,7 @@
                 "exclusive",
                 "max_grapples",
                 "instead_of_damage",
+                "no_damage",
                 "max_size"
               ]
             }

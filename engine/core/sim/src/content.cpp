@@ -726,6 +726,57 @@ std::optional<std::string> compile_teleport_action(const std::string& arch, cons
     return std::nullopt;
 }
 
+// B5 Reel: monster@5 action {kind: "pull", feet, targets?, target_requires_any: ["grappled_by_self"]}.
+// "The roper pulls each creature grappled by it up to 25 feet straight toward it." A synthetic ForcedMove SpellDef
+// (mode pull, up_to). The caller names the creatures (1..8). Each must be grappled by the user; one that is not refuses
+// the cast before the action is spent. The engine does not add a grappled creature the caller left out (the same gate
+// as Tentacle Slam). Omitting forced_feet pulls the full distance; a multiple of 5 up to feet pulls that far (0xB4
+// only when set). No save, no damage, no second range: spell_in_reach skips this kind. Not a free_rider. A free_rider
+// runs after every attack in the option, and Reel in a Multiattack sits between the tendril attacks and the bite.
+std::optional<std::string> compile_pull_action(const std::string& arch, const Json& act, uint32_t declared,
+                                               const std::string& schema_type, rules5e::SpellDef& d,
+                                               Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": pull '" + aid + "'";
+    if (schema_type != "monster" || (declared != 0 && declared < 5))
+        return where + ": pull needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it)
+        if (it.key() != "id" && it.key() != "name" && it.key() != "kind" && it.key() != "description" &&
+            it.key() != "feet" && it.key() != "targets" && it.key() != "target_requires_any")
+            return where + ": pull: unknown key '" + it.key() + "'";
+    const int ft = act.contains("feet") && act["feet"].is_number_integer() ? act["feet"].get<int>() : 0;
+    if (ft < 5 || ft > 60 || ft % 5 != 0) return where + ": pull: feet must be 5..60, a multiple of 5";
+    const auto tg = act.find("target_requires_any");
+    if (tg == act.end() || !tg->is_array() || tg->size() != 1 || !(*tg)[0].is_string() ||
+        (*tg)[0].get<std::string>() != "grappled_by_self")
+        return where + ": pull: target_requires_any is grappled_by_self only";
+    int n = 1;
+    if (act.contains("targets")) {
+        if (!act["targets"].is_number_integer()) return where + ": pull: targets must be an integer 1..8";
+        n = act["targets"].get<int>();
+        if (n < 1 || n > 8) return where + ": pull: targets must be an integer 1..8";
+    }
+    d = rules5e::SpellDef{};
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.casting_time = rules5e::CastingTime::Action;
+    d.is_spell = false;
+    d.magical = false;
+    d.targets = uint8_t(n);
+    d.kind = rules5e::SpellEffectKind::ForcedMove;
+    d.forced.mode = 2;
+    d.forced.feet = uint16_t(ft);
+    d.forced.up_to = true;
+    d.target_requires_any = rules5e::kTargetGateGrappledBySelf;
+    d.range_ft = 0;
+    sa = {};
+    sa.id = aid;
+    sa.spell_id = d.id;
+    return std::nullopt;
+}
+
 // EC deferred monsters (giant spider Web): a monster@4 / character@4 `attack_effect` action, an attack roll that only applies
 // conditions: { id, attack: "ranged" | "melee", to_hit, range_ft, apply: [{ condition, escape: { ability: "str", dc } }],
 // usage }. Compiles to a synthetic SpellAttack SpellDef (is_spell false, not magical, fixed_attack, no damage) whose
@@ -1883,18 +1934,47 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         const std::string kind = act.value("kind", "");
         const bool melee = kind == "melee_weapon_attack", ranged = kind == "ranged_weapon_attack";
         if (!melee && !ranged) continue;
-        const Json& dmg = act.at("damage").at(0);
+        // B5: the last grapple rider's no_damage. 1 = this attack lists no damage. -1 = a bad bool.
+        int no_dmg = 0;
+        if (auto oh = act.find("on_hit"); oh != act.end() && oh->is_array())
+            for (const Json& g : *oh) {
+                if (!g.is_object() || !g.contains("kind") || !g["kind"].is_string() || g["kind"].get<std::string>() != "grapple") continue;
+                if (!g.contains("no_damage")) { no_dmg = 0; continue; }
+                if (!g["no_damage"].is_boolean()) { no_dmg = -1; break; }
+                no_dmg = g["no_damage"].get<bool>() ? 1 : 0;
+            }
+        if (no_dmg < 0) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple no_damage";
+        const bool damageless = no_dmg == 1;
+        if (damageless) {
+            if (schema_type != "monster" || (declared != 0 && declared < 5))
+                return a.id + ": " + act.value("id", "?") + " on_hit: grapple no_damage needs a monster@5 file";
+            if (act.contains("damage"))
+                return a.id + ": " + act.value("id", "?") + " on_hit: grapple no_damage can't list damage";
+            if (act.contains("half_hp_damage"))
+                return a.id + ": " + act.value("id", "?") + " on_hit: grapple no_damage can't list half_hp_damage";
+        }
         const bool allow_flat = schema_type == "monster" && (declared == 0 || declared >= 5);
-        auto dice = action_damage_dice(dmg, allow_flat);
-        auto type = damage_type(dmg.value("type", ""));
-        if (!dice || !type) return a.id + ": bad damage in action " + act.value("id", "?");
+        rules5e::DiceExpr dicev{0, 0, 0};
+        rules5e::DamageType dtype = rules5e::DamageType::Bludgeoning;
+        const Json* dmg = nullptr;
+        if (!damageless) {
+            if (!act.contains("damage") || !act["damage"].is_array() || act["damage"].empty())
+                return a.id + ": bad damage in action " + act.value("id", "?");
+            dmg = &act.at("damage").at(0);
+            auto dice = action_damage_dice(*dmg, allow_flat);
+            auto type = damage_type(dmg->value("type", ""));
+            if (!dice || !type) return a.id + ": bad damage in action " + act.value("id", "?");
+            dicev = *dice;
+            dtype = *type;
+        }
         strings_.push_back(act.value("id", ""));
         rules5e::Attack at{};
         at.id = strings_.back();
         at.to_hit = int8_t(geti(act, "to_hit"));
-        at.damage = *dice;
-        at.type = *type;
-        if (auto er = read_bonus_vs(dmg, at.vs_types, at.vs_dice); !er.empty()) return a.id + ": action " + act.value("id", "?") + ": " + er;
+        at.damage = dicev;
+        at.type = dtype;
+        if (!damageless)
+            if (auto er = read_bonus_vs(*dmg, at.vs_types, at.vs_dice); !er.empty()) return a.id + ": action " + act.value("id", "?") + ": " + er;
         at.ranged = ranged;
         at.finesse = false;
         // EC swarm: "half_hp_damage": "1d6" replaces component 1's dice while the attacker has half its HP or fewer
@@ -2052,7 +2132,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     else if (qn == "adamantine") at.qualifiers |= rules5e::kAttackAdamantine;
                     else return a.id + ": bad qualifier '" + qn + "' in action " + act.value("id", "?");
                 }
-        if (multi_damage)   // components 2..n (monster@3 / character@3)
+        if (multi_damage && !damageless)   // components 2..n (monster@3 / character@3)
             for (std::size_t i = 1; i < act.at("damage").size(); ++i) {
                 const Json& extra = act.at("damage").at(i);
                 auto xd = action_damage_dice(extra, allow_flat);
@@ -2141,13 +2221,18 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     if (dc < 0 || dc > 30) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple escape_dc";
                     rules5e::GrappleRider gr;
                     gr.escape_dc = int16_t(dc);
-                    for (const char* k : {"restrains", "exclusive", "instead_of_damage"})
+                    for (const char* k : {"restrains", "exclusive", "instead_of_damage", "no_damage"})
                         if (g.contains(k) && !g[k].is_boolean()) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple " + k;
                     gr.restrains = g.value("restrains", false);
                     gr.exclusive = g.value("exclusive", false);
                     gr.instead_of_damage = g.value("instead_of_damage", false);   // Tier-A §27
+                    gr.no_damage = g.value("no_damage", false);   // B5: always, not a choice
+                    if (gr.no_damage && (schema_type != "monster" || (declared != 0 && declared < 5)))
+                        return a.id + ": " + act.value("id", "?") + " on_hit: grapple no_damage needs a monster@5 file";
                     if (gr.instead_of_damage && gr.restrains)
                         return a.id + ": " + act.value("id", "?") + " on_hit: grapple instead_of_damage can't be combined with restrains";
+                    if (gr.no_damage && gr.instead_of_damage)
+                        return a.id + ": " + act.value("id", "?") + " on_hit: grapple no_damage can't be combined with instead_of_damage";
                     if (g.contains("max_grapples")) {
                         const Json& m = g["max_grapples"];
                         if (!m.is_number_integer() || m.get<int>() < 1 || m.get<int>() > 8)
@@ -2166,6 +2251,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     }
                     a.grapple_on_hit[uint8_t(ai)] = gr;
                     if (gr.instead_of_damage && ai < c.attacks.size()) c.attacks[ai].grapple_instead_ok = true;
+                    if (gr.no_damage && ai < c.attacks.size()) c.attacks[ai].grapple_no_damage = true;
                     continue;
                 }
                 rules5e::Trigger t;
@@ -2205,10 +2291,19 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (declared == 0 || declared >= 4)
         for (const Json& act : doc.at("actions")) {
             const std::string ak = act.value("kind", "");
-            if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect") continue;
+            if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect" && ak != "pull") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
+            if (ak == "pull") {   // B5 Reel: pull creatures grappled by the user
+                if (auto e = compile_pull_action(a.id, act, declared, schema_type, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": pull ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
             if (ak == "teleport") {   // batch 3 (Lich ruling, blink dog): synthetic Teleport SpellDef + optional follow-up attack
                 if (auto e = compile_teleport_action(a.id, act, declared, attack_actions, d, sa, c, strings_, doc)) return e;
                 for (const auto& prev : synth)
