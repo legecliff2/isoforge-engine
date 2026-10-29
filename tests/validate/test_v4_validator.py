@@ -487,7 +487,7 @@ GRAPPLE_CASES = [
     ("grapple_escape_dc_float", CRAB, [(GR + ["escape_dc"], 11.0)], [], "grapple escape_dc must be an integer 0..30, got 11.0"),
     ("grapple_escape_dc_string", CRAB, [(GR + ["escape_dc"], "11")], [], "is not of type 'integer'"),
     ("grapple_escape_dc_bool", CRAB, [(GR + ["escape_dc"], True)], [], "is not of type 'integer'"),
-    ("grapple_extra_field", CRAB, [(GR + ["condition"], "restrained")], [], "'condition' is not one of ['kind', 'escape_dc', 'when', 'restrains', 'exclusive', 'max_grapples', 'instead_of_damage', 'max_size']"),
+    ("grapple_extra_field", CRAB, [(GR + ["condition"], "restrained")], [], "'condition' is not one of ['kind', 'escape_dc', 'when', 'restrains', 'exclusive', 'max_grapples', 'instead_of_damage', 'no_damage', 'max_size']"),
     ("grapple_escape_dc_on_other_rider", CRAB, [(["actions", 1, "on_hit", 1, "escape_dc"], 12)], [], "'escape_dc' is not one of ['kind', 'damage', 'scale', 'when']"),
     ("grapple_in_on_event_effects", CRAB, [(["traits"], [{"id": "hold", "name": "Hold", "description": "x",
                                                           "effect": {"kind": "on_event", "on": "hit", "effects": [{"kind": "grapple", "escape_dc": 11}]}}])],
@@ -613,6 +613,42 @@ class RG8GrappleRider(unittest.TestCase):
         errs, warns = checks_v4.check_grapple_rider(doc("monster@5", ok, [extra_r]))
         self.assertEqual(errs, [])
         self.assertTrue(any("other on_hit riders" in w for w in warns), warns)
+
+    def test_grapple_no_damage(self):
+        # B5: monster@5 only; not the instead_of_damage choice; the attack lists no damage.
+        def doc(schema, rider, damage=None):
+            act = {"kind": "melee_weapon_attack", "id": "tendril", "name": "Tendril", "to_hit": 7, "reach": 50,
+                   "on_hit": [rider]}
+            if damage is not None:
+                act["damage"] = damage
+            return {"$schema": schema, "actions": [act]}
+        ok = {"kind": "grapple", "escape_dc": 15, "restrains": True, "no_damage": True}
+        self.assertEqual(checks_v4.check_grapple_rider(doc("monster@5", ok)), ([], []))
+        errs, _ = checks_v4.check_grapple_rider(doc("monster@4", ok))
+        self.assertTrue(any("no_damage need monster@5" in e for e in errs), errs)
+        errs, _ = checks_v4.check_grapple_rider(doc("monster@5", {**ok, "instead_of_damage": True}))
+        self.assertTrue(any("can't be combined with instead_of_damage" in e for e in errs), errs)
+        errs, _ = checks_v4.check_grapple_rider(doc("monster@5", ok, [{"dice": "1d4", "type": "piercing"}]))
+        self.assertTrue(any("can't list damage" in e for e in errs), errs)
+
+    def test_pull_action(self):
+        def doc(schema="monster@5", **extra):
+            act = {"id": "reel", "name": "Reel", "kind": "pull", "feet": 25,
+                   "target_requires_any": ["grappled_by_self"]}
+            act.update(extra)
+            return {"$schema": schema, "actions": [act]}
+        errs: list[str] = []
+        checks_v4.check_pull_actions(doc(), errs)
+        self.assertEqual(errs, [])
+        errs = []
+        checks_v4.check_pull_actions(doc(feet=100), errs)
+        self.assertTrue(any("feet must be 5..60" in e for e in errs), errs)
+        errs = []
+        checks_v4.check_pull_actions(doc("monster@4"), errs)
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        errs = []
+        checks_v4.check_pull_actions(doc(target_requires_any=["restrained"]), errs)
+        self.assertTrue(any("grappled_by_self only" in e for e in errs), errs)
 
     def test_grapple_max_size(self):
         # Chuul pincer / Otyugh tentacle: monster@5 only. A larger creature is not grappled.

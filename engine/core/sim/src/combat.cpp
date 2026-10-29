@@ -38,6 +38,17 @@ std::optional<std::string> spawn_team_name(const world::EntitySpawn& sp, const A
     return name;
 }
 
+// Tiles a Grappled entry still holds across. The Grapple action (via_attack 0xFF) is 5 ft. An extended rider
+// (restrains, exclusive, max_grapples, instead_of_damage, no_damage) records the attack, and that attack's reach
+// is the grappling effect's reach (SRD: the grapple ends when the creature leaves that reach).
+int grapple_reach_tiles(const rules5e::EncounterState& s, const rules5e::SourcedCondition& sc) {
+    if (sc.via_attack == 0xFF) return 1;
+    const rules5e::Combatant* g = rules5e::find(s, sc.source);
+    if (!g || sc.via_attack >= g->attacks.size()) return 1;
+    const int ft = int(g->attacks[sc.via_attack].reach_or_range_ft);
+    return std::max(1, ft / 5);
+}
+
 std::optional<Combat> Combat::create(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
                                      uint64_t seed, std::string* error) {
     return create(reg, chunk, content, seed, CombatOptions{}, error);
@@ -326,6 +337,11 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
 
 bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const {
     if (derived_area_) return true;   // area_targets already applied range, origin and line of sight
+    // B5 Reel: a pull of creatures grappled by the caster has no second range and no sight check. The grapple
+    // gate is the constraint. The attack's reach, not this cast, is what ends the grapple.
+    if (def.kind == rules5e::SpellEffectKind::ForcedMove && !def.is_spell &&
+        (def.target_requires_any & rules5e::kTargetGateGrappledBySelf) != 0)
+        return true;
     if (def.area != AreaShape::None && def.range_ft == 0) {   // self-origin template: anyone inside its extent in sight
         if (caster == target) return true;
         return distance_tiles(caster, target) * kFeetPerTile <= int(def.area_size_ft) && line_of_sight(caster, target);
@@ -1119,8 +1135,10 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     // TokenSpawned right after it; a SummonEnded marks the slot gone (TokenRemoved after the step's sim events, see below).
     for (std::size_t i = 0; i < split; ++i) push_rules_event(evs[i], &ls);
     sync_ecs();
-    // R-G8 helpers: put a creature on a tile (forced movement / drag), and end grapples whose holder and held creature are no
-    // longer within 5 ft after an effect moved one of them (Grappled is removed from the target; the next step prunes the entry).
+    // R-G8 helpers: put a creature on a tile (forced movement / drag), and end grapples whose holder and held creature are
+    // farther apart than the grapple's reach after an effect moved one of them (Grappled is removed from the target; the
+    // next step prunes the entry). A plain grapple (via_attack 0xFF, the Grapple action) is 5 ft. An extended rider uses
+    // that attack's reach, so a 50 ft tendril still holds after a pull that stops at 25 ft.
     auto place = [this](CombatantId id, Vec2i t) {
         if (TilePos* p = reg_->get<TilePos>(entity(id))) { p->x = t.x; p->y = t.y; }
         SimEvent se;
@@ -1134,11 +1152,11 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         std::vector<CombatantId> released;
         for (const auto& sc : state_.sourced) {
             if (sc.condition != rules5e::Condition::Grappled || (sc.target != moved && sc.source != moved)) continue;
-            if (distance_tiles(sc.source, sc.target) <= 1) continue;
-            bool held_elsewhere = false;   // another holder still within 5 ft keeps the condition
+            if (distance_tiles(sc.source, sc.target) <= grapple_reach_tiles(state_, sc)) continue;
+            bool held_elsewhere = false;   // another holder still within its own reach keeps the condition
             for (const auto& o : state_.sourced)
                 held_elsewhere = held_elsewhere || (o.condition == rules5e::Condition::Grappled && o.target == sc.target &&
-                                                    o.source != sc.source && distance_tiles(o.source, o.target) <= 1);
+                                                    o.source != sc.source && distance_tiles(o.source, o.target) <= grapple_reach_tiles(state_, o));
             if (!held_elsewhere && std::find(released.begin(), released.end(), sc.target) == released.end()) released.push_back(sc.target);
         }
         for (CombatantId id : released) {
@@ -2000,7 +2018,8 @@ uint64_t Combat::hash() const {
             }
         }
         // 0xDB (Druid gap G, monster grapple rider): the appended SourcedCondition fields, only for Grappled entries a rider
-        // with restrains / exclusive / max_grapples made (via_attack != 0xFF); plain grapples leave every hash unchanged.
+        // with restrains / exclusive / max_grapples / instead_of_damage / no_damage made (via_attack != 0xFF); plain
+        // grapples leave every hash unchanged. no_damage adds no flag bit: the lasting state is the grapple itself.
         bool rider = false;
         for (const auto& sc : state_.sourced) rider = rider || (sc.condition == rules5e::Condition::Grappled && sc.via_attack != 0xFF);
         if (rider) {
@@ -2791,7 +2810,7 @@ rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery&
     for (const auto& sc : state_.sourced) {
         if (sc.condition != rules5e::Condition::Grappled || (sc.target != q.mover && sc.source != q.mover)) continue;
         const CombatantId other = sc.target == q.mover ? sc.source : sc.target;
-        if (distance_tiles(sc.source, sc.target) > 1 &&
+        if (distance_tiles(sc.source, sc.target) > grapple_reach_tiles(state_, sc) &&
             std::find(res.out_of_reach_of.begin(), res.out_of_reach_of.end(), other) == res.out_of_reach_of.end())
             res.out_of_reach_of.push_back(other);
     }

@@ -465,3 +465,50 @@ TEST_CASE("save_effect grappled_by_self: only creatures the user is grappling, b
     CHECK(mut(s, 2).has(Condition::Poisoned));
     CHECK(mut(s, 3).has(Condition::Poisoned));
 }
+
+TEST_CASE("B5 pull: grappled creatures are pulled; one outsider refuses the cast") {
+    auto book = srd_spellbook();
+    SpellDef reel;
+    reel.content_id = "test.reel";
+    reel.id = spell_id_of(reel.content_id);
+    reel.kind = SpellEffectKind::ForcedMove;
+    reel.is_spell = false;
+    reel.magical = false;
+    reel.forced.mode = 2;
+    reel.forced.feet = 25;
+    reel.forced.up_to = true;
+    reel.target_requires_any = kTargetGateGrappledBySelf;
+    reel.targets = 2;
+    book->add(reel);
+    auto hooks = spell_hooks();
+    hooks.spells = book;
+    Combatant user = strong(1);
+    user.spells_known.push_back(reel.id);
+    auto s = begin_encounter({user, foe(2), foe(3)}, 1, nullptr, hooks);
+    end_turns_until(s, 1);
+    std::vector<Event> ev;
+    REQUIRE(grapple(s, 1, 2, 15, ev));
+    ActionRequest bad{1, ActionKind::CastSpell, 3};
+    bad.spell_id = reel.id;
+    bad.targets = {2, 3};
+    const auto refused = step(s, bad);
+    CHECK_FALSE(refused.ok);
+    CHECK(std::string(refused.error).find("grappled by the user") != std::string::npos);
+    CHECK(s.budget.action);
+    ActionRequest over{1, ActionKind::CastSpell, 2};
+    over.spell_id = reel.id;
+    over.forced_feet = 30;   // past the effect's 25
+    CHECK_FALSE(step(s, over).ok);
+    CHECK(s.budget.action);
+    ActionRequest pull{1, ActionKind::CastSpell, 2};
+    pull.spell_id = reel.id;
+    pull.forced_feet = 10;
+    const auto ok = step(s, pull);
+    REQUIRE(ok.ok);
+    CHECK_FALSE(s.budget.action);
+    int moved = 0;
+    for (const auto& e : ok.events)
+        if (e.kind == EventKind::Moved && e.actor == 2) { CHECK(e.a == 10); CHECK((e.c & 1) != 0); ++moved; }
+    CHECK(moved == 1);
+    CHECK(mut(s, 2).has(Condition::Grappled));   // no hook: the grapple is not dropped for distance
+}

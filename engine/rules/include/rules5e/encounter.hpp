@@ -869,11 +869,15 @@ struct GrappleRider {
     // appended (Tier-A §27): "Instead of dealing damage, the X can grapple the target": the hit grapples only when the request
     // chose ActionRequest::grapple_instead (and then deals no damage); a hit without the choice deals damage and does not grapple.
     bool instead_of_damage = false;
+    // B5 (Roper tendril): the hit always deals no damage and grapples. Not a choice (that is instead_of_damage, and the
+    // two cannot combine). Can combine with restrains. Part of extended() so via_attack records the attack: the grapple's
+    // reach is that attack's reach, not a flat 5 ft.
+    bool no_damage = false;
     // appended (Chuul pincer / Otyugh tentacle): largest Size this attack grapples (-1 = no cap beyond size_within_one).
     // A larger target is not grappled (the hit's damage still stands; the caller treats false as damage only). Checked before
     // extended(), so a size-only rider leaves via_attack 0xFF and Combat::hash is unchanged.
     int8_t max_size = -1;
-    bool extended() const { return restrains || exclusive || max_grapples != 0 || instead_of_damage; }
+    bool extended() const { return restrains || exclusive || max_grapples != 0 || instead_of_damage || no_damage; }
 };
 
 // R-G12 rules PR 3 (D3): a Spiritual Weapon: not a combatant (no HP, not a target, no turn). token_id comes from the summon

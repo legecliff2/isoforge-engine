@@ -651,7 +651,8 @@
             "save_effect",
             "attack_effect",
             "teleport",
-            "area_effect"
+            "area_effect",
+            "pull"
           ]
         },
         "to_hit": {
@@ -1605,18 +1606,77 @@
             }
           },
           "else": {
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "feet"
-                  ]
-                },
-                {
-                  "required": [
-                    "with_attack"
-                  ]
+            "if": {
+              "not": {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "pull"
+                  }
                 }
+              }
+            },
+            "then": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "feet"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "with_attack"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "description": "B5 Reel: pull each named creature grappled by the user up to feet straight toward the user. Not a save. Omitting forced_feet pulls the full distance; a shorter multiple of 5 is ActionRequest::forced_feet (0xB4).",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "pull"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "feet",
+              "target_requires_any"
+            ],
+            "properties": {
+              "feet": {
+                "maximum": 60
+              },
+              "targets": {
+                "maximum": 8
+              },
+              "target_requires_any": {
+                "minItems": 1,
+                "maxItems": 1,
+                "items": {
+                  "const": "grappled_by_self"
+                }
+              }
+            },
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "description",
+                "feet",
+                "targets",
+                "target_requires_any"
               ]
             }
           }

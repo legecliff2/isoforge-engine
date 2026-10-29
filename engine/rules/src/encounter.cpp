@@ -2520,9 +2520,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 smite_piece = DamagePiece{int16_t(std::max(0, roll_dice(s.rng, e.damage, crit))), e.damage_type};
                 break;
             }
-    const bool grab_only = hit && ctx.grapple_instead && spell_id == 0;   // Tier-A §27: c bit 3 (8)
+    const bool chose_grab = hit && ctx.grapple_instead && spell_id == 0;   // Tier-A §27: c bit 3 (8), the choice
+    const bool grab_only = chose_grab || (hit && spell_id == 0 && atk.grapple_no_damage);   // B5: always, no choice bit
     emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,
-         int32_t(hit) | (int32_t(crit) << 1) | (int32_t(grab_only) << 3));
+         int32_t(hit) | (int32_t(crit) << 1) | (int32_t(chose_grab) << 3));
     if (t.team != a.team && !s.modifiers.empty()) mark_fought(s, a.id);   // 7.2z ends_early: attacked a hostile
     if (spell_id != 0) {   // 7.2zi hit_only: the roll and the hit stand; no damage dice and no hit points (riders still see the hit)
         if (const SpellDef* sd = spell_def(s, spell_id); sd && sd->hit_only) {
@@ -2530,7 +2531,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             return hit;
         }
     }
-    if (grab_only) {   // Tier-A §27: no damage roll (a crit too), no damage, no concentration save; the sim grapples on c & 8.
+    if (grab_only) {   // Tier-A §27 / B5: no damage roll (a crit too), no damage, no concentration save. The choice sets c & 8;
+                       // no_damage does not. The sim grapples a no_damage hit on the hit bit; a choice only when c & 8.
         // On-hit riders that do not deal damage still fire (save / apply condition); damage-keyed ones (drain, curse, Strength
         // Drain, smite) do not.
         const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, false, atk_mode, ally_near_target, crit, roll, ev);
