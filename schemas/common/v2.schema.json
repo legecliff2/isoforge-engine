@@ -1151,6 +1151,16 @@
           },
           "description": "save_effect / save_condition (sim #174): when the damage drops the target to 0 hit points it is stable and gains condition for duration.n rounds (600 = 1 hour, outlasts healing) and while for as long as that lasts (giant spider bite: poisoned 600 rounds, paralyzed while poisoned). Needs damage; condition and while must differ."
         },
+        "disease": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["every_hours", "hp_max"],
+          "properties": {
+            "every_hours": {"const": 24},
+            "hp_max": {"$ref": "../common/v1.schema.json#/$defs/dice"}
+          },
+          "description": "B6 (monster@5 save_condition on_hit only; CONTENT_CONVENTIONS §36): SRD 5.1 otyugh and death dog bite disease. A failed Constitution save applies the until_cured poisoned condition and schedules that same save every 24 hours. A failed repeat reduces hit point maximum by hp_max (the dice, not the printed average). A successful repeat cures this disease. Hit point maximum 0 kills. The reduction lasts until the disease is cured, not until a rest. SIM_EVENTS 0xE3."
+        },
         "amount_from": {
           "type": "object",
           "additionalProperties": false,
@@ -1259,7 +1269,8 @@
                 "damage",
                 "on_success",
                 "when",
-                "zero_hp"
+                "zero_hp",
+                "disease"
               ]
             }
           }

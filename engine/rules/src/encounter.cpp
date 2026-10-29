@@ -2981,6 +2981,84 @@ bool gaze_applies(const EncounterState& s, const Combatant& c) {
     return false;
 }
 
+// B6: a failed disease save registers one row. The same rider on the same creature does not stack or reset the clock.
+// The initial success does not cure a disease already contracted.
+void contract_disease(EncounterState& s, Combatant& t, const SpellDef& def, CombatantId source, int dc) {
+    if (!def.disease || def.disease_hours == 0 || t.dead) return;
+    for (const Disease& d : s.diseases)
+        if (d.target == t.id && d.spell_id == def.id) return;
+    Disease d;
+    d.target = t.id;
+    d.spell_id = def.id;
+    d.source = source;
+    d.save_ability = def.save_ability;
+    d.dc = int16_t(dc);
+    d.dice = def.disease_dice;
+    d.condition = def.applies_condition ? def.condition : Condition::Poisoned;
+    d.interval_rounds = uint32_t(def.disease_hours) * 600u;
+    d.next_round = uint32_t(s.round) + d.interval_rounds;
+    s.diseases.push_back(d);
+}
+
+// Put this disease's hit point maximum back. Current hit points stay where they are. Poisoned ends only when no other
+// disease and no tracked effect still applies that condition (one condition bit).
+void cure_disease_at(EncounterState& s, std::size_t index, std::vector<Event>& ev) {
+    const Disease d = s.diseases[index];
+    s.diseases.erase(s.diseases.begin() + static_cast<std::ptrdiff_t>(index));
+    Combatant* t = find_mut(s, d.target);
+    if (!t) return;
+    const int back = std::min(int(d.reduction), int(t->disease_hp_max_reduction));
+    t->disease_hp_max_reduction = int16_t(int(t->disease_hp_max_reduction) - back);
+    if (back > 0)
+        emit(ev, EventKind::ModifierApplied, d.source, t->id, 0, int32_t(ModStat::MaxHp), back);
+    bool held = false;
+    for (const Disease& o : s.diseases)
+        if (o.target == t->id && o.condition == d.condition) held = true;
+    if (!held)
+        for (const auto& e : s.effects)
+            if (e.target == t->id && !e.no_condition && e.condition == d.condition) held = true;
+    if (!held && t->has(d.condition)) {
+        remove_condition(*t, d.condition);
+        emit(ev, EventKind::ConditionRemoved, t->id, 0, int32_t(d.condition));
+    }
+}
+
+void disease_reduce(EncounterState& s, Combatant& t, Disease& d, int roll, std::vector<Event>& ev) {
+    if (roll <= 0 || t.dead) return;
+    const int room = std::min(32767 - int(d.reduction), 32767 - int(t.disease_hp_max_reduction));
+    const int applied = std::min(roll, std::max(0, room));
+    if (applied <= 0) return;
+    d.reduction = int16_t(int(d.reduction) + applied);
+    t.disease_hp_max_reduction = int16_t(int(t.disease_hp_max_reduction) + applied);
+    emit(ev, EventKind::ModifierApplied, d.source, t.id, 0, int32_t(ModStat::MaxHp), -applied);
+    const int cap = effective_hp_max(t);
+    if (t.hp > cap) t.hp = int16_t(cap);
+    if (cap <= 0) { kill(t, ev); check_end(s, ev); }
+}
+
+// "Every 24 hours that elapse": on the diseased creature's turn, once the round clock has reached next_round.
+void disease_checks(EncounterState& s, Combatant& c, std::vector<Event>& ev) {
+    if (c.dead || s.diseases.empty()) return;
+    for (std::size_t i = 0; i < s.diseases.size();) {
+        Disease& d = s.diseases[i];
+        if (d.target != c.id || uint32_t(s.round) < d.next_round) { ++i; continue; }
+        const SaveSource src{false, bit(d.condition), 0};
+        auto r = save_roll(s, c, d.save_ability, d.dc, RollMode::Normal, ev, &src);
+        emit(ev, EventKind::SavingThrowRolled, c.id, CombatantId(d.save_ability), r.roll.natural, r.roll.total,
+             int32_t(r.success));
+        if (r.success) {
+            cure_disease_at(s, i, ev);
+            if (c.dead) return;
+            continue;
+        }
+        const int roll = std::max(0, roll_dice(s.rng, d.dice));
+        disease_reduce(s, c, d, roll, ev);
+        if (c.dead) return;
+        d.next_round = uint32_t(s.round) + d.interval_rounds;
+        ++i;
+    }
+}
+
 void start_turn(EncounterState& s, std::vector<Event>& ev) {
     Combatant& c = *find_mut(s, s.order[s.turn_index].id);
     c.reaction_used = false;
@@ -3000,6 +3078,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         emit(ev, EventKind::ReadyExpired, c.id);
     }
     emit(ev, EventKind::TurnStarted, c.id, 0, s.round);
+    if (!c.dead) disease_checks(s, c, ev);   // B6: the 24-hour disease save, before the rest of the turn
     for (auto& e : s.effects)   // 7.2zh Heat Metal: disadvantage lasts until the start of the caster's next turn
         if (e.caster == c.id) e.while_held = false;
     if (c.form != FormKind::None && c.form_end_round != 0 && s.round >= c.form_end_round) form_reverted(c, 0, 0, ev);   // R-G12
@@ -3626,6 +3705,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (r.success && def.success_immunity_hours > 0 && !t->dead)   // Tier-A §26: "immune to ... for the next 24 hours"
                 s.action_immunities.push_back(ActionImmunity{t->id, def.success_immunity_scope == 1 ? a.id : CombatantId(0), def.id,
                                                              uint32_t(s.round) + uint32_t(def.success_immunity_hours) * 600u});
+            if (!r.success && !t->dead && def.disease)   // B6: the failed disease save. Immunity to the condition does not skip it.
+                contract_disease(s, *t, def, a.id, dc);
             if (r.success && def.contain == 1 && !t->dead) s.contain_exits.push_back({a.id, t->id, 3});   // 7.2w: sim pushes it 5 ft
             if (!r.success && !t->dead && def.destroy_cr8_max > 0 && t->creature_type == CreatureType::Undead && t->cr8 >= 0 &&
                 t->cr8 <= int(def.destroy_cr8_max)) {   // 7.2v Destroy Undead: destroyed instead of turned

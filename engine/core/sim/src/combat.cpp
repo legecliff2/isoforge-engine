@@ -2174,6 +2174,25 @@ uint64_t Combat::hash() const {
         h.u32(uint32_t(state_.action_immunities.size()));
         for (const auto& im : state_.action_immunities) { h.u32(im.creature); h.u32(im.source); h.u32(im.spell_id); h.u32(im.until_round); }
     }
+    // 0xE3 (B6 bite disease): schedule rows, then any disease_hp_max_reduction, only while one of them exists.
+    {
+        uint32_t hp_max_reduced = 0;
+        for (const auto& c : state_.combatants) if (c.disease_hp_max_reduction != 0) ++hp_max_reduced;
+        if (!state_.diseases.empty() || hp_max_reduced != 0) {
+            h.byte(0xE3);
+            h.u32(uint32_t(state_.diseases.size()));
+            for (const auto& d : state_.diseases) {
+                h.u32(d.target); h.u32(d.spell_id); h.u32(d.source);
+                h.u16(uint16_t(d.dc)); h.u16(uint16_t(d.reduction));
+                h.u32(d.next_round); h.u32(d.interval_rounds);
+                h.byte(d.dice.count); h.byte(d.dice.sides); h.u16(uint16_t(d.dice.bonus));
+                h.byte(uint8_t(d.condition)); h.byte(uint8_t(d.save_ability));
+            }
+            h.u32(hp_max_reduced);
+            for (const auto& c : state_.combatants)
+                if (c.disease_hp_max_reduction != 0) { h.u32(c.id); h.u16(uint16_t(c.disease_hp_max_reduction)); }
+        }
+    }
     return h.value();
 }
 

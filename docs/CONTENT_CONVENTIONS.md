@@ -1063,4 +1063,31 @@ Author the tendril as a weapon attack with no `damage` array and an `on_hit` gra
 
 This is not a `free_rider`. A free rider runs after every attack in the option, and only for a `rider_only` save. Reel inside the roper's Multiattack sits between the tendril attacks and the bite. That order is not this action. `srd51.monster.roper` stays deferred (SRD_MONSTERS_DEFERRED).
 
-Not hashed beyond 0xB4 and 0xDB. No new tag. The next free tag stays **0xE3**.
+Not hashed beyond 0xB4 and 0xDB. No new tag. B5 left **0xE3** free; B6 claims it (§36). Next free is **0xE4**.
+
+## 36. Bite disease, 24-hour hit point maximum (monster@5 `save_condition` `disease`)
+
+SRD 5.1 otyugh Bite (the death dog is the same schedule at DC 12): "it must succeed on a DC 15 Constitution saving throw against disease or become poisoned until the disease is cured. Every 24 hours that elapse, the target must repeat the saving throw, reducing its hit point maximum by 5 (1d10) on a failure. The disease is cured on a success. The target dies if the disease reduces its hit point maximum to 0. This reduction to the target's hit point maximum lasts until the disease is cured." The 5 is the average. The roll is 1d10.
+
+Author it on the bite's `on_hit` `save_condition`, not as a second save:
+
+```json
+"on_hit": [{
+  "kind": "save_condition",
+  "save": {"ability": "con", "dc": 15},
+  "apply": [{"condition": "poisoned", "duration": {"kind": "until_cured"}}],
+  "disease": {"every_hours": 24, "hp_max": "1d10"}
+}]
+```
+
+`every_hours` is 24. `hp_max` is dice (`1d10` for both printed bites). The save is Constitution. `apply` is exactly one `until_cured` poisoned entry. The rider lists no `damage`. It is an `on_hit` rider, not an `on_event` and not a `save_effect`. Below monster@5 the loader says `disease needs a monster@5 file`.
+
+A failed save applies poisoned (the existing untracked `until_cured` bit) and contracts one disease for that rider's spell id. A second failed save from the same rider does not add another row and does not reset the clock. A successful bite save does not cure a disease already contracted. Immunity to poisoned skips the condition and still contracts the schedule: the hit point maximum loss is the disease, not the condition.
+
+The clock is the encounter round. 24 hours is 14400 rounds (`hours × 600`, the same hour as ghast Stench and Dreadful Glare). On the diseased creature's turn, once `round` has reached `next_round`, it repeats that Constitution save. Failure rolls `hp_max`, adds it to that disease's reduction, and schedules another 24 hours. Current hit points above the new maximum are lost. A maximum of 0 kills. Success removes that disease's reduction and, when no other disease and no tracked effect still applies poisoned, removes poisoned. Current hit points do not rise when the maximum does.
+
+`effective_hp_max` subtracts Life Drain and this reduction. A long rest clears Life Drain only. This reduction stays until that disease is cured.
+
+`Combat::hash` tag **0xE3** folds the rows, then any `disease_hp_max_reduction`, only while one of them exists. Empty state hashes as before. Next free is **0xE4**.
+
+Not this key. Mummy rot lowers the maximum by 3d6 every 24 hours with no repeat save and no cure-on-success; `curse` is still only `no_regain_hp`. Lesser Restoration ends the poisoned condition and does not cure this disease. Lay on Hands' disease spend and Divine Health are not wired. Greater Restoration's hit point maximum option clears Life Drain only. Two `until_cured` poisons without a disease row share one condition bit; curing a disease clears that bit unless another disease row or a tracked effect still applies it. This PR does not author `otyugh.json`. Death dog stays on its poisoned-only rider until T&C adds `disease`.

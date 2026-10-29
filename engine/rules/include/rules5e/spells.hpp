@@ -552,6 +552,12 @@ struct SpellDef {
     // appended (B3b): not a standalone action. Cast only while TurnBudget::free_rider equals this spell id, and that
     // cast does not spend an action. A cast outside the window is refused with the action unspent. Static content: not hashed.
     bool rider_only = false;
+    // appended (B6, CONTENT_CONVENTIONS §36): a failed save contracts a disease (EncounterState::diseases, 0xE3). The
+    // condition on this save is the poisoned-until-cured half. disease_hours is 24; disease_dice is the hit point maximum
+    // lost on each failed repeat. Static content: not hashed. Both stay 0 / false for every other spell.
+    bool disease = false;
+    uint16_t disease_hours = 0;
+    DiceExpr disease_dice{0, 0, 0};
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

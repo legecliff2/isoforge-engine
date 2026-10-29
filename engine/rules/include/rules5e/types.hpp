@@ -758,6 +758,10 @@ struct Combatant {
     // appended (Keen Senses, CONTENT_CONVENTIONS §30; static content, never hashed): kKeenSight / kKeenHearing / kKeenSmell.
     // Advantage on a Wisdom (Perception) check that relies on a listed sense. Not part of passive_perception().
     uint8_t keen_senses = 0;
+    // appended (B6 bite disease, CONTENT_CONVENTIONS §36): hit point maximum lost to diseases. Not Life Drain: a long rest
+    // does not clear it. Each Disease row on the encounter holds its own share; this is the sum. effective_hp_max subtracts
+    // it. 0xE3 folds the rows (and this field when non-zero).
+    int16_t disease_hp_max_reduction = 0;
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 

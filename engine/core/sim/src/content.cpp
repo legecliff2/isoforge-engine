@@ -295,6 +295,8 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
         return std::nullopt;
     }
     if (k == "save_condition") {   // a synthetic Save SpellDef (fixed DC, damage, condition); same_as_weapon is a load error (bad damage type)
+        if (r.contains("disease") && (where.size() < 7 || where.compare(where.size() - 7, 7, " on_hit") != 0))
+            return where + ": disease is an on_hit save_condition";
         Json act = r;
         act["kind"] = "save_effect";
         act["id"] = "save_condition." + std::to_string(rc.synth.size());
@@ -1086,6 +1088,31 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 d.extra_effects.push_back(e);
             }
         }
+    }
+    // B6 (otyugh / death dog bite): disease on a save_condition on_hit. One failed Constitution save applies until_cured
+    // poisoned and schedules the same save every 24 hours. A failed repeat reduces hit point maximum by hp_max. A success
+    // cures that disease. Not mummy rot (no repeat save, not cured on a success) and not Life Drain.
+    if (auto dz = act.find("disease"); dz != act.end()) {
+        if (!untimed_ok) return where + ": disease is a save_condition on_hit rider, not a " + std::string(kind_label);
+        if (!monster_since_5()) return where + ": disease needs a monster@5 file";
+        if (!dz->is_object()) return where + ": disease must be an object";
+        for (auto it = dz->begin(); it != dz->end(); ++it)
+            if (it.key() != "every_hours" && it.key() != "hp_max")
+                return where + ": disease: unknown key '" + it.key() + "'";
+        const auto hours = dz->find("every_hours");
+        if (hours == dz->end() || !hours->is_number_integer() || hours->get<int64_t>() != 24)
+            return where + ": disease.every_hours must be 24";
+        const auto hp = dz->find("hp_max");
+        auto dice = hp != dz->end() && hp->is_string() ? parse_dice(hp->get<std::string>()) : std::nullopt;
+        if (!dice || dice->count < 1) return where + ": disease.hp_max must be dice";
+        if (d.save_ability != rules5e::Ability::Con) return where + ": disease needs a Constitution save";
+        if (!d.applies_condition || !d.condition_untracked || d.condition != rules5e::Condition::Poisoned || !d.extra_effects.empty())
+            return where + ": disease needs exactly one until_cured poisoned apply";
+        if (d.dice.count != 0 || d.dice.bonus != 0) return where + ": disease takes no damage";
+        if (has_area) return where + ": disease takes no area";
+        d.disease = true;
+        d.disease_hours = 24;
+        d.disease_dice = *dice;
     }
     // B4 (Gorgon Petrifying Breath): the gaze keys escalates / escalate_to / escalate_margin on a save_effect,
     // including one with an area. A failed save applies the primary condition; a failed repeat save replaces it

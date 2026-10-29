@@ -650,6 +650,36 @@ class RG8GrappleRider(unittest.TestCase):
         checks_v4.check_pull_actions(doc(target_requires_any=["restrained"]), errs)
         self.assertTrue(any("grappled_by_self only" in e for e in errs), errs)
 
+    def test_disease_schedule(self):
+        # B6: the otyugh / death dog bite. Schema allows the object; these are the loader's cross-field refusals.
+        def doc(schema="monster@5", **extra):
+            rider = {"kind": "save_condition", "save": {"ability": "con", "dc": 15},
+                     "apply": [{"condition": "poisoned", "duration": {"kind": "until_cured"}}],
+                     "disease": {"every_hours": 24, "hp_max": "1d10"}}
+            rider.update(extra)
+            return {"$schema": schema, "actions": [{"kind": "melee_weapon_attack", "id": "bite", "name": "Bite",
+                                                     "to_hit": 6, "reach": 5,
+                                                     "damage": [{"dice": "2d8+3", "type": "piercing"}],
+                                                     "on_hit": [rider]}]}
+        self.assertEqual(checks_v4.check_disease(doc(), "monster@5"), [])
+        errs = checks_v4.check_disease(doc("monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        bad_save = doc()
+        bad_save["actions"][0]["on_hit"][0]["save"]["ability"] = "str"
+        errs = checks_v4.check_disease(bad_save, "monster@5")
+        self.assertTrue(any("Constitution save" in e for e in errs), errs)
+        bad_apply = doc()
+        bad_apply["actions"][0]["on_hit"][0]["apply"] = [{"condition": "blinded", "duration": {"kind": "until_cured"}}]
+        errs = checks_v4.check_disease(bad_apply, "monster@5")
+        self.assertTrue(any("until_cured poisoned" in e for e in errs), errs)
+        on_event = {"$schema": "monster@5", "traits": [{"id": "bite", "name": "Bite", "description": "x",
+            "effect": {"kind": "on_event", "on": "hit", "effects": [
+                {"kind": "save_condition", "save": {"ability": "con", "dc": 15},
+                 "apply": [{"condition": "poisoned", "duration": {"kind": "until_cured"}}],
+                 "disease": {"every_hours": 24, "hp_max": "1d10"}}]}}]}
+        errs = checks_v4.check_disease(on_event, "monster@5")
+        self.assertTrue(any("on_hit save_condition" in e for e in errs), errs)
+
     def test_grapple_max_size(self):
         # Chuul pincer / Otyugh tentacle: monster@5 only. A larger creature is not grappled.
         def doc(schema, rider):
