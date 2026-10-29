@@ -53,6 +53,10 @@ struct TurnBudget {
     bool gaze_pending = false;
     // appended (SRD 5.1 movement modes, feat/move-modes): Dash actions taken this turn (a Dash grants each speed once more).
     uint8_t dashes = 0;
+    // Appended (B3b, chuul Tentacles): spell id of a multiattack free rider still available this turn (0 = none). Set when
+    // that option's attacks finish. Cleared when the rider is used or another action is spent. The next turn replaces the
+    // budget. Using it does not spend the action. Not hashed (the cast is the logged CastSpell; replay re-arms it).
+    uint32_t free_rider = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).

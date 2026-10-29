@@ -1276,6 +1276,79 @@ def check_batch3_actions(doc: dict, tag: str) -> list[str]:
     return errs
 
 
+def check_free_rider(doc: dict, tag: str) -> list[str]:
+    """B3b chuul Tentacles: a multiattack free_rider names a rider_only save_effect, and apply[].while is the
+    paralyzed-while-poisoned clause. Mirrors the sim loader's refusals."""
+    errs: list[str] = []
+    did = doc.get("id", "?")
+    monster5 = tag == "monster@5"
+    actions = [a for a in (doc.get("actions") or []) if isinstance(a, dict)]
+    rider_ids: set[str] = set()
+    for i, a in enumerate(actions):
+        if "rider_only" in a:
+            if not monster5:
+                errs.append(f"/actions/{i}: {did}.{a.get('id')}: rider_only needs a monster@5 file")
+            elif a.get("kind") != "save_effect":
+                errs.append(f"/actions/{i}: {did}.{a.get('id')}: rider_only is a save_effect action, not a rider")
+            elif a.get("rider_only") is not True:
+                errs.append(f"/actions/{i}: {did}.{a.get('id')}: rider_only must be true")
+            else:
+                rider_ids.add(a.get("id"))
+                if "area" in a:
+                    errs.append(f"/actions/{i}: {did}.{a.get('id')}: rider_only takes no area")
+        apply = a.get("apply")
+        if isinstance(apply, list):
+            for j, ent in enumerate(apply):
+                if not isinstance(ent, dict) or "while" not in ent:
+                    continue
+                where = f"/actions/{i}/apply/{j}: {did}.{a.get('id')}"
+                if not monster5:
+                    errs.append(f"{where}: while on apply needs a monster@5 file")
+                if j != 0:
+                    errs.append(f"{where}: while goes on the first apply[] entry")
+                if ent.get("while") == ent.get("condition"):
+                    errs.append(f"{where}: while must be a different condition from the primary")
+                if "area" in a:
+                    errs.append(f"{where}: while takes no area")
+                if "also_on_fail_by" in a or "control" in a:
+                    errs.append(f"{where}: while takes no also_on_fail_by / control")
+                dur = ent.get("duration")
+                tracked = isinstance(dur, dict) and dur.get("kind") not in (None, "until_cured")
+                tracked = tracked or bool(ent.get("repeat_save"))
+                if isinstance(dur, dict) and dur.get("kind") == "until_cured":
+                    tracked = False
+                if not tracked:
+                    errs.append(f"{where}: while needs a tracked primary condition")
+    named: set[str] = set()
+    for path, _owner, eff in live_effects(doc):
+        if not isinstance(eff, dict) or eff.get("kind") != "multiattack":
+            continue
+        blobs: list[tuple[str, dict]] = []
+        options = eff.get("options")
+        if isinstance(options, list):
+            for j, o in enumerate(options):
+                if isinstance(o, dict):
+                    blobs.append((f"{path}/options/{j}", o))
+        elif "free_rider" in eff:
+            blobs.append((path, eff))
+        for sub, o in blobs:
+            if "free_rider" not in o:
+                continue
+            if not monster5:
+                errs.append(f"{sub}: {did}: multiattack free_rider needs a monster@5 file")
+            if "count_dice" in o:
+                errs.append(f"{sub}: {did}: free_rider can't be combined with count_dice")
+            fr = o.get("free_rider")
+            if fr not in rider_ids:
+                errs.append(f"{sub}: {did}: free_rider '{fr}' must name a rider_only save_effect")
+            elif isinstance(fr, str):
+                named.add(fr)
+    for rid in sorted(rider_ids):
+        if rid not in named:
+            errs.append(f"{did}: rider_only save_effect '{rid}' must be a multiattack free_rider")
+    return errs
+
+
 UNTIL_CURED_CONDITIONS = frozenset({"blinded", "deafened", "paralyzed", "poisoned"})   # Lesser Restoration's list (SRD 5.1)
 
 

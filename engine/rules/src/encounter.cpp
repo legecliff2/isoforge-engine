@@ -3282,9 +3282,11 @@ bool spend_action(TurnBudget& b, const Combatant& c, ActionKind k, bool bonus, b
     if (!b.action) {
         if (b.extra_actions == 0) return false;   // Action Surge: an extra action stands in for the spent one
         --b.extra_actions;
+        b.free_rider = 0;   // B3b: a new action closes an unused multiattack rider
         return true;
     }
     b.action = false;
+    b.free_rider = 0;
     return true;
 }
 
@@ -3721,6 +3723,17 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     add_condition(*t, def.also_condition);
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.also_condition));
                     note_source(s, def.also_condition, a.id, t->id);
+                }
+                // B3b: paralyzed while poisoned. Only when the primary condition was applied (immunity to it skips this
+                // block). One entry, so a successful repeat save or the timer ends both.
+                if (def.has_while && !s.effects.back().has_also &&
+                    !immune_to(s, *t, def.while_condition) && !immune_from(s, *t, def.while_condition, a.id)) {
+                    s.effects.back().has_also = true; s.effects.back().also = def.while_condition;
+                    if (!t->has(def.while_condition)) {
+                        add_condition(*t, def.while_condition);
+                        emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.while_condition));
+                    }
+                    note_source(s, def.while_condition, a.id, t->id);
                 }
                 if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // 7.2w: Engulf
                 set_contain(s.effects.back(), def, *t, ev);
@@ -4644,7 +4657,10 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
             return fail("ward_alternate: not a legal alternate target");
         ward_alt = find_mut(s, req.ward_alternate);
     }
-    if (def.casting_time == CastingTime::BonusAction) {
+    if (def.rider_only) {   // B3b: the multiattack free rider. The gate above already refused a bad target without consuming it.
+        if (b.free_rider != def.id) return fail("only a multiattack rider");
+        b.free_rider = 0;
+    } else if (def.casting_time == CastingTime::BonusAction) {
         if (!b.bonus_action) return fail("no bonus action available");
         b.bonus_action = false;
     } else if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
@@ -5954,8 +5970,9 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (b.sequence > a.multiattacks.size()) return fail("bad multiattack");
             const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos);
             if (next < 0 || req.attack_index != uint8_t(next)) return fail("attack out of multiattack sequence");
+            const uint32_t rider = a.multiattacks[std::size_t(b.sequence - 1)].free_rider;   // B3b: arm after the last attack
             ++b.sequence_pos;
-            if (--b.attacks_remaining == 0) { b.sequence = 0; b.sequence_pos = 0; }
+            if (--b.attacks_remaining == 0) { b.sequence = 0; b.sequence_pos = 0; b.free_rider = rider; }
         } else if (req.multiattack != 0) {                                // start a declared multiattack
             if (b.attacks_remaining > 0) return fail("attack action already in progress");
             if (req.multiattack > a.multiattacks.size()) return fail("bad multiattack");
@@ -5971,6 +5988,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
                 n = std::size_t(std::clamp(roll_dice(s.rng, cd), 1, 255));   // "makes 1d4 ... attacks"
             b.attacks_remaining = uint8_t(n - 1);
             if (b.attacks_remaining > 0) { b.sequence = req.multiattack; b.sequence_pos = 1; }
+            else b.free_rider = a.multiattacks[std::size_t(req.multiattack - 1)].free_rider;   // B3b: the one attack was this one
         } else if (b.attacks_remaining > 0) --b.attacks_remaining;       // Extra Attack
         else if (spend_action(b, a, req.kind, false)) {
             b.loading_fired = 0;
@@ -6337,7 +6355,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         for (uint32_t id : a.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
             if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon ||
-                      d->kind == SpellEffectKind::SummonWeapon || d->kind == SpellEffectKind::Descriptive)) continue;   // R-G12: sim builds Polymorph requests (form choice); descriptive is never cast
+                      d->kind == SpellEffectKind::SummonWeapon || d->kind == SpellEffectKind::Descriptive || d->rider_only)) continue;   // R-G12: sim builds Polymorph requests (form choice); descriptive is never cast; B3b rider_only is not a standalone action
             if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
             for (uint8_t L = d->level; L <= (d->level == 0 ? 0 : 9); ++L) {
@@ -6357,6 +6375,13 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (!spell_cast_resource_refusal(s, a, *d, true, d->level).empty()) continue;
             ActionRequest r{a.id, ActionKind::CastSpell};
             r.spell_id = d->id; r.spell_level = d->level; r.innate = true;
+            append_spell_targets(out, s, a, *d, r);
+        }
+    }
+    if (b.free_rider != 0 && s.hooks.spells && !is_incapacitated(a) && !no_casting) {   // B3b: after the pincers, one free rider, no action
+        if (const SpellDef* d = s.hooks.spells->find(b.free_rider)) {
+            ActionRequest r{a.id, ActionKind::CastSpell};
+            r.spell_id = d->id; r.spell_level = 0;
             append_spell_targets(out, s, a, *d, r);
         }
     }

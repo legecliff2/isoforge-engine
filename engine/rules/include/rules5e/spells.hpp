@@ -543,6 +543,15 @@ struct SpellDef {
     // must meet at least one (the cast is refused, action unspent, when any does not). Content sets only
     // kTargetGateGrappledBySelf. 0 = any target. Static content: not hashed. `targets` is how many creatures one cast may name.
     uint8_t target_requires_any = 0;
+    // appended (B3b chuul Tentacles): the primary condition's effect also holds while_condition for as long as that
+    // effect lasts ("paralyzed while poisoned"). Applied only when the primary condition is applied, so immunity to
+    // the primary applies neither. Ending the effect (repeat save or the timer) ends both. Distinct from also_margin,
+    // which can apply when the target is immune to the primary. Static content: not hashed.
+    bool has_while = false;
+    Condition while_condition = Condition::Paralyzed;
+    // appended (B3b): not a standalone action. Cast only while TurnBudget::free_rider equals this spell id, and that
+    // cast does not spend an action. A cast outside the window is refused with the action unspent. Static content: not hashed.
+    bool rider_only = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

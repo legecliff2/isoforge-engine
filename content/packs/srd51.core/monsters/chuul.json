@@ -1,0 +1,144 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.chuul",
+  "name": "Chuul",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "aberration",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 16,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 16,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 93,
+    "formula": "11d10+33"
+  },
+  "speed": {
+    "walk": 30,
+    "swim": 30
+  },
+  "abilities": {
+    "str": 19,
+    "dex": 10,
+    "con": 16,
+    "int": 5,
+    "wis": 11,
+    "cha": 5
+  },
+  "skills": {
+    "perception": 4
+  },
+  "damage_immunities": [
+    "poison"
+  ],
+  "condition_immunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 14
+  },
+  "languages": [
+    "understands Deep Speech but can't speak"
+  ],
+  "challenge": {
+    "rating": "4",
+    "xp": 1100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "amphibious",
+      "name": "Amphibious",
+      "description": "The chuul can breathe air and water."
+    },
+    {
+      "id": "sense_magic",
+      "name": "Sense Magic",
+      "description": "The chuul senses magic within 120 feet of it at will. This trait otherwise works like the detect magic spell but isn't itself magical."
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The chuul makes two pincer attacks. If the chuul is grappling a creature, the chuul can also use its tentacles once.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "pincers",
+            "attacks": [
+              "pincer",
+              "pincer"
+            ],
+            "free_rider": "tentacles"
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "pincer",
+      "name": "Pincer",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "to_hit": 6,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "bludgeoning"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "grapple",
+          "escape_dc": 14,
+          "max_grapples": 2,
+          "max_size": "large"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 10 ft., one target. Hit: 11 (2d6 + 4) bludgeoning damage. The target is grappled (escape DC 14) if it is a Large or smaller creature and the chuul doesn't have two other creatures grappled."
+    },
+    {
+      "id": "tentacles",
+      "name": "Tentacles",
+      "kind": "save_effect",
+      "rider_only": true,
+      "save": {
+        "ability": "con",
+        "dc": 13
+      },
+      "range_ft": 10,
+      "target_requires_any": [
+        "grappled_by_self"
+      ],
+      "apply": [
+        {
+          "condition": "poisoned",
+          "while": "paralyzed",
+          "duration": {
+            "kind": "rounds",
+            "n": 10
+          },
+          "repeat_save": "end_of_turn"
+        }
+      ],
+      "description": "One creature grappled by the chuul must succeed on a DC 13 Constitution saving throw or be poisoned for 1 minute. Until this poison ends, the target is paralyzed. The target can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success."
+    }
+  ]
+}

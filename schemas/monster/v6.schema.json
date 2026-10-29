@@ -1056,7 +1056,7 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "description": "Batch 3 (vampire spawn Bite: \"one willing creature, or a creature that is grappled by the vampire, incapacitated, or restrained\"): the target must meet at least one. willing counts only for an ally with ActionRequest target_willing. Weapon attacks only.",
+          "description": "Batch 3 (vampire spawn Bite: \"one willing creature, or a creature that is grappled by the vampire, incapacitated, or restrained\"): the target must meet at least one. willing counts only for an ally with ActionRequest target_willing. On a weapon attack, any of the four gates. On a monster@5 save_effect, only grappled_by_self (Chuul Tentacles, Otyugh Tentacle Slam): each named target must be grappled by the user, and the cast is refused before the action is spent. targets (1..8, default 1) on that save is how many creatures one cast may name. No area. Chuul Tentacles also sets rider_only, so the save is the Multiattack free rider and not its own action.",
           "items": {
             "enum": [
               "willing",
@@ -1065,6 +1065,10 @@
               "restrained"
             ]
           }
+        },
+        "rider_only": {
+          "const": true,
+          "description": "B3b (monster@5 save_effect only): this save is not a standalone action. A multiattack option's free_rider names it. After that option's attacks, it may be used once this turn without spending an action, on one target that passes target_requires_any. A cast outside that window is refused and does not spend the action."
         },
         "feet": {
           "type": "integer",

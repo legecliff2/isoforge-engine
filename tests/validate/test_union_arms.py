@@ -272,7 +272,7 @@ class TransformArmsRG12(unittest.TestCase):
 class GrabContainArms(unittest.TestCase):
     """VERSION_BUMP_BATCH 7.2w: the closed transparent arm and the additive apply keys."""
     TRANSPARENT = (S({"kind", "dc"}), S())
-    APPLY = (S({"condition"}), S({"duration", "repeat_save", "escape", "object", "max_size", "contain", "excludes_formless"}))
+    APPLY = (S({"condition"}), S({"duration", "repeat_save", "escape", "object", "max_size", "contain", "excludes_formless", "while"}))
     CONTAIN = (S({"kind", "damage"}), S({"regurgitate"}))
 
     def test_transparent_arm(self):

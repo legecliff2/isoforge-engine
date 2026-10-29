@@ -7,7 +7,7 @@ content_validate_* files; this PR does not register a ctest name):
   python3 tools/validate/run_unittest_file.py tests/validate/test_bestiary_ledger.py
 
 ledger.py and validate_bridge.py must not import Tk. Counts are pinned to the
-ledger after the troll regen content enablement: 192 authored, 18 deferred.
+ledger after chuul left Deferred (B3b tentacles rider): 193 authored, 17 deferred.
 """
 from __future__ import annotations
 
@@ -28,14 +28,13 @@ EDITOR = ROOT / "tools" / "bestiary_editor"
 PACK = ROOT / "content" / "packs" / "srd51.core"
 VALIDATOR = ROOT / "tools" / "validate" / "validate_packs.py"
 
-# Deferred table ids after troll left Deferred (## Deferred (18)).
+# Deferred table ids after chuul left Deferred (## Deferred (17)).
 PARKED_IDS = (
     "srd51.monster.mimic",
     "srd51.monster.doppelganger",
     "srd51.monster.green_hag",
     "srd51.monster.sea_hag",
     "srd51.monster.succubus",
-    "srd51.monster.chuul",
     "srd51.monster.ghost",
     "srd51.monster.bulette",
     "srd51.monster.otyugh",
@@ -102,12 +101,12 @@ class LedgerTests(unittest.TestCase):
         for name in ("ledger.py", "validate_bridge.py"):
             self.assertEqual(_imports_tk(EDITOR / name), [], name)
 
-    def test_counts_match_headings_192_and_18(self):
+    def test_counts_match_headings_193_and_17(self):
         book = self.book
-        self.assertEqual(book.authored_expected, 192)
-        self.assertEqual(len(book.authored), 192)
-        self.assertEqual(book.parked_expected, 18)
-        self.assertEqual(len(book.parked), 18)
+        self.assertEqual(book.authored_expected, 193)
+        self.assertEqual(len(book.authored), 193)
+        self.assertEqual(book.parked_expected, 17)
+        self.assertEqual(len(book.parked), 17)
         self.assertEqual(book.count_errors(), ())
 
     def test_partial_is_subset_of_authored(self):

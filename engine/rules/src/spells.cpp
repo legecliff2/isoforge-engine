@@ -72,6 +72,8 @@ SpellDef effect_view(const SpellDef& base, const SpellEffect& e) {
     v.has_also_damage = false; v.also_dice = {}; v.also_damage_type = DamageType::Cold; v.difficult_until = 0;
     v.fly_ft = 0; v.restore_options.clear(); v.ends_on_restoration = false;
     v.charm_immune = false; v.caster_sees_target = false; v.requires_hearing = false;
+    v.has_while = false;   // B3b: while is the primary save's, not a rider effect's
+    v.rider_only = false;
     v.cantrip_scales = false; v.cantrip_adds_beams = false;
     v.upcast_beams = 0; v.upcast_dice = e.upcast_dice; v.upcast_darts = 0; v.upcast_targets = 0;   // upcast_dice: delayed_damage only
     return v;
