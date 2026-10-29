@@ -4,7 +4,9 @@
 // Plain-data snapshot of what the vertical slice shows. The renderer (SliceView) only ever
 // sees this: no sim/world/rules types, no game state lives on the render side.
 #include <array>
+#include <cstdlib>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,7 +39,17 @@ struct EquipVisual {
     std::string content_id;          // "srd51.item.longsword": picks placeholder art (render side)
 };
 // Presentation facing of a sprite (iso screen directions). East facings hold the main hand on the camera side.
+// Art authors 8 facings. M0 keeps these 4. SouthWest and NorthWest are the west mirror.
 enum class Facing : uint8_t { SouthEast, SouthWest, NorthEast, NorthWest };
+
+// Tile step -> the 4 iso facings. +x is screen down-right (SouthEast), +y is screen down-left
+// (SouthWest). Equal |dx| and |dy| follow x. A zero step returns nullopt (the caller keeps the last facing).
+// Presentation only: nothing here is written into sim.
+inline std::optional<Facing> facing_from_delta(int dx, int dy) {
+    if (dx == 0 && dy == 0) return std::nullopt;
+    if (std::abs(dx) >= std::abs(dy)) return dx > 0 ? Facing::SouthEast : Facing::NorthWest;
+    return dy > 0 ? Facing::SouthWest : Facing::NorthEast;
+}
 
 struct ActorView {
     uint32_t    id = 0;        // stable id (sort key tie-break)
@@ -53,6 +65,13 @@ struct ActorView {
     bool        outlined = false;   // Faerie Fire / ModStat::Outlined (presentation ring)
     bool        invisible = false;  // Condition::Invisible (ghost when still drawn)
     Facing      facing = Facing::SouthEast;
+    // Kit Render & Platform reads. presentation.sprite when set, else "paperdoll" or "standin.<bin>".
+    // Empty when M0 has no bin (huge / gargantuan with no authored bin). Not a sim field.
+    std::string kit_id;
+    std::string visual_kind;   // "paperdoll", "standin", or "unbinned"
+    std::string visual_bin;    // stand-in bin; empty otherwise
+    std::string art_root;      // pack-relative; empty when the stat block names none
+    bool        size_short = false;   // authored; M0 does not apply plates or scale
     std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)
     // Sight cues for the fog-team camera combatant (presentation only; never written back into sim).
     // Defaults match an empty EncounterHooks::sight_facts: everyone sees everyone, so no cue is drawn.

@@ -190,6 +190,7 @@ struct Session::Impl {
     uint16_t round = 0, turn = 0xFFFF;
     std::optional<sim::CombatantId> target;
     size_t events_seen = 0;
+    size_t log_seen = 0;
     FeedState feed;
     std::string error;
     std::vector<TileView> tiles;
@@ -285,10 +286,34 @@ struct Session::Impl {
     // Feeds only newly *committed* events (Combat::events() never holds provisional ones).
     void drain_events() {
         const auto& evs = combat->events();
-        if (events_seen >= evs.size()) return;
-        apply_events(std::span<const sim::SimEvent>(evs).subspan(events_seen), feed,
-                     [this](uint32_t id) { return name_of(id); });
-        events_seen = evs.size();
+        if (events_seen < evs.size()) {
+            apply_events(std::span<const sim::SimEvent>(evs).subspan(events_seen), feed,
+                         [this](uint32_t id) { return name_of(id); });
+            events_seen = evs.size();
+        }
+        // Aim / attack facing from new log entries, after TileMoved so a move in the same step keeps
+        // its step and a knockback on someone else is not overwritten by this actor's look.
+        const auto& log = combat->log();
+        for (size_t i = log_seen; i < log.size(); ++i) {
+            const rules5e::ActionRequest& q = log[i].step.request;
+            if (q.kind == rules5e::ActionKind::Move) continue;
+            auto self = feed.tiles.find(q.actor);
+            if (self == feed.tiles.end()) continue;
+            eng::Vec2i aim{};
+            bool aimed = false;
+            if (q.has_area_origin) {
+                aim = {q.area_x, q.area_y};
+                aimed = true;
+            } else if ((q.kind == rules5e::ActionKind::Attack || q.kind == rules5e::ActionKind::CastSpell ||
+                        q.kind == rules5e::ActionKind::OpportunityAttack) && q.target != 0) {
+                auto tgt = feed.tiles.find(q.target);
+                if (tgt == feed.tiles.end()) continue;
+                aim = tgt->second;
+                aimed = true;
+            }
+            if (aimed) note_aim_facing(feed, q.actor, self->second, aim);
+        }
+        log_seen = log.size();
     }
 };
 
@@ -612,6 +637,19 @@ static void equipment_visuals(const sim::Combat& c, sim::CombatantId id, std::ve
     for (const rules5e::HeldItem& h : slung) add(h, AttachSlot::Back);
 }
 
+void copy_visual(const sim::Archetype* arch, ActorView& a) {
+    if (!arch) return;
+    a.kit_id = arch->visual.kit_id;
+    a.visual_bin = arch->visual.bin;
+    a.art_root = arch->visual.art_root;
+    a.size_short = arch->visual.size_short;
+    switch (arch->visual.kind) {
+    case sim::VisualKind::Paperdoll: a.visual_kind = "paperdoll"; break;
+    case sim::VisualKind::Standin: a.visual_kind = "standin"; break;
+    case sim::VisualKind::Unbinned: a.visual_kind = "unbinned"; break;
+    }
+}
+
 ViewModel Session::view() const {
     const Impl& m = *impl_;
     ViewModel v;
@@ -646,6 +684,8 @@ ViewModel Session::view() const {
             a.dead = cb.dead;
             a.down = !cb.dead && !rules5e::is_conscious(cb);
             a.invisible = cb.has(rules5e::Condition::Invisible);
+            copy_visual(arch, a);
+            if (auto fit = m.feed.facing.find(cb.id); fit != m.feed.facing.end()) a.facing = fit->second;
             // is_outlined is rules-internal; scan modifiers (ModStat::Outlined / Faerie Fire).
             a.outlined = false;
             for (const rules5e::ActiveModifier& am : c.state().modifiers)
@@ -666,6 +706,7 @@ ViewModel Session::view() const {
                 a.hp = a.hp_max = arch->base.hp_max;
                 a.is_pc = arch->schema_type == "character";
                 a.footprint = int(arch->footprint);
+                copy_visual(arch, a);
             }
             a.team = a.is_pc ? 0 : 1;
             v.actors.push_back(std::move(a));
