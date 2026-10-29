@@ -1637,15 +1637,16 @@ void life_drain(EncounterState& s, Combatant& t, int taken, int dc, CombatantId 
     if (cap <= 0) { kill(t, ev); check_end(s, ev); }
 }
 
-// Batch 3 (vampire spawn Bite): an attack with target_requires_any needs one of: a willing target (the request says so and it
-// is on the attacker's team), grappled by the attacker, incapacitated, restrained. Empty = allowed.
-static std::string_view target_gate_refusal(const EncounterState& s, const Combatant& a, const Combatant& t, const Attack& atk, bool willing) {
-    const uint8_t g = atk.target_requires_any;
+// Batch 3 (vampire spawn Bite): a gate mask needs one of: a willing target (the request says so and it is on the attacker's
+// team), grappled by the attacker, incapacitated, restrained. Empty = allowed. A mask that is only grappled-by-self (Chuul
+// Tentacles / Otyugh Tentacle Slam, on a save as well as an attack) names that one requirement.
+static std::string_view target_gate_refusal(const EncounterState& s, const Combatant& a, const Combatant& t, uint8_t g, bool willing) {
     if (g == 0) return {};
     if ((g & kTargetGateWilling) && willing && t.team == a.team) return {};
     if ((g & kTargetGateGrappledBySelf) && t.has(Condition::Grappled) && condition_source(s, t.id, Condition::Grappled) == a.id) return {};
     if ((g & kTargetGateIncapacitated) && is_incapacitated(t)) return {};
     if ((g & kTargetGateRestrained) && t.has(Condition::Restrained)) return {};
+    if (g == kTargetGateGrappledBySelf) return "target must be grappled by the user";
     return "target must be willing, grappled by the attacker, incapacitated, or restrained";
 }
 
@@ -4597,6 +4598,9 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         for (Combatant* t : T)
             if (!sight(s, a.id, t->id).can_see) return fail("caster cannot see the target");
     }
+    if (def.target_requires_any != 0)   // Chuul Tentacles / Otyugh Tentacle Slam: each named target, before the action is spent
+        for (Combatant* t : T)
+            if (const auto why = target_gate_refusal(s, a, *t, def.target_requires_any, false); !why.empty()) return fail(why);
     if (!req.summon_archetypes.empty() && def.kind != SpellEffectKind::Summon) return fail("summon: not a summon spell");
     if (!req.summon_tiles.empty() && def.kind != SpellEffectKind::Summon && def.kind != SpellEffectKind::SummonWeapon)
         return fail("summon: not a summon spell");
@@ -5874,7 +5878,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (cover_of(s, f->id, t->id, false, 0) == Cover::Total) return fail("target has total cover");
             if (charmed_by(s, f->id, t->id)) return fail("a charmed creature cannot attack its charmer");
             if (req.attack_index >= f->attacks.size()) return fail("bad attack index");
-            if (const auto why = target_gate_refusal(s, *f, *t, f->attacks[req.attack_index], false); !why.empty()) return fail(why);
+            if (const auto why = target_gate_refusal(s, *f, *t, f->attacks[req.attack_index].target_requires_any, false); !why.empty()) return fail(why);
             if (b.attacks_remaining > 0) --b.attacks_remaining;
             else if (spend_action(b, a, req.kind, false)) {
                 b.loading_fired = 0;
@@ -5913,7 +5917,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             ctx.guess_miss = s.hooks.guess_correct && !s.hooks.guess_correct(s, a, *t, req.guess_x, req.guess_y);
         }
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
-        if (const auto why = target_gate_refusal(s, a, *t, a.attacks[req.attack_index], req.target_willing); !why.empty()) return fail(why);
+        if (const auto why = target_gate_refusal(s, a, *t, a.attacks[req.attack_index].target_requires_any, req.target_willing); !why.empty()) return fail(why);
         if (attack_locked(s, a.id, req.attack_index, t->id)) return fail("that attack holds a grappled creature: it can't attack another target");
         if (req.grapple_instead && !a.attacks[req.attack_index].grapple_instead_ok) return fail("grapple_instead needs an instead_of_damage grapple rider");
         if (s.hooks.loadout_of) {   // EQUIPMENT.md 3: hands / ammunition (only creatures with a loadout view)
@@ -6168,6 +6172,7 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
         if (t.dead) continue;
         if (heal ? t.team != a.team : (t.team == a.team || t.id == a.id)) continue;
         if (!creature_ok(t)) continue;
+        if (const auto why = target_gate_refusal(s, a, t, d.target_requires_any, false); !why.empty()) continue;
         if (heat) {   // one action per eligible worn or held metal item; none when submit would refuse the cast
             if (!s.hooks.loadout_of) continue;
             const LoadoutView* v = s.hooks.loadout_of(s, t.id);
@@ -6846,6 +6851,10 @@ void prune_sourced(EncounterState& s, std::vector<Event>& ev) {
 }
 
 bool grapple(EncounterState& s, CombatantId grappler, CombatantId target, const GrappleRider& g, uint8_t attack_index, std::vector<Event>& ev) {
+    if (g.max_size >= 0) {   // Chuul pincer (Large) / Otyugh tentacle (Medium): a larger creature is not grappled
+        const Combatant* t = find(s, target);
+        if (!t || int(t->size) > int(g.max_size)) return false;
+    }
     if (!g.extended()) return grapple(s, grappler, target, g.escape_dc, ev);
     if (g.max_grapples != 0) {   // giant crab: each claw can grapple only one target; a hit past the limit only deals damage
         int held = 0;

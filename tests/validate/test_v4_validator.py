@@ -487,7 +487,7 @@ GRAPPLE_CASES = [
     ("grapple_escape_dc_float", CRAB, [(GR + ["escape_dc"], 11.0)], [], "grapple escape_dc must be an integer 0..30, got 11.0"),
     ("grapple_escape_dc_string", CRAB, [(GR + ["escape_dc"], "11")], [], "is not of type 'integer'"),
     ("grapple_escape_dc_bool", CRAB, [(GR + ["escape_dc"], True)], [], "is not of type 'integer'"),
-    ("grapple_extra_field", CRAB, [(GR + ["condition"], "restrained")], [], "'condition' is not one of ['kind', 'escape_dc', 'when', 'restrains', 'exclusive', 'max_grapples', 'instead_of_damage']"),
+    ("grapple_extra_field", CRAB, [(GR + ["condition"], "restrained")], [], "'condition' is not one of ['kind', 'escape_dc', 'when', 'restrains', 'exclusive', 'max_grapples', 'instead_of_damage', 'max_size']"),
     ("grapple_escape_dc_on_other_rider", CRAB, [(["actions", 1, "on_hit", 1, "escape_dc"], 12)], [], "'escape_dc' is not one of ['kind', 'damage', 'scale', 'when']"),
     ("grapple_in_on_event_effects", CRAB, [(["traits"], [{"id": "hold", "name": "Hold", "description": "x",
                                                           "effect": {"kind": "on_event", "on": "hit", "effects": [{"kind": "grapple", "escape_dc": 11}]}}])],
@@ -613,6 +613,16 @@ class RG8GrappleRider(unittest.TestCase):
         errs, warns = checks_v4.check_grapple_rider(doc("monster@5", ok, [extra_r]))
         self.assertEqual(errs, [])
         self.assertTrue(any("other on_hit riders" in w for w in warns), warns)
+
+    def test_grapple_max_size(self):
+        # Chuul pincer / Otyugh tentacle: monster@5 only. A larger creature is not grappled.
+        def doc(schema, rider):
+            return {"$schema": schema, "actions": [{"kind": "attack", "id": "pincer", "name": "Pincer", "to_hit": 6, "reach": 10,
+                                                     "damage": [{"dice": "2d6+4", "type": "bludgeoning"}], "on_hit": [rider]}]}
+        ok = {"kind": "grapple", "escape_dc": 14, "max_size": "large"}
+        self.assertEqual(checks_v4.check_grapple_rider(doc("monster@5", ok)), ([], []))
+        errs, _ = checks_v4.check_grapple_rider(doc("monster@4", ok))
+        self.assertTrue(any("max_size need monster@5" in e for e in errs), errs)
 
     def test_grapple_is_a_rider_kind_only_in_common2(self):
         import json

@@ -371,3 +371,76 @@ TEST_CASE("7.2y save_effect control keys, target_creature_types, duration; bonus
     g["id"] = "t.smiter2";
     CHECK(lib.add(g, "monster"));   // closed object
 }
+
+TEST_CASE("save_effect grappled_by_self: one cast names only creatures the user is grappling") {
+    auto lib = sample_lib();
+    Json tent = {{"kind", "save_effect"}, {"id", "tentacles"}, {"name", "Tentacles"},
+                 {"save", {{"ability", "con"}, {"dc", 30}}}, {"range_ft", 30}, {"targets", 2},
+                 {"target_requires_any", Json::array({"grappled_by_self"})},
+                 {"apply", Json::array({{{"condition", "poisoned"},
+                                         {"duration", {{"kind", "rounds"}, {"n", 10}}},
+                                         {"repeat_save", "end_of_turn"}}})}};
+    Json m = drake("t.chuul", tent);
+    m["$schema"] = "monster@5";
+    m["hit_points"]["average"] = 2000;
+    m["actions"][0]["to_hit"] = 40;
+    m["actions"][0]["on_hit"] = Json::array({{{"kind", "grapple"}, {"escape_dc", 30}}});
+    REQUIRE_FALSE(lib.add(m, "monster"));
+    const uint32_t sid = rules5e::spell_id_of("t.chuul#tentacles");
+    const rules5e::SpellDef* d = lib.spells()->find(sid);
+    REQUIRE(d);
+    CHECK(d->target_requires_any == rules5e::kTargetGateGrappledBySelf);
+    CHECK(d->targets == 2);
+    auto refuse = [&](Json doc, const char* id, const char* needle) {
+        doc["id"] = id;
+        const auto e = lib.add(doc, "monster");
+        REQUIRE(e);
+        CHECK(e->find(needle) != std::string::npos);
+    };
+    Json bad = m;
+    bad["actions"].back()["target_requires_any"] = Json::array({"willing"});
+    refuse(bad, "t.badgate", "grappled_by_self only");
+    bad = m;
+    bad["actions"].back()["area"] = {{"shape", "sphere"}, {"size_ft", 5}};
+    refuse(bad, "t.badarea", "takes no area");
+    bad = m;
+    bad["actions"].back()["targets"] = 9;
+    refuse(bad, "t.badn", "targets must be an integer 1..8");
+    bad = m;
+    bad["$schema"] = "monster@4";
+    refuse(bad, "t.oldgate", "needs a monster@5 file");
+
+    auto ch = arena({{"t.chuul", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}, {kFighter, Vec2i{7, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 4);
+    REQUIRE(c);
+    const CombatantId chuul = ch.spawns[0].stable_id, held = ch.spawns[1].stable_id, free = ch.spawns[2].stable_id;
+    advance_to(*c, chuul);
+    CHECK(next_command(*c, free).request.kind != ActionKind::CastSpell);
+    Command cast;
+    cast.request = {chuul, ActionKind::CastSpell, free};
+    cast.request.spell_id = sid;
+    cast.request.targets = {free};
+    const auto refused = c->submit(cast);
+    CHECK_FALSE(refused.ok);
+    CHECK(std::string(refused.error).find("grappled by the user") != std::string::npos);
+    CHECK(c->state().budget.action);
+    Command bite;
+    bite.request = {chuul, ActionKind::Attack, held};
+    bite.request.attack_index = 0;
+    REQUIRE(c->submit(bite).ok);
+    c->settle(nullptr);
+    CHECK(rules5e::find(c->state(), held)->has(rules5e::Condition::Grappled));
+    Command end;
+    end.request = {chuul, ActionKind::EndTurn};
+    REQUIRE(c->submit(end).ok);
+    advance_to(*c, chuul);
+    Command cmd = next_command(*c, held);
+    REQUIRE(cmd.request.kind == ActionKind::CastSpell);
+    CHECK(cmd.request.spell_id == sid);
+    CHECK(next_command(*c, free).request.kind != ActionKind::CastSpell);
+    REQUIRE(c->submit(cmd).ok);
+    c->settle(nullptr);
+    CHECK(rules5e::find(c->state(), held)->has(rules5e::Condition::Poisoned));
+    CHECK_FALSE(rules5e::find(c->state(), free)->has(rules5e::Condition::Poisoned));
+}

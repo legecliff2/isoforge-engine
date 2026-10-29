@@ -311,3 +311,60 @@ TEST_CASE("grapple rider: a plain rider leaves the appended fields unset (no 0xD
     const auto& g = lib.find("srd51.monster.goblin")->grapple_on_hit.at(0);
     CHECK_FALSE(g.extended());
 }
+
+TEST_CASE("grapple max_size: a larger target takes the damage and is not grappled") {
+    ContentLibrary lib;
+    REQUIRE(lib.load(sample_set()).empty());
+    Json tank = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");
+    tank["hit_points"]["average"] = 2000;
+    REQUIRE_FALSE(lib.add(tank, "character"));
+    Json small = tank;
+    small["id"] = "t.small";
+    small["size"] = "small";
+    REQUIRE_FALSE(lib.add(small, "character"));
+    Json grab = load_json("content/packs/srd51.core/monsters/goblin.json");
+    grab["$schema"] = "monster@5";
+    grab["id"] = "t.grab";
+    grab["hit_points"]["average"] = 2000;
+    grab["actions"][0]["to_hit"] = 40;
+    grab["actions"][0]["on_hit"] = Json::array({{{"kind", "grapple"}, {"escape_dc", 11}, {"max_size", "small"}}});
+    REQUIRE_FALSE(lib.add(grab, "monster"));
+    const auto& g = lib.find("t.grab")->grapple_on_hit.at(0);
+    CHECK(g.max_size == int8_t(rules5e::Size::Small));
+    CHECK_FALSE(g.extended());   // size-only: a successful grapple leaves via_attack 0xFF
+    auto ch = arena({{"t.grab", Vec2i{6, 5}}, {"t.small", Vec2i{5, 5}}, {kFighter, Vec2i{7, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 3);
+    REQUIRE(c);
+    const CombatantId grabber = ch.spawns[0].stable_id, tiny = ch.spawns[1].stable_id, med = ch.spawns[2].stable_id;
+    to_turn(*c, grabber);
+    const int med_hp = rules5e::find(c->state(), med)->hp;
+    Command bite;
+    bite.request = {grabber, ActionKind::Attack, tiny};
+    bite.request.attack_index = 0;
+    bite.request.target_within_5ft = true;
+    REQUIRE(c->submit(bite).ok);
+    c->settle(nullptr);
+    CHECK(has(*c, tiny, Condition::Grappled));
+    CHECK(c->state().sourced.at(0).via_attack == 0xFF);
+    end_turn(*c);
+    to_turn(*c, grabber);
+    Command bite_med;
+    bite_med.request = {grabber, ActionKind::Attack, med};
+    bite_med.request.attack_index = 0;
+    bite_med.request.target_within_5ft = true;
+    REQUIRE(c->submit(bite_med).ok);
+    c->settle(nullptr);
+    CHECK(rules5e::find(c->state(), med)->hp < med_hp);   // the hit landed
+    CHECK_FALSE(has(*c, med, Condition::Grappled));
+    Json bad = grab;
+    bad["id"] = "t.badsize";
+    bad["actions"][0]["on_hit"] = Json::array({{{"kind", "grapple"}, {"max_size", "colossal"}}});
+    CHECK(lib.add(bad, "monster"));
+    bad["$schema"] = "monster@4";
+    bad["id"] = "t.oldsize";
+    bad["actions"][0]["on_hit"] = Json::array({{{"kind", "grapple"}, {"max_size", "large"}}});
+    const auto err = lib.add(bad, "monster");
+    REQUIRE(err);
+    CHECK(err->find("grapple max_size needs a monster@5 file") != std::string::npos);
+}
