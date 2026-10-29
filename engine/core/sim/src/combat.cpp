@@ -379,9 +379,11 @@ int Combat::natural_footprint(CombatantId id) const {
 
 // SRD 5.1 Moving Around Other Creatures (feat/size-space): a creature may move through an ally's space, and through a
 // hostile's space only when the hostile is at least two sizes larger or smaller. Swarms already ignore spaces (occupied_except).
+// B9: Air Form / Water Form may enter a hostile's space at any size difference. The other creature does not gain that.
 bool Combat::may_pass(CombatantId mover, CombatantId other) const {
     if (!hostile(mover, other)) return true;
     const auto* a = rules5e::find(state_, mover);
+    if (a && a->enter_hostile_space) return true;
     const auto* b = rules5e::find(state_, other);
     return a && b && std::abs(int(a->size) - int(b->size)) >= 2;
 }
@@ -405,6 +407,29 @@ CombatantId Combat::occupant_at(Vec2i t, CombatantId except, int mover_abs_ft) c
         }
     }
     return 0;
+}
+
+// B9: true when stopping at `anchor` would end inside a creature this mover may not stop in. Air/Water Form may stop in a
+// hostile. Anyone else may stop in no one. Swarms occupy no tiles (occupied_except). A vertical span that does not overlap
+// is not in the way (altitude PR2, the same test as overlaps_other).
+bool Combat::forbids_stop(CombatantId id, Vec2i anchor, int n) const {
+    bool mover_swarm = false;
+    for (const auto& s : slots_) if (s.id == id) mover_swarm = s.archetype->swarm;
+    if (mover_swarm) return false;
+    const auto* me = rules5e::find(state_, id);
+    const bool form = me && me->enter_hostile_space;
+    const int abs_ft = airborne(id) ? abs_height_ft(id)
+                                    : grid_.footprint_ground_ft(anchor, n) + (burrowed(id) && me ? int(me->alt_ft) : 0);
+    for (const auto& s : slots_) {
+        const auto* c = rules5e::find(state_, s.id);
+        if (s.id == id || !c || c->dead || s.archetype->swarm) continue;
+        const Spot sp = spot(s.id);
+        if (rect_distance(anchor, n, sp.p, sp.n) != 0) continue;
+        if (!spans_overlap(abs_ft, n, abs_height_ft(s.id), sp.n)) continue;
+        if (form && hostile(id, s.id)) continue;
+        return true;
+    }
+    return false;
 }
 
 // Does `id`'s footprint at `anchor` (side n) share a tile with another living creature's space?
@@ -1575,8 +1600,9 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     if (req.actor != actor) { r.error = "not this combatant's turn"; return r; }
     if (req.kind == ActionKind::Move) { r.error = "use Step commands for movement (sim paths the grid)"; return r; }
     // SRD (feat/size-space): a creature can't willingly end its move in another creature's space. The turn may not end
-    // while it overlaps one, unless no step out is possible (then it stays: unwilling).
-    if (req.kind == ActionKind::EndTurn && overlaps_other(actor, pos(actor), footprint_size(actor))) {
+    // while it overlaps one it may not stop in, unless no step out is possible (then it stays: unwilling).
+    // B8: a Deadly Leap landing does not grant a lasting exception. B9: Air/Water Form may keep a hostile's space.
+    if (req.kind == ActionKind::EndTurn && forbids_stop(actor, pos(actor), footprint_size(actor))) {
         const Vec2i p = pos(actor);
         for (int dy = -1; dy <= 1; ++dy)
             for (int dx = -1; dx <= 1; ++dx) {
@@ -1880,10 +1906,12 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to, uint1
     const uint8_t mode = step_mode(mover, from, to, cost, fp);
     if (mode == 0xFF) { r.error = "not enough movement"; return r; }
     if (mode == 0xFE) { r.error = "cannot fly while prone"; return r; }
-    // SRD: a creature can't willingly end its move in another creature's space: a step into one needs movement left (in
-    // the step's speed) for another 5 ft step (actions other than Step are refused while it overlaps, see do_rules).
-    // B8: a jump step may end there. That is the Deadly Leap landing. EndTurn still refuses a later overlap.
-    if (plan.ends_in_other && jump_ft == 0 && rules5e::move_allowance(state_, *rules5e::find(state_, mover), mode) - cost < 5) {
+    // SRD: a creature can't willingly end its move in another creature's space. A step that would finish in a space it
+    // may not stop in needs movement left (in the step's speed) for another 5 ft step. EndTurn refuses a later overlap
+    // the mover may not keep (do_rules). B8: a jump step may end there. That is the Deadly Leap landing, and it is not a
+    // lasting exception. B9: Air/Water Form may stop in a hostile's space, so that overlap does not need the spare step.
+    if (jump_ft == 0 && forbids_stop(mover, to, fp) &&
+        rules5e::move_allowance(state_, *rules5e::find(state_, mover), mode) - cost < 5) {
         r.error = "cannot end movement in another creature's space";
         return r;
     }

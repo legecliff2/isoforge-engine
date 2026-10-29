@@ -1786,9 +1786,14 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     c.burrow_ft = uint8_t(std::clamp(geti(doc.at("speed"), "burrow", 0), 0, 255));
     if (auto hv = doc.at("speed").find("hover"); hv != doc.at("speed").end() && hv->is_boolean()) c.hover = hv->get<bool>();
     // altitude PR3: SRD Flyby is a descriptive monster trait (traits[].id == "flyby", no effect object needed).
+    // B9: Air Form / Water Form are the same shape. Either id sets enter_hostile_space (CONTENT_CONVENTIONS §39).
     if (auto ts = doc.find("traits"); ts != doc.end() && ts->is_array())
         for (const Json& t : *ts)
-            if (t.is_object() && t.value("id", "") == "flyby") c.flyby = true;
+            if (t.is_object()) {
+                const std::string id = t.value("id", "");
+                if (id == "flyby") c.flyby = true;
+                if (id == "air_form" || id == "water_form") c.enter_hostile_space = true;
+            }
     if (auto ch = doc.find("challenge"); ch != doc.end() && ch->is_object())
         if (auto rt = ch->find("rating"); rt != ch->end())
             if (auto x = cr_x8_of(*rt)) a.cr_x8 = int16_t(*x);
