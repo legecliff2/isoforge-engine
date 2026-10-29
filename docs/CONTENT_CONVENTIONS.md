@@ -1011,13 +1011,15 @@ Chuul Tentacles and Otyugh Tentacle Slam name creatures the monster has grappled
 
 Grapple `max_size` is §5. Chuul's pincer is Large or smaller; an otyugh's tentacle is Medium or smaller.
 
-**Not this key.** A negative gate ("one target not grappled by the user", giant crocodile tail, ankheg Acid Spray) is not `grappled_by_self`. `attack_effect` still has no such gate (giant toad / giant frog Swallow). Otyugh Tentacle Slam stays a standalone save this section already gates; this PR does not author `otyugh.json`.
+**Not this key.** A negative gate ("one target not grappled by the user", giant crocodile tail, ankheg Acid Spray) is not `grappled_by_self`. `attack_effect` still has no such gate (giant toad / giant frog Swallow). Otyugh Tentacle Slam is that standalone save on `srd51.monster.otyugh` (`targets` 2, `range_ft` 10, half damage, stunned until the end of the otyugh's next turn). It is not a free rider.
 
 **Multiattack free rider (B3b, chuul Tentacles).** A monster@5 multiattack option may set `free_rider` to the id of a `rider_only: true` save_effect on the same creature. The option is still two (or more) attack indices. When those attacks finish, `TurnBudget::free_rider` is that save's spell id until it is used or another action is spent. The cast does not spend an action. The save's `grappled_by_self` gate is checked at that moment, so a pincer in this same Multiattack that just established the grapple counts, and so does a grapple already held. One use; one named target (`targets` stays 1 for chuul). It is not listed in `legal_actions` and the built-in AI does not cast it as its own action. Outside that window the cast is refused (`only a multiattack rider`) and the action is not spent. A refused target does not consume the use. `count_dice` cannot be combined with `free_rider`. A `rider_only` save that no option names, or a `free_rider` that does not name one, is a load error. Below monster@5 the loader says `multiattack free_rider needs a monster@5 file` or `rider_only needs a monster@5 file`. Not hashed: the cast is an ordinary `CastSpell` in the log, and replay re-arms the window. No new `SIM_EVENTS` tag.
 
 **Paralyzed while poisoned.** The first `apply[]` entry of that save may set `while` to a different condition (`poisoned`, `while: paralyzed`). The primary condition's effect holds both. A successful repeat save, or the timer (1 minute is 10 rounds), ends both. Immunity to the primary condition applies neither (unlike `also_on_fail_by`). `while` needs a tracked primary condition, takes no area, and takes no `also_on_fail_by` or `control`. On a later `apply[]` entry the loader says `while goes on the first apply[] entry`.
 
 Chuul is authored (`srd51.monster.chuul`): pincer `max_size: large` and `max_grapples: 2`, Multiattack `pincer` ×2 with `free_rider: tentacles`. Amphibious and Sense Magic stay descriptive.
+
+Otyugh is authored (`srd51.monster.otyugh`): tentacle `max_size: medium`, `max_grapples: 2`, and `restrains` (escape DC 13). Tentacle Slam is its own action. `range_ft` 10 is the tentacle reach; the slam text names no separate distance, and the cast does not add a grappled creature the caller left out. Limited Telepathy stays descriptive.
 
 ## 34. Area-save petrify escalation (`escalates` on `save_effect`, monster@5)
 
@@ -1090,7 +1092,7 @@ The clock is the encounter round. 24 hours is 14400 rounds (`hours × 600`, the 
 
 `Combat::hash` tag **0xE3** folds the rows, then any `disease_hp_max_reduction`, only while one of them exists. Empty state hashes as before. Next free is **0xE4**.
 
-Not this key. Mummy rot lowers the maximum by 3d6 every 24 hours with no repeat save and no cure-on-success; `curse` is still only `no_regain_hp`. Lesser Restoration ends the poisoned condition and does not cure this disease. Lay on Hands' disease spend and Divine Health are not wired. Greater Restoration's hit point maximum option clears Life Drain only. Two `until_cured` poisons without a disease row share one condition bit; curing a disease clears that bit unless another disease row or a tracked effect still applies it. This PR does not author `otyugh.json`. Death dog stays on its poisoned-only rider until T&C adds `disease`.
+Not this key. Mummy rot lowers the maximum by 3d6 every 24 hours with no repeat save and no cure-on-success; `curse` is still only `no_regain_hp`. Lesser Restoration ends the poisoned condition and does not cure this disease. Lay on Hands' disease spend and Divine Health are not wired. Greater Restoration's hit point maximum option clears Life Drain only. Two `until_cured` poisons without a disease row share one condition bit; curing a disease clears that bit unless another disease row or a tracked effect still applies it. `srd51.monster.otyugh` authors the bite with this object (Con DC 15). Death dog stays on its poisoned-only rider until T&C adds `disease`.
 
 ## 37. Both-hits Engulf (monster@5 multiattack `engulf_both_hits`)
 

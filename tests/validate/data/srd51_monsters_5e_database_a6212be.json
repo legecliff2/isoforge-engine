@@ -9741,6 +9741,63 @@
      ]
     }
    ]
+  },
+  "otyugh": {
+   "name": "Otyugh",
+   "size": "Large",
+   "type": "aberration",
+   "ac": [
+    14
+   ],
+   "hp": 114,
+   "hp_roll": "12d10+48",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    11,
+    19,
+    6,
+    13,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d8+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tentacle",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "bludgeoning"
+       ],
+       [
+        "1d8",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
