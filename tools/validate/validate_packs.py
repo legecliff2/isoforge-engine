@@ -8,6 +8,11 @@ With no arguments it validates every pack under content/packs/ and every frozen
 compat pack under tests/compat/fl*/ , then every scenarios/<name>/scenario.json
 (scenario@1) and its golden.txt. Exit code 0 = all valid.
 
+A scenario roster archetype that the Deferred table in
+docs/SRD_MONSTERS_DEFERRED.md parks is a warning (soft-block). It does not
+fail the scenario and does not invent a stat block. Authored rows, including
+partial rows, are not parked.
+
 Each data file declares "$schema": "<type>@<N>", resolved to schemas/<type>/v<N>.schema.json.
 Beyond schema validation it runs cross-checks the schemas can't express. Everything
 here uses integer math only (§4.3), and files/errors are processed in sorted order
@@ -1071,15 +1076,49 @@ def _walkable_cell(doc: dict, x: int, y: int) -> bool:
     return True
 
 
+def monster_ledger():
+    """The bestiary ledger parser (tools/bestiary_editor/ledger.py). No Tk."""
+    editor = ROOT / "tools" / "bestiary_editor"
+    if str(editor) not in sys.path:
+        sys.path.insert(0, str(editor))
+    import ledger as monster_ledger_mod
+    return monster_ledger_mod
+
+
+def scenario_soft_block_warnings(doc: dict, book) -> list[str]:
+    """Warning lines for Parked ids on a playable scenario roster. Not errors."""
+    return [block.line() for block in monster_ledger().soft_blocks_for_scenario(doc, book)]
+
+
+def scenario_failed(errs: list[str], warnings: list[str]) -> bool:
+    """Hard ref errors fail a scenario. Parked soft-block warnings do not."""
+    del warnings
+    return bool(errs)
+
+
 def validate_scenarios(registry: Registry, by_tag: dict) -> int:
     """scenarios/<name>/scenario.json (scenario@1) plus a non-empty golden.txt.
 
     Cross-checks the schema cannot express: the pack resolves, party members are characters and
     monsters are monsters in that pack or its depends, roster ids are unique, tiles are in-bounds
     and walkable, surprise names a roster id, and a chunk path stays inside the scenario's pack.
+
+    Parked monsters (docs/SRD_MONSTERS_DEFERRED.md Deferred table, parsed by the bestiary ledger)
+    are soft-blocked: a roster archetype in that table prints ``warning`` and does not fail the
+    scenario. The check does not approximate the blocking mechanic and does not add a stat block.
     """
+    try:
+        book = monster_ledger().load_ledger()
+    except OSError as exc:
+        print(f"FAIL scenarios: monster ledger unreadable ({exc})")
+        return 1
     root = ROOT / "scenarios"
     paths = sorted(root.glob("*/scenario.json")) if root.is_dir() else []
+    for mismatch in book.count_errors():
+        print(
+            "warning scenarios: monster ledger count mismatch "
+            f"({mismatch}); soft-block uses the parsed Deferred rows"
+        )
     if not paths:
         print("ok   scenarios (none)")
         return 0
@@ -1120,7 +1159,10 @@ def validate_scenarios(registry: Registry, by_tag: dict) -> int:
                 errs += _scenario_refs(doc, pset)
         elif doc is not None:
             errs.append("document must be an object")
-        if errs:
+        parked_warns = scenario_soft_block_warnings(doc, book) if isinstance(doc, dict) else []
+        for warning in parked_warns:
+            print(f"warning {rel}: {warning}")
+        if scenario_failed(errs, parked_warns):
             failed += 1
             print(f"FAIL {rel}")
             for e in errs:

@@ -252,14 +252,18 @@ class Editor:
         file_bit = row.path.name if row.path is not None else "no content file"
         self.title.configure(text=f"{row.badge}  {row.name}  {row.monster_id}  ({file_bit})")
         detail = row.detail.strip()
+        if row.badge == "Parked":
+            detail = f"{detail}\n{ledger.SOFT_BLOCK_NOTE}" if detail else ledger.SOFT_BLOCK_NOTE
         self.status.configure(text=detail if detail else "(no ledger notes)")
         if row.path is None or row.rel is None:
+            parked_note = f"{ledger.SOFT_BLOCK_NOTE}\n" if row.badge == "Parked" else ""
             self._set_editor(
                 f"{row.name} ({row.monster_id or 'no id'})\n"
                 f"Badge: {row.badge}\n\n"
                 "No content file under content/packs/srd51.core/monsters/.\n"
                 "Parked rows are deferred in docs/SRD_MONSTERS_DEFERRED.md.\n"
-                "This editor does not invent a stat block for them.\n\n"
+                "This editor does not invent a stat block for them.\n"
+                f"{parked_note}\n"
                 f"{row.detail}\n",
                 editable=False,
             )

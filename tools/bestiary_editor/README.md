@@ -63,8 +63,14 @@ and `goblin.json` expand to multiple lines; the document's values do not change.
 
 **Revert** reloads the file.
 
-This draft does not soft-block Parked rows, does not change `ledger.md`, and
-does not turn `check_monster_derive` into a new public derive API.
+Parked rows are soft-blocked from playable encounters. A `scenario@1` roster
+archetype (`party` or `monsters`) whose id is in the Deferred table prints a
+`warning` from `validate_packs.py` on the default content-validate run. The
+warning does not fail the scenario, and this editor still does not invent a
+stat block. Authored rows, including Partial, stay playable.
+`srd51.monster.goblin` is not in the ledger, so it is not parked. Selecting a
+Parked row shows that note. `check_monster_derive` is not a new public derive
+API.
 
 ## Tests
 
@@ -75,6 +81,10 @@ validator's unittest runner (the same one `content_validate_*` tests use):
 ```sh
 python3 tools/validate/run_unittest_file.py tests/validate/test_bestiary_ledger.py
 ```
+
+The scenario warning is also covered by `tools/validate/test_validate_packs.py`
+(`content_validate_tests`). Shipped scenarios have no Parked roster id, so the
+default run stays `ok` with no soft-block line.
 
 Use the validate venv when the system interpreter does not have `jsonschema`.
 The runner exits non-zero if zero tests ran.
