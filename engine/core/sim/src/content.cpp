@@ -1057,6 +1057,22 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             d.target_sees_source = ts->get<bool>();
         }
     }
+    // Chuul Tentacles / Otyugh Tentacle Slam: the named targets must be grappled by the user. monster@5 save_effect only,
+    // and only the grappled_by_self gate (the other target_requires_any values stay weapon-attack-only). No area: the
+    // caller names the creatures. `targets` (1..8, default 1) is how many one cast may name, so Tentacle Slam can name
+    // each grappled creature; the cast does not add a grappled creature the caller left out.
+    if (auto tg = act.find("target_requires_any"); tg != act.end()) {
+        if (doc.value("$schema", "") != "monster@5") return where + ": target_requires_any on a save_effect needs a monster@5 file";
+        if (has_area) return where + ": target_requires_any takes no area";
+        if (!tg->is_array() || tg->size() != 1 || !(*tg)[0].is_string() || (*tg)[0].get<std::string>() != "grappled_by_self")
+            return where + ": target_requires_any on a save_effect is grappled_by_self only";
+        d.target_requires_any = rules5e::kTargetGateGrappledBySelf;
+        if (act.contains("targets")) {
+            const int n = geti(act, "targets", 0);
+            if (n < 1 || n > 8) return where + ": targets must be an integer 1..8";
+            d.targets = uint8_t(n);
+        }
+    }
     // 7.2y class feature hooks (T&C): the spell@1 control keys, target_creature_types and a control duration.
     if (auto tt = act.find("target_creature_types"); tt != act.end()) {
         if (!tt->is_array() || tt->empty()) return where + ": bad target_creature_types";
@@ -2069,6 +2085,16 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                         if (!m.is_number_integer() || m.get<int>() < 1 || m.get<int>() > 8)
                             return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple max_grapples";
                         gr.max_grapples = uint8_t(m.get<int>());
+                    }
+                    if (g.contains("max_size")) {   // Chuul pincer Large / Otyugh tentacle Medium: monster@5 only
+                        if (schema_type != "monster" || (declared != 0 && declared < 5))
+                            return a.id + ": " + act.value("id", "?") + " on_hit: grapple max_size needs a monster@5 file";
+                        static const char* kSizes[] = {"tiny", "small", "medium", "large", "huge", "gargantuan"};
+                        int k = -1;
+                        const Json& ms = g["max_size"];
+                        for (int i = 0; i < 6; ++i) if (ms.is_string() && ms.get<std::string>() == kSizes[i]) k = i;
+                        if (k < 0) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple max_size";
+                        gr.max_size = int8_t(k);
                     }
                     a.grapple_on_hit[uint8_t(ai)] = gr;
                     if (gr.instead_of_damage && ai < c.attacks.size()) c.attacks[ai].grapple_instead_ok = true;

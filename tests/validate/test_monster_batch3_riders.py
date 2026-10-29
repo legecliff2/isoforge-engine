@@ -422,5 +422,41 @@ class AreaEffect(unittest.TestCase):
         self.assertTrue([m for m in w if "area_effect: unsupported usage or condition duration" in m], w)
 
 
+class GrappledBySelfSave(unittest.TestCase):
+    """Chuul Tentacles / Otyugh Tentacle Slam: a save_effect may require grappled_by_self, and no other gate."""
+
+    def tentacles(self, **keys):
+        d = bugbear()
+        act = {"id": "tentacles", "name": "Tentacles", "kind": "save_effect",
+               "save": {"ability": "con", "dc": 13},
+               "target_requires_any": ["grappled_by_self"],
+               "apply": [{"condition": "poisoned", "duration": {"kind": "rounds", "n": 10},
+                          "repeat_save": "end_of_turn"}]}
+        act.update(keys)
+        d["actions"].append(act)
+        return d
+
+    def test_valid(self):
+        e, _w = run(self.tentacles())
+        self.assertEqual(e, [], e)
+        e, _w = run(self.tentacles(targets=2))
+        self.assertEqual(e, [], e)
+
+    def test_refused(self):
+        e, _w = run(self.tentacles(target_requires_any=["willing"]))
+        self.assertTrue([m for m in e if "grappled_by_self only" in m], e)
+        e, _w = run(self.tentacles(target_requires_any=["grappled_by_self", "restrained"]))
+        self.assertTrue([m for m in e if "grappled_by_self only" in m], e)
+        e, _w = run(self.tentacles(area={"shape": "sphere", "size_ft": 5}))
+        self.assertTrue([m for m in e if "takes no area" in m or "area" in m], e)
+        e, _w = run(self.tentacles(targets=9))
+        self.assertTrue([m for m in e if "targets must be an integer 1..8" in m], e)
+        d = bugbear()
+        d["actions"].append({"id": "x", "name": "X", "kind": "special", "description": "x",
+                              "target_requires_any": ["grappled_by_self"]})
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
+
+
 if __name__ == "__main__":
     unittest.main()

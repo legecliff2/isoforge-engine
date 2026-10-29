@@ -379,3 +379,89 @@ TEST_CASE("grapple rider: max_grapples per attack (giant crab claws); past the l
     CHECK_FALSE(attack_locked(s, 1, 0, 4));   // not exclusive: the claw still attacks others
     CHECK(grapple(s, 1, 4, claw, 1, ev));      // another attack has its own count
 }
+
+TEST_CASE("grapple rider: max_size skips a larger creature and is not an extended field") {
+    GrappleRider g = rider(14, false, false);
+    g.max_size = int8_t(Size::Large);   // Chuul pincer: Large or smaller
+    CHECK_FALSE(g.extended());
+    std::vector<Event> ev;
+    auto huge = start(strong(1), foe(2, Size::Huge));
+    mut(huge, 1).size = Size::Large;   // Huge is one size up, so size_within_one would allow it
+    CHECK_FALSE(grapple(huge, 1, 2, g, 0, ev));
+    CHECK(ev.empty());
+    CHECK_FALSE(mut(huge, 2).has(Condition::Grappled));
+    auto fit = start(strong(1), foe(2, Size::Large));
+    mut(fit, 1).size = Size::Large;
+    REQUIRE(grapple(fit, 1, 2, g, 0, ev));
+    CHECK(mut(fit, 2).has(Condition::Grappled));
+    CHECK(fit.sourced[0].via_attack == 0xFF);   // size-only: the 0xDB fold stays off
+    auto med = start(strong(1), foe(2, Size::Medium));
+    REQUIRE(grapple(med, 1, 2, g, 0, ev));
+    CHECK(mut(med, 2).has(Condition::Grappled));
+    // the cap still composes with restrains: a Large target (over Medium) gains neither condition
+    GrappleRider held = rider(14, true, false);
+    held.max_size = int8_t(Size::Medium);   // Otyugh tentacle
+    auto oty = start(strong(1), foe(2, Size::Large));
+    mut(oty, 1).size = Size::Large;
+    CHECK_FALSE(grapple(oty, 1, 2, held, 0, ev));
+    CHECK_FALSE(mut(oty, 2).has(Condition::Grappled));
+    CHECK_FALSE(mut(oty, 2).has(Condition::Restrained));
+}
+
+TEST_CASE("save_effect grappled_by_self: only creatures the user is grappling, before the action is spent") {
+    auto book = srd_spellbook();
+    SpellDef tent;
+    tent.content_id = "test.tentacles";
+    tent.id = spell_id_of(tent.content_id);
+    tent.kind = SpellEffectKind::Save;
+    tent.is_spell = false;
+    tent.magical = false;
+    tent.fixed_dc = 30;
+    tent.save_ability = Ability::Con;
+    tent.applies_condition = true;
+    tent.condition = Condition::Poisoned;
+    tent.repeat_save = RepeatSave::EndOfTurn;
+    tent.expiry = uint8_t(Expiry::Rounds);
+    tent.duration_rounds = 10;
+    tent.target_requires_any = kTargetGateGrappledBySelf;
+    tent.targets = 2;   // Tentacle Slam: one cast may name each grappled creature
+    tent.range_ft = 30;
+    book->add(tent);
+    auto hooks = spell_hooks();
+    hooks.spells = book;
+    Combatant user = strong(1);
+    user.spells_known.push_back(tent.id);
+    auto s = begin_encounter({user, foe(2), foe(3)}, 1, nullptr, hooks);
+    end_turns_until(s, 1);
+    std::vector<Event> ev;
+    REQUIRE(grapple(s, 1, 2, 13, ev));
+    bool saw_held = false, saw_free = false;
+    for (const auto& r : legal_actions(s))
+        if (r.kind == ActionKind::CastSpell && r.spell_id == tent.id) {
+            saw_held = saw_held || r.target == 2;
+            saw_free = saw_free || r.target == 3;
+        }
+    CHECK(saw_held);
+    CHECK_FALSE(saw_free);
+    ActionRequest bad{1, ActionKind::CastSpell, 3};
+    bad.spell_id = tent.id;
+    bad.targets = {3};
+    const auto refused = step(s, bad);
+    CHECK_FALSE(refused.ok);
+    CHECK(std::string(refused.error).find("grappled by the user") != std::string::npos);
+    CHECK(s.budget.action);
+    ActionRequest mixed{1, ActionKind::CastSpell, 2};
+    mixed.spell_id = tent.id;
+    mixed.targets = {2, 3};   // one creature the user is not grappling refuses the whole cast
+    CHECK_FALSE(step(s, mixed).ok);
+    CHECK(s.budget.action);
+    REQUIRE(grapple(s, 1, 3, 13, ev));
+    ActionRequest both{1, ActionKind::CastSpell, 2};
+    both.spell_id = tent.id;
+    both.targets = {2, 3};
+    const auto hit = step(s, both);
+    REQUIRE(hit.ok);
+    CHECK_FALSE(s.budget.action);
+    CHECK(mut(s, 2).has(Condition::Poisoned));
+    CHECK(mut(s, 3).has(Condition::Poisoned));
+}

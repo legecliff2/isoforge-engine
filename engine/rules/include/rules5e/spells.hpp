@@ -539,6 +539,10 @@ struct SpellDef {
     bool charm_immune = false;
     bool caster_sees_target = false;
     bool requires_hearing = false;
+    // appended (Chuul Tentacles / Otyugh Tentacle Slam): kTargetGate* bits on a non-spell Save. Non-zero = each named target
+    // must meet at least one (the cast is refused, action unspent, when any does not). Content sets only
+    // kTargetGateGrappledBySelf. 0 = any target. Static content: not hashed. `targets` is how many creatures one cast may name.
+    uint8_t target_requires_any = 0;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
