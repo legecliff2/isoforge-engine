@@ -2878,7 +2878,6 @@ rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery&
                 if (!free) break;
                 cur = nx;
                 walked.push_back(cur);
-                const Spot ss = spot(q.source);
                 const bool overlap = cur.x < ss.p.x + ss.n && ss.p.x < cur.x + fp && cur.y < ss.p.y + ss.n && ss.p.y < cur.y + fp;
                 if (!overlap) { ++moved; break; }   // this step counts; the for-increment does not run
                 continue;
