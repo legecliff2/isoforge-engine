@@ -373,7 +373,12 @@
               "enum": ["paperdoll", "standin"],
               "description": "Overrides the type default."
             },
-            "bin": {
+            "kit": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Kit id Render & Platform loads. Wins over presentation.sprite. Absent: presentation.sprite, else paperdoll or standin.<standin_bin>."
+            },
+            "standin_bin": {
               "enum": ["tiny", "small", "medium", "large"],
               "description": "Stand-in canvas. Ignored for paperdoll. Huge and gargantuan are not M0 bins."
             },

@@ -103,12 +103,12 @@ TEST_CASE("visual defaults: humanoid paperdoll, beast stand-in bin, huge unbinne
     REQUIRE(g);
     REQUIRE(w);
     CHECK(g->visual.kind == VisualKind::Paperdoll);
-    CHECK(g->visual.kit_id == "paperdoll");
-    CHECK(g->visual.bin.empty());
+    CHECK(g->visual.kit == "paperdoll");
+    CHECK(g->visual.standin_bin.empty());
     CHECK_FALSE(g->visual.size_short);
     CHECK(w->visual.kind == VisualKind::Standin);
-    CHECK(w->visual.bin == "medium");
-    CHECK(w->visual.kit_id == "standin.medium");
+    CHECK(w->visual.standin_bin == "medium");
+    CHECK(w->visual.kit == "standin.medium");
 
     Json huge = gob.data;
     huge["id"] = "test.monster.huge";
@@ -118,21 +118,21 @@ TEST_CASE("visual defaults: humanoid paperdoll, beast stand-in bin, huge unbinne
     const Archetype* h = lib.find("test.monster.huge");
     REQUIRE(h);
     CHECK(h->visual.kind == VisualKind::Unbinned);
-    CHECK(h->visual.kit_id.empty());
-    CHECK(h->visual.bin.empty());
+    CHECK(h->visual.kit.empty());
+    CHECK(h->visual.standin_bin.empty());
 
     Json authored = gob.data;
     authored["id"] = "test.monster.kit";
-    authored["presentation"] = Json{{"sprite", "kit.test"}};
-    authored["visual"] = Json{{"kind", "standin"}, {"bin", "small"}, {"art_root", "art/standin"}, {"size_short", true}};
+    authored["presentation"] = Json{{"sprite", "from.sprite"}};
+    authored["visual"] = Json{{"kind", "standin"}, {"kit", "kit.test"}, {"standin_bin", "small"}, {"art_root", "art/standin"}, {"size_short", true}};
     const std::string pack = kRoot + "/content/packs/srd51.core";
     REQUIRE_FALSE(lib.add(authored, "monster", "", 0, pack));
     const Archetype* a = lib.find("test.monster.kit");
     REQUIRE(a);
     CHECK(a->visual.kind == VisualKind::Standin);
-    CHECK(a->visual.bin == "small");
-    CHECK(a->visual.sprite == "kit.test");
-    CHECK(a->visual.kit_id == "kit.test");
+    CHECK(a->visual.standin_bin == "small");
+    CHECK(a->visual.sprite == "from.sprite");
+    CHECK(a->visual.kit == "kit.test");
     CHECK(a->visual.art_root == "art/standin");
     CHECK(a->visual.size_short);
     CHECK_FALSE(kSizeShortRuntime);
@@ -167,12 +167,14 @@ TEST_CASE("visual is inert: Combat::hash and log_hash match with and without it"
     vis_f["visual"] = Json{{"size_short", true}};
     vis_f["presentation"] = Json{{"sprite", "paperdoll"}};
     vis_g["visual"] = Json{{"kind", "paperdoll"}, {"art_root", "art/paperdoll"}, {"size_short", false}};
-    vis_g["presentation"] = Json{{"sprite", "paperdoll.alt"}};
+    vis_g["visual"]["kit"] = "paperdoll.alt";
+    vis_g["presentation"] = Json{{"sprite", "ignored.when.kit.set"}};
     ContentLibrary shown;
     const std::string pack = kRoot + "/content/packs/srd51.core";
     REQUIRE_FALSE(shown.add(vis_g, "monster", "", 0, pack));
     REQUIRE_FALSE(shown.add(vis_f, "character", "", 0, pack));
-    CHECK(shown.find(vis_g["id"])->visual.kit_id == "paperdoll.alt");
+    CHECK(shown.find(vis_g["id"])->visual.kit == "paperdoll.alt");
+    CHECK(shown.find(vis_g["id"])->visual.sprite == "ignored.when.kit.set");
     CHECK(shown.find(vis_f["id"])->visual.size_short);
     CHECK(shown.find(vis_g["id"])->base.hp_max == goblin.data["hit_points"]["average"]);
     for (uint64_t seed : {1ull, 7ull, 42ull}) {
@@ -197,6 +199,7 @@ TEST_CASE("ContentLibrary::load reads the packed clip registry") {
     CHECK(doll->resolve("dodge") == "guard");
     CHECK(med->resolve("climb") == "walk");
     CHECK(med->resolve("hide") == "idle");
-    CHECK(lib.find("srd51.monster.goblin")->visual.kit_id == "paperdoll");
-    CHECK(lib.find("srd51.monster.wolf")->visual.kit_id == "standin.medium");
+    CHECK(lib.find("srd51.monster.goblin")->visual.kit == "paperdoll");
+    CHECK(lib.find("srd51.monster.wolf")->visual.kit == "standin.medium");
+    CHECK(lib.find("srd51.monster.wolf")->visual.standin_bin == "medium");
 }

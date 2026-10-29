@@ -13,15 +13,17 @@ inline constexpr bool kSizeShortRuntime = false;
 
 enum class VisualKind : uint8_t { Paperdoll, Standin, Unbinned };
 
-// Resolved presentation for one creature. `sprite` is the authored presentation.sprite.
-// `kit_id` is what Render & Platform looks up: sprite when set, otherwise "paperdoll" or
-// "standin.<bin>". Unbinned (huge / gargantuan with no authored bin) leaves kit_id empty.
+// Resolved presentation for one creature. JSON shape is visual{kind,kit,standin_bin}
+// plus optional art_root and size_short. `sprite` is the authored presentation.sprite.
+// `kit` is what Render & Platform loads: visual.kit, else presentation.sprite, else
+// "paperdoll" or "standin.<standin_bin>". Unbinned (huge / gargantuan with no authored
+// bin) leaves kit empty.
 struct CreatureVisual {
     VisualKind kind = VisualKind::Paperdoll;
-    std::string bin;        // tiny | small | medium | large; empty for paperdoll and unbinned
-    std::string art_root;   // pack-relative directory; empty when the file names none
-    std::string sprite;
-    std::string kit_id;
+    std::string standin_bin;   // tiny | small | medium | large; empty for paperdoll and unbinned
+    std::string art_root;      // pack-relative directory; empty when the file names none
+    std::string sprite;        // presentation.sprite as authored
+    std::string kit;
     bool size_short = false;   // authored flag; ignored while kSizeShortRuntime is false
 };
 

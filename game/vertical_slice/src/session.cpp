@@ -639,8 +639,8 @@ static void equipment_visuals(const sim::Combat& c, sim::CombatantId id, std::ve
 
 void copy_visual(const sim::Archetype* arch, ActorView& a) {
     if (!arch) return;
-    a.kit_id = arch->visual.kit_id;
-    a.visual_bin = arch->visual.bin;
+    a.kit = arch->visual.kit;
+    a.standin_bin = arch->visual.standin_bin;
     a.art_root = arch->visual.art_root;
     a.size_short = arch->visual.size_short;
     switch (arch->visual.kind) {

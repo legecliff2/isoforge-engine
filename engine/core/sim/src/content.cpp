@@ -1422,8 +1422,9 @@ std::optional<std::string> check_art_root(std::string_view root, std::string_vie
 }
 
 // Defaults when `visual` is absent: humanoid -> paperdoll; otherwise a stand-in bin from size.
-// Huge and gargantuan have no M0 bin (Unbinned, empty kit id) unless the file names one.
+// Huge and gargantuan have no M0 bin (Unbinned, empty kit) unless the file names one.
 // size_short is stored and not applied (kSizeShortRuntime is false).
+// Kit id: visual.kit, else presentation.sprite, else paperdoll / standin.<standin_bin>.
 std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize size, std::string_view pack_dir, CreatureVisual& out) {
     CreatureVisual v;
     if (auto pres = doc.find("presentation"); pres != doc.end() && pres->is_object()) {
@@ -1433,11 +1434,11 @@ std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize si
         }
     }
     bool kind_set = false, bin_set = false;
-    std::string kind_s, bin_s;
+    std::string kind_s, bin_s, authored_kit;
     if (auto vis = doc.find("visual"); vis != doc.end()) {
         if (!vis->is_object()) return "visual must be an object";
         for (auto it = vis->begin(); it != vis->end(); ++it)
-            if (it.key() != "kind" && it.key() != "bin" && it.key() != "art_root" && it.key() != "size_short")
+            if (it.key() != "kind" && it.key() != "kit" && it.key() != "standin_bin" && it.key() != "art_root" && it.key() != "size_short")
                 return "visual: unknown key '" + it.key() + "'";
         if (auto k = vis->find("kind"); k != vis->end()) {
             if (!k->is_string()) return "visual.kind must be paperdoll or standin";
@@ -1445,11 +1446,15 @@ std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize si
             if (kind_s != "paperdoll" && kind_s != "standin") return "visual.kind must be paperdoll or standin";
             kind_set = true;
         }
-        if (auto b = vis->find("bin"); b != vis->end()) {
-            if (!b->is_string()) return "visual.bin must be tiny, small, medium, or large";
+        if (auto kit = vis->find("kit"); kit != vis->end()) {
+            if (!kit->is_string() || kit->get<std::string>().empty()) return "visual.kit must be a non-empty string";
+            authored_kit = kit->get<std::string>();
+        }
+        if (auto b = vis->find("standin_bin"); b != vis->end()) {
+            if (!b->is_string()) return "visual.standin_bin must be tiny, small, medium, or large";
             bin_s = b->get<std::string>();
             if (bin_s != "tiny" && bin_s != "small" && bin_s != "medium" && bin_s != "large")
-                return "visual.bin must be tiny, small, medium, or large";
+                return "visual.standin_bin must be tiny, small, medium, or large";
             bin_set = true;
         }
         if (auto a = vis->find("art_root"); a != vis->end()) {
@@ -1478,10 +1483,10 @@ std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize si
     } else if ((kind_set && kind_s == "standin") || bin_set) {
         if (bin_set) {
             v.kind = VisualKind::Standin;
-            v.bin = std::move(bin_s);
+            v.standin_bin = std::move(bin_s);
         } else if (const char* b = bin_of(size)) {
             v.kind = VisualKind::Standin;
-            v.bin = b;
+            v.standin_bin = b;
         } else {
             v.kind = VisualKind::Unbinned;
         }
@@ -1489,13 +1494,14 @@ std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize si
         v.kind = VisualKind::Paperdoll;
     } else if (const char* b = bin_of(size)) {
         v.kind = VisualKind::Standin;
-        v.bin = b;
+        v.standin_bin = b;
     } else {
         v.kind = VisualKind::Unbinned;
     }
-    if (!v.sprite.empty()) v.kit_id = v.sprite;
-    else if (v.kind == VisualKind::Paperdoll) v.kit_id = "paperdoll";
-    else if (v.kind == VisualKind::Standin) v.kit_id = "standin." + v.bin;
+    if (!authored_kit.empty()) v.kit = std::move(authored_kit);
+    else if (!v.sprite.empty()) v.kit = v.sprite;
+    else if (v.kind == VisualKind::Paperdoll) v.kit = "paperdoll";
+    else if (v.kind == VisualKind::Standin) v.kit = "standin." + v.standin_bin;
     out = std::move(v);
     return std::nullopt;
 }

@@ -717,9 +717,9 @@ class VisualSchemaV6(unittest.TestCase):
         wolf = core("monsters/wolf.json")
         wolf["$schema"] = "monster@6"
         self.assertEqual(h.validate_in_memory(wolf)[0], [])
-        wolf["visual"] = {"kind": "standin", "bin": "medium", "art_root": "art/standin", "size_short": False}
+        wolf["visual"] = {"kind": "standin", "kit": "standin.medium", "standin_bin": "medium", "art_root": "art/standin", "size_short": False}
         self.assertEqual(h.validate_in_memory(wolf)[0], [])
-        for vis in ({"kind": "dragon"}, {"bin": "huge"}, {"scale": 1}, {"art_root": "../x"}):
+        for vis in ({"kind": "dragon"}, {"standin_bin": "huge"}, {"bin": "medium"}, {"scale": 1}, {"art_root": "../x"}):
             bad = dict(wolf, visual=vis)
             self.assertTrue(h.validate_in_memory(bad)[0], vis)
 

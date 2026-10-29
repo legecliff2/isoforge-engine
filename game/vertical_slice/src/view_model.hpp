@@ -65,11 +65,12 @@ struct ActorView {
     bool        outlined = false;   // Faerie Fire / ModStat::Outlined (presentation ring)
     bool        invisible = false;  // Condition::Invisible (ghost when still drawn)
     Facing      facing = Facing::SouthEast;
-    // Kit Render & Platform reads. presentation.sprite when set, else "paperdoll" or "standin.<bin>".
-    // Empty when M0 has no bin (huge / gargantuan with no authored bin). Not a sim field.
-    std::string kit_id;
+    // Core M0 visual{kind,kit,standin_bin}. kit is visual.kit, else presentation.sprite, else
+    // "paperdoll" or "standin.<standin_bin>". Empty kit when M0 has no bin (huge / gargantuan).
+    // Not written into sim. clip / hard_land stay with Render & Platform's clip clock.
     std::string visual_kind;   // "paperdoll", "standin", or "unbinned"
-    std::string visual_bin;    // stand-in bin; empty otherwise
+    std::string kit;
+    std::string standin_bin;   // tiny | small | medium | large; empty otherwise
     std::string art_root;      // pack-relative; empty when the stat block names none
     bool        size_short = false;   // authored; M0 does not apply plates or scale
     std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)

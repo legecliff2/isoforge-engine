@@ -986,15 +986,16 @@ At the start of the creature's turn, a listed damage type taken since its previo
 
 | Authored | Resolved |
 |---|---|
-| `visual` absent, `type` `humanoid` | paperdoll, kit id `paperdoll` |
-| `visual` absent, any other type, size tiny / small / medium / large | stand-in, kit id `standin.<bin>` |
-| `visual` absent, size huge or gargantuan | unbinned, empty kit id (no M0 art bin) |
-| `visual.kind` / `visual.bin` | override the default. `bin` is `tiny`, `small`, `medium`, or `large` |
-| `presentation.sprite` | kit id, ahead of the default |
+| `visual` absent, `type` `humanoid` | `kind` paperdoll, `kit` `paperdoll`, empty `standin_bin` |
+| `visual` absent, any other type, size tiny / small / medium / large | `kind` standin, `standin_bin` from size, `kit` `standin.<standin_bin>` |
+| `visual` absent, size huge or gargantuan | `kind` unbinned, empty `kit` (no M0 art bin) |
+| `visual.kind` / `visual.standin_bin` | override the default. `standin_bin` is `tiny`, `small`, `medium`, or `large` |
+| `visual.kit` | kit id. Wins over `presentation.sprite` |
+| `presentation.sprite` | kit id when `visual.kit` is absent |
 | `visual.art_root` | pack-relative directory under `art/`. When `ContentLibrary::add` is given the pack directory, the directory must exist. `..` is refused |
 | `visual.size_short` | stored on `CreatureVisual`. `kSizeShortRuntime` is false, so M0 does not swap `_short` plates and does not scale |
 
-`CreatureVisual` sits on `Archetype`. `ActorView` copies `kit_id`, `visual_kind`, `visual_bin`, `art_root`, and `size_short` for Render & Platform. None of these fields are written back into sim, and none are folded into `Combat::hash` or `log_hash`. No new `SIM_EVENTS` tag.
+`CreatureVisual` sits on `Archetype`. `ActorView` copies `visual_kind` (`"paperdoll"` / `"standin"` / `"unbinned"`), `kit`, `standin_bin`, `art_root`, and `size_short`. Clip clock fields (`clip`, `hard_land`) are Render & Platform's. None of these fields are written back into sim, and none are folded into `Combat::hash` or `log_hash`. No new `SIM_EVENTS` tag. A humanoid with no visual block, including the sample goblin, resolves to paperdoll, not `standin.<size>`.
 
 The clip registry is `content/packs/srd51.core/art/clips.json` (not a manifest content document; `validate_packs` skips `art/`). `ContentLibrary::load` reads `<pack>/art/clips.json` when the file is present. Every alias target must be a clip id in that kit. `ClipRegistry::resolve` maps `-` to `_`. The paperdoll kit resolves `hard_land` / `hard-land` to `prone_idle`, `dodge` to `guard`, `knockback` to `react`, and swim / fly idle and move to `idle` / `walk`. The stand-in kits (`standin.tiny` through `standin.large`) resolve `climb` and `crawl` to `walk`, `hide` to `idle`, and an unknown name to `idle`.
 
