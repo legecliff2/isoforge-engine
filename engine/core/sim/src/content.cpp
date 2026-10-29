@@ -852,6 +852,12 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                                                bool untimed_ok, const char* kind_label) {
     const std::string aid = act.value("id", "");
     const std::string where = arch_id + ": " + kind_label + " '" + aid + "'";
+    // Pack load migrates monster@5 to the current schema (monster@6) before this runs. The keys were introduced at
+    // monster@5; the error text keeps that wording. A direct lib.add of a monster@5 file still matches.
+    auto monster_since_5 = [&] {
+        const auto ref = assets::parse_schema_ref(doc.value("$schema", ""));
+        return ref && ref->type == "monster" && ref->version >= 5;
+    };
     if (aid.empty() || aid.find('#') != std::string::npos || arch_id.find('#') != std::string::npos)
         return where + ": id must be non-empty and contain no '#'";
     d = rules5e::SpellDef{};
@@ -1000,6 +1006,15 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 if (!untimed_ok && x.contains("max_size") && !x.contains("contain"))
                     return where + ": max_size on a " + std::string(kind_label) + " needs contain (only a containing condition skips a larger target)";
                 if (auto m = read_contain(x, where, d)) return m;
+                if (x.contains("while")) {   // B3b: paralyzed while poisoned, on the primary entry only
+                    if (!monster_since_5()) return where + ": while on apply needs a monster@5 file";
+                    if (has_area) return where + ": while takes no area";
+                    if (untracked) return where + ": while needs a tracked primary condition";
+                    auto wcond = condition_of(x.value("while", ""));
+                    if (!wcond || *wcond == *cond) return where + ": while must be a different condition from the primary";
+                    d.has_while = true;
+                    d.while_condition = *wcond;
+                }
                 first = false;
             } else {       // further conditions: ApplyCondition on the creatures that failed the save
                 rules5e::SpellEffect e;
@@ -1012,6 +1027,7 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 e.condition_untracked = untracked;
                 e.affected_only = true;
                 e.escape_dc = int8_t(esc);
+                if (x.contains("while")) return where + ": while goes on the first apply[] entry";
                 if (x.contains("max_size") && !x.contains("contain"))   // the size gate is the whole save's: first entry only
                     return where + (untimed_ok ? std::string(": max_size on a save_condition rider goes on the first apply[] entry")
                                                : ": max_size on a " + std::string(kind_label) + " needs contain (only a containing condition skips a larger target)");
@@ -1062,7 +1078,7 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
     // caller names the creatures. `targets` (1..8, default 1) is how many one cast may name, so Tentacle Slam can name
     // each grappled creature; the cast does not add a grappled creature the caller left out.
     if (auto tg = act.find("target_requires_any"); tg != act.end()) {
-        if (doc.value("$schema", "") != "monster@5") return where + ": target_requires_any on a save_effect needs a monster@5 file";
+        if (!monster_since_5()) return where + ": target_requires_any on a save_effect needs a monster@5 file";
         if (has_area) return where + ": target_requires_any takes no area";
         if (!tg->is_array() || tg->size() != 1 || !(*tg)[0].is_string() || (*tg)[0].get<std::string>() != "grappled_by_self")
             return where + ": target_requires_any on a save_effect is grappled_by_self only";
@@ -1072,6 +1088,16 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             if (n < 1 || n > 8) return where + ": targets must be an integer 1..8";
             d.targets = uint8_t(n);
         }
+    }
+    // B3b: Tentacles is only the multiattack free rider, not an action of its own.
+    if (act.contains("rider_only")) {
+        if (untimed_ok) return where + ": rider_only is a save_effect action, not a rider";
+        if (!monster_since_5()) return where + ": rider_only needs a monster@5 file";
+        if (has_area) return where + ": rider_only takes no area";
+        const Json& ro = act["rider_only"];
+        if (!ro.is_boolean() || !ro.get<bool>()) return where + ": rider_only must be true";
+        d.rider_only = true;
+        sa.rider_only = true;
     }
     // 7.2y class feature hooks (T&C): the spell@1 control keys, target_creature_types and a control duration.
     if (auto tt = act.find("target_creature_types"); tt != act.end()) {
@@ -1111,6 +1137,8 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
     } else if (act.contains("control_excludes_creature_types") || act.contains("destroy_undead_max_cr8") || act.contains("duration")) {
         return where + ": control_excludes_creature_types / destroy_undead_max_cr8 / duration need control";
     }
+    if (d.has_while && (d.also_margin > 0 || d.control != rules5e::ControlKind::None))
+        return where + ": while takes no also_on_fail_by / control";
     if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition && d.control == rules5e::ControlKind::None)
         return where + ": needs damage[], apply[] or control";
     if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported); e || unsupported) return e;
@@ -2178,6 +2206,27 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             a.save_actions.push_back(sa);
             synth.push_back(std::move(d));
         }
+    // B3b: a multiattack option's free_rider names a rider_only save_effect of this creature. Sequences for the decls were
+    // pushed before this loop, in the same order; teleport follow-ups are appended during it and are not decls.
+    {
+        std::map<std::string, uint32_t> riders;
+        for (const auto& sa : a.save_actions)
+            if (sa.rider_only) riders.emplace(sa.id, sa.spell_id);
+        std::map<std::string, int> used;
+        for (std::size_t i = 0; i < a.multiattack_decls.size(); ++i) {
+            const auto& m = a.multiattack_decls[i];
+            if (m.free_rider.empty()) continue;
+            const auto it = riders.find(m.free_rider);
+            if (it == riders.end())
+                return a.id + ": multiattack option '" + m.id + "': free_rider '" + m.free_rider + "' must name a rider_only save_effect";
+            if (i >= c.multiattacks.size()) return a.id + ": multiattack option '" + m.id + "': free_rider has no sequence";
+            c.multiattacks[i].free_rider = it->second;
+            ++used[m.free_rider];
+        }
+        for (const auto& kv : riders)
+            if (!used.count(kv.first))
+                return a.id + ": rider_only save_effect '" + kv.first + "' must be a multiattack free_rider";
+    }
     // batch 3 ghast Stench: aura traits (built by the "aura" hook) -> synthetic Zone SpellDefs, attached at Combat::create.
     for (auto& d : a.aura_defs) {
         for (const auto& prev : synth)

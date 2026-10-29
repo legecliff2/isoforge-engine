@@ -187,7 +187,8 @@
                   "properties": {
                     "id": { "$ref": "#/$defs/local_id" },
                     "attacks": { "type": "array", "minItems": 1, "maxItems": 255, "items": { "$ref": "#/$defs/local_id" } },
-                    "count_dice": { "type": "string", "pattern": "^[1-9][0-9]*d[1-9][0-9]*$", "description": "Batch 3 (monster@5 only): attacks names ONE attack, made this many times; rolled when the multiattack starts (SRD 5.1 violet fungus: 'makes 1d4 Rotting Touch attacks')." }
+                    "count_dice": { "type": "string", "pattern": "^[1-9][0-9]*d[1-9][0-9]*$", "description": "Batch 3 (monster@5 only): attacks names ONE attack, made this many times; rolled when the multiattack starts (SRD 5.1 violet fungus: 'makes 1d4 Rotting Touch attacks')." },
+                    "free_rider": { "$ref": "#/$defs/local_id", "description": "B3b (monster@5 only, chuul Tentacles): after this option's attacks, one rider_only save_effect may be used once without spending another action. The save's grappled_by_self gate is checked then, so a pincer in this Multiattack that just established the grapple counts. Not a standalone action. Can't be combined with count_dice." }
                   }
                 }
               },

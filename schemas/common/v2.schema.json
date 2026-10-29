@@ -141,6 +141,10 @@
             "on_damage"
           ]
         },
+        "while": {
+          "$ref": "../common/v1.schema.json#/$defs/condition",
+          "description": "B3b (monster@5 save_effect, first apply[] entry only): a second condition held for as long as this effect lasts (chuul Tentacles: poisoned, while paralyzed). Ending the effect ends both. Not applied when the target is immune to the primary condition. Differs from also_on_fail_by. condition and while must differ. Needs a tracked primary condition. No area, no also_on_fail_by, no control."
+        },
         "escape": {
           "type": "object",
           "additionalProperties": false,

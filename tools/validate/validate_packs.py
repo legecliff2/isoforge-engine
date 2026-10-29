@@ -733,6 +733,7 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         errs += [f"{rel}: {m}" for m in c4.check_batch3_actions(doc, tag)]   # batch 3 weapon-only action keys
         errs += [f"{rel}: {m}" for m in c4.check_until_cured(doc, tag)]   # batch 3 until_cured (death dog)
         errs += [f"{rel}: {m}" for m in c4.check_multiattack_count(doc, tag)]   # batch 3 count_dice (violet fungus)
+        errs += [f"{rel}: {m}" for m in c4.check_free_rider(doc, tag)]   # B3b chuul tentacles free rider
         errs += [f"{rel}: {m}" for m in c4.check_teleport_actions(doc, tag)]   # batch 3 teleport action (blink dog)
         if "extra_attack" in row.effect_kinds:   # EC #179 extra_attack (@4): loader refusals, highest-wins warning
             x_errs, x_warns = c4.check_extra_attack(doc, tag.split("@")[0])

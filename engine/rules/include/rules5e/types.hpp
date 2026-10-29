@@ -199,6 +199,10 @@ struct AttackSequence {
     // sequence is not a Multiattack option; it is armed (sequence_pos 0) when the creature uses the non-spell action with this
     // SpellDef id, so its attack(s) follow that action without spending another (teleport-then-bite; "before" is deferred).
     uint32_t after_action = 0;
+    // Appended (B3b, chuul Tentacles): spell id of one optional save used once after this option's attacks, without spending
+    // another action. 0 = none. Armed on TurnBudget::free_rider when the attacks finish, so a pincer in this same sequence
+    // that just established the grapple counts. The save's own target gate still applies. One use; not a standalone action.
+    uint32_t free_rider = 0;
 };
 // The attack index the multiattack in progress requires next, or -1 (none in progress / sequence done).
 inline int multiattack_next(const std::vector<AttackSequence>& ms, uint8_t sequence, uint8_t pos) {

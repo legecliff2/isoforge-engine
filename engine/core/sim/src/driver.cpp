@@ -619,6 +619,22 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             }
     if (!beast_form)
         if (auto x = spell_kind_command(c, *me)) return *x;
+    if (s.budget.free_rider != 0 && !beast_form) {   // B3b: after the pincers, tentacles on one grappled target, no action
+        const uint32_t sid = s.budget.free_rider;
+        const rules5e::ActionRequest* pick = nullptr;
+        const auto legal = c.legal_actions();
+        for (const auto& q : legal) {
+            if (q.kind != ActionKind::CastSpell || q.spell_id != sid) continue;
+            if (target && q.target == *target) { pick = &q; break; }
+            if (!pick || q.target < pick->target) pick = &q;
+        }
+        if (pick) {
+            Command cast;
+            cast.request = *pick;
+            if (cast.request.targets.empty()) cast.request.targets = {cast.request.target};
+            return cast;
+        }
+    }
     const auto* t = target ? rules5e::find(s, *target) : nullptr;
     // Sticky target dead, gone, or missing: the turn would end. A Rampage grant is still spent on another
     // living hostile the granted attack can reach. No such foe: the grant stays unused.
@@ -712,7 +728,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     if (const Archetype* arch = c.archetype(self); arch && !beast_form && s.budget.action && s.budget.sequence == 0 &&
                                                    s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t))
         for (const auto& sa : arch->save_actions) {
-            if (sa.teleport) continue;   // batch 3 blink dog: the teleport destination is not guessed (AI deferred)
+            if (sa.teleport || sa.rider_only) continue;   // blink dog: destination not guessed. B3b: a free rider is not this action
             if (sa.usage_kind == 1) {
                 const auto* u = rules5e::find_action_use(s, self, sa.spell_id);
                 if (u && u->expended) continue;

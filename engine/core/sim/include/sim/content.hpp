@@ -71,6 +71,7 @@ struct Archetype {
                                         // monster@5 area_effect always sets this: one synthetic SpellDef on the spell area path.
         uint16_t range_ft = 0;
         bool teleport = false;          // batch 3 `teleport` action (blink dog): needs a destination, the AI skips it
+        bool rider_only = false;        // B3b: not a standalone action; only the multiattack free rider (chuul Tentacles)
     };
     std::vector<SaveAction> save_actions;
     // resources[] (row 13): pools Combat::create registers (resolved against the archetype's level / abilities at load).
@@ -109,7 +110,7 @@ struct Archetype {
     std::vector<std::string> innate_spell_ids;   // spellcasting.innate.* content ids (monster@4 / character@4); base.innate holds the rows
     // `multiattack` effect options as authored: option id + indices into base.attacks. ContentLibrary::add
     // turns them into base.multiattacks (ids stored in the library). Declared order = option order.
-    struct MultiattackDecl { std::string id; std::vector<uint8_t> attacks; rules5e::DiceExpr count_dice{0, 0, 0}; };   // count_dice: batch 3
+    struct MultiattackDecl { std::string id; std::vector<uint8_t> attacks; rules5e::DiceExpr count_dice{0, 0, 0}; std::string free_rider; };   // count_dice: batch 3; free_rider: B3b action id
     std::vector<MultiattackDecl> multiattack_decls;
     std::optional<std::string> ai;        // behavior.ai (monster@2 / character@2), pack-relative
     // Script id of behavior.ai, resolved within the archetype's own pack: "pack_id:path".

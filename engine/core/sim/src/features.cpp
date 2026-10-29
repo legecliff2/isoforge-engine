@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <set>
 
 #include "rules5e/armor.hpp"
@@ -173,21 +174,31 @@ std::optional<std::string> apply_heal_bonus(Archetype& a, const FeatureDecl& f, 
 std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
     // Batch 3 (Lich-approved): an option's `count_dice` ("1d4"; monster@5 only) names ONE attack made a rolled number
     // of times (SRD 5.1 violet fungus: "The violet fungus makes 1d4 Rotting Touch attacks.").
-    struct Opt { std::string id; const Json* list; const Json* count; };
+    struct Opt { std::string id; const Json* list; const Json* count; std::string rider; };
     std::vector<Opt> opts;
     auto count_of = [](const Json& o) -> const Json* { auto c = o.find("count_dice"); return c == o.end() ? nullptr : &*c; };
+    auto take_rider = [](const Json& o) -> std::optional<std::string> {
+        auto fr = o.find("free_rider");
+        if (fr == o.end()) return std::string{};
+        if (!fr->is_string() || fr->get<std::string>().empty()) return std::nullopt;
+        return fr->get<std::string>();
+    };
     if (auto o = f.effect.find("options"); o != f.effect.end()) {
         if (!o->is_array() || o->empty()) return f.id + ": multiattack options must be a non-empty array";
         for (const Json& x : *o) {
             if (!x.is_object() || !x.contains("id") || !x["id"].is_string()) return f.id + ": multiattack option needs an id";
-            opts.push_back({x["id"].get<std::string>(), &x["attacks"], count_of(x)});
+            auto rider = take_rider(x);
+            if (!rider) return f.id + ": multiattack option '" + x.value("id", "") + "': free_rider must name an action";
+            opts.push_back({x["id"].get<std::string>(), &x["attacks"], count_of(x), *rider});
         }
     } else if (auto at = f.effect.find("attacks"); at != f.effect.end()) {
-        opts.push_back({"multiattack", &*at, count_of(f.effect)});
+        auto rider = take_rider(f.effect);
+        if (!rider) return f.id + ": multiattack free_rider must name an action";
+        opts.push_back({"multiattack", &*at, count_of(f.effect), *rider});
     } else {
         return f.id + ": multiattack needs options[] or attacks[]";
     }
-    for (const auto& [oid, list, count] : opts) {
+    for (const auto& [oid, list, count, rider] : opts) {
         if (oid.empty()) return f.id + ": multiattack option id is empty";
         for (const auto& d : a.multiattack_decls)
             if (d.id == oid) return f.id + ": duplicate multiattack option '" + oid + "'";
@@ -209,6 +220,13 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
                 return f.id + ": multiattack option '" + oid + "': count_dice must be dice like \"1d4\"";
             if (d.attacks.size() != 1) return f.id + ": multiattack option '" + oid + "': count_dice needs exactly one attack";
             d.count_dice = *cd;
+        }
+        if (!rider.empty()) {   // B3b: one save after the attacks, not an action. Resolved to a spell id once save_effects compile.
+            if (a.schema_type != "monster" || (ctx.declared_version != 0 && ctx.declared_version < 5))
+                return f.id + ": multiattack free_rider needs a monster@5 file";
+            if (d.count_dice.count > 0)
+                return f.id + ": multiattack option '" + oid + "': free_rider can't be combined with count_dice";
+            d.free_rider = rider;
         }
         a.multiattack_decls.push_back(std::move(d));
     }

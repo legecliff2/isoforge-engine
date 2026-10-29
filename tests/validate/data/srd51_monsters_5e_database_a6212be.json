@@ -9640,6 +9640,52 @@
      ]
     }
    ]
+  },
+  "chuul": {
+   "name": "Chuul",
+   "size": "Large",
+   "type": "aberration",
+   "ac": [
+    16
+   ],
+   "hp": 93,
+   "hp_roll": "11d10+33",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    19,
+    10,
+    16,
+    5,
+    11,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Pincer",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
