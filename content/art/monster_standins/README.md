@@ -1,8 +1,8 @@
 # Monster stand-ins (generic)
 
-Repo path: `content/art/monster_standins/`. This is presentation art packed into the repo, not a rules pack. `content_validate` only walks `content/packs/*/manifest.json`, and `clips.json` has no `$schema`, so it must stay out of a pack until Engine Core gives that file one. The vertical slice loads this directory. `visual.standin_bin` (`tiny|small|medium|large`) or `presentation.sprite` of the form `standin.<bin>` picks the canvas. M0 ships this one kit; a `paperdoll` kind is recorded and still draws the procedural pawn.
+Repo path: `content/art/monster_standins/`. These are the stand-in PNGs (frames, strips, previews). Clip ids, frame counts, fps, modes, and aliases are Engine Core's registry at `content/packs/srd51.core/art/clips.json`. This directory is not a rules pack. The vertical slice loads frames from here when `ActorView.visual_kind` is `standin` and `standin_bin` is `tiny|small|medium|large`. `paperdoll` still draws the procedural pawn. `size_short` is stored and not applied.
 
-Regenerate: `python3 build_monster_standins.py` (Pillow). Deterministic; overwrites `frames/`, `strips/`, `previews/`, `clips.json`.
+Regenerate: `python3 build_monster_standins.py` (Pillow). Deterministic; overwrites `frames/`, `strips/`, and `previews/`. The script may also write a local `clips.json`; the engine does not read that file.
 
 Layout: `frames/{size}/{facing}/mon_*.png`, `strips/{size}/{facing}/*_strip.png`, `previews/*_x4.png` (4× nearest), `clips.json` manifest.
 

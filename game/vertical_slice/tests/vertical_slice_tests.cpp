@@ -29,8 +29,10 @@ TEST_CASE("static view: chunk tiles, walls and both spawns through the world mod
     REQUIRE(v.actors.size() == 2);
     bool fighter = false, goblin = false;
     for (auto& a : v.actors) {
-        fighter |= a.name == "FIGHTER" && a.is_pc && a.tile == eng::Vec2i{10, 15} && a.hp_max > 0 && a.footprint == 1;
-        goblin |= a.name == "GOBLIN" && !a.is_pc && a.tile == eng::Vec2i{20, 15} && a.hp_max > 0 && a.footprint == 1;
+        fighter |= a.name == "FIGHTER" && a.is_pc && a.tile == eng::Vec2i{10, 15} && a.hp_max > 0 && a.footprint == 1 &&
+                   a.kit == "paperdoll" && a.visual_kind == "paperdoll" && a.standin_bin.empty() && a.facing == Facing::SouthEast;
+        goblin |= a.name == "GOBLIN" && !a.is_pc && a.tile == eng::Vec2i{20, 15} && a.hp_max > 0 && a.footprint == 1 &&
+                  a.kit == "paperdoll" && a.visual_kind == "paperdoll" && a.standin_bin.empty() && a.facing == Facing::SouthEast;
     }
     CHECK(fighter);
     CHECK(goblin);

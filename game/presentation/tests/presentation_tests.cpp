@@ -109,49 +109,33 @@ TEST_CASE("clip clock: loop wraps, once finishes after the last slot, hold_last 
     CHECK(clip_frame(death, 10) == 4);
 }
 
-TEST_CASE("clip aliases: missing goes through the alias, then idle") {
-    auto has = [](std::string_view id) {
-        return id == "idle" || id == "walk" || id == "attack" || id == "death";
-    };
-    CHECK(clip_alias("hard-land") == "prone_idle");
-    CHECK(clip_alias("hard_land") == "prone_idle");
-    CHECK(clip_alias("climb") == "walk");
-    CHECK(clip_alias("crawl") == "walk");
-    CHECK(clip_alias("hide") == "idle");
-    CHECK(clip_alias("melee") == "attack");
-    CHECK(resolve_clip("climb", has) == "walk");
-    CHECK(resolve_clip("crawl", has) == "walk");
-    CHECK(resolve_clip("hide", has) == "idle");
-    CHECK(resolve_clip("melee", has) == "attack");
-    CHECK(resolve_clip("hard-land", has) == "idle");   // prone_idle is not a monster clip
-    CHECK(resolve_clip("no-such", has) == "idle");
-    CHECK(resolve_clip("", has) == "idle");
-    CHECK(resolve_clip("death", has) == "death");
-    auto idle_only = [](std::string_view id) { return id == "idle"; };
-    CHECK(resolve_clip("climb", idle_only) == "idle");
-}
+TEST_CASE("stand-in kit: loads authored frames and a missing file is a checker") {
+    const StandinCanvas medium = standin_canvas("medium");
+    CHECK(medium.w == 32);
+    CHECK(medium.h == 48);
+    CHECK(medium.pivot_x == 16);
+    CHECK(medium.pivot_y == 47);
+    CHECK(standin_canvas("huge").w == 0);
 
-TEST_CASE("stand-in kit: medium bin loads every frame, aliases share pixels, a bare clips.json is checkers") {
-    const auto kit = MonsterStandinKit::load(root(), "medium");
+    // Frame counts match Core's stand-in registry. Aliases are not applied here.
+    const KitClip clips[] = {
+        {"idle", 4, 6, ClipMode::Loop},
+        {"walk", 6, 10, ClipMode::Loop},
+        {"react", 3, 12, ClipMode::Once},
+        {"attack", 6, 12, ClipMode::Once},
+        {"cast", 4, 10, ClipMode::Once},
+        {"stun", 4, 8, ClipMode::Loop},
+        {"death", 5, 8, ClipMode::HoldLast},
+        {"fall", 3, 12, ClipMode::Loop},
+        {"fall_impact", 3, 12, ClipMode::Once},
+    };
+    const auto kit = MonsterStandinKit::load(root(), "medium", clips);
     REQUIRE(kit);
     CHECK(kit->frame_count() == 152);
     CHECK(kit->missing_count() == 0);
     CHECK(kit->has_clip("idle"));
-    CHECK(kit->has_clip("walk"));
-    CHECK(kit->has_clip("death"));
     CHECK_FALSE(kit->has_clip("prone_idle"));
-
-    const StandinPose climb = kit->pose("se", "climb", 0);
-    const StandinPose walk = kit->pose("se", "walk", 0);
-    REQUIRE(climb.frame >= 0);
-    REQUIRE(walk.frame == climb.frame);
-    CHECK(climb.clip == "walk");
-
-    const StandinPose landed = kit->pose("nw", "hard-land", 0);
-    const StandinPose idle = kit->pose("nw", "idle", 0);
-    REQUIRE(landed.frame >= 0);
-    CHECK(landed.frame == idle.frame);
-    CHECK(landed.clip == "idle");
+    CHECK(kit->pose("se", "climb", 0).frame < 0);   // unresolved names are not a second alias table
 
     const StandinPose dead0 = kit->pose("se", "death", 0);
     const StandinPose dead1 = kit->pose("se", "death", 10);
@@ -161,18 +145,18 @@ TEST_CASE("stand-in kit: medium bin loads every frame, aliases share pixels, a b
     CHECK(dead1.index == 4);
     CHECK(kit->frame_at(size_t(dead1.frame)).image->px(16, 47)[3] == 255);
 
-    const auto tiny = MonsterStandinKit::load(root(), "tiny");
+    const KitClip idle_only[] = {{"idle", 4, 6, ClipMode::Loop}};
+    const auto tiny = MonsterStandinKit::load(root(), "tiny", idle_only);
     REQUIRE(tiny);
     CHECK(tiny->frame_at(0).image->w == 16);
     CHECK(tiny->frame_at(0).pivot_x == 8);
     CHECK(tiny->frame_at(0).pivot_y == 15);
-    CHECK_FALSE(MonsterStandinKit::load(root(), "huge"));
+    CHECK_FALSE(MonsterStandinKit::load(root(), "huge", idle_only));
 
     const auto dir = std::filesystem::temp_directory_path() / "isoforge-standin-missing";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
-    std::filesystem::copy_file(root() / "clips.json", dir / "clips.json");
-    const auto bare = MonsterStandinKit::load(dir, "small");
+    const auto bare = MonsterStandinKit::load(dir, "small", idle_only);
     REQUIRE(bare);
     CHECK(bare->missing_count() == bare->frame_count());
     const StandinPose gap = bare->pose("se", "idle", 0);

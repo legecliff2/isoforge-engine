@@ -4,7 +4,9 @@
 // Plain-data snapshot of what the vertical slice shows. The renderer (SliceView) only ever
 // sees this: no sim/world/rules types, no game state lives on the render side.
 #include <array>
+#include <cstdlib>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,11 +39,17 @@ struct EquipVisual {
     std::string content_id;          // "srd51.item.longsword": picks placeholder art (render side)
 };
 // Presentation facing of a sprite (iso screen directions). East facings hold the main hand on the camera side.
+// Art authors 8 facings. M0 keeps these 4. SouthWest and NorthWest are the west mirror.
 enum class Facing : uint8_t { SouthEast, SouthWest, NorthEast, NorthWest };
 
-// R-M0. Core M0 publishes visual.kind. None keeps the procedural pawn. Paperdoll is recorded
-// for M1 and still draws the pawn. Standin draws a mon_* frame when the kit is on disk.
-enum class VisualKind : uint8_t { None, Paperdoll, Standin };
+// Tile step -> the 4 iso facings. +x is screen down-right (SouthEast), +y is screen down-left
+// (SouthWest). Equal |dx| and |dy| follow x. A zero step returns nullopt (the caller keeps the last facing).
+// Presentation only: nothing here is written into sim.
+inline std::optional<Facing> facing_from_delta(int dx, int dy) {
+    if (dx == 0 && dy == 0) return std::nullopt;
+    if (std::abs(dx) >= std::abs(dy)) return dx > 0 ? Facing::SouthEast : Facing::NorthWest;
+    return dy > 0 ? Facing::SouthWest : Facing::NorthEast;
+}
 
 struct ActorView {
     uint32_t    id = 0;        // stable id (sort key tie-break)
@@ -57,14 +65,16 @@ struct ActorView {
     bool        outlined = false;   // Faerie Fire / ModStat::Outlined (presentation ring)
     bool        invisible = false;  // Condition::Invisible (ghost when still drawn)
     Facing      facing = Facing::SouthEast;
-    // Core M0 visual{kind,kit,standin_bin}, or presentation.sprite plus the creature size when
-    // that object is not on the document yet. clip is the requested id (idle, walk, death,
-    // hard-land, …). hard_land is the Core signal; the alias table maps it to prone_idle, then idle.
-    VisualKind  visual_kind = VisualKind::None;
+    // Core M0 visual{kind,kit,standin_bin,art_root,size_short}. Copied from the archetype.
+    // Empty kit when M0 has no bin (huge / gargantuan). Not written into sim.
+    // size_short is stored and not applied (M1). clip is the clip-clock request (Render).
+    // There is no hard_land field: a clip id "hard-land" resolves through Core's registry.
+    std::string visual_kind;   // "paperdoll", "standin", or "unbinned"
     std::string kit;
-    std::string standin_bin;
+    std::string standin_bin;   // tiny | small | medium | large; empty otherwise
+    std::string art_root;      // pack-relative; empty when the stat block names none
+    bool        size_short = false;
     std::string clip;
-    bool        hard_land = false;
     std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)
     // Sight cues for the fog-team camera combatant (presentation only; never written back into sim).
     // Defaults match an empty EncounterHooks::sight_facts: everyone sees everyone, so no cue is drawn.

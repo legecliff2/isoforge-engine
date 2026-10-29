@@ -7,9 +7,10 @@ _engine_warnings(vertical_slice_session)
 
 add_library(vertical_slice_view STATIC src/slice_view.cpp src/equip_visuals.cpp)
 target_include_directories(vertical_slice_view PUBLIC src)
-target_link_libraries(vertical_slice_view PUBLIC eng::iso2d eng::render_api PRIVATE presentation)
+target_link_libraries(vertical_slice_view PUBLIC eng::iso2d eng::render_api PRIVATE presentation eng::assets)
 target_compile_definitions(vertical_slice_view PRIVATE
-    SLICE_STANDIN_ROOT="${PROJECT_SOURCE_DIR}/content/art/monster_standins")
+    SLICE_STANDIN_ROOT="${PROJECT_SOURCE_DIR}/content/art/monster_standins"
+    SLICE_CLIP_FILE="${PROJECT_SOURCE_DIR}/content/packs/srd51.core/art/clips.json")
 _engine_warnings(vertical_slice_view)
 
 if(ENGINE_BUILD_TESTS)
@@ -18,7 +19,8 @@ if(ENGINE_BUILD_TESTS)
                           eng::sim eng::world eng::ecs eng::assets
                           doctest::doctest_with_main)
     target_compile_definitions(vertical_slice_tests PRIVATE
-        SLICE_PACK_ROOT="${PROJECT_SOURCE_DIR}/content/packs" SLICE_PACK="sample.vertical_slice")
+        SLICE_PACK_ROOT="${PROJECT_SOURCE_DIR}/content/packs" SLICE_PACK="sample.vertical_slice"
+        SLICE_CLIP_FILE="${PROJECT_SOURCE_DIR}/content/packs/srd51.core/art/clips.json")
     _engine_warnings(vertical_slice_tests)
     add_test(NAME vertical_slice_tests COMMAND vertical_slice_tests)
 

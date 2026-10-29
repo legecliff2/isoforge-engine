@@ -1,6 +1,8 @@
 #include <doctest/doctest.h>
 
-#include "actor_visual.hpp"
+#include <filesystem>
+
+#include "assets/clip_registry.hpp"
 #include "render_null/null_device.hpp"
 #include "session.hpp"
 #include "slice_view.hpp"
@@ -8,51 +10,33 @@
 using namespace eng;
 using namespace slice;
 
-TEST_CASE("actor visual: monsters fall back to standin.<size>, characters stay pawns") {
-    ActorView gob;
-    apply_actor_visual(gob, true, "small", nullptr);
-    CHECK(gob.visual_kind == VisualKind::Standin);
-    CHECK(gob.standin_bin == "small");
-    CHECK(gob.kit == "standin.small");
+#ifndef SLICE_CLIP_FILE
+#define SLICE_CLIP_FILE ""
+#endif
 
-    ActorView ogre;
-    apply_actor_visual(ogre, true, "huge", nullptr);
-    CHECK(ogre.standin_bin == "large");
-    CHECK(ogre.kit == "standin.large");
-
-    ActorView pc;
-    apply_actor_visual(pc, false, "medium", nullptr);
-    CHECK(pc.visual_kind == VisualKind::None);
-    CHECK(pc.kit.empty());
-
-    VisualSource sprite;
-    sprite.sprite = "standin.tiny";
-    ActorView named;
-    apply_actor_visual(named, true, "medium", &sprite);
-    CHECK(named.visual_kind == VisualKind::Standin);
-    CHECK(named.kit == "standin.tiny");
-    CHECK(named.standin_bin == "tiny");
-
-    VisualSource core;
-    core.kind = "standin";
-    core.kit = "mon.wolf";
-    core.standin_bin = "medium";
-    ActorView wolf;
-    apply_actor_visual(wolf, true, "large", &core);
-    CHECK(wolf.kit == "mon.wolf");
-    CHECK(wolf.standin_bin == "medium");
-
-    VisualSource doll;
-    doll.kind = "paperdoll";
-    doll.kit = "doll.human";
-    ActorView human;
-    apply_actor_visual(human, true, "medium", &doll);
-    CHECK(human.visual_kind == VisualKind::Paperdoll);
-    CHECK(human.kit == "doll.human");
-    CHECK(human.standin_bin.empty());
+TEST_CASE("Core clip registry is the only stand-in alias path") {
+    assets::ClipFile file;
+    const auto err = assets::load_clip_file(std::filesystem::path{SLICE_CLIP_FILE}, file);
+    REQUIRE_FALSE(err);
+    const assets::ClipRegistry* standin = nullptr;
+    const assets::ClipRegistry* doll = nullptr;
+    for (const assets::ClipRegistry& k : file.kits) {
+        if (k.id == "standin.small") standin = &k;
+        if (k.id == "paperdoll") doll = &k;
+    }
+    REQUIRE(standin);
+    REQUIRE(doll);
+    CHECK(standin->resolve("climb") == std::optional<std::string>{"walk"});
+    CHECK(standin->resolve("crawl") == std::optional<std::string>{"walk"});
+    CHECK(standin->resolve("hide") == std::optional<std::string>{"idle"});
+    // melee → attack is in Core's stand-in registry (not a second table).
+    CHECK(standin->resolve("melee") == std::optional<std::string>{"attack"});
+    CHECK(standin->resolve("hard-land") == std::optional<std::string>{"fall_impact"});
+    CHECK(standin->resolve("no-such") == std::optional<std::string>{"idle"});
+    CHECK(doll->resolve("hard-land") == std::optional<std::string>{"prone_idle"});
 }
 
-TEST_CASE("session view: goblin is a small stand-in, the fighter stays a pawn") {
+TEST_CASE("session view: Core classifies the humanoid goblin and the fighter as paperdoll") {
     std::string err;
     auto s = Session::open({{SLICE_PACK_ROOT}, {SLICE_PACK}, 1, false}, &err);
     REQUIRE_MESSAGE(s, err);
@@ -62,13 +46,14 @@ TEST_CASE("session view: goblin is a small stand-in, the fighter stays a pawn") 
     for (const ActorView& a : vm.actors) (a.is_pc ? pc : gob) = &a;
     REQUIRE(pc);
     REQUIRE(gob);
-    CHECK(pc->visual_kind == VisualKind::None);
-    CHECK(pc->kit.empty());
-    CHECK(gob->visual_kind == VisualKind::Standin);
-    CHECK(gob->standin_bin == "small");
-    CHECK(gob->kit == "standin.small");
-    CHECK(gob->clip == "idle");
-    CHECK_FALSE(gob->hard_land);
+    CHECK(pc->visual_kind == "paperdoll");
+    CHECK(pc->kit == "paperdoll");
+    CHECK(pc->standin_bin.empty());
+    CHECK(pc->clip.empty());
+    CHECK(gob->visual_kind == "paperdoll");
+    CHECK(gob->kit == "paperdoll");
+    CHECK(gob->standin_bin.empty());
+    CHECK_FALSE(gob->size_short);
 }
 
 namespace {
@@ -118,11 +103,11 @@ Shot draw(const ViewModel& vm, double t) {
 ActorView body(uint32_t id, Vec2i tile) {
     ActorView a;
     a.id = id;
-    a.name = "GOBLIN";
+    a.name = "WOLF";
     a.tile = tile;
     a.hp = 7;
     a.hp_max = 7;
-    a.visual_kind = VisualKind::Standin;
+    a.visual_kind = "standin";
     a.standin_bin = "small";
     a.kit = "standin.small";
     a.clip = "idle";
@@ -144,7 +129,7 @@ ViewModel scene(ActorView a) {
 TEST_CASE("stand-in draw: replaces the pawn, aliases share a frame, the clock advances death") {
     const ViewModel pawn = scene([] {
         ActorView a = body(1, {4, 4});
-        a.visual_kind = VisualKind::None;
+        a.visual_kind.clear();
         a.clip.clear();
         return a;
     }());
@@ -164,8 +149,10 @@ TEST_CASE("stand-in draw: replaces the pawn, aliases share a frame, the clock ad
     CHECK(draw(scene(climb), 0).hash == draw(scene(walk), 0).hash);
 
     ActorView landed = body(1, {4, 4});
-    landed.hard_land = true;
-    CHECK(draw(scene(landed), 0).hash == idle_shot.hash);
+    landed.clip = "hard-land";
+    ActorView impact = body(1, {4, 4});
+    impact.clip = "fall_impact";
+    CHECK(draw(scene(landed), 0).hash == draw(scene(impact), 0).hash);
 
     ActorView dead = body(1, {4, 4});
     dead.clip = "death";
@@ -176,11 +163,15 @@ TEST_CASE("stand-in draw: replaces the pawn, aliases share a frame, the clock ad
     CHECK(d1.hash == draw(scene(dead), 10).hash);
 
     ActorView doll = body(1, {4, 4});
-    doll.visual_kind = VisualKind::Paperdoll;
+    doll.visual_kind = "paperdoll";
     doll.kit = "doll.human";
     doll.standin_bin.clear();
     doll.clip.clear();
     CHECK(draw(scene(doll), 0).hash == pawn_shot.hash);
+
+    ActorView short_flag = body(1, {4, 4});
+    short_flag.size_short = true;
+    CHECK(draw(scene(short_flag), 0).hash == idle_shot.hash);
 }
 
 TEST_CASE("stand-in walk plays when the tile changes and idle holds when it does not") {

@@ -1,6 +1,5 @@
 #include "session.hpp"
 
-#include "actor_visual.hpp"
 #include "debug_cover.hpp"
 #include "event_feed.hpp"
 
@@ -43,30 +42,10 @@ TileKind classify_tile(const std::string& id) {
 }
 
 namespace {
-const char* size_token(sim::CreatureSize s) {
-    using S = sim::CreatureSize;
-    switch (s) {
-    case S::Tiny: return "tiny";
-    case S::Small: return "small";
-    case S::Medium: return "medium";
-    case S::Large: return "large";
-    case S::Huge: return "huge";
-    case S::Gargantuan: return "gargantuan";
-    }
-    return "medium";
-}
-
-void finish_actor_visual(ActorView& a, const sim::Archetype* arch,
-                         const std::map<std::string, VisualSource, std::less<>>& hooks) {
-    const VisualSource* src = nullptr;
-    if (arch) {
-        const auto it = hooks.find(arch->id);
-        if (it != hooks.end()) src = &it->second;
-    }
-    apply_actor_visual(a, arch && arch->schema_type == "monster", arch ? size_token(arch->size) : "medium", src);
+// Clip-clock request. Core fills visual_*; this only names the clip the clock plays.
+void note_clip(ActorView& a) {
     if (a.dead) a.clip = "death";
-    else if (a.hard_land) a.clip = "hard-land";
-    else if (a.visual_kind == VisualKind::Standin) a.clip = "idle";
+    else if (a.visual_kind == "standin") a.clip = "idle";
 }
 
 std::string display_name(const std::string& archetype) {
@@ -218,6 +197,7 @@ struct Session::Impl {
     uint16_t round = 0, turn = 0xFFFF;
     std::optional<sim::CombatantId> target;
     size_t events_seen = 0;
+    size_t log_seen = 0;
     FeedState feed;
     std::string error;
     std::vector<TileView> tiles;
@@ -230,8 +210,6 @@ struct Session::Impl {
 
     // item content id -> light preset (`light.preset` when the item has one, else the item id itself), for equipment glows.
     std::map<std::string, std::string, std::less<>> light_presets;
-    // content id → presentation.sprite / visual{kind,kit,standin_bin}. Empty when the document has neither.
-    std::map<std::string, VisualSource, std::less<>> actor_visuals;
 
     // Equipment producer: one attached source per light-capable item (Combat::equipment_lights(), light id order),
     // keyed by the sim's light id. Held or carried: Carrier::Creature on the holder (the glow follows the token); on the
@@ -315,10 +293,34 @@ struct Session::Impl {
     // Feeds only newly *committed* events (Combat::events() never holds provisional ones).
     void drain_events() {
         const auto& evs = combat->events();
-        if (events_seen >= evs.size()) return;
-        apply_events(std::span<const sim::SimEvent>(evs).subspan(events_seen), feed,
-                     [this](uint32_t id) { return name_of(id); });
-        events_seen = evs.size();
+        if (events_seen < evs.size()) {
+            apply_events(std::span<const sim::SimEvent>(evs).subspan(events_seen), feed,
+                         [this](uint32_t id) { return name_of(id); });
+            events_seen = evs.size();
+        }
+        // Aim / attack facing from new log entries, after TileMoved so a move in the same step keeps
+        // its step and a knockback on someone else is not overwritten by this actor's look.
+        const auto& log = combat->log();
+        for (size_t i = log_seen; i < log.size(); ++i) {
+            const rules5e::ActionRequest& q = log[i].step.request;
+            if (q.kind == rules5e::ActionKind::Move) continue;
+            auto self = feed.tiles.find(q.actor);
+            if (self == feed.tiles.end()) continue;
+            eng::Vec2i aim{};
+            bool aimed = false;
+            if (q.has_area_origin) {
+                aim = {q.area_x, q.area_y};
+                aimed = true;
+            } else if ((q.kind == rules5e::ActionKind::Attack || q.kind == rules5e::ActionKind::CastSpell ||
+                        q.kind == rules5e::ActionKind::OpportunityAttack) && q.target != 0) {
+                auto tgt = feed.tiles.find(q.target);
+                if (tgt == feed.tiles.end()) continue;
+                aim = tgt->second;
+                aimed = true;
+            }
+            if (aimed) note_aim_facing(feed, q.actor, self->second, aim);
+        }
+        log_seen = log.size();
     }
 };
 
@@ -411,35 +413,6 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
                                          " ignored; using " + winner + " (lowest content id)");
             m.visuals[preset] = style;
         }
-    }
-    // Creature presentation. Rules documents keep presentation.sprite (rules never read it).
-    // visual{kind,kit,standin_bin} is Core M0; read it when the loaded document carries it.
-    for (const assets::PackDocument& d : set.documents()) {
-        if (!d.doc.ok || !d.doc.data.is_object() || d.content_id.empty()) continue;
-        if (d.doc.current.type != "monster" && d.doc.current.type != "character") continue;
-        const auto& j = d.doc.data;
-        VisualSource src;
-        bool any = false;
-        if (j.contains("presentation") && j["presentation"].is_object()) {
-            const auto& p = j["presentation"];
-            if (p.contains("sprite") && p["sprite"].is_string()) {
-                src.sprite = p["sprite"].get<std::string>();
-                any = true;
-            }
-        }
-        if (j.contains("visual") && j["visual"].is_object()) {
-            const auto& v = j["visual"];
-            auto take = [&](const char* key, std::string& out) {
-                if (v.contains(key) && v[key].is_string()) {
-                    out = v[key].get<std::string>();
-                    any = true;
-                }
-            };
-            take("kind", src.kind);
-            take("kit", src.kit);
-            take("standin_bin", src.standin_bin);
-        }
-        if (any) m.actor_visuals.emplace(d.content_id, std::move(src));
     }
 
     m.content = std::make_unique<sim::ContentLibrary>();
@@ -671,6 +644,19 @@ static void equipment_visuals(const sim::Combat& c, sim::CombatantId id, std::ve
     for (const rules5e::HeldItem& h : slung) add(h, AttachSlot::Back);
 }
 
+void copy_visual(const sim::Archetype* arch, ActorView& a) {
+    if (!arch) return;
+    a.kit = arch->visual.kit;
+    a.standin_bin = arch->visual.standin_bin;
+    a.art_root = arch->visual.art_root;
+    a.size_short = arch->visual.size_short;
+    switch (arch->visual.kind) {
+    case sim::VisualKind::Paperdoll: a.visual_kind = "paperdoll"; break;
+    case sim::VisualKind::Standin: a.visual_kind = "standin"; break;
+    case sim::VisualKind::Unbinned: a.visual_kind = "unbinned"; break;
+    }
+}
+
 ViewModel Session::view() const {
     const Impl& m = *impl_;
     ViewModel v;
@@ -705,13 +691,15 @@ ViewModel Session::view() const {
             a.dead = cb.dead;
             a.down = !cb.dead && !rules5e::is_conscious(cb);
             a.invisible = cb.has(rules5e::Condition::Invisible);
+            copy_visual(arch, a);
+            if (auto fit = m.feed.facing.find(cb.id); fit != m.feed.facing.end()) a.facing = fit->second;
             // is_outlined is rules-internal; scan modifiers (ModStat::Outlined / Faerie Fire).
             a.outlined = false;
             for (const rules5e::ActiveModifier& am : c.state().modifiers)
                 if (am.target == cb.id && am.spec.stat == rules5e::ModStat::Outlined) { a.outlined = true; break; }
             equipment_visuals(c, cb.id, a.equipment);
             if (eye != 0) fill_sight_cues(c, eye, m.fog_team, cb, a);
-            finish_actor_visual(a, arch, m.actor_visuals);
+            note_clip(a);
             if (a.current) v.turn = a.name;
             v.actors.push_back(std::move(a));
         }
@@ -727,8 +715,9 @@ ViewModel Session::view() const {
                 a.hp = a.hp_max = arch->base.hp_max;
                 a.is_pc = arch->schema_type == "character";
                 a.footprint = int(arch->footprint);
+                copy_visual(arch, a);
             }
-            finish_actor_visual(a, arch, m.actor_visuals);
+            note_clip(a);
             a.team = a.is_pc ? 0 : 1;
             v.actors.push_back(std::move(a));
         }

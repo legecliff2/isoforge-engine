@@ -3,6 +3,7 @@
 #include "equip_visuals.hpp"
 #include "footprint_visuals.hpp"
 #include "iso2d/zone_look.hpp"
+#include "assets/clip_registry.hpp"
 #include "presentation/standin.hpp"
 
 #include <algorithm>
@@ -133,6 +134,9 @@ int floor_mod32(int v) { return ((v % 32) + 32) % 32; }
 #ifndef SLICE_STANDIN_ROOT
 #define SLICE_STANDIN_ROOT ""
 #endif
+#ifndef SLICE_CLIP_FILE
+#define SLICE_CLIP_FILE ""
+#endif
 
 const char* facing_name(Facing f) {
     switch (f) {
@@ -146,12 +150,9 @@ const char* facing_name(Facing f) {
 // Canvas height of a stand-in bin. The pawn stays kPawnH. Used for the name/HP anchor and
 // the camera box so a loaded kit and a missing kit agree before textures exist.
 float standin_body_h(const ActorView& a) {
-    if (a.visual_kind != VisualKind::Standin) return float(kPawnH);
-    if (a.standin_bin == "tiny") return 16.f;
-    if (a.standin_bin == "small") return 32.f;
-    if (a.standin_bin == "large") return 64.f;
-    if (a.standin_bin == "medium") return 48.f;
-    return float(kPawnH);
+    if (a.visual_kind != "standin") return float(kPawnH);
+    const presentation::StandinCanvas c = presentation::standin_canvas(a.standin_bin);
+    return c.h == 0 ? float(kPawnH) : float(c.h);
 }
 
 Color tint_for(const ActorView& a) {
@@ -207,6 +208,8 @@ struct SliceView::Textures {
 struct SliceView::StandinCache {
     IRenderDevice& dev;
     std::filesystem::path root{SLICE_STANDIN_ROOT};
+    assets::ClipFile clips;
+    bool clips_ok = false;
     struct Bin {
         presentation::MonsterStandinKit kit;
         std::vector<TextureId> tex;
@@ -215,7 +218,11 @@ struct SliceView::StandinCache {
     std::map<std::string, std::optional<Bin>, std::less<>> bins;
     std::map<uint32_t, Vec2i> tiles;
 
-    explicit StandinCache(IRenderDevice& d) : dev(d) {}
+    explicit StandinCache(IRenderDevice& d) : dev(d) {
+        if (SLICE_CLIP_FILE[0] != '\0' &&
+            !assets::load_clip_file(std::filesystem::path{SLICE_CLIP_FILE}, clips))
+            clips_ok = true;
+    }
     ~StandinCache() {
         for (auto& slot : bins)
             if (slot.second)
@@ -224,11 +231,29 @@ struct SliceView::StandinCache {
     StandinCache(const StandinCache&) = delete;
     StandinCache& operator=(const StandinCache&) = delete;
 
+    const assets::ClipRegistry* registry(std::string_view bin) const {
+        if (!clips_ok) return nullptr;
+        const std::string id = std::string("standin.") + std::string(bin);
+        for (const assets::ClipRegistry& k : clips.kits)
+            if (k.id == id) return &k;
+        return nullptr;
+    }
+
     Bin* bin_for(const std::string& name) {
         const auto [it, inserted] = bins.try_emplace(name, std::nullopt);
         if (!inserted) return it->second ? &*it->second : nullptr;
-        if (root.empty()) return nullptr;
-        auto kit = presentation::MonsterStandinKit::load(root, name);
+        const assets::ClipRegistry* reg = registry(name);
+        if (root.empty() || !reg) return nullptr;
+        std::vector<presentation::KitClip> specs;
+        for (const assets::Clip& c : reg->clips) {
+            if (c.frames < 1 || c.fps < 1) continue;
+            presentation::ClipMode mode = presentation::ClipMode::Loop;
+            if (c.mode == "once") mode = presentation::ClipMode::Once;
+            else if (c.mode == "hold_last") mode = presentation::ClipMode::HoldLast;
+            else if (!c.mode.empty() && c.mode != "loop") continue;
+            specs.push_back({c.id, c.frames, c.fps, mode});
+        }
+        auto kit = presentation::MonsterStandinKit::load(root, name, specs);
         if (!kit) return nullptr;
         Bin loaded;
         loaded.kit = std::move(*kit);
@@ -255,19 +280,23 @@ struct SliceView::StandinCache {
     };
 
     // Authored se/sw/ne/nw frames, uv 0..1. West art is already flip+1px; a UV swap would miss that shift.
+    // size_short is stored by Core and not applied. Aliases come only from ClipRegistry::resolve.
     std::optional<Body> body_for(const ActorView& a, double t) {
-        if (a.visual_kind != VisualKind::Standin) return std::nullopt;
+        if (a.visual_kind != "standin") return std::nullopt;
         const std::string name = a.standin_bin.empty() ? std::string("medium") : a.standin_bin;
+        const assets::ClipRegistry* reg = registry(name);
         Bin* bin = bin_for(name);
-        if (!bin) return std::nullopt;
+        if (!reg || !bin) return std::nullopt;
         std::string clip = a.clip.empty() ? std::string("idle") : a.clip;
-        if (a.hard_land && (a.clip.empty() || a.clip == "idle")) clip = "hard-land";
+        if (a.dead) clip = "death";
         bool moved = false;
         const auto prev = tiles.find(a.id);
         if (prev != tiles.end() && prev->second != a.tile) moved = true;
         tiles[a.id] = a.tile;
         if (clip == "idle" && moved) clip = "walk";
-        const presentation::StandinPose pose = bin->kit.pose(facing_name(a.facing), clip, t);
+        const std::optional<std::string> resolved = reg->resolve(clip);
+        if (!resolved) return std::nullopt;
+        const presentation::StandinPose pose = bin->kit.pose(facing_name(a.facing), *resolved, t);
         if (pose.frame < 0 || size_t(pose.frame) >= bin->tex.size()) return std::nullopt;
         const presentation::StandinFrameView fr = bin->kit.frame_at(size_t(pose.frame));
         if (!fr.image) return std::nullopt;

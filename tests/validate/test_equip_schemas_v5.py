@@ -158,7 +158,8 @@ class AppendOnly(unittest.TestCase):
 
     def test_properties_carried(self):
         for old, new, extra_req in (("item/v1", "item/v2", set()), ("monster/v4", "monster/v5", set()),
-                                    ("character/v4", "character/v5", set())):
+                                    ("character/v4", "character/v5", set()),
+                                    ("monster/v5", "monster/v6", set()), ("character/v5", "character/v6", set())):
             o, n = schema(old + ".schema.json"), schema(new + ".schema.json")
             for k, v in o["properties"].items():
                 if k in ("$schema", "category", "equipment"):
@@ -698,6 +699,34 @@ class StructuralChecks(unittest.TestCase):
     def test_ammo_kind_needs_ammunition_property(self):
         d = copy.deepcopy(core("items/longsword.json")); d.update({"$schema": "item@2", "id": "test.v4.ls", "ammo_kind": "arrow"})
         self.expect(pack(**{"items/ls.json": d}), "/ammo_kind: only a weapon with the 'ammunition' property fires ammunition")
+
+
+class VisualSchemaV6(unittest.TestCase):
+    """character@6 / monster@6 add optional presentation visual. 5 -> 6 is identity in the engine."""
+
+    def test_only_visual_is_new(self):
+        import checks_v4
+        for typ in ("monster", "character"):
+            old, new = schema(f"{typ}/v5.schema.json"), schema(f"{typ}/v6.schema.json")
+            self.assertEqual(set(new["$defs"]["stat_block"]["properties"]) - set(old["$defs"]["stat_block"]["properties"]), {"visual"})
+            declared = set(new["$defs"]["stat_block"]["properties"]) | set(new["properties"])
+            self.assertEqual(set(checks_v4.TAG_TABLE[f"{typ}@6"].top_level_keys), declared, typ)
+            self.assertEqual(checks_v4.TAG_TABLE[f"{typ}@6"].effect_kinds, checks_v4.TAG_TABLE[f"{typ}@5"].effect_kinds)
+
+    def test_visual_is_optional_and_closed(self):
+        wolf = core("monsters/wolf.json")
+        wolf["$schema"] = "monster@6"
+        self.assertEqual(h.validate_in_memory(wolf)[0], [])
+        wolf["visual"] = {"kind": "standin", "kit": "standin.medium", "standin_bin": "medium", "art_root": "art/standin", "size_short": False}
+        self.assertEqual(h.validate_in_memory(wolf)[0], [])
+        for vis in ({"kind": "dragon"}, {"standin_bin": "huge"}, {"bin": "medium"}, {"scale": 1}, {"art_root": "../x"}):
+            bad = dict(wolf, visual=vis)
+            self.assertTrue(h.validate_in_memory(bad)[0], vis)
+
+    def test_art_kit_is_not_a_content_document(self):
+        reg, by_tag = h.registry()
+        errs = vp.validate_pack(CORE, reg, by_tag, [])
+        self.assertFalse(any(e.startswith("art/") or "/art/" in e for e in errs), [e for e in errs if "art" in e])
 
 
 if __name__ == "__main__":
