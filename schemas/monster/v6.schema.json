@@ -1104,6 +1104,20 @@
         "target_must_see_source": {
           "type": "boolean",
           "description": "Tier-A §26 (save_effect only; 'One creature ... that can see the mummy'): a target that cannot see the user (blinded, or the sight hook says so) makes no save and gains no immunity (FeatureTriggered c = 3)."
+        },
+        "escalates": {
+          "type": "boolean",
+          "description": "B4 (monster@5 save_effect, including an area): a failed save applies the primary apply[] condition; a failed repeat save replaces it with escalate_to. Same SpellDef fields as gaze (basilisk / medusa). SRD 5.1 Gorgon Petrifying Breath. ActiveSpellEffect::escalates is already hashed; no new tag."
+        },
+        "escalate_to": {
+          "$ref": "../common/v1.schema.json#/$defs/condition",
+          "description": "B4: the condition a failed repeat save, or a first save failed by escalate_margin or more, replaces the primary with. Omitted means petrified."
+        },
+        "escalate_margin": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 30,
+          "description": "B4: failing the first save by this much or more applies escalate_to at once, with no repeat save (medusa gaze is 5). 0 never does (gorgon)."
         }
       },
       "allOf": [
@@ -1483,6 +1497,40 @@
             }
           },
           "description": "sim #170 compile_attack_effect: an attack roll that only applies conditions (giant spider Web); every apply[] entry has a Strength escape."
+        },
+        {
+          "description": "B4: escalates / escalate_to / escalate_margin are save_effect only (an area is allowed). Gaze keeps its own keys on the trait.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save_effect"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "escalates"
+                  ]
+                },
+                {
+                  "required": [
+                    "escalate_to"
+                  ]
+                },
+                {
+                  "required": [
+                    "escalate_margin"
+                  ]
+                }
+              ]
+            }
+          }
         },
         {
           "description": "VERSION_BUMP_BATCH 7.2y: the control / target_creature_types keys are save_effect only.",

@@ -1036,6 +1036,46 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             }
         }
     }
+    // B4 (Gorgon Petrifying Breath): the gaze keys escalates / escalate_to / escalate_margin on a save_effect,
+    // including one with an area. A failed save applies the primary condition; a failed repeat save replaces it
+    // with escalate_to (SpellDef fields the save resolver already reads). escalate_margin > 0 petrifies at once,
+    // as medusa. No new hash: ActiveSpellEffect::escalates is already folded. Not a save_condition rider.
+    if (act.contains("escalates") || act.contains("escalate_to") || act.contains("escalate_margin")) {
+        if (untimed_ok) return where + ": escalates is a save_effect action, not a rider";
+        if (!monster_since_5()) return where + ": escalates / escalate_to / escalate_margin need a monster@5 file";
+        if (!act.contains("escalates")) return where + ": escalate_to / escalate_margin need escalates";
+        if (!act["escalates"].is_boolean()) return where + ": escalates must be a boolean";
+        const bool esc = act["escalates"].get<bool>();
+        if (!esc) {
+            // Explicit false and no siblings is the gaze default. Do not return: usage still compiles.
+            if (act.contains("escalate_to") || act.contains("escalate_margin"))
+                return where + ": escalate_to / escalate_margin need escalates";
+        } else {
+            std::string to_name = "petrified";
+            if (act.contains("escalate_to")) {
+                if (!act["escalate_to"].is_string()) return where + ": bad escalate_to";
+                to_name = act["escalate_to"].get<std::string>();
+            }
+            auto to = condition_of(to_name);
+            if (!to) return where + ": bad escalate_to";
+            if (act.contains("escalate_margin") && !act["escalate_margin"].is_number_integer())
+                return where + ": bad escalate_margin";
+            const int margin = geti(act, "escalate_margin", 0);
+            if (margin < 0 || margin > 30) return where + ": bad escalate_margin";
+            if (!d.applies_condition || d.condition_untracked)
+                return where + ": escalates needs a tracked primary condition in apply[]";
+            if (*to == d.condition) return where + ": escalate_to must differ from the primary condition";
+            if (d.repeat_save == rules5e::RepeatSave::None)
+                return where + ": escalates needs a repeat save on the primary condition";
+            if (d.has_while) return where + ": escalates takes no while";
+            if (act.contains("control")) return where + ": escalates takes no control";
+            for (const auto& ex : d.extra_effects)
+                if (ex.applies_condition) return where + ": escalates applies to the primary condition only";
+            d.escalates = true;
+            d.escalate_to = *to;
+            d.escalate_margin = uint8_t(margin);
+        }
+    }
     // Tier-A §26 (mummy Dreadful Glare): also_on_fail_by {margin, condition}, immune_on_success {hours, scope},
     // target_must_see_source. monster@5 only.
     if (act.contains("also_on_fail_by") || act.contains("immune_on_success") || act.contains("target_must_see_source")) {

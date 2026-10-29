@@ -404,9 +404,9 @@ struct SpellDef {
     bool evocation = false;
     std::vector<DamageType> damage_choices;
     std::vector<Condition> condition_choices;
-    // appended (Petrifying Gaze, primary Save with a condition): a failed save applies `condition` (Restrained) with the
-    // repeat save; failing that repeat save turns it into `escalate_to` (Petrified) for good. escalate_margin > 0: failing the
-    // first save by that much or more applies `escalate_to` at once (medusa: 5).
+    // appended (Petrifying Gaze, and a monster@5 save_effect including an area breath): a failed save applies `condition`
+    // (Restrained) with the repeat save; failing that repeat save turns it into `escalate_to` (Petrified) for good.
+    // escalate_margin > 0: failing the first save by that much or more applies `escalate_to` at once (medusa: 5).
     bool escalates = false; Condition escalate_to = Condition::Petrified; uint8_t escalate_margin = 0;
     // appended (R-G9): primary-effect forced movement / teleport (extra effects carry their own).
     ForcedMoveSpec forced{};
