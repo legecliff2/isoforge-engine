@@ -48,7 +48,9 @@ struct RunResult {
 // Drives `c` until the encounter ends, an error occurs, or `max_commands` were submitted.
 RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_commands = 20000);
 
-// One tactical command for the current actor toward `target` (exposed for tests).
+// One tactical command for the current actor toward `target` (exposed for tests). A bonus_attack grant
+// (Rampage) whose `target` is dead, missing, or not living is spent on another living hostile that attack
+// can reach now. No such foe leaves the grant unused.
 Command next_command(const Combat& c, std::optional<CombatantId> target);
 
 // Tier-A §27 AI rule (acked by Dwarf and Lich 2026-10-24): should this Attack (an instead_of_damage grapple attack) grapple
