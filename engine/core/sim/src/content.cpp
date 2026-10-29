@@ -728,6 +728,75 @@ std::optional<std::string> compile_teleport_action(const std::string& arch, cons
     return std::nullopt;
 }
 
+// B8 Deadly Leap (CONTENT_CONVENTIONS §38). Its own action. Not a multiattack rider.
+// {kind: deadly_leap, jump_ft, save: {ability, dc}, save_alt, damage: [two], push_ft}.
+// One save, the higher of the two abilities (tie: save.ability). Fail: both damages and prone.
+// Success: half of each, then a push of push_ft. A push that cannot move knocks prone. The jump gate is jump_ft.
+std::optional<std::string> compile_deadly_leap(const std::string& arch, const Json& act, uint32_t declared,
+                                               const std::string& schema_type, rules5e::SpellDef& d,
+                                               Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": deadly_leap '" + aid + "'";
+    if (schema_type != "monster" || (declared != 0 && declared < 5))
+        return where + ": deadly_leap needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description" && k != "jump_ft" && k != "save" &&
+            k != "save_alt" && k != "damage" && k != "push_ft")
+            return where + ": deadly_leap: unknown key '" + k + "'";
+    }
+    const int jump = act.contains("jump_ft") && act["jump_ft"].is_number_integer() ? act["jump_ft"].get<int>() : 0;
+    if (jump < 5 || jump > 60 || jump % 5 != 0) return where + ": deadly_leap: jump_ft must be 5..60, a multiple of 5";
+    const auto sv = act.find("save");
+    if (sv == act.end() || !sv->is_object()) return where + ": deadly_leap: missing save";
+    auto ab = ability_of(sv->value("ability", ""));
+    const int dc = geti(*sv, "dc");
+    if (!ab || dc < 1 || dc > 30) return where + ": deadly_leap: bad save";
+    auto alt = ability_of(act.value("save_alt", ""));
+    if (!alt || *alt == *ab) return where + ": deadly_leap: save_alt must be a different ability";
+    const auto dm = act.find("damage");
+    if (dm == act.end() || !dm->is_array() || dm->size() != 2) return where + ": deadly_leap: damage needs two components";
+    if (!(*dm)[0].is_object() || !(*dm)[1].is_object()) return where + ": deadly_leap: bad damage";
+    auto d0 = parse_dice((*dm)[0].value("dice", ""));
+    auto t0 = damage_type((*dm)[0].value("type", ""));
+    auto d1 = parse_dice((*dm)[1].value("dice", ""));
+    auto t1 = damage_type((*dm)[1].value("type", ""));
+    if (!d0 || !t0 || !d1 || !t1) return where + ": deadly_leap: bad damage";
+    const int push = act.contains("push_ft") && act["push_ft"].is_number_integer() ? act["push_ft"].get<int>() : 0;
+    if (push < 5 || push > 30 || push % 5 != 0) return where + ": deadly_leap: push_ft must be 5..30, a multiple of 5";
+    d = rules5e::SpellDef{};
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.casting_time = rules5e::CastingTime::Action;
+    d.kind = rules5e::SpellEffectKind::Save;
+    d.is_spell = false;
+    d.magical = false;
+    d.targets = 8;   // the existing multi-target save cap. The caller names the creatures in the space.
+    d.range_ft = 0;
+    d.save_ability = *ab;
+    d.has_save_choice = true;
+    d.save_alt = *alt;
+    d.fixed_dc = int8_t(dc);
+    d.dice = *d0;
+    d.damage_type = *t0;
+    d.on_save = rules5e::OnSave::Half;
+    d.has_also_damage = true;
+    d.also_dice = *d1;
+    d.also_damage_type = *t1;
+    d.applies_condition = true;
+    d.condition = rules5e::Condition::Prone;
+    d.condition_untracked = true;
+    d.requires_jumped_ft = uint16_t(jump);
+    d.leap_push_ft = uint16_t(push);
+    sa = {};
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.leap = true;
+    return std::nullopt;
+}
+
 // B5 Reel: monster@5 action {kind: "pull", feet, targets?, target_requires_any: ["grappled_by_self"]}.
 // "The roper pulls each creature grappled by it up to 25 feet straight toward it." A synthetic ForcedMove SpellDef
 // (mode pull, up_to). The caller names the creatures (1..8). Each must be grappled by the user; one that is not refuses
@@ -2318,10 +2387,20 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (declared == 0 || declared >= 4)
         for (const Json& act : doc.at("actions")) {
             const std::string ak = act.value("kind", "");
-            if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect" && ak != "pull") continue;
+            if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect" && ak != "pull" &&
+                ak != "deadly_leap") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
+            if (ak == "deadly_leap") {   // B8: jump, then land on the creatures in this space
+                if (auto e = compile_deadly_leap(a.id, act, declared, schema_type, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": deadly_leap ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
             if (ak == "pull") {   // B5 Reel: pull creatures grappled by the user
                 if (auto e = compile_pull_action(a.id, act, declared, schema_type, d, sa)) return e;
                 for (const auto& prev : synth)

@@ -1135,3 +1135,50 @@ Product calls, not a second contain model:
 * Lightning Absorption (lightning damage heals instead) has no peer in tree. It is not this key.
 
 This section does not author `srd51.monster.shambling_mound`. The row stays deferred.
+
+## 38. Deadly Leap (monster@5 action `deadly_leap`)
+
+SRD 5.1 Bulette Deadly Leap: "If the bulette jumps at least 15 feet as part of its movement, it can then use this action to land on its feet in a space that contains one or more other creatures. Each of those creatures must succeed on a DC 16 Strength or Dexterity saving throw (target's choice) or be knocked prone and take 14 (3d8 + 1) bludgeoning damage plus 14 (3d8 + 1) piercing damage. On a successful save, the creature takes only half the damage, isn't knocked prone, and is pushed 5 feet out of the bulette's space into an unoccupied space of the creature's choice. If no unoccupied space is within range, the creature instead falls prone in the bulette's space."
+
+It is its own action. It is not a Multiattack rider and not a `free_rider`. A monster@5 action:
+
+```json
+{
+  "id": "deadly_leap",
+  "name": "Deadly Leap",
+  "kind": "deadly_leap",
+  "jump_ft": 15,
+  "save": { "ability": "str", "dc": 16 },
+  "save_alt": "dex",
+  "damage": [
+    { "dice": "3d8+1", "type": "bludgeoning" },
+    { "dice": "3d8+1", "type": "piercing" }
+  ],
+  "push_ft": 5
+}
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `jump_ft` | 5..60, a multiple of 5. The turn's `jumped_ft` must already be at least this | `deadly_leap: jump_ft must be 5..60, a multiple of 5` |
+| `save` | `{ability, dc}`. `dc` is 1..30. This ability is used on a tie | `deadly_leap: missing save` / `deadly_leap: bad save` |
+| `save_alt` | the other ability. Must differ from `save.ability` | `deadly_leap: save_alt must be a different ability` |
+| `damage` | exactly two `{dice, type}` packets. One save covers both | `deadly_leap: damage needs two components` / `deadly_leap: bad damage` |
+| `push_ft` | 5..30, a multiple of 5. The success push | `deadly_leap: push_ft must be 5..30, a multiple of 5` |
+
+`on_success`, `apply`, and `usage` are not keys. Half damage, prone, and at-will are the sentence. Below monster@5 the loader says `deadly_leap needs a monster@5 file`. The synthetic spell id is `<archetype>#<action id>`. It is a `save_action` and it is in `spells_known`. The cast is `ActionKind::CastSpell` of that id. It spends the action. A cast that has not jumped far enough, or that names the user, is refused with the action unspent.
+
+The two packets are one roll each, shared by every target (`also_damage`, the Ice Storm peer: one save, not two). Half is integer division. A creature killed by the first packet does not take the second. Resistance, immunity, and vulnerability are the existing per-type mitigation. The damage is not magical. Prone on a failure is untracked, the Shove peer. Immunity to prone skips the condition. The damage still applies.
+
+`log_hash` tag **0xE4** folds `ActionRequest::jump_ft` on a Move, only when it is non-zero. `TurnBudget::jumped_ft` is not hashed. Replay re-runs the moves. Next free is **0xE5**.
+
+Product calls:
+
+* **Jump distance.** A completed own-turn Move may set `jump_ft`: a multiple of 5, at most `5 * move_tiles` (the distance of the step, not its terrain cost). Those feet add to `jumped_ft`. They are not a second movement spend (`move_ft` is the cost). An interrupted move does not add them, the same place `moved_ft` is added. A prone creature cannot jump. A walk with `jump_ft` 0 does not qualify, including a walk of 15 feet or more. This is not the Charge / Pounce `moved_ft` proxy. Strength, a 10-foot running start, and high jump are not checked. The built-in pathing does not set `jump_ft`. A caller does.
+* **Landing.** A Step with `jump_ft` greater than 0 may enter and end in another creature's space, including a hostile fewer than two sizes away. The occupied tile still costs as difficult terrain (the existing through-creature cost). The action does not move the token. Sim requires every named target's footprint to overlap the leaper's current footprint (`target is not in the landing space`). Rules does not see tiles: the named targets are the creatures in the space. The engine does not add a creature the caller left out. At most 8, the existing multi-target save cap. There is no size gate. Overlap is the space, so a Large leaper's footprint is the space. An ally may be named. `legal_actions` lists hostiles only, the existing save-action list, and only once `jumped_ft` meets the gate.
+* **Str or Dex.** At the roll, each target uses whichever of the two abilities has the higher `save_modifier` (ability modifier, plus proficiency when proficient in that save). A tie uses `save.ability` (Strength for the printed leap). The choice is not a request field and is not hashed. Cover's bonus and Evasion apply only when Dexterity is the one rolled (the existing Dexterity save rules). Legendary Resistance can turn a failure into a success (the existing rule). A caller cannot pick the lower bonus.
+* **Push.** A success queues the existing push (mode 1): straight away from the leaper's centre, coincident centres break toward +x, exactly `push_ft`, not "up to". That walk is the creature's choice of unoccupied space. There is no per-creature destination. If the hook moves 0 feet, the creature falls prone in the space unless it is immune to prone, and it still has the half damage. With no hook the push is reported as the full distance (the existing no-hook rule), so the blocked case is the sim.
+* **End of turn.** The existing refusal to end a turn in another creature's space still applies. A failed save, or a push that cannot move, leaves that creature in the space, so EndTurn is refused while a step out exists. The leap does not grant a lasting exception.
+* **AI.** The built-in AI does not declare a jump and does not use this action.
+
+This section does not author `srd51.monster.bulette`. Burrow is not this key. The row stays deferred.

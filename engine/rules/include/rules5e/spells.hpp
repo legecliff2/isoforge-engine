@@ -561,6 +561,14 @@ struct SpellDef {
     // appended (B7, Shambling Mound Engulf): this contain refuses a second creature while the user already holds one
     // (any contain kind). Swallow's one-at-a-time stays contain == 2. Static content: not hashed.
     bool contain_one = false;
+    // appended (B8, Bulette Deadly Leap, CONTENT_CONVENTIONS §38). Static content: not hashed.
+    // requires_jumped_ft > 0: the cast is refused, action unspent, unless TurnBudget::jumped_ft is at least this.
+    // has_save_choice: each target saves with the higher save_modifier of save_ability and save_alt (tie: save_ability).
+    // leap_push_ft > 0: a successful save pushes that many feet (mode 1). Zero feet moved knocks the creature prone.
+    uint16_t requires_jumped_ft = 0;
+    bool has_save_choice = false;
+    Ability save_alt = Ability::Dex;
+    uint16_t leap_push_ft = 0;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

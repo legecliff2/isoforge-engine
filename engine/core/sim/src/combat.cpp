@@ -336,6 +336,11 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
 }
 
 bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const {
+    if (def.requires_jumped_ft > 0) {   // B8: the target is standing in the leaper's space (footprints overlap)
+        if (caster == target || !rules5e::find(state_, target)) return false;
+        const Spot a = spot(caster), b = spot(target);
+        return a.p.x < b.p.x + b.n && b.p.x < a.p.x + a.n && a.p.y < b.p.y + b.n && b.p.y < a.p.y + a.n;
+    }
     if (derived_area_) return true;   // area_targets already applied range, origin and line of sight
     // B5 Reel: a pull of creatures grappled by the caster has no second range and no sight check. The grapple
     // gate is the constraint. The attack's reach, not this cast, is what ends the grapple.
@@ -418,7 +423,8 @@ bool Combat::overlaps_other(CombatantId id, Vec2i anchor, int n) const {
 // must be walkable; an occupied one only when may_pass (and it is difficult terrain: 10 ft). The full footprint is tried
 // first; a Large+ creature that does not fit squeezes into a space one size smaller (side n - 1: every foot costs one extra
 // foot). A squeezing creature stops squeezing on the first step where its full footprint fits.
-std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze) const {
+std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze,
+                                             bool allow_occupied) const {
     const Vec2i from = pos(mover);
     if (chebyshev(from, to) != 1) return std::string("step must be to an adjacent tile");
     const int cur = footprint_size(mover), full = natural_footprint(mover);
@@ -440,7 +446,8 @@ std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPl
                           : air ? !grid_.passable_over(t, caps, air_abs) : !grid_.enterable(t, caps))
                     return std::string("tile not walkable");   // feat/move-modes
                 if (const CombatantId o = occupant_at(t, mover, abs_ft)) {
-                    if (!may_pass(mover, o)) return std::string("tile occupied");
+                    // B8: a jump may land in another creature's space. may_pass (two sizes apart) is unchanged for a walk.
+                    if (!may_pass(mover, o) && !allow_occupied) return std::string("tile occupied");
                     through = true;
                 }
             }
@@ -1532,7 +1539,8 @@ SubmitResult Combat::submit(const Command& cmd) {
         return r;
     }
     install_hooks();
-    return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1, cmd.request.alt_to) : do_rules(cmd.request, cmd.to, cmd.aim);
+    return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1, cmd.request.alt_to, cmd.request.jump_ft)
+                                         : do_rules(cmd.request, cmd.to, cmd.aim);
 }
 
 SubmitResult Combat::decide(const ReactionDecision& d) {
@@ -1618,6 +1626,17 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     }
     if (req.kind == ActionKind::CastSpell) {
         if (!spells_ || !spells_->find(req.spell_id)) { r.error = "unknown spell"; return r; }
+        // B8: every named creature must already stand in the leaper's space. The jump step landed there.
+        // Rules still checks the jump distance and does not see tiles.
+        if (const auto* ldef = spells_->find(req.spell_id); ldef->requires_jumped_ft > 0 && !req.sustain) {
+            std::vector<rules5e::CombatantId> ids = req.targets;
+            if (ids.empty() && req.target != 0) ids.push_back(req.target);
+            if (ids.empty()) { r.error = "target required"; return r; }
+            for (rules5e::CombatantId id : ids) {
+                if (id == actor) { r.error = "bad target"; return r; }
+                if (!spell_in_reach(*ldef, actor, id)) { r.error = "target is not in the landing space"; return r; }
+            }
+        }
         // EC spider follow-up: a non-spell ranged attack_effect (Web) gets the ranged attack facts (beyond its normal range,
         // a hostile within 5 ft); spells are unchanged (rules ignores the facts for them).
         if (const auto* adef = spells_->find(req.spell_id); adef->kind == rules5e::SpellEffectKind::SpellAttack && !adef->is_spell &&
@@ -1800,7 +1819,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     return finish(rules5e::step(state_, req));
 }
 
-SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
+SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to, uint16_t jump_ft) {
     SubmitResult r;
     const CombatantId mover = rules5e::current_actor(state_);
     if (state_.budget.gaze_pending) { r.error = "gaze pending: answer with GazeResponse first"; return r; }
@@ -1849,7 +1868,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
         return finish(rules5e::step(state_, mv));
     }
     StepPlan plan;
-    if (auto e = plan_step(mover, to, plan, allow_squeeze)) { r.error = *e; return r; }
+    if (auto e = plan_step(mover, to, plan, allow_squeeze, jump_ft != 0)) { r.error = *e; return r; }
     const int fp = plan.n;
     // R-G8 Frightened: no step that ends closer to the recorded source of the fear.
     if (const CombatantId src = rules5e::condition_source(state_, mover, rules5e::Condition::Frightened)) {
@@ -1863,7 +1882,8 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
     if (mode == 0xFE) { r.error = "cannot fly while prone"; return r; }
     // SRD: a creature can't willingly end its move in another creature's space: a step into one needs movement left (in
     // the step's speed) for another 5 ft step (actions other than Step are refused while it overlaps, see do_rules).
-    if (plan.ends_in_other && rules5e::move_allowance(state_, *rules5e::find(state_, mover), mode) - cost < 5) {
+    // B8: a jump step may end there. That is the Deadly Leap landing. EndTurn still refuses a later overlap.
+    if (plan.ends_in_other && jump_ft == 0 && rules5e::move_allowance(state_, *rules5e::find(state_, mover), mode) - cost < 5) {
         r.error = "cannot end movement in another creature's space";
         return r;
     }
@@ -1872,6 +1892,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
     mv.move_ft = int16_t(cost);
     mv.move_tiles = 1;
     mv.move_mode = mode;
+    mv.jump_ft = jump_ft;   // B8: rules rejects a bad distance; 0 is an ordinary step
     mv.leaves_reach = leaves_reach(mover, from, to);
     mv.squeeze = plan.squeeze;
     if (!state_.zones.empty()) {   // R-G11: membership facts, sim-derived (Q2 / Q8)
@@ -2265,6 +2286,7 @@ uint64_t Combat::log_hash() const {
         if (q.flexible != 0) { h.byte(0xBA); h.byte(q.flexible); h.byte(q.flexible_level); }
         if (q.squeeze != 0) { h.byte(0xC2); h.byte(q.squeeze); }   // SRD Squeezing on a Move (feat/size-space)
         if (q.move_mode != 0) { h.byte(0xC3); h.byte(q.move_mode); }   // feat/move-modes: the speed a Move used
+        if (q.jump_ft != 0) { h.byte(0xE4); h.u16(q.jump_ft); }   // B8 Deadly Leap: feet of this Move that are a jump
         if (q.alt_to != 0) { h.byte(0xD7); h.i16(q.alt_to); }   // altitude PR2: vertical Move delta, only when non-zero
         if (q.command_word != 0) { h.byte(0xC4); h.byte(q.command_word); }   // 7.2v Command's word on a CastSpell: folded only when set
         if (q.has_guess) { h.byte(0xC6); h.i32(q.guess_x); h.i32(q.guess_y); }   // vision 7.2x: guessed tile of a hidden target

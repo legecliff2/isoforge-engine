@@ -106,7 +106,7 @@ TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), froze
 _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
                                "proficiency_bonus_reason", "emits_light", "passive_perception_reason"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
-MONSTER_AT5_ACTION_KINDS = frozenset({"teleport", "area_effect", "pull"})   # teleport: batch 3 blink dog; area_effect: monster area loader; pull: B5 Reel
+MONSTER_AT5_ACTION_KINDS = frozenset({"teleport", "area_effect", "pull", "deadly_leap"})   # teleport: batch 3 blink dog; area_effect: monster area loader; pull: B5 Reel; deadly_leap: B8
 MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench), keen_senses (§30), regen (§31)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
@@ -454,6 +454,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     errs += check_static_kinds(doc)
     check_grapple_riders(doc, errs, warns)
     check_pull_actions(doc, errs)
+    check_deadly_leap_actions(doc, errs)
     check_untimed_save_condition_riders(doc, errs)
     check_save_max_size(doc, errs)
     check_refused_condition_durations(doc, errs, warns)
@@ -750,6 +751,47 @@ def check_grapple_rider(doc: dict) -> tuple[list[str], list[str]]:
                     warns.append(f"{path}/on_hit/{j}: grapple no_damage: the hit deals no damage, so the attack's other "
                                  "on_hit riders that deal damage do not fire (B5)")
     return errs, warns
+
+
+def check_deadly_leap_actions(doc: dict, errs: list[str]) -> None:
+    """B8 Deadly Leap. Loader wording from compile_deadly_leap."""
+    tag = str(doc.get("$schema") or "")
+    for i, a in enumerate(doc.get("actions") or []):
+        if not isinstance(a, dict) or a.get("kind") != "deadly_leap":
+            continue
+        path = f"/actions/{i}"
+        where = f"{path}: deadly_leap '{a.get('id', '')}'"
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{where}: deadly_leap needs a monster@5 file")
+            continue
+        aid = a.get("id", "")
+        if not isinstance(aid, str) or not aid or "#" in aid:
+            errs.append(f"{where}: id must be non-empty and contain no '#'")
+        for k in a:
+            if k not in ("id", "name", "kind", "description", "jump_ft", "save", "save_alt", "damage", "push_ft"):
+                errs.append(f"{where}: deadly_leap: unknown key '{k}'")
+        jump = a.get("jump_ft")
+        if not isinstance(jump, int) or isinstance(jump, bool) or jump < 5 or jump > 60 or jump % 5 != 0:
+            errs.append(f"{where}: deadly_leap: jump_ft must be 5..60, a multiple of 5")
+        sv = a.get("save")
+        if not isinstance(sv, dict):
+            errs.append(f"{where}: deadly_leap: missing save")
+        else:
+            ab = sv.get("ability")
+            dc = sv.get("dc")
+            if ab not in ("str", "dex", "con", "int", "wis", "cha") or not isinstance(dc, int) or isinstance(dc, bool) or dc < 1 or dc > 30:
+                errs.append(f"{where}: deadly_leap: bad save")
+            alt = a.get("save_alt")
+            if alt not in ("str", "dex", "con", "int", "wis", "cha") or alt == ab:
+                errs.append(f"{where}: deadly_leap: save_alt must be a different ability")
+        dm = a.get("damage")
+        if not isinstance(dm, list) or len(dm) != 2:
+            errs.append(f"{where}: deadly_leap: damage needs two components")
+        elif not all(isinstance(x, dict) and isinstance(x.get("dice"), str) and isinstance(x.get("type"), str) for x in dm):
+            errs.append(f"{where}: deadly_leap: bad damage")
+        push = a.get("push_ft")
+        if not isinstance(push, int) or isinstance(push, bool) or push < 5 or push > 30 or push % 5 != 0:
+            errs.append(f"{where}: deadly_leap: push_ft must be 5..30, a multiple of 5")
 
 
 def check_pull_actions(doc: dict, errs: list[str]) -> None:

@@ -66,6 +66,9 @@ struct TurnBudget {
     CombatantId engulf_hit_id = 0;
     bool engulf_bad = false;
     bool engulf_due = false;
+    // Appended (B8, Bulette Deadly Leap): feet of completed own-turn Moves that were a jump
+    // (ActionRequest::jump_ft). Not moved_ft. Not hashed (replay re-runs the moves). Reset with the turn budget.
+    uint16_t jumped_ft = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -271,6 +274,11 @@ struct ActionRequest {
     // Keen Senses (CONTENT_CONVENTIONS §30). The comment next to check_mode points here. At the end so existing
     // positional initialisers are unchanged. 0 = the Perception check names no sense.
     uint8_t perception_senses = 0;
+    // Appended (B8, Bulette Deadly Leap; log_hash 0xE4 when non-zero). Move only: feet of this step that are a jump,
+    // a multiple of 5, at most 5 * move_tiles. A completed own-turn Move adds them to TurnBudget::jumped_ft. Not a
+    // speed and not a second spend (move_ft is the cost). 0 = this step is not a jump. Strength, a running start,
+    // and high jump are not checked (CONTENT_CONVENTIONS §38).
+    uint16_t jump_ft = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -608,6 +616,9 @@ inline constexpr int32_t kMovedDrag = 4;       // Moved.c bit2: dragged by a gra
 struct ForcedMoveQuery {
     CombatantId mover = 0, source = 0; uint8_t mode = 0; uint16_t feet = 0; bool teleport = false; uint32_t step_seq = 0;
     bool has_dest = false; int32_t dest_x = 0, dest_y = 0;
+    // Appended (B8 Deadly Leap): a push that moves 0 feet knocks the mover prone (unless immune). The no-hook
+    // path reports the requested feet, so this fires only when a hook says the space was blocked. Not hashed.
+    bool prone_if_blocked = false;
 };
 // Cover (SRD 5.1 "Cover"; VERSION_BUMP_BATCH 7.2t). Rules never interpret positions: sim answers one query per source ->
 // target pair. Half = +2 to AC and Dex saves, ThreeQuarters = +5, Total = can't be targeted directly (an area effect skips
