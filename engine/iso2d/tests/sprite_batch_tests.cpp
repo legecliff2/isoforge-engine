@@ -15,6 +15,23 @@ static TextureDesc rgba(uint32_t w, uint32_t h) {
     return d;
 }
 
+TEST_CASE("sprite uv: swapping u0 and u1 H-flips the quad") {
+    float u[4], v[4];
+    sprite_corner_uv(0.f, 0.f, 1.f, 1.f, u, v);
+    CHECK(u[0] == doctest::Approx(0.f));
+    CHECK(u[1] == doctest::Approx(1.f));
+    CHECK(v[0] == doctest::Approx(0.f));
+    CHECK(v[2] == doctest::Approx(1.f));
+    // Left edge reads the former right edge. The batch emits these corners; no extra flag.
+    sprite_corner_uv(1.f, 0.25f, 0.f, 0.75f, u, v);
+    CHECK(u[0] == doctest::Approx(1.f));
+    CHECK(u[1] == doctest::Approx(0.f));
+    CHECK(u[2] == doctest::Approx(0.f));
+    CHECK(u[3] == doctest::Approx(1.f));
+    CHECK(v[1] == doctest::Approx(0.25f));
+    CHECK(v[3] == doctest::Approx(0.75f));
+}
+
 TEST_CASE("sprite batch sorts by depth and batches by texture") {
     NullDevice dev;
     auto ta = dev.create_texture(rgba(2, 2));

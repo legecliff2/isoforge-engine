@@ -239,6 +239,9 @@ endif()
 # Determinism lint over rules5e / detmath / sim / world/gen (§4.7). Registry: cmake/DetLint.cmake.
 include(DetLint)
 
+# Presentation art (PNG decode, monster stand-ins). SDL-free; the slice links it.
+add_subdirectory(game/presentation)
+
 # Vertical slice viewer (session/view libs + tests always; executable needs SDL).
 add_subdirectory(game/vertical_slice)
 

@@ -25,6 +25,9 @@ public:
     // height), or of the whole map when there are no actors. Presentation only.
     eng::Vec2f actors_focus_px(const ViewModel&) const;
 
+    // Presentation clock for stand-in clips (seconds). Tests leave this at 0 (frame 0).
+    void set_present_time(double seconds) { present_s_ = seconds; }
+
     // Builds and uploads this frame's sprites. Call outside a render pass.
     void prepare(const ViewModel&, const eng::iso2d::Camera& world_cam, uint32_t screen_w, uint32_t screen_h);
     // Records draws inside the current pass (world first, then overlay).
@@ -54,6 +57,9 @@ private:
     int fog_key_ = -1;   // (fog on, team) last uploaded; a change refreshes every fog map
     struct Textures;
     std::unique_ptr<Textures> tex_;
+    struct StandinCache;
+    std::unique_ptr<StandinCache> standins_;
+    double present_s_ = 0;
     struct TintLookup;
     struct TintEntry { int32_t cx, cy; const uint8_t* light; const uint8_t* fog; };
     // Per-frame scratch, reused so a steady frame does no heap allocation on the glow path.

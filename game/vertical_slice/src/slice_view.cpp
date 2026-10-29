@@ -3,10 +3,16 @@
 #include "equip_visuals.hpp"
 #include "footprint_visuals.hpp"
 #include "iso2d/zone_look.hpp"
+#include "assets/clip_registry.hpp"
+#include "presentation/standin.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <map>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -125,6 +131,30 @@ constexpr float kGlowMaxScale = 1.5f;   // glow sprite size cap, in tiles
 
 int floor_mod32(int v) { return ((v % 32) + 32) % 32; }
 
+#ifndef SLICE_STANDIN_ROOT
+#define SLICE_STANDIN_ROOT ""
+#endif
+#ifndef SLICE_CLIP_FILE
+#define SLICE_CLIP_FILE ""
+#endif
+
+const char* facing_name(Facing f) {
+    switch (f) {
+    case Facing::SouthWest: return "sw";
+    case Facing::NorthEast: return "ne";
+    case Facing::NorthWest: return "nw";
+    default: return "se";
+    }
+}
+
+// Canvas height of a stand-in bin. The pawn stays kPawnH. Used for the name/HP anchor and
+// the camera box so a loaded kit and a missing kit agree before textures exist.
+float standin_body_h(const ActorView& a) {
+    if (a.visual_kind != "standin") return float(kPawnH);
+    const presentation::StandinCanvas c = presentation::standin_canvas(a.standin_bin);
+    return c.h == 0 ? float(kPawnH) : float(c.h);
+}
+
 Color tint_for(const ActorView& a) {
     Color c = a.is_pc ? Color::rgba8(90, 150, 255) : Color::rgba8(110, 200, 80);
     if (a.dead) c = Color::rgba8(90, 90, 90, 200);
@@ -175,8 +205,108 @@ struct SliceView::Textures {
     }
 };
 
+struct SliceView::StandinCache {
+    IRenderDevice& dev;
+    std::filesystem::path root{SLICE_STANDIN_ROOT};
+    assets::ClipFile clips;
+    bool clips_ok = false;
+    struct Bin {
+        presentation::MonsterStandinKit kit;
+        std::vector<TextureId> tex;
+    };
+    // nullopt: this bin was looked up and is not on disk. Map nodes stay put, so a Bin* is stable.
+    std::map<std::string, std::optional<Bin>, std::less<>> bins;
+    std::map<uint32_t, Vec2i> tiles;
+
+    explicit StandinCache(IRenderDevice& d) : dev(d) {
+        if (SLICE_CLIP_FILE[0] != '\0' &&
+            !assets::load_clip_file(std::filesystem::path{SLICE_CLIP_FILE}, clips))
+            clips_ok = true;
+    }
+    ~StandinCache() {
+        for (auto& slot : bins)
+            if (slot.second)
+                for (TextureId t : slot.second->tex) dev.destroy(t);
+    }
+    StandinCache(const StandinCache&) = delete;
+    StandinCache& operator=(const StandinCache&) = delete;
+
+    const assets::ClipRegistry* registry(std::string_view bin) const {
+        if (!clips_ok) return nullptr;
+        const std::string id = std::string("standin.") + std::string(bin);
+        for (const assets::ClipRegistry& k : clips.kits)
+            if (k.id == id) return &k;
+        return nullptr;
+    }
+
+    Bin* bin_for(const std::string& name) {
+        const auto [it, inserted] = bins.try_emplace(name, std::nullopt);
+        if (!inserted) return it->second ? &*it->second : nullptr;
+        const assets::ClipRegistry* reg = registry(name);
+        if (root.empty() || !reg) return nullptr;
+        std::vector<presentation::KitClip> specs;
+        for (const assets::Clip& c : reg->clips) {
+            if (c.frames < 1 || c.fps < 1) continue;
+            presentation::ClipMode mode = presentation::ClipMode::Loop;
+            if (c.mode == "once") mode = presentation::ClipMode::Once;
+            else if (c.mode == "hold_last") mode = presentation::ClipMode::HoldLast;
+            else if (!c.mode.empty() && c.mode != "loop") continue;
+            specs.push_back({c.id, c.frames, c.fps, mode});
+        }
+        auto kit = presentation::MonsterStandinKit::load(root, name, specs);
+        if (!kit) return nullptr;
+        Bin loaded;
+        loaded.kit = std::move(*kit);
+        loaded.tex.reserve(loaded.kit.frame_count());
+        for (size_t i = 0; i < loaded.kit.frame_count(); ++i) {
+            const presentation::StandinFrameView fr = loaded.kit.frame_at(i);
+            TextureDesc td{};
+            td.w = fr.image->w;
+            td.h = fr.image->h;
+            td.fmt = Format::RGBA8_UNORM;
+            td.filter = Filter::Nearest;
+            td.debug_name = "standin";
+            const auto px = std::span<const uint8_t>(fr.image->rgba.data(), fr.image->rgba.size());
+            loaded.tex.push_back(dev.create_texture(td, std::as_bytes(px)));
+        }
+        it->second = std::move(loaded);
+        return &*it->second;
+    }
+
+    struct Body {
+        TextureId tex{};
+        uint32_t w = 0, h = 0;
+        int pivot_x = 0, pivot_y = 0;
+    };
+
+    // Authored se/sw/ne/nw frames, uv 0..1. West art is already flip+1px; a UV swap would miss that shift.
+    // size_short is stored by Core and not applied. Aliases come only from ClipRegistry::resolve.
+    std::optional<Body> body_for(const ActorView& a, double t) {
+        if (a.visual_kind != "standin") return std::nullopt;
+        const std::string name = a.standin_bin.empty() ? std::string("medium") : a.standin_bin;
+        const assets::ClipRegistry* reg = registry(name);
+        Bin* bin = bin_for(name);
+        if (!reg || !bin) return std::nullopt;
+        std::string clip = a.clip.empty() ? std::string("idle") : a.clip;
+        if (a.dead) clip = "death";
+        bool moved = false;
+        const auto prev = tiles.find(a.id);
+        if (prev != tiles.end() && prev->second != a.tile) moved = true;
+        tiles[a.id] = a.tile;
+        if (clip == "idle" && moved) clip = "walk";
+        const std::optional<std::string> resolved = reg->resolve(clip);
+        if (!resolved) return std::nullopt;
+        const presentation::StandinPose pose = bin->kit.pose(facing_name(a.facing), *resolved, t);
+        if (pose.frame < 0 || size_t(pose.frame) >= bin->tex.size()) return std::nullopt;
+        const presentation::StandinFrameView fr = bin->kit.frame_at(size_t(pose.frame));
+        if (!fr.image) return std::nullopt;
+        return Body{bin->tex[size_t(pose.frame)], fr.image->w, fr.image->h, fr.pivot_x, fr.pivot_y};
+    }
+};
+
 SliceView::SliceView(IRenderDevice& dev)
-    : world_(dev, 8192), ui_(dev, 8192), lights_(dev), fogs_(dev), tex_(std::make_unique<Textures>(dev)) {}
+    : world_(dev, 8192), ui_(dev, 8192), lights_(dev), fogs_(dev), tex_(std::make_unique<Textures>(dev)),
+      standins_(std::make_unique<StandinCache>(dev)) {}
 
 // Mirrors the LightFrame into per-chunk R8 light and fog maps. The tracked set (sampled + blocked
 // chunks) is reconciled against the snapshot (robust to skipped frames). Blocked chunks are kept
@@ -296,7 +426,7 @@ Vec2f SliceView::actors_focus_px(const ViewModel& vm) const {
     for (const ActorView& a : vm.actors) {
         const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
         const Vec2f c = tile_center_px(fp.centre_iso.x, fp.centre_iso.y);
-        include_actor_bounds(x0, y0, x1, y1, c, fp, float(kPawnH));
+        include_actor_bounds(x0, y0, x1, y1, c, fp, standin_body_h(a));
     }
     return {(x0 + x1) * 0.5f, (y0 + y1) * 0.5f};
 }
@@ -482,17 +612,31 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             world_.draw(pip, iso, actor_sort, 1, a.id, 9);
         }
         // Pawn feet at the footprint centre; drawn on the wall layer so walls in front occlude it.
-        float pw = float(kPawnW), ph = float(kPawnH), pax = kPawnW / 2.f, pay = float(kPawnH) - kTileH / 2.f - 4.f;
-        place_on_footprint(pw, ph, pax, pay, fp, true);
-        iso2d::Sprite p{tex_->pawn, pw, ph, pax, pay};
+        // A stand-in uses its feet pivot instead, and keeps the construction palette (light tint only).
         iso2d::Fog af;
         const Color at = tint(fp.centre_tile, &af);
-        // Own-team tokens in remembered/unseen tiles still draw, lit as Dark (presentation).
-        p.tint = mul(tint_for(a), af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible));
-        if (L.present) p.tint = mul(p.tint, {1.6f, 1.6f, 1.6f, 1.f});   // tokens stay readable in dim light (presentation)
         Color lit_by = af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible);
-        if (L.present) lit_by = mul(lit_by, {1.6f, 1.6f, 1.6f, 1.f});
+        if (L.present) lit_by = mul(lit_by, {1.6f, 1.6f, 1.6f, 1.f});   // tokens stay readable in dim light
         if (a.invisible && !a.dead) lit_by.a *= 0.38f;   // ghost equipment with the body
+        const std::optional<StandinCache::Body> standin = standins_->body_for(a, present_s_);
+        float pw = float(kPawnW), ph = float(kPawnH), pax = kPawnW / 2.f, pay = float(kPawnH) - kTileH / 2.f - 4.f;
+        TextureId body_tex = tex_->pawn;
+        if (standin) {
+            pw = float(standin->w);
+            ph = float(standin->h);
+            pax = float(standin->pivot_x);
+            pay = float(standin->pivot_y) - float(kTileH) * 0.5f;
+            body_tex = standin->tex;
+        }
+        place_on_footprint(pw, ph, pax, pay, fp, true);
+        iso2d::Sprite p{body_tex, pw, ph, pax, pay};
+        if (standin) {
+            p.tint = lit_by;   // authored west frames, uv 0..1 (flip+1px is in the pixels, not a uv swap)
+        } else {
+            // Own-team tokens in remembered/unseen tiles still draw, lit as Dark (presentation).
+            p.tint = mul(tint_for(a), af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible));
+            if (L.present) p.tint = mul(p.tint, {1.6f, 1.6f, 1.6f, 1.f});
+        }
         if (a.equipment.empty()) {
             world_.draw(p, iso, actor_sort, 1, a.id, kZBody);
         } else {
@@ -523,7 +667,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         if (!visible(a)) continue;
         const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
         const Vec2f head = cam.world_to_screen(
-            footprint_head_px(tile_center_px(fp.centre_iso.x, fp.centre_iso.y), fp, float(kPawnH)));
+            footprint_head_px(tile_center_px(fp.centre_iso.x, fp.centre_iso.y), fp, standin_body_h(a)));
         const float bw = 40.f * fp.pawn_scale, bh = 5.f;
         const Vec2f bp{head.x - bw / 2.f, head.y - 12.f};
         rect({bp.x - 1, bp.y - 1}, {bw + 2, bh + 2}, Color::rgba8(0, 0, 0, 200), 10);

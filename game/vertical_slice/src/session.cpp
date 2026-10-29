@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <map>
 
 #include "assets/pack_set.hpp"
 #include "ecs/registry.hpp"
@@ -41,6 +42,12 @@ TileKind classify_tile(const std::string& id) {
 }
 
 namespace {
+// Clip-clock request. Core fills visual_*; this only names the clip the clock plays.
+void note_clip(ActorView& a) {
+    if (a.dead) a.clip = "death";
+    else if (a.visual_kind == "standin") a.clip = "idle";
+}
+
 std::string display_name(const std::string& archetype) {
     std::string s = archetype.substr(archetype.rfind('.') + 1);   // "fighter_1"
     if (auto u = s.find('_'); u != std::string::npos) s = s.substr(0, u);
@@ -692,6 +699,7 @@ ViewModel Session::view() const {
                 if (am.target == cb.id && am.spec.stat == rules5e::ModStat::Outlined) { a.outlined = true; break; }
             equipment_visuals(c, cb.id, a.equipment);
             if (eye != 0) fill_sight_cues(c, eye, m.fog_team, cb, a);
+            note_clip(a);
             if (a.current) v.turn = a.name;
             v.actors.push_back(std::move(a));
         }
@@ -702,12 +710,14 @@ ViewModel Session::view() const {
             a.id = sp.stable_id;
             a.name = display_name(sp.archetype);
             a.tile = sp.tile;
-            if (const sim::Archetype* arch = m.content->find(sp.archetype)) {
+            const sim::Archetype* arch = m.content->find(sp.archetype);
+            if (arch) {
                 a.hp = a.hp_max = arch->base.hp_max;
                 a.is_pc = arch->schema_type == "character";
                 a.footprint = int(arch->footprint);
                 copy_visual(arch, a);
             }
+            note_clip(a);
             a.team = a.is_pc ? 0 : 1;
             v.actors.push_back(std::move(a));
         }
