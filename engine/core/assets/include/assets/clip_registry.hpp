@@ -29,7 +29,7 @@ struct ClipRegistry {
     std::map<std::string, std::string, std::less<>> aliases;
     std::string fallback;   // clip id used when the name is neither a clip nor an alias; empty = none
 
-    bool has_clip(std::string_view id) const;
+    bool has_clip(std::string_view clip_id) const;
     // A clip id, an alias (hyphens match underscores), or `fallback`. nullopt when none of those hit.
     std::optional<std::string> resolve(std::string_view name) const;
 };
