@@ -581,7 +581,21 @@ struct SpellDef {
     DamageType impact_type = DamageType::Bludgeoning;
     Ability impact_save = Ability::Dex;
     int8_t impact_dc = 0;
+    // appended (B11, Water Elemental Whelm, CONTENT_CONVENTIONS §41). Static content: not hashed.
+    // whelm: this save is Whelm. on_save is None. dnd5eapi success_type is none: a success takes no
+    // damage and is pushed out of the user's space. A failure takes the full damage. A target of
+    // whelm_max_size or smaller is grappled (escape DC whelm_escape_dc) and restrained until that
+    // grapple ends, when the user has room for it. whelm_crush is dealt at the start of each of the
+    // user's later turns while that grapple lasts. Not half on a success.
+    bool whelm = false;
+    int16_t whelm_escape_dc = 0;
+    int8_t whelm_max_size = -1;
+    DiceExpr whelm_crush{0, 0, 0};
+    DamageType whelm_crush_type = DamageType::Bludgeoning;
 };
+
+// B10 Whirlwind and B11 Whelm name creatures already in the user's space. Rules does not see tiles.
+inline bool is_space_save(const SpellDef& d) { return d.whirl_ft > 0 || d.whelm; }
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
 // may be combined with another (SRD 5.1). Costs in sorcery points: metamagic_cost.

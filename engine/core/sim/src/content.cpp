@@ -883,6 +883,91 @@ std::optional<std::string> compile_whirlwind(const std::string& arch, const Json
     return std::nullopt;
 }
 
+// B11 Whelm (CONTENT_CONVENTIONS §41). Its own action. Not a multiattack rider.
+// {kind: whelm, save: {ability, dc}, damage: [{dice|flat, type}], grapple: {escape_dc, max_size},
+//  crush: {dice|flat, type}, usage: {kind: recharge, min}}.
+// Each named creature in the user's space saves. Fail: the damage, and (Large or smaller, while the cap
+// has room) a restraining grapple. Success: no damage, pushed out of the space. on_save is None.
+// dnd5eapi success_type is none. Recharge is the sentence.
+std::optional<std::string> compile_whelm(const std::string& arch, const Json& act, uint32_t declared,
+                                         const std::string& schema_type, const Json& doc, rules5e::SpellDef& d,
+                                         Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": whelm '" + aid + "'";
+    if (schema_type != "monster" || (declared != 0 && declared < 5))
+        return where + ": whelm needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description" && k != "save" && k != "damage" &&
+            k != "grapple" && k != "crush" && k != "usage")
+            return where + ": whelm: unknown key '" + k + "'";
+    }
+    const auto sv = act.find("save");
+    if (sv == act.end() || !sv->is_object()) return where + ": whelm: missing save";
+    auto ab = ability_of(sv->value("ability", ""));
+    const int dc = geti(*sv, "dc");
+    if (!ab || dc < 1 || dc > 30) return where + ": whelm: bad save";
+    const auto dm = act.find("damage");
+    if (dm == act.end() || !dm->is_array() || dm->size() != 1 || !(*dm)[0].is_object())
+        return where + ": whelm: damage needs one component";
+    auto dice = action_damage_dice((*dm)[0], true);
+    auto ty = damage_type((*dm)[0].value("type", ""));
+    if (!dice || !ty) return where + ": whelm: bad damage";
+    const auto gr = act.find("grapple");
+    if (gr == act.end() || !gr->is_object()) return where + ": whelm: missing grapple";
+    for (auto it = gr->begin(); it != gr->end(); ++it) {
+        const std::string k = it.key();
+        if (k != "escape_dc" && k != "max_size") return where + ": whelm: unknown grapple key '" + k + "'";
+    }
+    const int edc = gr->contains("escape_dc") && (*gr)["escape_dc"].is_number_integer() ? (*gr)["escape_dc"].get<int>() : 0;
+    static const char* kSizes[] = {"tiny", "small", "medium", "large", "huge", "gargantuan"};
+    int msz = -1;
+    if (auto ms = gr->find("max_size"); ms != gr->end() && ms->is_string())
+        for (int i = 0; i < 6; ++i) if (ms->get<std::string>() == kSizes[i]) msz = i;
+    if (edc < 1 || edc > 30 || msz < 0) return where + ": whelm: bad grapple";
+    const auto cr = act.find("crush");
+    if (cr == act.end() || !cr->is_object()) return where + ": whelm: missing crush";
+    for (auto it = cr->begin(); it != cr->end(); ++it) {
+        const std::string k = it.key();
+        if (k != "dice" && k != "flat" && k != "type") return where + ": whelm: unknown crush key '" + k + "'";
+    }
+    auto cdice = action_damage_dice(*cr, true);
+    auto cty = damage_type(cr->value("type", ""));
+    if (!cdice || !cty) return where + ": whelm: bad crush";
+    d = rules5e::SpellDef{};
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.casting_time = rules5e::CastingTime::Action;
+    d.kind = rules5e::SpellEffectKind::Save;
+    d.is_spell = false;
+    d.magical = false;
+    d.targets = 8;
+    d.range_ft = 0;
+    d.save_ability = *ab;
+    d.fixed_dc = int8_t(dc);
+    d.dice = *dice;
+    d.damage_type = *ty;
+    d.on_save = rules5e::OnSave::None;   // success_type none: pushed out, not half the bludgeoning damage
+    d.whelm = true;
+    d.whelm_escape_dc = int16_t(edc);
+    d.whelm_max_size = int8_t(msz);
+    d.whelm_crush = *cdice;
+    d.whelm_crush_type = *cty;
+    sa = {};
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.whelm = true;
+    bool unsupported = false;
+    if (!act.contains("usage")) return where + ": whelm: recharge is the sentence";
+    if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported)) return e;
+    if (unsupported) return where + ": whelm: pool usage is not supported";
+    if (d.usage_kind != 1) return where + ": whelm: recharge is the sentence";
+    sa.whelm = true;
+    return std::nullopt;
+}
+
 // B5 Reel: monster@5 action {kind: "pull", feet, targets?, target_requires_any: ["grappled_by_self"]}.
 // "The roper pulls each creature grappled by it up to 25 feet straight toward it." A synthetic ForcedMove SpellDef
 // (mode pull, up_to). The caller names the creatures (1..8). Each must be grappled by the user; one that is not refuses
@@ -2479,7 +2564,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         for (const Json& act : doc.at("actions")) {
             const std::string ak = act.value("kind", "");
             if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect" && ak != "pull" &&
-                ak != "deadly_leap" && ak != "whirlwind") continue;
+                ak != "deadly_leap" && ak != "whirlwind" && ak != "whelm") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
@@ -2496,6 +2581,15 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 if (auto e = compile_whirlwind(a.id, act, declared, schema_type, doc, d, sa)) return e;
                 for (const auto& prev : synth)
                     if (prev.id == d.id) return a.id + ": whirlwind ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "whelm") {   // B11: each creature in this space, then a grapple or a push
+                if (auto e = compile_whelm(a.id, act, declared, schema_type, doc, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": whelm ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
                 c.spells_known.push_back(d.id);
                 a.save_actions.push_back(sa);
                 synth.push_back(std::move(d));

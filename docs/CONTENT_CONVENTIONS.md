@@ -1259,3 +1259,62 @@ Product calls:
 * **No grid.** With no forced-move hook the fling is reported as the full distance and strikes nothing (the existing no-hook rule). Impact is what the hook reports.
 * **Recharge.** Available at the start of combat, the breath-weapon peer. The built-in AI does not use the action.
 * **Not this action.** Whelm, Freeze, and the 1-inch gap. This section does not author `srd51.monster.air_elemental`. The row stays deferred until T&C writes the stat block. Counts stay 195 authored and 15 deferred.
+
+## 41. Whelm (monster@5 action `whelm`)
+
+SRD 5.1 Water Elemental Whelm. dnd5eapi records `success_type` `none` and this action text. The API `desc` drops the word "check" ("a DC 14 Strength and succeeding"). The complete sentence is the SRD's. Quote it in full, because a truncated success sentence is what set Whirlwind's `on_save` wrong (§40):
+
+"Whelm (Recharge 4–6). Each creature in the elemental's space must make a DC 15 Strength saving throw. On a failure, a target takes 13 (2d8 + 4) bludgeoning damage. If it is Large or smaller, it is also grappled (escape DC 14). Until this grapple ends, the target is restrained and unable to breathe unless it can breathe water. If the saving throw is successful, the target is pushed out of the elemental's space.
+
+The elemental can grapple one Large creature or up to two Medium or smaller creatures at one time. At the start of each of the elemental's turns, each target grappled by it takes 13 (2d8 + 4) bludgeoning damage. A creature within 5 feet of the elemental can pull a creature or object out of it by taking an action to make a DC 14 Strength check and succeeding."
+
+The success sentence is the push. It is not half damage. `on_save` is `None`.
+
+It is its own action. It is not a Multiattack rider, not an `area_effect`, not a contain, and not Whirlwind.
+
+```json
+{
+  "id": "whelm",
+  "name": "Whelm",
+  "kind": "whelm",
+  "save": { "ability": "str", "dc": 15 },
+  "damage": [ { "dice": "2d8+4", "type": "bludgeoning" } ],
+  "grapple": { "escape_dc": 14, "max_size": "large" },
+  "crush": { "dice": "2d8+4", "type": "bludgeoning" },
+  "usage": { "kind": "recharge", "min": 4 }
+}
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `save` | `{ability, dc}`. `dc` is 1..30. The Strength save | `whelm: missing save` / `whelm: bad save` |
+| `damage` | one `{dice, type}` or `{flat, type}` packet. The failed save | `whelm: damage needs one component` / `whelm: bad damage` |
+| `grapple.escape_dc` | integer 1..30. The grapple's escape DC | `whelm: missing grapple` / `whelm: bad grapple` |
+| `grapple.max_size` | `tiny` .. `gargantuan`. A larger target is not grappled | `whelm: bad grapple` |
+| `crush` | one `{dice, type}` or `{flat, type}` packet. Later turns | `whelm: missing crush` / `whelm: bad crush` |
+| `usage` | `recharge` with `min` 2..6. At-will and pool are refused | `whelm: recharge is the sentence` |
+
+`on_success`, `apply`, and `restrains` are not keys. No damage on a success, the push, and restrained-until-the-grapple-ends are the sentence. Below monster@5 the loader says `whelm needs a monster@5 file`. The synthetic spell id is `<archetype>#<action id>`. It is a `save_action` and it is in `spells_known`. The cast is `ActionKind::CastSpell` of that id. It spends the action and the recharge. A cast that names the user, or a creature that is not in the space, is refused with the action unspent.
+
+One roll of `damage` is shared by every named target (the existing save). A failure takes that roll. A success takes none of it. Not half. A creature killed by that packet is not grappled and is not pushed. Resistance, immunity, and vulnerability are the existing per-type mitigation. The damage is not magical.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The grapple records `via_attack` **0xFE** (not an attack index, and not 0xFF, which 0xDB skips). Restrained rides the existing 0xDB fold. The crush is an effect with `damage_when` 3 and `contain` 0, so it folds under the existing 0xAC. The push direction is not a request field. Replay re-runs the save and the walk. Next free stays **0xE5**.
+
+Product calls:
+
+* **Success.** "If the saving throw is successful, the target is pushed out of the elemental's space." No damage. `on_save` is `None`. Whirlwind's success is half (§40). This one is not.
+* **In the space.** Footprint overlap, the Whirlwind test (§40). The action does not require `water_form`. The caller names the creatures. The engine does not add one the caller left out. At most 8. An ally may be named. `legal_actions` lists overlapping hostiles only. Nobody overlapping: one cast with no target. The action and the recharge are spent, and no save and no dice are rolled. A named creature that does not overlap is refused (`target is not in the elemental's space`). The user is not a target.
+* **Grapple.** A failure, and the target is not dead, and its size is at most `max_size`, and the cap has room: `grapple()` with `restrains` and `escape_dc`. That is the Roper restraining grapple (§35), called from the save instead of from a hit. The general one-size rule still applies (`size_within_one`). A Large user can hold a Large target. A Small user cannot hold a Large target, even when `max_size` is Large. Immunity to grappled skips the grapple and the crush. The damage still applies. Immunity to restrained still grapples. Restrained is not added, and this grapple does not own it.
+* **Cap.** One creature of size Large or bigger fills the action. Up to two of Medium or smaller, and only while no Large or bigger is held. A Large does not combine with anything. Counts only grapples this action made (`via_attack` 0xFE). Named-target order. A creature already held by this action is refreshed, not a new slot, and does not gain a second crush row. A target the cap refuses still takes the failure damage.
+* **Escape.** The grappled creature uses the existing grapple escape (special 4): the better of Strength (Athletics) and Dexterity (Acrobatics) against `escape_dc`. That is the parenthetical "grappled (escape DC 14)". It ends the grapple, restrained when this grapple added it, and the crush. It does not move the creature. Reach is 5 feet (0xFE is not an attack). Out of that reach, the user's death, or the user incapacitated ends it the same way.
+* **Crush.** At the start of each of the user's later turns, each creature this grapple still holds takes `crush`. One roll each. Automatic. The gelatinous cube's turn-start damage (`damage_when` 3), not a contain: the creature is not engulfed, not blinded, and does not move with the user as a swallowed creature. The turn the grapple begins has already started, so the first crush is the next turn. A grapple that ended before that turn deals nothing, and the effect is removed.
+* **Push.** Away from the user's centre. Coincident centres break toward +x (the existing push). The user's tiles do not block the walk. Another creature, or a tile that is not walkable, stops it. The walk stops on the first step whose footprint does not overlap the user's. The cap is 60 feet. The sentence names no distance, so 60 is not a content key. A walk that stops short may still overlap. The creature is not knocked prone. With no forced-move hook the move is reported as the full 60 feet (the existing no-hook rule). The push does not itself end a grapple. A creature pushed one tile off a Large footprint is still within 5 feet, so a grapple this action already held stays held until the reach check says otherwise. A success of this cast does not create a grapple.
+* **Recharge.** Available at the start of combat, the breath-weapon peer. The built-in AI does not use the action.
+
+Deferred, not approximated:
+
+* **"Unable to breathe unless it can breathe water."** Suffocation inside an encounter is the coverage row 11 gap. `no_breath` is a zone-save fact, not a lasting condition. Not modelled.
+* **Ally assist.** "A creature within 5 feet of the elemental can pull a creature or object out of it by taking an action to make a DC 14 Strength check and succeeding." That Strength check is not the grapple escape. Roper Reel pulls the roper's own victims toward the roper (§35). The gelatinous cube's "pull a creature out" is the deferred Ooze Cube sentence. Objects are not combatants. Not this action.
+* **Freeze**, and the 1-inch gap (§39). Not this action.
+
+This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts stay 195 authored and 15 deferred.

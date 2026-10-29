@@ -654,7 +654,8 @@
             "area_effect",
             "pull",
             "deadly_leap",
-            "whirlwind"
+            "whirlwind",
+            "whelm"
           ]
         },
         "to_hit": {
@@ -1121,6 +1122,27 @@
           "$ref": "../common/v2.schema.json#/$defs/save",
           "description": "B10 Whirlwind: the save a creature the target is thrown at makes. A failure takes the impact packet and is knocked prone. A success takes neither."
         },
+        "grapple": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["escape_dc", "max_size"],
+          "properties": {
+            "escape_dc": { "type": "integer", "minimum": 1, "maximum": 30 },
+            "max_size": { "enum": ["tiny", "small", "medium", "large", "huge", "gargantuan"] }
+          },
+          "description": "B11 Whelm: a failed save grapples a creature of this size or smaller (escape DC). The target is restrained until that grapple ends. One Large, or up to two Medium or smaller."
+        },
+        "crush": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "dice": { "type": "string" },
+            "flat": { "type": "integer", "minimum": 1, "maximum": 255 },
+            "type": { "$ref": "../common/v1.schema.json#/$defs/damage_type" }
+          },
+          "description": "B11 Whelm: damage each grappled target takes at the start of each of the user's later turns. One of dice or flat."
+        },
         "with_attack": {
           "$ref": "../common/v1.schema.json#/$defs/local_id",
           "description": "Batch 3 teleport action: one attack (an attack action id) made after the teleport without another action (SRD 5.1 blink dog: 'Before or after teleporting, the dog can make one bite attack.'; teleport-then-bite only)."
@@ -1306,7 +1328,8 @@
                     "teleport",
                     "area_effect",
                     "deadly_leap",
-                    "whirlwind"
+                    "whirlwind",
+                    "whelm"
                   ]
                 }
               }
@@ -1772,6 +1795,30 @@
                 { "required": ["fling_ft"] },
                 { "required": ["impact"] },
                 { "required": ["impact_save"] }
+              ]
+            }
+          }
+        },
+        {
+          "description": "B11 Whelm: each creature in the user's space makes the save. Failure: the one damage component, and a restraining grapple when the target is within grapple.max_size and the cap has room. Success: no damage, pushed out of the space. crush is the later turn-start damage. usage recharge is required. on_success is not a key.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "whelm" } }
+          },
+          "then": {
+            "required": ["save", "damage", "grapple", "crush", "usage"],
+            "properties": {
+              "damage": { "minItems": 1, "maxItems": 1 }
+            },
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description", "save", "damage", "grapple", "crush", "usage"]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["grapple"] },
+                { "required": ["crush"] }
               ]
             }
           }
