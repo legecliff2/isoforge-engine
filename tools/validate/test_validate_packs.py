@@ -712,3 +712,50 @@ class ChunkFlagsMoveModes(unittest.TestCase):
         d = self.with_flags({1000: (0, 0x10)})
         errs, _ = self.run_docs({"flags": d})
         self.assertIn("chunks/flags.json: layers[0] cell 1000 (x=8,y=31): empty tile with elevation/flags set", errs)
+
+
+class ParkedEncounterSoftBlock(unittest.TestCase):
+    """Deferred ledger ids warn on a playable scenario roster and do not fail it."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.registry, cls.by_tag = vp.load_registry()
+        editor = vp.ROOT / "tools" / "bestiary_editor"
+        if str(editor) not in sys.path:
+            sys.path.insert(0, str(editor))
+        import ledger
+        cls.book = ledger.load_ledger()
+
+    def test_shipped_scenarios_stay_ok_without_parked_warnings(self):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            failed = vp.validate_scenarios(self.registry, self.by_tag)
+        out = buf.getvalue()
+        self.assertEqual(failed, 0, out)
+        self.assertNotIn("soft-blocked", out)
+        self.assertNotIn("FAIL ", out)
+        self.assertIn("ok   scenarios/", out)
+
+    def test_parked_warning_does_not_fail_and_playable_ids_do_not_warn(self):
+        mimic = {
+            "party": [{"archetype": "srd51.monster.mimic"}],
+            "monsters": [{"archetype": "srd51.monster.wolf"}],
+        }
+        warns = vp.scenario_soft_block_warnings(mimic, self.book)
+        self.assertEqual(len(warns), 1)
+        self.assertIn("'srd51.monster.mimic'", warns[0])
+        self.assertIn("is Parked", warns[0])
+        self.assertIn("soft-blocked from this playable encounter", warns[0])
+        self.assertFalse(vp.scenario_failed([], warns))
+        self.assertTrue(vp.scenario_failed(["archetype is not in the pack"], warns))
+        playable = {
+            "monsters": [
+                {"archetype": "srd51.monster.wolf"},
+                {"archetype": "srd51.monster.kobold"},
+                {"archetype": "srd51.monster.goblin"},
+                {"archetype": "srd51.monster.troll"},
+            ]
+        }
+        self.assertEqual(vp.scenario_soft_block_warnings(playable, self.book), [])

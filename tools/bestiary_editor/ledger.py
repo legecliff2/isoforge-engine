@@ -17,6 +17,10 @@ rows whose notes cell contains ``**partial**``.
 
 ``Ledger.count_errors`` is empty only when the parsed row counts equal the
 numbers in the ``## Authored (N)`` and ``## Deferred (N)`` headings.
+
+``soft_blocks_for_scenario`` reports Deferred ids used as a scenario@1 roster
+archetype. Those lines are warnings for playable encounters. Partial authored
+rows are not parked, and the function does not invent a stat block.
 """
 from __future__ import annotations
 
@@ -57,6 +61,35 @@ class Parked:
     path: Path | None
     cr: str
     blocking: str
+
+
+@dataclass(frozen=True)
+class SoftBlock:
+    """One Deferred id used as a scenario@1 roster archetype.
+
+    A warning, not a schema error. The blocking text is the ledger cell.
+    This does not invent a stat block.
+    """
+    where: str
+    monster_id: str
+    name: str
+    blocking: str
+
+    def line(self) -> str:
+        reason = self.blocking.strip() or "deferred mechanic"
+        who = self.name or self.monster_id
+        return (
+            f"{self.where}: archetype {self.monster_id!r} is Parked "
+            f"({who}: {reason}) and is soft-blocked from this playable encounter"
+        )
+
+
+# Shown on a Parked row. The scenario gate is the validator warning, not a save ban.
+SOFT_BLOCK_NOTE = (
+    "Soft-blocked from playable encounters: a scenario@1 roster archetype "
+    "matching this Deferred id warns and is not a playable monster. "
+    "This does not invent a stat block."
+)
 
 
 @dataclass(frozen=True)
@@ -274,3 +307,40 @@ def _parked_rows(body: str, monsters_dir: Path, warnings: list[str]) -> list[Par
             blocking=blocking,
         ))
     return rows
+
+
+def soft_blocks_for_scenario(doc: dict, book: Ledger) -> tuple[SoftBlock, ...]:
+    """Parked roster archetypes in a playable scenario@1 document.
+
+    ``party`` and ``monsters`` are both roster slots. Authored rows, including
+    partial rows, are not parked. An id that is not in the Deferred table
+    (``srd51.monster.goblin``) is not parked. Non-dict actors and non-string
+    archetypes are ignored. Prose outside the Deferred table is not a source
+    of ids; only ``book.parked`` is.
+    """
+    if not isinstance(doc, dict):
+        return ()
+    by_id = {row.monster_id: row for row in book.parked if row.monster_id}
+    if not by_id:
+        return ()
+    found: list[SoftBlock] = []
+    for side in ("party", "monsters"):
+        actors = doc.get(side)
+        if not isinstance(actors, list):
+            continue
+        for index, actor in enumerate(actors):
+            if not isinstance(actor, dict):
+                continue
+            archetype = actor.get("archetype")
+            if not isinstance(archetype, str):
+                continue
+            row = by_id.get(archetype)
+            if row is None:
+                continue
+            found.append(SoftBlock(
+                where=f"{side}[{index}]",
+                monster_id=archetype,
+                name=row.name,
+                blocking=row.blocking,
+            ))
+    return tuple(found)
