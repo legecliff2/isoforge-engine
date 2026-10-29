@@ -29,12 +29,14 @@ struct JVal {
     int64_t num = 0;
     std::string str;
     std::vector<JVal> arr;
-    std::vector<std::pair<std::string, JVal>> obj;
+    // Parallel, not pair<string, JVal>: pair needs a complete JVal, and JVal is still open here.
+    std::vector<std::string> keys;
+    std::vector<JVal> vals;
 
     const JVal* field(std::string_view key) const {
         if (kind != Kind::Obj) return nullptr;
-        for (const auto& [k, v] : obj)
-            if (k == key) return &v;
+        for (size_t i = 0; i < keys.size(); ++i)
+            if (keys[i] == key) return &vals[i];
         return nullptr;
     }
 };
@@ -58,7 +60,7 @@ struct Parser {
         if (p >= end) { ok = false; return {}; }
         if (*p == '{') return parse_obj();
         if (*p == '[') return parse_arr();
-        if (*p == '"') return JVal{JVal::Kind::Str, false, 0, parse_str(), {}, {}};
+        if (*p == '"') return JVal{JVal::Kind::Str, false, 0, parse_str(), {}, {}, {}};
         if (*p == 't' || *p == 'f') return parse_bool();
         if (*p == 'n') return parse_null();
         if (*p == '-' || std::isdigit(static_cast<unsigned char>(*p))) return parse_num();
@@ -75,7 +77,8 @@ struct Parser {
             if (*p != '"') { ok = false; break; }
             std::string key = parse_str();
             if (!eat(':')) break;
-            v.obj.emplace_back(std::move(key), parse());
+            v.keys.push_back(std::move(key));
+            v.vals.push_back(parse());
             skip();
             if (p < end && *p == ',') { ++p; skip(); continue; }
             if (p < end && *p == '}') { ++p; break; }
@@ -121,8 +124,8 @@ struct Parser {
         return s;
     }
     JVal parse_bool() {
-        if (end - p >= 4 && std::memcmp(p, "true", 4) == 0) { p += 4; return JVal{JVal::Kind::Bool, true, 0, {}, {}, {}}; }
-        if (end - p >= 5 && std::memcmp(p, "false", 5) == 0) { p += 5; return JVal{JVal::Kind::Bool, false, 0, {}, {}, {}}; }
+        if (end - p >= 4 && std::memcmp(p, "true", 4) == 0) { p += 4; return JVal{JVal::Kind::Bool, true, 0, {}, {}, {}, {}}; }
+        if (end - p >= 5 && std::memcmp(p, "false", 5) == 0) { p += 5; return JVal{JVal::Kind::Bool, false, 0, {}, {}, {}, {}}; }
         ok = false;
         return {};
     }
@@ -299,8 +302,8 @@ std::optional<MonsterStandinKit> MonsterStandinKit::load(const std::filesystem::
     if (const JVal* engine = doc.field("engine")) {
         if (const JVal* al = engine->field("aliases")) {
             if (al->kind == JVal::Kind::Obj) {
-                for (const auto& [k, v] : al->obj)
-                    if (v.kind == JVal::Kind::Str) aliases.insert_or_assign(k, v.str);
+                for (size_t i = 0; i < al->keys.size(); ++i)
+                    if (al->vals[i].kind == JVal::Kind::Str) aliases.insert_or_assign(al->keys[i], al->vals[i].str);
             }
         }
     }
