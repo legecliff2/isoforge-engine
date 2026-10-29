@@ -1023,7 +1023,13 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
     // Tier-A §26 (mummy Dreadful Glare): also_on_fail_by {margin, condition}, immune_on_success {hours, scope},
     // target_must_see_source. monster@5 only.
     if (act.contains("also_on_fail_by") || act.contains("immune_on_success") || act.contains("target_must_see_source")) {
-        if (doc.value("$schema", "") != "monster@5") return where + ": also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file";
+        // Introduced at monster@5. The migrated tag is the current schema (monster@6+), so the gate is
+        // the version, not the literal "monster@5". The error text stays the loader's original wording.
+        {
+            const auto ref = assets::parse_schema_ref(doc.value("$schema", ""));
+            if (!ref || ref->type != "monster" || ref->version < 5)
+                return where + ": also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file";
+        }
         if (has_area) return where + ": also_on_fail_by / immune_on_success / target_must_see_source take no area";
         if (auto af = act.find("also_on_fail_by"); af != act.end()) {
             if (!af->is_object()) return where + ": bad also_on_fail_by";
@@ -1398,6 +1404,102 @@ bool carries_shield(const Json& doc) {
     return false;
 }
 
+std::optional<std::string> check_art_root(std::string_view root, std::string_view pack_dir) {
+    if (root.empty() || root.front() == '/' || root.find('\\') != std::string_view::npos || root.find("..") != std::string_view::npos)
+        return "visual.art_root must be a pack-relative path under art/ with no '..'";
+    if (root.size() < 5 || root.substr(0, 4) != "art/") return "visual.art_root must start with art/";
+    for (char ch : root) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (!(std::isalnum(c) || c == '_' || c == '.' || c == '/' || c == '-'))
+            return "visual.art_root has an invalid character";
+    }
+    if (!pack_dir.empty()) {
+        const std::filesystem::path dir = std::filesystem::path(std::string(pack_dir)) / std::string(root);
+        std::error_code ec;
+        if (!std::filesystem::is_directory(dir, ec)) return "visual.art_root '" + std::string(root) + "' does not exist";
+    }
+    return std::nullopt;
+}
+
+// Defaults when `visual` is absent: humanoid -> paperdoll; otherwise a stand-in bin from size.
+// Huge and gargantuan have no M0 bin (Unbinned, empty kit id) unless the file names one.
+// size_short is stored and not applied (kSizeShortRuntime is false).
+std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize size, std::string_view pack_dir, CreatureVisual& out) {
+    CreatureVisual v;
+    if (auto pres = doc.find("presentation"); pres != doc.end() && pres->is_object()) {
+        if (auto sp = pres->find("sprite"); sp != pres->end()) {
+            if (!sp->is_string() || sp->get<std::string>().empty()) return "presentation.sprite must be a non-empty string";
+            v.sprite = sp->get<std::string>();
+        }
+    }
+    bool kind_set = false, bin_set = false;
+    std::string kind_s, bin_s;
+    if (auto vis = doc.find("visual"); vis != doc.end()) {
+        if (!vis->is_object()) return "visual must be an object";
+        for (auto it = vis->begin(); it != vis->end(); ++it)
+            if (it.key() != "kind" && it.key() != "bin" && it.key() != "art_root" && it.key() != "size_short")
+                return "visual: unknown key '" + it.key() + "'";
+        if (auto k = vis->find("kind"); k != vis->end()) {
+            if (!k->is_string()) return "visual.kind must be paperdoll or standin";
+            kind_s = k->get<std::string>();
+            if (kind_s != "paperdoll" && kind_s != "standin") return "visual.kind must be paperdoll or standin";
+            kind_set = true;
+        }
+        if (auto b = vis->find("bin"); b != vis->end()) {
+            if (!b->is_string()) return "visual.bin must be tiny, small, medium, or large";
+            bin_s = b->get<std::string>();
+            if (bin_s != "tiny" && bin_s != "small" && bin_s != "medium" && bin_s != "large")
+                return "visual.bin must be tiny, small, medium, or large";
+            bin_set = true;
+        }
+        if (auto a = vis->find("art_root"); a != vis->end()) {
+            if (!a->is_string()) return "visual.art_root must be a string";
+            if (auto e = check_art_root(a->get<std::string>(), pack_dir)) return e;
+            v.art_root = a->get<std::string>();
+        }
+        if (auto s = vis->find("size_short"); s != vis->end()) {
+            if (!s->is_boolean()) return "visual.size_short must be a boolean";
+            v.size_short = s->get<bool>();
+            (void)kSizeShortRuntime;   // M1 applies plates / scale; M0 only stores the flag
+        }
+    }
+    const bool humanoid = doc.value("type", "") == "humanoid";
+    auto bin_of = [](CreatureSize s) -> const char* {
+        switch (s) {
+        case CreatureSize::Tiny: return "tiny";
+        case CreatureSize::Small: return "small";
+        case CreatureSize::Medium: return "medium";
+        case CreatureSize::Large: return "large";
+        default: return nullptr;   // huge / gargantuan: no M0 art bin
+        }
+    };
+    if (kind_set && kind_s == "paperdoll") {
+        v.kind = VisualKind::Paperdoll;
+    } else if ((kind_set && kind_s == "standin") || bin_set) {
+        if (bin_set) {
+            v.kind = VisualKind::Standin;
+            v.bin = std::move(bin_s);
+        } else if (const char* b = bin_of(size)) {
+            v.kind = VisualKind::Standin;
+            v.bin = b;
+        } else {
+            v.kind = VisualKind::Unbinned;
+        }
+    } else if (humanoid) {
+        v.kind = VisualKind::Paperdoll;
+    } else if (const char* b = bin_of(size)) {
+        v.kind = VisualKind::Standin;
+        v.bin = b;
+    } else {
+        v.kind = VisualKind::Unbinned;
+    }
+    if (!v.sprite.empty()) v.kit_id = v.sprite;
+    else if (v.kind == VisualKind::Paperdoll) v.kit_id = "paperdoll";
+    else if (v.kind == VisualKind::Standin) v.kit_id = "standin." + v.bin;
+    out = std::move(v);
+    return std::nullopt;
+}
+
 } // namespace
 
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
@@ -1422,7 +1524,7 @@ std::optional<int> cr_x8_of(const Json& r) {
 }
 
 std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type, const std::string& pack_id,
-                                                 uint32_t declared_version) {
+                                                 uint32_t declared_version, std::string_view pack_dir) {
     Archetype a;
     a.id = doc.value("id", "");
     if (a.id.empty()) return "stat block without id";
@@ -1507,6 +1609,9 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         // R-G12 sim: the creature itself carries its size (Heavy weapons, forms); an inert size stays Medium, matching footprint 1.
         if (!inert.count("size")) c.size = rules5e::Size(uint8_t(a.size));
     }
+    // Presentation visual (character@6 / monster@6, optional on every earlier file the loader accepts).
+    // Inert: not copied onto the combatant and not hashed. size_short is stored and not applied (M0).
+    if (auto e = read_creature_visual(doc, a.size, pack_dir, a.visual)) return a.id + ": " + *e;
     if (!inert.count("creature_type") && doc.contains("type")) {
         auto ct = creature_type_of(doc.value("type", ""));
         if (!ct) return a.id + ": bad creature type";
@@ -2108,9 +2213,31 @@ std::optional<std::string> ContentLibrary::add_spell(const Json& doc) {
     return std::nullopt;
 }
 
+const assets::ClipRegistry* ContentLibrary::clip_kit(std::string_view id) const {
+    auto it = clip_by_id_.find(id);
+    return it == clip_by_id_.end() ? nullptr : &it->second;
+}
+
 std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
     if (!packs.ok()) return packs.error_strings();
     std::vector<std::string> errors = packs.document_errors();
+    // art/clips.json is kit data, not a manifest content document. Invalid JSON or a non-member alias fails the load.
+    for (const assets::PackInfo& p : packs.packs()) {
+        const auto path = p.dir / "art" / "clips.json";
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec)) continue;
+        assets::ClipFile file;
+        if (auto e = assets::load_clip_file(path, file)) {
+            errors.push_back(p.id + ": art/clips.json: " + *e);
+            continue;
+        }
+        for (auto& kit : file.kits) {
+            if (clip_by_id_.find(kit.id) != clip_by_id_.end())
+                errors.push_back(p.id + ": art/clips.json: duplicate kit '" + kit.id + "'");
+            else
+                clip_by_id_.emplace(kit.id, std::move(kit));
+        }
+    }
     for (const assets::PackDocument& d : packs.documents()) {
         if (!d.doc.ok || d.doc.current.type != "spell") continue;
         const std::string& pack_id = packs.packs()[d.pack].id;
@@ -2134,7 +2261,8 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
         if (!d.doc.ok || (d.doc.current.type != "monster" && d.doc.current.type != "character")) continue;
         const std::string& pack_id = packs.packs()[d.pack].id;
         try {
-            if (auto e = add(d.doc.data, d.doc.current.type, pack_id, d.doc.declared.version)) errors.push_back(pack_id + ":" + d.path + ": " + *e);
+            if (auto e = add(d.doc.data, d.doc.current.type, pack_id, d.doc.declared.version, packs.packs()[d.pack].dir.string()))
+                errors.push_back(pack_id + ":" + d.path + ": " + *e);
         } catch (const std::exception& ex) {
             errors.push_back(pack_id + ":" + d.path + ": " + ex.what());
         }

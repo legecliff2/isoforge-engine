@@ -977,3 +977,23 @@ At the start of the creature's turn, a listed damage type taken since its previo
 `amount` and `suppressed_by` are static content, copied onto the combatant at spawn. They are not hashed. `regen_suppressed` and `regen_down` are the existing rules flags for "took a suppressing type since its last turn started" and "at 0 hit points, waiting for its turn." This kind does not fold them and does not claim a `SIM_EVENTS` tag. The next free hash tag stays **0xE3**. A fight whose creatures have no regeneration hashes as before. A completed heal or a death is already in hit points and `dead`. Replay of a loaded regenerator reproduces the heal from a logged hit. The 0 HP death is the same rules path; the sim test sets hit points for that case the way the rules tests do, because a content file sets only the starting hit points, so it cannot start a creature at 0.
 
 **Not this kind.** Oni and the shield guardian regain hit points only while they already have at least 1, with no damage-type list and with an ordinary death at 0. Loading `regen` on them would keep them up at 0. Radiant damage does suppress vampire spawn. The spawn still stays off `regen`: it heals only while it has at least 1 hit point, sunlight and running water also stop it, and it dies at 0. Rejuvenation (lich, ghost) is a different trait. Wild Shape and Polymorph do not copy `regeneration`: `FormStats` does not carry it, and `build_form` does not write it. The stat block is `content/packs/srd51.core/monsters/troll.json` (`srd51.monster.troll`): this effect, amount 10, `suppressed_by` acid and fire, and Keen Smell as `keen_senses` with `smell` (§30). The deferred troll row is unparked. Oni, the shield guardian, and vampire spawn still do not carry `regen`.
+
+## 32. Presentation visual and clip registry (character@6 / monster@6, Engine Core M0)
+
+`visual` is optional on `character@6` and `monster@6`. Migration 5 -> 6 is identity: older files do not gain a `visual` key. The loader still resolves a presentation for every stat block it accepts.
+
+| Authored | Resolved |
+|---|---|
+| `visual` absent, `type` `humanoid` | paperdoll, kit id `paperdoll` |
+| `visual` absent, any other type, size tiny / small / medium / large | stand-in, kit id `standin.<bin>` |
+| `visual` absent, size huge or gargantuan | unbinned, empty kit id (no M0 art bin) |
+| `visual.kind` / `visual.bin` | override the default. `bin` is `tiny`, `small`, `medium`, or `large` |
+| `presentation.sprite` | kit id, ahead of the default |
+| `visual.art_root` | pack-relative directory under `art/`. When `ContentLibrary::add` is given the pack directory, the directory must exist. `..` is refused |
+| `visual.size_short` | stored on `CreatureVisual`. `kSizeShortRuntime` is false, so M0 does not swap `_short` plates and does not scale |
+
+`CreatureVisual` sits on `Archetype`. `ActorView` copies `kit_id`, `visual_kind`, `visual_bin`, `art_root`, and `size_short` for Render & Platform. None of these fields are written back into sim, and none are folded into `Combat::hash` or `log_hash`. No new `SIM_EVENTS` tag.
+
+The clip registry is `content/packs/srd51.core/art/clips.json` (not a manifest content document; `validate_packs` skips `art/`). `ContentLibrary::load` reads `<pack>/art/clips.json` when the file is present. Every alias target must be a clip id in that kit. `ClipRegistry::resolve` maps `-` to `_`. The paperdoll kit resolves `hard_land` / `hard-land` to `prone_idle`, `dodge` to `guard`, `knockback` to `react`, and swim / fly idle and move to `idle` / `walk`. The stand-in kits (`standin.tiny` through `standin.large`) resolve `climb` and `crawl` to `walk`, `hide` to `idle`, and an unknown name to `idle`.
+
+Facing stays the four iso values `SouthEast`, `SouthWest`, `NorthEast`, `NorthWest`. Art still authors eight. A committed `TileMoved` or a later aim / attack sets `ActorView::facing` from the tile step (`+x` SouthEast, `+y` SouthWest). That state lives on the presentation feed, not on the combatant. `SouthWest` and `NorthWest` are the west mirror. Huge and gargantuan bins, `size_short` runtime, and an 8-value facing enum are not M0.

@@ -238,7 +238,7 @@ def check_stat_block(doc: dict, errs: list[str], pb_expected: int, rolled_hp: bo
         if v not in (base + pb, base + 2 * pb):
             errs.append(f"skills.{s} = {v}, expected {base + pb} (or {base + 2 * pb} with expertise)")
     perc = doc.get("skills", {}).get("perception", modifier(ab["wis"]))
-    printed_ok = doc.get("$schema") == "monster@5" and doc.get("passive_perception_reason") == "srd_printed"   # Tier-A §25
+    printed_ok = doc.get("$schema") in c4.MONSTER_SINCE_5 and doc.get("passive_perception_reason") == "srd_printed"   # Tier-A §25
     if doc["senses"]["passive_perception"] != 10 + perc and not printed_ok:
         errs.append(f"senses.passive_perception {doc['senses']['passive_perception']} != {10 + perc}")
     hp = doc["hit_points"]
@@ -253,7 +253,7 @@ def check_monster(doc, errs, ctx):
     ch = doc["challenge"]
     if CR_XP[ch["rating"]] != ch["xp"]:
         errs.append(f"challenge.xp {ch['xp']} != {CR_XP[ch['rating']]} for CR {ch['rating']}")
-    check_stat_block(doc, errs, cr_proficiency(ch["rating"]), pb_checked=doc.get("$schema") == "monster@5")
+    check_stat_block(doc, errs, cr_proficiency(ch["rating"]), pb_checked=doc.get("$schema") in c4.MONSTER_SINCE_5)
 
 
 def check_character(doc, errs, ctx):
@@ -841,14 +841,14 @@ def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict
             e4, w4 = c4.check_item(doc, ctx)
         else:
             e4, w4 = c4.check_stat_block_v4(typ, doc, ctx)
-            if tag in ("monster@5", "character@5"):
+            if tag in c4.MONSTER_SINCE_5 | c4.CHARACTER_SINCE_5:
                 e5, w5 = c4.check_equipment_v5(typ, doc, ctx)
                 e4, w4 = e4 + e5, w4 + w5
-            if tag == "character@5":   # PR C: SRD proficiencies and the derived-vs-printed check
+            if tag in c4.CHARACTER_SINCE_5:   # PR C: SRD proficiencies and the derived-vs-printed check
                 for fn in (c4.check_character_proficiencies, c4.check_character_derive):
                     e7, w7 = fn(doc, ctx)
                     e4, w4 = e4 + e7, w4 + w7
-            if tag == "monster@5":   # EQUIPMENT 5.6 derived-vs-printed (rules5e::derive_monster mirror)
+            if tag in c4.MONSTER_SINCE_5:   # EQUIPMENT 5.6 derived-vs-printed (rules5e::derive_monster mirror)
                 e6, w6 = c4.check_monster_derive(doc, ctx)
                 e4, w4 = e4 + e6, w4 + w6
         errs += e4
@@ -872,6 +872,10 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
     docs = {}
     for f in files:
         rel = f.relative_to(pack).as_posix()
+        # Kit JSON (art/clips.json and any sibling) is not a content document. Engine Core loads it
+        # separately. It is not listed in manifest contents and has no $schema tag.
+        if rel == "art" or rel.startswith("art/"):
+            continue
         try:
             docs[rel] = json.loads(f.read_text(encoding="utf-8"))
         except ValueError as e:

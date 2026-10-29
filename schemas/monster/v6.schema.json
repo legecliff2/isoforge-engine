@@ -1,0 +1,1818 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/monster/v6.schema.json",
+  "title": "monster@6",
+  "description": "monster@6 = monster@5 carried in full plus optional presentation visual (kind, bin, art_root, size_short). monster@5 -> monster@6 is an identity migration: the body is unchanged and visual stays absent. visual is presentation only and is not part of Combat::hash, log_hash, or content hashes. Integers only (4.3). size_short is not applied in M0. Huge and gargantuan have no stand-in art bin in M0.",
+  "$ref": "#/$defs/stat_block",
+  "unevaluatedProperties": false,
+  "required": [
+    "challenge"
+  ],
+  "properties": {
+    "spellcasting": {
+      "$ref": "../common/v2.schema.json#/$defs/spellcasting"
+    },
+    "$schema": {
+      "const": "monster@6"
+    },
+    "challenge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rating",
+        "xp"
+      ],
+      "properties": {
+        "rating": {
+          "enum": [
+            "0",
+            "1/8",
+            "1/4",
+            "1/2",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "30"
+          ],
+          "description": "String so fractional CRs need no floats."
+        },
+        "xp": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "legendary_actions": {
+      "type": "array",
+      "items": {
+        "$ref": "../common/v1.schema.json#/$defs/action"
+      },
+      "description": "Descriptive and ignored by the engine (T&C-G11 is deferred); common@1 action list type, never loaded."
+    },
+    "behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Simulation behaviour hooks.",
+      "properties": {
+        "ai": {
+          "type": "string",
+          "pattern": "^scripts/.+\\.luau$",
+          "description": "Pack-relative strict Luau AI script."
+        }
+      }
+    },
+    "presentation": {
+      "$ref": "../common/v1.schema.json#/$defs/presentation",
+      "properties": {
+        "ai": false
+      },
+      "description": "Presentation-only; 'ai' not allowed in v2 (use behavior.ai)."
+    },
+    "traits": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "../common/v2.schema.json#/$defs/trait_active"
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "weapon_extra_dice"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/weapon_extra_dice_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "save_advantage"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/save_advantage_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "aura"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/aura_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "keen_senses"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/keen_senses_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "regen"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/regen_effect"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "description": "Traits. Effects are mechanically active; never bake their numbers into actions or other stats."
+    },
+    "forward_compat": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "elevation"
+        ]
+      },
+      "description": "Opt-in flags for engine features that are not implemented yet (elevation, T&C-G12). Descriptive and ignored by sim; listed with the inert mechanics. New enum values widen the @4 schemas additively."
+    },
+    "inert_mechanics": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      },
+      "description": "Mechanics the document carries but the engine must ignore (e.g. 'reactions', 'bonus_actions', 'equipment', 'damage[1..]'). Written by the 3->4 migration; a hand-written @4 file may carry it too."
+    },
+    "no_breath": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the monster doesn't need to breathe (Stinking Cloud's automatic success with auto_success_no_breath); maps to Combatant::no_breath. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
+    },
+    "shapechanger": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the monster is a shapechanger (Moonbeam's shapechanger_disadvantage); maps to Combatant::shapechanger. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
+    },
+    "evil": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the monster is evil for zone rows (Spirit Guardians' evil_damage_type); maps to Combatant::evil. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
+    },
+    "derive": {
+      "type": "boolean",
+      "description": "Default false: printed AC / to-hit / damage are used as written. true: they are derived and asserted (EQUIPMENT 5.6)."
+    },
+    "equipment": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item"
+        ],
+        "properties": {
+          "item": {
+            "$ref": "../common/v1.schema.json#/$defs/content_id"
+          },
+          "equipped": {
+            "type": "boolean"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "Stack size (ammunition, javelins); default 1."
+          }
+        }
+      },
+      "description": "{item, equipped?, count?} references to item@2 documents."
+    },
+    "natural_armor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base"
+      ],
+      "properties": {
+        "base": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127
+        },
+        "dex": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "ac_adjust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "reason"
+      ],
+      "properties": {
+        "value": {
+          "type": "integer",
+          "minimum": -128,
+          "maximum": 127
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "Added to the derived AC (step 4 of EQUIPMENT 1.2); needs a reason."
+    },
+    "weapon_dice_multiplier": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4,
+      "default": 1
+    },
+    "weapons": {
+      "type": "array",
+      "description": "Monster-local weapons (EQUIPMENT 5.4): the item@2 weapon fields, weapon_class optional.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "damage"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "../common/v1.schema.json#/$defs/local_id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "weapon_class": {
+            "$ref": "../item/v2.schema.json#/properties/weapon_class"
+          },
+          "reach": {
+            "$ref": "../item/v2.schema.json#/properties/reach"
+          },
+          "range": {
+            "$ref": "../item/v2.schema.json#/properties/range"
+          },
+          "damage": {
+            "$ref": "../item/v2.schema.json#/properties/damage"
+          },
+          "versatile_damage": {
+            "$ref": "../item/v2.schema.json#/properties/versatile_damage"
+          },
+          "properties": {
+            "$ref": "../item/v2.schema.json#/properties/properties"
+          },
+          "qualifiers": {
+            "$ref": "../item/v2.schema.json#/properties/qualifiers"
+          },
+          "magic_bonus": {
+            "$ref": "../item/v2.schema.json#/properties/magic_bonus"
+          },
+          "attack_magic": {
+            "$ref": "../item/v2.schema.json#/properties/attack_magic"
+          },
+          "damage_magic": {
+            "$ref": "../item/v2.schema.json#/properties/damage_magic"
+          },
+          "ammo_kind": {
+            "$ref": "../item/v2.schema.json#/properties/ammo_kind"
+          },
+          "on_hit": {
+            "$ref": "../item/v2.schema.json#/properties/on_hit"
+          }
+        }
+      }
+    },
+    "hands": {
+      "enum": [
+        0,
+        2
+      ],
+      "description": "Explicit hand slots; default 2 when the monster holds a weapon or shield, else 0."
+    },
+    "proficiency_bonus_reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "passive_perception_reason": {
+      "type": "string",
+      "enum": ["srd_printed"],
+      "description": "Tier-A (CONTENT_CONVENTIONS 25): senses.passive_perception is the SRD printed value and differs from 10 + Perception; the printed value wins in the sim (Combatant::passive_perception_override). Without it a mismatch is a validator error."
+    },
+    "emits_light": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bright_ft",
+        "dim_ft"
+      ],
+      "properties": {
+        "bright_ft": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "dim_ft": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120,
+          "multipleOf": 5
+        }
+      },
+      "description": "Glowing monster (LIGHTING 3.4); dim is additional."
+    }
+  },
+  "$defs": {
+    "stat_block": {
+      "description": "common@2 stat_block (copied; common@2 unchanged) with actions[] items monster@5 action and proficiency_bonus optional.",
+      "type": "object",
+      "required": [
+        "$schema",
+        "id",
+        "name",
+        "source",
+        "size",
+        "type",
+        "alignment",
+        "armor_class",
+        "hit_points",
+        "speed",
+        "abilities",
+        "senses",
+        "languages",
+        "actions"
+      ],
+      "properties": {
+        "$schema": {
+          "$ref": "../common/v1.schema.json#/$defs/schema_tag"
+        },
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/content_id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "../common/v1.schema.json#/$defs/source"
+        },
+        "size": {
+          "$ref": "../common/v1.schema.json#/$defs/size"
+        },
+        "type": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_type"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "alignment": {
+          "$ref": "../common/v1.schema.json#/$defs/alignment"
+        },
+        "armor_class": {
+          "$ref": "../common/v1.schema.json#/$defs/armor_class"
+        },
+        "hit_points": {
+          "$ref": "../common/v1.schema.json#/$defs/hit_points"
+        },
+        "speed": {
+          "$ref": "../common/v1.schema.json#/$defs/speed"
+        },
+        "abilities": {
+          "$ref": "../common/v1.schema.json#/$defs/abilities"
+        },
+        "saving_throws": {
+          "$ref": "../common/v1.schema.json#/$defs/saving_throws"
+        },
+        "skills": {
+          "$ref": "../common/v1.schema.json#/$defs/skills"
+        },
+        "damage_vulnerabilities": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_types"
+        },
+        "damage_resistances": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_types"
+        },
+        "damage_immunities": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_types"
+        },
+        "condition_immunities": {
+          "type": "array",
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/condition"
+          },
+          "uniqueItems": true
+        },
+        "senses": {
+          "$ref": "../common/v1.schema.json#/$defs/senses"
+        },
+        "languages": {
+          "$ref": "../common/v1.schema.json#/$defs/languages"
+        },
+        "proficiency_bonus": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 9
+        },
+        "traits": {
+          "type": "array",
+          "items": {
+            "$ref": "../common/v2.schema.json#/$defs/trait_active"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "bonus_actions": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "../common/v2.schema.json#/$defs/action"
+                  },
+                  {
+                    "properties": {
+                      "kind": {
+                        "not": {
+                          "const": "special"
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "$ref": "../common/v2.schema.json#/$defs/legacy_nonspecial_action"
+              },
+              {
+                "$ref": "../common/v2.schema.json#/$defs/legacy_special_action"
+              }
+            ]
+          }
+        },
+        "reactions": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "../common/v2.schema.json#/$defs/reaction"
+              },
+              {
+                "$ref": "../common/v2.schema.json#/$defs/legacy_action"
+              }
+            ]
+          }
+        },
+        "presentation": {
+          "$ref": "../common/v1.schema.json#/$defs/presentation"
+        },
+        "visual": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Presentation only (Engine Core M0). Never read by rules and never folded into Combat::hash, log_hash, or chunk content_hash. Absent: a humanoid type resolves to paperdoll; any other type resolves to a stand-in bin from size (tiny, small, medium, large). Huge and gargantuan have no art bin in M0. size_short is stored and not applied (M1: torso+head _short plates, else scale about the feet pivot).",
+          "properties": {
+            "kind": {
+              "enum": ["paperdoll", "standin"],
+              "description": "Overrides the type default."
+            },
+            "bin": {
+              "enum": ["tiny", "small", "medium", "large"],
+              "description": "Stand-in canvas. Ignored for paperdoll. Huge and gargantuan are not M0 bins."
+            },
+            "art_root": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^art/[A-Za-z0-9_./-]+$",
+              "description": "Pack-relative kit directory. The loader checks that it exists when the pack directory is known. '..' is refused."
+            },
+            "size_short": {
+              "type": "boolean",
+              "description": "Reserved. M0 does not swap _short plates and does not scale. M1."
+            }
+          }
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "../common/v2.schema.json#/$defs/resource"
+          }
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "melee_weapon_attack",
+            "ranged_weapon_attack",
+            "melee_spell_attack",
+            "ranged_spell_attack",
+            "special",
+            "save_effect",
+            "attack_effect",
+            "teleport",
+            "area_effect"
+          ]
+        },
+        "to_hit": {
+          "type": "integer",
+          "minimum": -128,
+          "maximum": 127
+        },
+        "reach": {
+          "$ref": "../common/v1.schema.json#/$defs/feet"
+        },
+        "range": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            },
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[normal, long] range in feet (SRD range 80/320 = [80, 320]); targets beyond normal and up to long range are attacked with disadvantage."
+        },
+        "targets": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Weapon properties, e.g. 'finesse', 'light', 'ammunition', 'versatile'."
+        },
+        "damage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/monster_damage"
+          },
+          "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine. monster@5: a component may be {flat, type} instead of {dice, type} (SRD 'Hit: 1 piercing damage'; CONTENT_CONVENTIONS 19)."
+        },
+        "qualifiers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "magical",
+              "silvered",
+              "adamantine"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "monster@3 / character@3: what the weapon is made of / counts as, for qualified resistances (nonmagical, silvered, adamantine). Inert in earlier versions."
+        },
+        "description": {
+          "type": "string"
+        },
+        "save": {
+          "$ref": "../common/v2.schema.json#/$defs/save"
+        },
+        "area": {
+          "$ref": "../common/v2.schema.json#/$defs/area"
+        },
+        "origin": {
+          "enum": [
+            "self",
+            "point"
+          ],
+          "default": "self"
+        },
+        "range_ft": {
+          "$ref": "../common/v1.schema.json#/$defs/range_ft"
+        },
+        "on_success": {
+          "enum": [
+            "half",
+            "none"
+          ]
+        },
+        "apply": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "../common/v2.schema.json#/$defs/apply"
+          }
+        },
+        "usage": {
+          "$ref": "../common/v2.schema.json#/$defs/usage"
+        },
+        "magical": {
+          "type": "boolean",
+          "default": false
+        },
+        "on_hit": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "../common/v2.schema.json#/$defs/rider"
+          }
+        },
+        "attack": {
+          "enum": [
+            "ranged",
+            "melee"
+          ],
+          "description": "attack_effect (sim #170): the attack roll's mode; default ranged."
+        },
+        "half_hp_damage": {
+          "$ref": "../common/v1.schema.json#/$defs/dice",
+          "description": "Swarm (sim #172): weapon attacks only; replaces the dice of damage[0] while the attacker has half its hit points or fewer (SRD swarm bites: 2d6, or 1d6 at half HP or fewer). Needs at least one die."
+        },
+        "long_range_ft": {
+          "$ref": "../common/v1.schema.json#/$defs/range_ft",
+          "description": "attack_effect (sim #174): ranged only; long range in feet, greater than range_ft. Legal out to long_range_ft, at disadvantage beyond range_ft (giant spider Web 30/60)."
+        },
+        "zero_hp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "while",
+            "duration"
+          ],
+          "properties": {
+            "condition": {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            "while": {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            "duration": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "n"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "rounds"
+                },
+                "n": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              }
+            }
+          },
+          "description": "save_effect / save_condition (sim #174): when the damage drops the target to 0 hit points it is stable and gains condition for duration.n rounds (600 = 1 hour, outlasts healing) and while for as long as that lasts (giant spider bite: poisoned 600 rounds, paralyzed while poisoned). Needs damage; condition and while must differ."
+        },
+        "control": {
+          "$ref": "../common/v2.schema.json#/$defs/control_kind",
+          "description": "VERSION_BUMP_BATCH 7.2y: save_effect only (class feature save actions: Turn Undead, Turn the Unholy). command is spell-only (load error)."
+        },
+        "control_excludes_creature_types": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_types",
+          "description": "7.2y: save_effect with control only; creature types the control has no effect on."
+        },
+        "destroy_undead_max_cr8": {
+          "$ref": "../common/v2.schema.json#/$defs/destroy_undead_max_cr8",
+          "description": "7.2y: save_effect with control turned only (Destroy Undead)."
+        },
+        "target_creature_types": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_types",
+          "description": "7.2y: save_effect only; only creatures of these types are targeted (others make no save and take nothing): Turn Undead [undead], Turn the Unholy [fiend, undead]."
+        },
+        "duration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "n"
+          ],
+          "properties": {
+            "kind": {
+              "const": "rounds"
+            },
+            "n": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          },
+          "description": "7.2y: save_effect with control only; the control lasts n rounds (Turn Undead: 1 minute = 10)."
+        },
+        "weapon": {
+          "type": "string",
+          "pattern": "^(#[a-z0-9_]+|[a-z0-9_]+(\\.[a-z0-9_]+)+)$",
+          "description": "The wielded weapon: an item@2 content id (listed in equipment[]) or '#<id>' of a weapons[] entry (EQUIPMENT 5.3 / 5.4)."
+        },
+        "natural": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            },
+            "flat": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 255,
+              "description": "CONTENT_CONVENTIONS 19: a fixed amount printed without dice (SRD 'Hit: 1 slashing damage'). The whole amount: no ability term, so damage_ability is not allowed. Must equal the action's flat damage[0]."
+            },
+            "ability": {
+              "enum": [
+                "str",
+                "dex"
+              ]
+            },
+            "damage_ability": {
+              "enum": [
+                "str",
+                "dex",
+                "none"
+              ],
+              "description": "Default: ability. 'none' for blocks that print no modifier."
+            }
+          },
+          "oneOf": [
+            {
+              "required": [
+                "dice",
+                "ability"
+              ],
+              "not": {
+                "required": [
+                  "flat"
+                ]
+              }
+            },
+            {
+              "required": [
+                "flat",
+                "ability"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "dice"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "damage_ability"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "description": "Natural or monster-local weapon source: exactly one of dice (NdM) or flat (CONTENT_CONVENTIONS 19)."
+        },
+        "attack_bonus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "value",
+            "reason"
+          ],
+          "properties": {
+            "value": {
+              "type": "integer",
+              "minimum": -128,
+              "maximum": 127
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "description": "Overrides the derived total to-hit (not a delta); needs a reason (EQUIPMENT 5.5)."
+        },
+        "damage_override": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dice",
+            "reason"
+          ],
+          "properties": {
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "description": "Overrides the derived damage[0] dice (not a delta) when the printed stat block can't be derived; needs a reason citing the SRD 5.1 stat block (CONTENT_CONVENTIONS 21). SRD Gladiator thrown Spear: 2d6 + 4."
+        },
+        "use": {
+          "enum": [
+            "one_hand",
+            "two_hands",
+            "thrown",
+            "off_hand"
+          ],
+          "default": "one_hand",
+          "description": "How the `weapon` is used for this action (EQUIPMENT 2.1 WeaponUse): two_hands = versatile die or a two-handed melee weapon, thrown = a thrown use of a melee weapon. Explicit, never inferred from the action id."
+        },
+        "drain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max_hp"
+          ],
+          "description": "Batch 3 (Lich ruling; sim content.cpp, rules5e life_drain): weapon attacks only. SRD 5.1 Life Drain: the target's hit point maximum is reduced by an amount equal to the damage taken (after a Constitution save vs save.dc when present; success: no reduction); the reduction lasts until the target finishes a long rest, and a maximum of 0 kills it. Wight: {max_hp true, save {ability con, dc 13}}.",
+          "properties": {
+            "max_hp": {
+              "const": true
+            },
+            "save": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ability",
+                "dc"
+              ],
+              "properties": {
+                "ability": {
+                  "const": "con"
+                },
+                "dc": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                }
+              }
+            },
+            "damage_type": {
+              "$ref": "../common/v1.schema.json#/$defs/damage_type",
+              "description": "Batch 3 (vampire spawn): only the damage of this type taken counts (after immunity / resistance / vulnerability); must be one of the action's damage[] types."
+            },
+            "heal_self": {
+              "type": "boolean",
+              "description": "Batch 3 (vampire spawn): the attacker regains hit points equal to the reduction."
+            }
+          }
+        },
+        "curse": {
+          "type": "object",
+          "description": "Batch 3 (mummy Rotting Fist): on a hit, a Con save; on a failure the target can't regain hit points (no_regain_hp). Weapon attacks only.",
+          "additionalProperties": false,
+          "required": [
+            "no_regain_hp",
+            "save"
+          ],
+          "properties": {
+            "no_regain_hp": {
+              "const": true
+            },
+            "save": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ability",
+                "dc"
+              ],
+              "properties": {
+                "ability": {
+                  "const": "con"
+                },
+                "dc": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                }
+              }
+            }
+          }
+        },
+        "ability": {
+          "enum": [
+            "str",
+            "dex",
+            "none"
+          ],
+          "description": "CONTENT_CONVENTIONS \"Attack ability\": the ability the attack's to_hit and damage use (none: no ability modifier). Optional; absent = inferred from to_hit (Str on a Str/Dex tie, with a loader warning); a finesse weapon without it uses the better of Str / Dex. Read when a score is reduced (Strength Drain) and by the two-weapon off-hand. Weapon attacks only."
+        },
+        "ability_drain": {
+          "type": "object",
+          "description": "Batch 3 (shadow Strength Drain): on a hit, after the damage, the target's Strength score is reduced by the dice; it dies if this reduces its Strength to 0; a short or long rest restores it. Weapon attacks only.",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dice"
+          ],
+          "properties": {
+            "ability": {
+              "const": "str"
+            },
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            }
+          }
+        },
+        "target_requires_any": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Batch 3 (vampire spawn Bite: \"one willing creature, or a creature that is grappled by the vampire, incapacitated, or restrained\"): the target must meet at least one. willing counts only for an ally with ActionRequest target_willing. Weapon attacks only.",
+          "items": {
+            "enum": [
+              "willing",
+              "grappled_by_self",
+              "incapacitated",
+              "restrained"
+            ]
+          }
+        },
+        "feet": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 500,
+          "multipleOf": 5,
+          "description": "Batch 3 teleport action (blink dog 40): up to this many feet to an unoccupied space the creature can see."
+        },
+        "with_attack": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id",
+          "description": "Batch 3 teleport action: one attack (an attack action id) made after the teleport without another action (SRD 5.1 blink dog: 'Before or after teleporting, the dog can make one bite attack.'; teleport-then-bite only)."
+        },
+        "also_on_fail_by": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["margin", "condition"],
+          "properties": {
+            "margin": {"type": "integer", "minimum": 1, "maximum": 30},
+            "condition": {"$ref": "../common/v1.schema.json#/$defs/condition"}
+          },
+          "description": "Tier-A §26 (save_effect only; SRD 5.1 mummy Dreadful Glare 'If the target fails the saving throw by 5 or more, it is also paralyzed for the same duration.'): failing the save by margin or more also applies condition on the same effect entry (same duration; ending it ends both), even if the target is immune to the primary condition. Needs a tracked primary condition in apply[] and differs from it; no escalates / control / area."
+        },
+        "immune_on_success": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hours", "scope"],
+          "properties": {
+            "hours": {"type": "integer", "minimum": 1, "maximum": 8760},
+            "scope": {"enum": ["same_action", "same_source"]}
+          },
+          "description": "Tier-A §26 (save_effect only): a success makes the target immune to this action for hours. same_action = from every creature using this archetype's action (SRD 'the dreadful glare of all mummies'); same_source = from this creature only. SIM_EVENTS 0xE1."
+        },
+        "target_must_see_source": {
+          "type": "boolean",
+          "description": "Tier-A §26 (save_effect only; 'One creature ... that can see the mummy'): a target that cannot see the user (blinded, or the sight hook says so) makes no save and gains no immunity (FeatureTriggered c = 3)."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "_attack$"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "to_hit",
+              "damage"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "^melee_"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reach"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "^ranged_"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "range"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save_effect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "save"
+            ],
+            "dependentRequired": {
+              "on_success": [
+                "damage"
+              ],
+              "control_excludes_creature_types": [
+                "control"
+              ],
+              "destroy_undead_max_cr8": [
+                "control"
+              ],
+              "duration": [
+                "control"
+              ]
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "damage"
+                ]
+              },
+              {
+                "required": [
+                  "apply"
+                ]
+              },
+              {
+                "required": [
+                  "control"
+                ]
+              }
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "to_hit"
+                  ]
+                },
+                {
+                  "required": [
+                    "reach"
+                  ]
+                },
+                {
+                  "required": [
+                    "range"
+                  ]
+                },
+                {
+                  "required": [
+                    "properties"
+                  ]
+                },
+                {
+                  "required": [
+                    "on_hit"
+                  ]
+                },
+                {
+                  "required": [
+                    "long_range_ft"
+                  ]
+                },
+                {
+                  "required": [
+                    "half_hp_damage"
+                  ]
+                }
+              ]
+            }
+          },
+          "else": {
+            "if": {
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "attack_effect",
+                    "teleport",
+                    "area_effect"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "save"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "area"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "origin"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "range_ft"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "apply"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "on_success"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "usage"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "magical"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "long_range_ft"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "zero_hp"
+                    ]
+                  }
+                ]
+              }
+            },
+            "then": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "zero_hp"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "half_hp_damage"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind",
+              "damage"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "save_effect",
+                  "area_effect"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "on_success"
+            ]
+          }
+        },
+        {
+          "description": "Monster area action (AOE_MONSTER_ABILITIES PR2): one shape, one save, one synthetic SpellDef on the spell area path. Cone, line, cube, sphere, or cylinder (height is stored and still ignored). on_success half is half damage. Recharge and per-day uses are the existing usage object.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "area_effect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "save",
+              "area"
+            ],
+            "dependentRequired": {
+              "on_success": [
+                "damage"
+              ]
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "damage"
+                ]
+              },
+              {
+                "required": [
+                  "apply"
+                ]
+              }
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "description",
+                "save",
+                "area",
+                "origin",
+                "range_ft",
+                "on_success",
+                "damage",
+                "apply",
+                "usage",
+                "magical"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "origin"
+            ],
+            "properties": {
+              "origin": {
+                "const": "point"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "range_ft"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "melee_weapon_attack",
+                  "ranged_weapon_attack"
+                ]
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "on_hit"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "attack_effect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "to_hit",
+              "apply"
+            ],
+            "properties": {
+              "to_hit": {
+                "minimum": -20,
+                "maximum": 30,
+                "not": {
+                  "const": 0
+                }
+              },
+              "range_ft": {
+                "minimum": 5
+              }
+            },
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "attack",
+                "to_hit",
+                "range_ft",
+                "long_range_ft",
+                "apply",
+                "usage",
+                "description"
+              ]
+            }
+          },
+          "description": "sim #170 compile_attack_effect: an attack roll that only applies conditions (giant spider Web); every apply[] entry has a Strength escape."
+        },
+        {
+          "description": "VERSION_BUMP_BATCH 7.2y: the control / target_creature_types keys are save_effect only.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save_effect"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "control"
+                  ]
+                },
+                {
+                  "required": [
+                    "control_excludes_creature_types"
+                  ]
+                },
+                {
+                  "required": [
+                    "destroy_undead_max_cr8"
+                  ]
+                },
+                {
+                  "required": [
+                    "target_creature_types"
+                  ]
+                },
+                {
+                  "required": [
+                    "duration"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "Batch 3: feet / with_attack are teleport-action keys; a teleport action needs feet.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "teleport"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "feet"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "description",
+                "feet",
+                "usage",
+                "with_attack"
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "feet"
+                  ]
+                },
+                {
+                  "required": [
+                    "with_attack"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "weapon_extra_dice_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "dice"
+      ],
+      "description": "monster@5-local trait kind (EQUIPMENT 5.3, Rules #247 brute_dice; common@2 unchanged): a weapon deals `dice` extra dice of its own damage die. Read only by the derivation (derive: true). SRD Bugbear Brute: {kind weapon_extra_dice, dice 1, melee_only true}.",
+      "properties": {
+        "kind": {
+          "const": "weapon_extra_dice"
+        },
+        "dice": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "melee_only": {
+          "type": "boolean",
+          "default": true,
+          "description": "Melee uses only; a thrown use is ranged and gets no extra dice."
+        }
+      }
+    },
+    "save_advantage_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "description": "monster@5-local trait kind (batch 3, field_shapes_proposal Gap 2; common@2 unchanged): advantage (or disadvantage) on saving throws matching every listed gate; a gate list matches when the effect imposes one of save_vs_conditions or deals one of vs_damage_types (either set). At least one gate is required. SRD Magic Resistance: {kind save_advantage, magical true}. Dark Devotion: {save_vs_conditions [charmed, frightened]}.",
+      "properties": {
+        "kind": {
+          "const": "save_advantage"
+        },
+        "save_vs_conditions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/condition"
+          }
+        },
+        "vs_damage_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/damage_type"
+          }
+        },
+        "magical": {
+          "type": "boolean",
+          "description": "true: only saves against spells and other magical effects."
+        },
+        "abilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/ability"
+          }
+        },
+        "mode": {
+          "enum": [
+            "advantage",
+            "disadvantage"
+          ],
+          "default": "advantage"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "save_vs_conditions"
+          ]
+        },
+        {
+          "required": [
+            "vs_damage_types"
+          ]
+        },
+        {
+          "required": [
+            "abilities"
+          ]
+        },
+        {
+          "required": [
+            "magical"
+          ],
+          "properties": {
+            "magical": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "aura_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "radius_ft",
+        "on",
+        "save",
+        "condition",
+        "duration"
+      ],
+      "description": "monster@5-local trait kind (batch 3, ghast Stench; common@2 unchanged): a creature-sourced aura that exists from the start of combat and works while the creature is alive (incapacitated or unconscious included); it ends when the creature dies. Each creature that starts its turn within radius_ft of it makes the save; on a failure it has the condition until the start of its next turn. On a success with success_immunity_hours, that creature is immune to this creature's aura for that many hours. SRD Stench (ghast): {radius_ft 5, on start_turn, save {con, 10}, condition poisoned, duration until_start_of_next_turn, success_immunity_hours 24}.",
+      "properties": {
+        "kind": {
+          "const": "aura"
+        },
+        "radius_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "on": {
+          "const": "start_turn"
+        },
+        "save": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dc"
+          ],
+          "properties": {
+            "ability": {
+              "$ref": "../common/v1.schema.json#/$defs/ability"
+            },
+            "dc": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            }
+          }
+        },
+        "condition": {
+          "allOf": [
+            {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            {
+              "not": {
+                "const": "exhaustion"
+              }
+            }
+          ]
+        },
+        "duration": {
+          "const": "until_start_of_next_turn"
+        },
+        "success_immunity_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 168
+        }
+      }
+    },
+    "keen_senses_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "senses"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §30; common@2 unchanged): advantage on Wisdom (Perception) checks that rely on a listed sense. SRD Keen Hearing and Smell: {kind keen_senses, senses [hearing, smell]}. Does not change the printed passive Perception.",
+      "properties": {
+        "kind": {
+          "const": "keen_senses"
+        },
+        "senses": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "sight",
+              "hearing",
+              "smell"
+            ]
+          }
+        }
+      }
+    },
+    "regen_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "amount",
+        "suppressed_by"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §31; common@2 unchanged): regains `amount` hit points at the start of its turn unless it took a `suppressed_by` damage type since its last turn started. At 0 hit points it is not dead until a later turn starts without regenerating (SRD troll). SRD Troll: {kind regen, amount 10, suppressed_by [acid, fire]}. Not oni, shield guardian, or vampire spawn.",
+      "properties": {
+        "kind": {
+          "const": "regen"
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32767,
+          "description": "Hit points regained (int16). Capped at the creature's hit point maximum."
+        },
+        "suppressed_by": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 13,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/damage_type"
+          },
+          "description": "Damage types that suppress the next start-of-turn regeneration. A type reduced to 0 by resistance or immunity does not count."
+        }
+      }
+    },
+    "monster_damage": {
+      "description": "monster@5-local action damage component (common@2 $defs/damage unchanged): either common@2 damage ({dice, type, bonus_vs?}) or flat damage {flat, type}. Exactly one of dice / flat (oneOf). flat maps to rules5e::DiceExpr{0, 0, flat}: no dice are rolled (no rng), and a critical hit does not double it (SRD 5.1). The ability modifier stays in the dice string ('1d6+2'); flat is not a modifier and takes none.",
+      "oneOf": [
+        {
+          "$ref": "../common/v2.schema.json#/$defs/damage"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "flat",
+            "type"
+          ],
+          "properties": {
+            "flat": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 255
+            },
+            "type": {
+              "$ref": "../common/v1.schema.json#/$defs/damage_type"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
