@@ -2176,9 +2176,9 @@ uint64_t Combat::hash() const {
     }
     // 0xE3 (B6 bite disease): schedule rows, then any disease_hp_max_reduction, only while one of them exists.
     {
-        uint32_t reduced = 0;
-        for (const auto& c : state_.combatants) if (c.disease_hp_max_reduction != 0) ++reduced;
-        if (!state_.diseases.empty() || reduced != 0) {
+        uint32_t hp_max_reduced = 0;
+        for (const auto& c : state_.combatants) if (c.disease_hp_max_reduction != 0) ++hp_max_reduced;
+        if (!state_.diseases.empty() || hp_max_reduced != 0) {
             h.byte(0xE3);
             h.u32(uint32_t(state_.diseases.size()));
             for (const auto& d : state_.diseases) {
@@ -2188,7 +2188,7 @@ uint64_t Combat::hash() const {
                 h.byte(d.dice.count); h.byte(d.dice.sides); h.u16(uint16_t(d.dice.bonus));
                 h.byte(uint8_t(d.condition)); h.byte(uint8_t(d.save_ability));
             }
-            h.u32(reduced);
+            h.u32(hp_max_reduced);
             for (const auto& c : state_.combatants)
                 if (c.disease_hp_max_reduction != 0) { h.u32(c.id); h.u16(uint16_t(c.disease_hp_max_reduction)); }
         }
