@@ -622,7 +622,8 @@
             "attack_effect",
             "teleport",
             "area_effect",
-            "pull"
+            "pull",
+            "deadly_leap"
           ]
         },
         "to_hit": {
@@ -1047,6 +1048,24 @@
           "maximum": 500,
           "multipleOf": 5,
           "description": "Batch 3 teleport action (blink dog 40): up to this many feet to an unoccupied space the creature can see."
+        },
+        "jump_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 60,
+          "multipleOf": 5,
+          "description": "B8 Deadly Leap: the jump, in feet, that must already have been taken this turn. A multiple of 5."
+        },
+        "save_alt": {
+          "$ref": "../common/v1.schema.json#/$defs/ability",
+          "description": "B8 Deadly Leap: the other ability of the target's choice. save.ability is the one used on a tie."
+        },
+        "push_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 30,
+          "multipleOf": 5,
+          "description": "B8 Deadly Leap: feet a successful save pushes the creature out of the leaper's space."
         },
         "with_attack": {
           "$ref": "../common/v1.schema.json#/$defs/local_id",
@@ -1647,6 +1666,31 @@
                 "feet",
                 "targets",
                 "target_requires_any"
+              ]
+            }
+          }
+        },
+        {
+          "description": "B8 Deadly Leap: its own action. A jump of jump_ft this turn, then each creature in the leaper's space saves. Fail: both damage components and prone. Success: half of each and a push of push_ft, or prone in the space if that push cannot move. save.ability wins a tie against save_alt.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "deadly_leap" } }
+          },
+          "then": {
+            "required": ["jump_ft", "save", "save_alt", "damage", "push_ft"],
+            "properties": {
+              "damage": { "minItems": 2, "maxItems": 2 }
+            },
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description", "jump_ft", "save", "save_alt", "damage", "push_ft"]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["jump_ft"] },
+                { "required": ["save_alt"] },
+                { "required": ["push_ft"] }
               ]
             }
           }

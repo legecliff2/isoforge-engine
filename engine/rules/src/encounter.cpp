@@ -221,6 +221,14 @@ SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int 
     return r;
 }
 
+// B8: Strength or Dexterity, the target's choice. Automated: the higher save_modifier (ability modifier plus
+// proficiency in that save). Tie: the first listed ability (save_ability). Cover, advantage, and flat bonuses
+// apply to the chosen ability afterwards; they are not part of the choice.
+Ability leap_save_ability(const Combatant& t, const SpellDef& def) {
+    if (!def.has_save_choice) return def.save_ability;
+    return save_modifier(t, def.save_alt) > save_modifier(t, def.save_ability) ? def.save_alt : def.save_ability;
+}
+
 // d20 saving throw with modifiers: modes merge, then flat bonus and dice (drawn after the d20, only if a die exists).
 // Row 13, Legendary Resistance: a failed save turns into a success by spending 1 from Combatant::legendary_pool
 // (ResourceSpent is emitted before the caller's SavingThrowRolled, which then reports success).
@@ -1195,6 +1203,12 @@ void finalize_forced(EncounterState& s, Ctx& ctx, std::vector<Event>& events) {
             if (rec || (m && !m->dead && s.hooks.forced_move)) ctx.forced_results.emplace_back(d.q.step_seq, res);
             std::vector<Event> tail;
             emit(tail, EventKind::Moved, d.q.mover, d.q.source, int32_t(res.feet_moved), 0, d.flags);
+            // B8: a successful Deadly Leap save that cannot leave the space falls prone there. Half damage already landed.
+            if (d.q.prone_if_blocked && res.feet_moved == 0 && m && !m->dead && !m->has(Condition::Prone) &&
+                !immune_to(s, *m, Condition::Prone)) {
+                add_condition(*m, Condition::Prone);
+                emit(tail, EventKind::ConditionAdded, m->id, 0, int32_t(Condition::Prone));
+            }
             if (res.fell_ft > 0 && m && !m->dead) land_fall(s, d.q.mover, int(res.fell_ft), tail, true);   // altitude PR4
             for (CombatantId other : res.out_of_reach_of) end_grapple_pair(s, d.q.mover, other, tail);
             const uint8_t saved_depth = ctx.depth;
@@ -3684,22 +3698,23 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (def.hostile_save_advantage && t->team != a.team) {   // 7.2zj: fighting the caster's side; Heightened cancels it
                 mode = mode == RollMode::Disadvantage ? RollMode::Normal : RollMode::Advantage;
             }
+            const Ability ab = leap_save_ability(*t, def);   // B8: Str or Dex, the higher save bonus (tie: the first)
             if (spared) {   // R-G14 Careful / Sculpt Spells: automatic success, no roll (natural 0, total 0)
                 r.success = true;
             } else {
-                r = save_roll(s, *t, def.save_ability, dc, mode, ev, &src, cover_bonus_for(cov, &def));
+                r = save_roll(s, *t, ab, dc, mode, ev, &src, cover_bonus_for(cov, &def));
             }
-            emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
+            emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(ab), r.roll.natural, r.roll.total,
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
             if (spared && ctx.spared_no_damage) dealt = 0;
-            if (t->evasion && def.save_ability == Ability::Dex && def.on_save == OnSave::Half) dealt = r.success ? 0 : dmg / 2;   // Evasion
+            if (t->evasion && ab == Ability::Dex && def.on_save == OnSave::Half) dealt = r.success ? 0 : dmg / 2;   // Evasion
             const int16_t hp_before = t->hp;
             if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dealt), def.damage_type, dq), false, ev, &ts, &ctx); }
             if (def.has_also_damage && !t->dead) {   // 7.2zj Ice Storm: the cold packet uses the same save, half, and Evasion
                 int extra = r.success ? (def.on_save == OnSave::Half ? also_dmg / 2 : 0) : also_dmg;
                 if (spared && ctx.spared_no_damage) extra = 0;
-                if (t->evasion && def.save_ability == Ability::Dex && def.on_save == OnSave::Half) extra = r.success ? 0 : also_dmg / 2;
+                if (t->evasion && ab == Ability::Dex && def.on_save == OnSave::Half) extra = r.success ? 0 : also_dmg / 2;
                 if (extra > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(extra), def.also_damage_type, dq), false, ev, &ts, &ctx); }
             }
             if (def.zero_hp_rounds > 0 && dealt > 0 && hp_before > 0 && t->hp <= 0 && !t->dead)   // EC spider follow-up (flagged)
@@ -3823,6 +3838,13 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 }
                 if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // 7.2w: Engulf
                 set_contain(s.effects.back(), def, *t, ev);
+            }
+            // B8: a successful save is pushed out of the leaper's space. The push is queued with the spell's other
+            // forced moves and resolved in finalize_forced. Zero feet (the hook found no space) knocks the creature prone.
+            if (r.success && def.leap_push_ft > 0 && !t->dead) {
+                ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = 1; q.feet = def.leap_push_ft;
+                q.prone_if_blocked = true;
+                ctx.forced_queue.push_back(q);
             }
         }
         if (def.difficult_until == 1 && def.area != AreaShape::None) {   // 7.2zj Ice Storm: difficult terrain even if every save succeeds
@@ -4754,6 +4776,10 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
             return fail("ward_alternate: not a legal alternate target");
         ward_alt = find_mut(s, req.ward_alternate);
     }
+    if (def.requires_jumped_ft > 0) {   // B8 Deadly Leap: the jump already happened. The action is not spent when it did not.
+        if (s.budget.jumped_ft < def.requires_jumped_ft) return fail("has not jumped far enough");
+        for (Combatant* t : T) if (t == &a) return fail("bad target");
+    }
     if (def.rider_only) {   // B3b: the multiattack free rider. The gate above already refused a bad target without consuming it.
         if (b.free_rider != def.id) return fail("only a multiattack rider");
         b.free_rider = 0;
@@ -5539,6 +5565,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
                           req.kind != ActionKind::Heal && req.kind != ActionKind::AbilityCheck &&
                           req.kind != ActionKind::ReactionDecision && req.kind != ActionKind::OpportunityAttack;
     Combatant* a = own_turn ? find_mut(s, req.actor) : nullptr;
+    if (req.jump_ft != 0 && req.kind != ActionKind::Move) return fail("jump_ft: Move only");   // B8: never an ignored flag
     if ((req.forced_feet != 0 || req.teleport_feet != 0 || req.has_teleport_dest) && req.kind != ActionKind::CastSpell)
         return fail("forced_feet / teleport: CastSpell only");
     if ((req.has_zone_dest || req.zone_move != 0 || req.zone_move_ft != 0 || !req.zone_excluded.empty() || req.has_zone_end ||
@@ -5700,6 +5727,11 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         int cost = req.move_ft * (a.has(Condition::Prone) ? 2 : 1);   // crawling
         if (drags_grappled(s, a)) cost *= 2;                           // SRD: half speed while moving a grappled creature
         if (req.move_mode > 4) return fail("bad move_mode");
+        if (req.jump_ft != 0) {   // B8: feet of this step that are a jump. Not a speed. The cost stays move_ft.
+            if (req.jump_ft % 5 != 0) return fail("jump_ft: a multiple of 5");
+            if (req.move_tiles == 0 || req.jump_ft > uint16_t(5 * req.move_tiles)) return fail("jump_ft exceeds this step");
+            if (a.has(Condition::Prone)) return fail("cannot jump while prone");
+        }
         if (req.move_mode != 0) {   // feat/move-modes: fly / swim / climb / burrow speed; the shared budget may go below 0
             const int allow = move_allowance(s, a, req.move_mode);
             if (allow < 0) return fail("no such speed");
@@ -5714,6 +5746,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         }
         b.movement_ft = int16_t(b.movement_ft - cost);
         b.moved_ft = uint16_t(b.moved_ft + 5 * req.move_tiles);   // only a completed move counts
+        if (req.jump_ft != 0)   // B8: only a completed own-turn jump. An interrupted move returned above.
+            b.jumped_ft = uint16_t(std::min(65535, int(b.jumped_ft) + int(req.jump_ft)));
         if (req.squeeze == 1) a.squeezing = true;    // SRD Squeezing (sim fact)
         else if (req.squeeze == 2) a.squeezing = false;
         s.budget = b;
@@ -6498,6 +6532,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                       d->kind == SpellEffectKind::SummonWeapon || d->kind == SpellEffectKind::Descriptive || d->rider_only)) continue;   // R-G12: sim builds Polymorph requests (form choice); descriptive is never cast; B3b rider_only is not a standalone action
             if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
+            if (d->requires_jumped_ft > 0 && b.jumped_ft < d->requires_jumped_ft) continue;   // B8: the jump is not done
             for (uint8_t L = d->level; L <= (d->level == 0 ? 0 : 9); ++L) {
                 if (!spell_cast_resource_refusal(s, a, *d, false, L).empty()) continue;
                 ActionRequest r{a.id, ActionKind::CastSpell};

@@ -72,6 +72,7 @@ struct Archetype {
         uint16_t range_ft = 0;
         bool teleport = false;          // batch 3 `teleport` action (blink dog): needs a destination, the AI skips it
         bool rider_only = false;        // B3b: not a standalone action; only the multiattack free rider (chuul Tentacles)
+        bool leap = false;              // B8: Deadly Leap. The built-in AI does not declare a jump or pick a landing.
     };
     std::vector<SaveAction> save_actions;
     // resources[] (row 13): pools Combat::create registers (resolved against the archetype's level / abilities at load).

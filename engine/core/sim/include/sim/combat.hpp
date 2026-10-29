@@ -215,7 +215,9 @@ public:
     CombatantId occupant_at(Vec2i t, CombatantId except, int mover_abs_ft) const;
     bool overlaps_other(CombatantId id, Vec2i anchor, int n) const;
     struct StepPlan { int n = 1; int cost = 5; uint8_t squeeze = 0; bool ends_in_other = false; };
-    std::optional<std::string> plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze = false) const;
+    // allow_occupied: a jump step (B8) may enter another creature's space even when may_pass is false.
+    std::optional<std::string> plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze = false,
+                                         bool allow_occupied = false) const;
     MoveCaps caps_of(CombatantId id) const;   // feat/move-modes: fly / swim / climb speeds present
     // feat/move-modes: the speed a step from `from` to `to` costing `cost` ft uses (0 walk, 1 fly, 2 swim, 3 climb);
     // 0xFF: no fitting speed has enough left; 0xFE: only flight fits and the mover is prone.
@@ -500,7 +502,7 @@ private:
     void note_ledge(CombatantId id, Vec2i from, Vec2i to, rules5e::ForcedMoveResult& res);
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
-    SubmitResult do_step(Vec2i to, bool allow_squeeze = false, int16_t alt_to = 0);
+    SubmitResult do_step(Vec2i to, bool allow_squeeze = false, int16_t alt_to = 0, uint16_t jump_ft = 0);
     // altitude PR2: the altitude consequences of a committed Move step (Moved handler; replay runs the same code).
     void step_altitude(const rules5e::ActionRequest& q, int from_ground_ft, int from_abs_ft, bool was_airborne);
     std::vector<Fall> falls_;
