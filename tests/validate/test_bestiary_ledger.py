@@ -186,6 +186,90 @@ class LedgerTests(unittest.TestCase):
         self.assertIn("authored rows 2 != heading 9", book.count_errors())
 
 
+class SoftBlockTests(unittest.TestCase):
+    """Parked ids are warned out of playable scenario rosters. Partials are not."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.book = ledger.load_ledger()
+
+    def _lines(self, doc: dict, book: ledger.Ledger | None = None) -> list[str]:
+        blocks = ledger.soft_blocks_for_scenario(doc, self.book if book is None else book)
+        return [block.line() for block in blocks]
+
+    def test_shipped_scenarios_have_no_parked_roster_ids(self):
+        root = ROOT / "scenarios"
+        found = sorted(root.glob("*/scenario.json"))
+        self.assertGreaterEqual(len(found), 1)
+        for path in found:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(self._lines(doc), [], path.name)
+
+    def test_parked_mimic_is_soft_blocked_on_either_roster_side(self):
+        doc = {
+            "party": [
+                {"id": "fighter", "archetype": "srd51.character.fighter_1"},
+                {"id": "hidden", "archetype": "srd51.monster.mimic"},
+            ],
+            "monsters": [
+                "not-an-actor",
+                {"id": "also", "archetype": "srd51.monster.mimic"},
+                {"id": "blank"},
+            ],
+        }
+        lines = self._lines(doc)
+        self.assertEqual(len(lines), 2)
+        self.assertIn("party[1]", lines[0])
+        self.assertIn("monsters[1]", lines[1])
+        for line in lines:
+            self.assertIn("'srd51.monster.mimic'", line)
+            self.assertIn("Mimic", line)
+            self.assertIn("Shapechanger", line)
+            self.assertIn("soft-blocked from this playable encounter", line)
+            self.assertNotIn("stat block", line)
+
+    def test_authored_partial_goblin_and_troll_are_playable(self):
+        doc = {
+            "monsters": [
+                {"archetype": "srd51.monster.wolf"},
+                {"archetype": "srd51.monster.kobold"},
+                {"archetype": "srd51.monster.goblin"},
+                {"archetype": "srd51.monster.troll"},
+                {"archetype": 12},
+            ]
+        }
+        self.assertEqual(self._lines(doc), [])
+        self.assertIn("srd51.monster.kobold", {row.monster_id for row in self.book.partial})
+        self.assertIn("srd51.monster.troll", {row.monster_id for row in self.book.authored})
+        self.assertNotIn("srd51.monster.troll", {row.monster_id for row in self.book.parked})
+
+    def test_every_deferred_id_soft_blocks_and_prose_ids_do_not(self):
+        for monster_id in PARKED_IDS:
+            doc = {"monsters": [{"archetype": monster_id}]}
+            lines = self._lines(doc)
+            self.assertEqual(len(lines), 1, monster_id)
+            self.assertIn(monster_id, lines[0])
+        with tempfile.TemporaryDirectory() as tmp:
+            book = ledger.parse_ledger(_FIXTURE, Path(tmp), source=Path("fixture.md"))
+        # The fixture's Deferred prose names an authored id. It must not block.
+        prose = {"monsters": [{"archetype": "srd51.monster.swarm_of_rats"}]}
+        self.assertEqual(self._lines(prose, book), [])
+        partial = {"monsters": [{"archetype": "srd51.monster.not_a_real_monster"}]}
+        self.assertEqual(self._lines(partial, book), [])
+        parked = {"party": [{"archetype": "srd51.monster.mimic"}]}
+        lines = self._lines(parked, book)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("party[0]", lines[0])
+        self.assertIn("Shapechanger has no shape", lines[0])
+
+    def test_non_document_and_note(self):
+        self.assertEqual(ledger.soft_blocks_for_scenario([], self.book), ())  # type: ignore[arg-type]
+        self.assertIn("scenario@1", ledger.SOFT_BLOCK_NOTE)
+        self.assertIn("does not invent a stat block", ledger.SOFT_BLOCK_NOTE)
+        editor = (EDITOR / "bestiary_editor.py").read_text(encoding="utf-8")
+        self.assertIn("ledger.SOFT_BLOCK_NOTE", editor)
+
+
 class BridgeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

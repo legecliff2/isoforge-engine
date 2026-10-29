@@ -853,6 +853,8 @@ Both sides use `sim::NearestEnemyPolicy`. The same seed and pack contents print 
 
 Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-empty. Explicit pack arguments to the validator skip this check, so the pack summary line is unchanged.
 
+Parked monsters are soft-blocked from these playable encounters. A roster `archetype` on `party` or `monsters` whose id is a Deferred row in `docs/SRD_MONSTERS_DEFERRED.md` prints `warning <scenario>: <slot>: archetype '<id>' is Parked ... and is soft-blocked from this playable encounter`. The warning does not fail the scenario. Authored rows, including **partial** rows, are not parked. `srd51.monster.goblin` is not in that ledger. The check reads the ledger; it does not add a stat block and does not approximate the blocking mechanic. `encounter_runner` still loads whatever the pack contains. A Deferred id with no monster file fails the existing archetype lookup, and the soft-block warning is printed as well.
+
 ## 25. Printed passive Perception (monster@5 `passive_perception_reason`, Tier-A)
 
 - `senses.passive_perception` must equal 10 + Perception (the `skills.perception` value, else the Wis modifier). On a
