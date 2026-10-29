@@ -1019,27 +1019,6 @@ Grapple `max_size` is §5. Chuul's pincer is Large or smaller; an otyugh's tenta
 
 Chuul is authored (`srd51.monster.chuul`): pincer `max_size: large` and `max_grapples: 2`, Multiattack `pincer` ×2 with `free_rider: tentacles`. Amphibious and Sense Magic stay descriptive.
 
-## 34. Damageless restraining grapple, and pull (monster@5, B5)
-
-SRD 5.1 roper Tendril: "Hit: The target is grappled (escape DC 15). Until the grapple ends, the target is restrained". The hit never deals damage. That is not §27. §27 is a choice (`instead_of_damage`, `ActionRequest::grapple_instead`, log_hash 0xE2), and the loader still refuses that choice together with `restrains`.
-
-Author the tendril as a weapon attack with no `damage` array and an `on_hit` grapple rider `"no_damage": true` (a bool). A hit grapples and deals no damage: no damage roll, no concentration save from this attack. It is not a request bit. `no_damage` may combine with `restrains`, `exclusive`, `max_grapples`, and `max_size`. It cannot combine with `instead_of_damage`. Listing `damage` or `half_hp_damage` on that attack is a load error (`grapple no_damage can't list damage`). Below monster@5 the loader says `grapple no_damage needs a monster@5 file`. A bad bool is `bad grapple no_damage`.
-
-`no_damage` is an extended rider, so the grapple records `via_attack`. The lasting state folds under the existing 0xDB when `via_attack` is set. There is no new flag bit and no new `SIM_EVENTS` tag. The grapple ends when the two creatures are farther apart than that attack's reach (a plain Grapple action, `via_attack` 0xFF, stays 5 feet). A 50-foot tendril still holds a creature a 25-foot pull left at 25 feet.
-
-**Pull.** SRD Reel: "The roper pulls each creature grappled by it up to 25 feet straight toward it." A monster@5 action:
-
-```json
-{ "id": "reel", "name": "Reel", "kind": "pull", "feet": 25, "targets": 6,
-  "target_requires_any": ["grappled_by_self"] }
-```
-
-`feet` is 5..60, a multiple of 5. `targets` is 1..8 (default 1): how many creatures one use may name. `target_requires_any` is `["grappled_by_self"]` and nothing else. Each named creature must be grappled by the user. One that is not refuses the use before the action is spent (`target must be grappled by the user`). The engine does not add a grappled creature the caller left out. There is no save and no damage. The pull is toward the user (`ForcedMoveSpec` mode 2) and `up_to`. Omitting `ActionRequest::forced_feet` pulls the full distance. A multiple of 5 up to `feet` pulls that far and folds under the existing 0xB4. There is no second range and no sight check: being grappled is the constraint. Below monster@5 the loader says `pull needs a monster@5 file`.
-
-This is not a `free_rider`. A free rider runs after every attack in the option, and only for a `rider_only` save. Reel inside the roper's Multiattack sits between the tendril attacks and the bite. That order is not this action. `srd51.monster.roper` stays deferred (SRD_MONSTERS_DEFERRED).
-
-Not hashed beyond 0xB4 and 0xDB. No new tag. The next free tag stays **0xE3**.
-
 ## 34. Area-save petrify escalation (`escalates` on `save_effect`, monster@5)
 
 SRD 5.1 Gorgon Petrifying Breath is the basilisk sentence on a cone, not a gaze. A failed save restrains. The restrained target repeats the save at the end of its next turn. Success ends the effect. Failure replaces restrained with petrified. That is `SpellDef::escalates` / `escalate_to` / `escalate_margin`, which the save resolver already applies. The keys now compile on a monster@5 `save_effect`, including one with an `area`. Gaze (§11) is unchanged.
@@ -1064,3 +1043,24 @@ The primary `apply[]` entry must be a tracked condition with a repeat save (`end
 No new hash and no new `SIM_EVENTS` tag. `ActiveSpellEffect::escalates` is already folded under 0xAA while the repeat is pending, and cleared when the effect petrifies or ends.
 
 `srd51.monster.gorgon` authors the breath (cone 30 ft, Con DC 13, recharge 5–6, margin 0). "Until freed by the greater restoration spell" stays description only, as basilisk. Trampling Charge is the gore's `on_hit` (`moved_at_least_ft` 20, Str DC 16, prone untimed; elk / boar, so it does not also fire on hooves). The bonus-action hooves against the prone target stays a partial, the same gap as lion and tiger Pounce's bonus bite. "Straight toward" is not checked.
+
+## 35. Damageless restraining grapple, and pull (monster@5, B5)
+
+SRD 5.1 roper Tendril: "Hit: The target is grappled (escape DC 15). Until the grapple ends, the target is restrained". The hit never deals damage. That is not §27. §27 is a choice (`instead_of_damage`, `ActionRequest::grapple_instead`, log_hash 0xE2), and the loader still refuses that choice together with `restrains`.
+
+Author the tendril as a weapon attack with no `damage` array and an `on_hit` grapple rider `"no_damage": true` (a bool). A hit grapples and deals no damage: no damage roll, no concentration save from this attack. It is not a request bit. `no_damage` may combine with `restrains`, `exclusive`, `max_grapples`, and `max_size`. It cannot combine with `instead_of_damage`. Listing `damage` or `half_hp_damage` on that attack is a load error (`grapple no_damage can't list damage`). Below monster@5 the loader says `grapple no_damage needs a monster@5 file`. A bad bool is `bad grapple no_damage`.
+
+`no_damage` is an extended rider, so the grapple records `via_attack`. The lasting state folds under the existing 0xDB when `via_attack` is set. There is no new flag bit and no new `SIM_EVENTS` tag. The grapple ends when the two creatures are farther apart than that attack's reach (a plain Grapple action, `via_attack` 0xFF, stays 5 feet). A 50-foot tendril still holds a creature a 25-foot pull left at 25 feet.
+
+**Pull.** SRD Reel: "The roper pulls each creature grappled by it up to 25 feet straight toward it." A monster@5 action:
+
+```json
+{ "id": "reel", "name": "Reel", "kind": "pull", "feet": 25, "targets": 6,
+  "target_requires_any": ["grappled_by_self"] }
+```
+
+`feet` is 5..60, a multiple of 5. `targets` is 1..8 (default 1): how many creatures one use may name. `target_requires_any` is `["grappled_by_self"]` and nothing else. Each named creature must be grappled by the user. One that is not refuses the use before the action is spent (`target must be grappled by the user`). The engine does not add a grappled creature the caller left out. There is no save and no damage. The pull is toward the user (`ForcedMoveSpec` mode 2) and `up_to`. Omitting `ActionRequest::forced_feet` pulls the full distance. A multiple of 5 up to `feet` pulls that far and folds under the existing 0xB4. There is no second range and no sight check: being grappled is the constraint. Below monster@5 the loader says `pull needs a monster@5 file`.
+
+This is not a `free_rider`. A free rider runs after every attack in the option, and only for a `rider_only` save. Reel inside the roper's Multiattack sits between the tendril attacks and the bite. That order is not this action. `srd51.monster.roper` stays deferred (SRD_MONSTERS_DEFERRED).
+
+Not hashed beyond 0xB4 and 0xDB. No new tag. The next free tag stays **0xE3**.
