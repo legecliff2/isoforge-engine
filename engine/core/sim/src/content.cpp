@@ -797,6 +797,92 @@ std::optional<std::string> compile_deadly_leap(const std::string& arch, const Js
     return std::nullopt;
 }
 
+// B10 Whirlwind (CONTENT_CONVENTIONS §40). Its own action. Not a multiattack rider.
+// {kind: whirlwind, save: {ability, dc}, damage: {dice, type}, fling_ft, impact: {dice, per_ft, type},
+//  impact_save: {ability, dc}, usage: {kind: recharge, min}}.
+// Each named creature in the user's space saves. Fail: the damage, prone, and a fling of up to fling_ft.
+// Success: half that damage (integer division), no fling, no prone. The Dexterity impact save is not half. Recharge is the sentence.
+std::optional<std::string> compile_whirlwind(const std::string& arch, const Json& act, uint32_t declared,
+                                             const std::string& schema_type, const Json& doc, rules5e::SpellDef& d,
+                                             Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": whirlwind '" + aid + "'";
+    if (schema_type != "monster" || (declared != 0 && declared < 5))
+        return where + ": whirlwind needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description" && k != "save" && k != "damage" &&
+            k != "fling_ft" && k != "impact" && k != "impact_save" && k != "usage")
+            return where + ": whirlwind: unknown key '" + k + "'";
+    }
+    const auto sv = act.find("save");
+    if (sv == act.end() || !sv->is_object()) return where + ": whirlwind: missing save";
+    auto ab = ability_of(sv->value("ability", ""));
+    const int dc = geti(*sv, "dc");
+    if (!ab || dc < 1 || dc > 30) return where + ": whirlwind: bad save";
+    const auto dm = act.find("damage");
+    if (dm == act.end() || !dm->is_array() || dm->size() != 1 || !(*dm)[0].is_object())
+        return where + ": whirlwind: damage needs one component";
+    auto dice = action_damage_dice((*dm)[0], true);
+    auto ty = damage_type((*dm)[0].value("type", ""));
+    if (!dice || !ty) return where + ": whirlwind: bad damage";
+    const int fling = act.contains("fling_ft") && act["fling_ft"].is_number_integer() ? act["fling_ft"].get<int>() : 0;
+    if (fling < 5 || fling > 60 || fling % 5 != 0) return where + ": whirlwind: fling_ft must be 5..60, a multiple of 5";
+    const auto im = act.find("impact");
+    if (im == act.end() || !im->is_object()) return where + ": whirlwind: missing impact";
+    for (auto it = im->begin(); it != im->end(); ++it) {
+        const std::string k = it.key();
+        if (k != "dice" && k != "flat" && k != "per_ft" && k != "type")
+            return where + ": whirlwind: unknown impact key '" + k + "'";
+    }
+    auto idice = action_damage_dice(*im, true);
+    auto ity = damage_type(im->value("type", ""));
+    const int per = im->contains("per_ft") && (*im)["per_ft"].is_number_integer() ? (*im)["per_ft"].get<int>() : 0;
+    if (!idice || !ity || per < 5 || per > 30 || per % 5 != 0)
+        return where + ": whirlwind: bad impact";
+    const auto isv = act.find("impact_save");
+    if (isv == act.end() || !isv->is_object()) return where + ": whirlwind: missing impact_save";
+    auto iab = ability_of(isv->value("ability", ""));
+    const int idc = geti(*isv, "dc");
+    if (!iab || idc < 1 || idc > 30) return where + ": whirlwind: bad impact_save";
+    d = rules5e::SpellDef{};
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.casting_time = rules5e::CastingTime::Action;
+    d.kind = rules5e::SpellEffectKind::Save;
+    d.is_spell = false;
+    d.magical = false;
+    d.targets = 8;   // the existing multi-target save cap. The caller names the creatures in the space.
+    d.range_ft = 0;
+    d.save_ability = *ab;
+    d.fixed_dc = int8_t(dc);
+    d.dice = *dice;
+    d.damage_type = *ty;
+    d.on_save = rules5e::OnSave::Half;   // "If the saving throw is successful, the target takes half the bludgeoning damage"
+    d.applies_condition = true;
+    d.condition = rules5e::Condition::Prone;
+    d.condition_untracked = true;
+    d.whirl_ft = uint16_t(fling);
+    d.impact_per_ft = uint8_t(per);
+    d.impact_die = *idice;
+    d.impact_type = *ity;
+    d.impact_save = *iab;
+    d.impact_dc = int8_t(idc);
+    sa = {};
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.whirl = true;
+    bool unsupported = false;
+    if (!act.contains("usage")) return where + ": whirlwind: recharge is the sentence";
+    if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported)) return e;
+    if (unsupported) return where + ": whirlwind: pool usage is not supported";
+    if (d.usage_kind != 1) return where + ": whirlwind: recharge is the sentence";
+    sa.whirl = true;
+    return std::nullopt;
+}
+
 // B5 Reel: monster@5 action {kind: "pull", feet, targets?, target_requires_any: ["grappled_by_self"]}.
 // "The roper pulls each creature grappled by it up to 25 feet straight toward it." A synthetic ForcedMove SpellDef
 // (mode pull, up_to). The caller names the creatures (1..8). Each must be grappled by the user; one that is not refuses
@@ -2393,7 +2479,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         for (const Json& act : doc.at("actions")) {
             const std::string ak = act.value("kind", "");
             if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect" && ak != "pull" &&
-                ak != "deadly_leap") continue;
+                ak != "deadly_leap" && ak != "whirlwind") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
@@ -2401,6 +2487,15 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 if (auto e = compile_deadly_leap(a.id, act, declared, schema_type, d, sa)) return e;
                 for (const auto& prev : synth)
                     if (prev.id == d.id) return a.id + ": deadly_leap ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "whirlwind") {   // B10: each creature in this space, then a fling
+                if (auto e = compile_whirlwind(a.id, act, declared, schema_type, doc, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": whirlwind ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
                 c.spells_known.push_back(d.id);
                 a.save_actions.push_back(sa);
                 synth.push_back(std::move(d));

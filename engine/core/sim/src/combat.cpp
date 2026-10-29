@@ -336,7 +336,7 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
 }
 
 bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const {
-    if (def.requires_jumped_ft > 0) {   // B8: the target is standing in the leaper's space (footprints overlap)
+    if (def.requires_jumped_ft > 0 || def.whirl_ft > 0) {   // B8 landing / B10 Whirlwind: footprints overlap
         if (caster == target || !rules5e::find(state_, target)) return false;
         const Spot a = spot(caster), b = spot(target);
         return a.p.x < b.p.x + b.n && b.p.x < a.p.x + a.n && a.p.y < b.p.y + b.n && b.p.y < a.p.y + a.n;
@@ -1663,6 +1663,15 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
                 if (!spell_in_reach(*ldef, actor, id)) { r.error = "target is not in the landing space"; return r; }
             }
         }
+        // B10: every named creature must already stand in the elemental's space. An empty list is an empty space.
+        if (const auto* wdef = spells_->find(req.spell_id); wdef->whirl_ft > 0 && !req.sustain) {
+            std::vector<rules5e::CombatantId> ids = req.targets;
+            if (ids.empty() && req.target != 0) ids.push_back(req.target);
+            for (rules5e::CombatantId id : ids) {
+                if (id == actor) { r.error = "bad target"; return r; }
+                if (!spell_in_reach(*wdef, actor, id)) { r.error = "target is not in the elemental's space"; return r; }
+            }
+        }
         // EC spider follow-up: a non-spell ranged attack_effect (Web) gets the ranged attack facts (beyond its normal range,
         // a hostile within 5 ft); spells are unchanged (rules ignores the facts for them).
         if (const auto* adef = spells_->find(req.spell_id); adef->kind == rules5e::SpellEffectKind::SpellAttack && !adef->is_spell &&
@@ -1769,8 +1778,10 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             for (CombatantId id : req.targets) hits = hits || id == charmer;
             if (harmful && hits) { r.error = "charmed: cannot target the charmer with a harmful spell"; derived_area_ = false; return r; }
         }
+        // B10: an empty Whirlwind names nobody. There is no first target to check.
+        const bool whirl_empty = spells_->find(req.spell_id)->whirl_ft > 0 && req.targets.empty() && req.target == 0;
         const CombatantId first = !req.targets.empty() ? req.targets[0] : req.target;
-        if (!rules5e::find(state_, first)) { r.error = "bad target"; return r; }
+        if (!whirl_empty && !rules5e::find(state_, first)) { r.error = "bad target"; return r; }
         // R-G15 Revivify: a dead creature does not block its tiles, so another may stand there now; it cannot come back
         // into an occupied space (rules check death and the time window).
         if (!req.sustain && spells_->find(req.spell_id)->kind == rules5e::SpellEffectKind::Revive) {
@@ -1778,7 +1789,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             for (Vec2i t : footprint_tiles(first))
                 if (std::find(taken.begin(), taken.end(), t) != taken.end()) { r.error = "revive target's space is occupied"; return r; }
         }
-        req.target_within_5ft = distance_tiles(actor, first) <= 1;   // spell attacks: crit vs Paralyzed/Unconscious
+        if (!whirl_empty) req.target_within_5ft = distance_tiles(actor, first) <= 1;   // spell attacks: crit vs Paralyzed/Unconscious
     }
     ready_to_.reset();
     if (req.kind == ActionKind::Ready) {
@@ -2838,6 +2849,7 @@ rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery&
         Vec2i d{(dx2 > 0) - (dx2 < 0), (dy2 > 0) - (dy2 < 0)};
         if (d.x == 0 && d.y == 0) d = {1, 0};
         if (q.mode == 2) d = {-d.x, -d.y};
+        if (q.dir_x != 0 || q.dir_y != 0) d = {q.dir_x, q.dir_y};   // B10: the d8 direction, not away-from-centre
         const int fp = ms.n;
         const auto occ = occupied_except(q.mover);
         Vec2i cur = start;
@@ -2846,11 +2858,22 @@ rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery&
         std::vector<Vec2i> walked{start};
         for (; moved < steps; ++moved) {
             const Vec2i nx{cur.x + d.x, cur.y + d.y};
-            bool free = grid_.footprint_walkable(nx, fp);
-            for (int yy = 0; yy < fp && free; ++yy)
-                for (int xx = 0; xx < fp && free; ++xx)
-                    free = std::find(occ.begin(), occ.end(), Vec2i{nx.x + xx, nx.y + yy}) == occ.end();
-            if (!free) break;
+            if (q.impact_per_ft > 0) {   // B10: the source's tiles are the whirlwind, not a wall and not a creature
+                if (!grid_.footprint_walkable(nx, fp)) { res.struck_object = true; break; }
+                CombatantId struck = 0;
+                for (int yy = 0; yy < fp; ++yy)
+                    for (int xx = 0; xx < fp; ++xx) {
+                        const CombatantId o = occupant_at({nx.x + xx, nx.y + yy}, q.mover);
+                        if (o != 0 && o != q.source && (struck == 0 || o < struck)) struck = o;
+                    }
+                if (struck != 0) { res.struck = struck; break; }
+            } else {
+                bool free = grid_.footprint_walkable(nx, fp);
+                for (int yy = 0; yy < fp && free; ++yy)
+                    for (int xx = 0; xx < fp && free; ++xx)
+                        free = std::find(occ.begin(), occ.end(), Vec2i{nx.x + xx, nx.y + yy}) == occ.end();
+                if (!free) break;
+            }
             cur = nx;
             walked.push_back(cur);
         }
