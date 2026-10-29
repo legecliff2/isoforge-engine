@@ -754,6 +754,12 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 !c.line_of_sight(self, t->id))
                 continue;
             if (const auto* sd = c.spell_def(sa.spell_id); sd && sd->kind == rules5e::SpellEffectKind::Descriptive) continue;
+            // Chuul Tentacles / Otyugh Tentacle Slam: do not offer a save the current target fails. The cast would be
+            // refused and the turn would stall. Other targets stay the caller's choice.
+            if (const auto* sd = c.spell_def(sa.spell_id);
+                sd && (sd->target_requires_any & rules5e::kTargetGateGrappledBySelf) &&
+                !(t->has(rules5e::Condition::Grappled) && rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) == self))
+                continue;
             Command cast;
             cast.request = {self, ActionKind::CastSpell, t->id};
             cast.request.spell_id = sa.spell_id;

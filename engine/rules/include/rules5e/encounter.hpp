@@ -865,6 +865,10 @@ struct GrappleRider {
     // appended (Tier-A §27): "Instead of dealing damage, the X can grapple the target": the hit grapples only when the request
     // chose ActionRequest::grapple_instead (and then deals no damage); a hit without the choice deals damage and does not grapple.
     bool instead_of_damage = false;
+    // appended (Chuul pincer / Otyugh tentacle): largest Size this attack grapples (-1 = no cap beyond size_within_one).
+    // A larger target is not grappled (the hit's damage still stands; the caller treats false as damage only). Checked before
+    // extended(), so a size-only rider leaves via_attack 0xFF and Combat::hash is unchanged.
+    int8_t max_size = -1;
     bool extended() const { return restrains || exclusive || max_grapples != 0 || instead_of_damage; }
 };
 
@@ -1071,6 +1075,7 @@ inline bool grapple(EncounterState& s, CombatantId grappler, CombatantId target,
 }
 // Druid gap G: a grapple rider on attack `attack_index`. Without extended fields this is exactly grapple() above. With them it
 // refuses past max_grapples (false, nothing changes), records via_attack / restrains / exclusive, and adds an owned Restrained.
+// max_size (>= 0) refuses a larger target the same way (false, nothing changes) and is not an extended field.
 bool grapple(EncounterState&, CombatantId grappler, CombatantId target, const GrappleRider&, uint8_t attack_index, std::vector<Event>&);
 // Druid gap G: true if `actor` may not use attack `attack_index` against `target` because an exclusive grapple made with that
 // attack holds another creature ("can't bite another target").

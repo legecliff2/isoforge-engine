@@ -705,7 +705,7 @@ def check_sim172_174(doc: dict) -> tuple[list[str], list[str]]:
 
 
 
-GRAPPLE_RIDER_KEYS = ("restrains", "exclusive", "max_grapples", "instead_of_damage")
+GRAPPLE_RIDER_KEYS = ("restrains", "exclusive", "max_grapples", "instead_of_damage", "max_size")
 
 
 def check_grapple_rider(doc: dict) -> tuple[list[str], list[str]]:
@@ -1253,8 +1253,18 @@ def check_batch3_actions(doc: dict, tag: str) -> list[str]:
         if a.get("kind") in ("melee_weapon_attack", "ranged_weapon_attack"):
             continue
         for k in BATCH3_WEAPON_ONLY_KEYS:
-            if k in a:
-                errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: {k} is read only on weapon attacks")
+            if k not in a:
+                continue
+            # Chuul Tentacles / Otyugh Tentacle Slam: a save_effect may require grappled_by_self, and nothing else.
+            if k == "target_requires_any" and a.get("kind") == "save_effect":
+                if a.get("target_requires_any") != ["grappled_by_self"]:
+                    errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: target_requires_any on a save_effect is grappled_by_self only")
+                if "area" in a:
+                    errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: target_requires_any takes no area")
+                if "targets" in a and not _int_in(a.get("targets"), 1, 8):
+                    errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: targets must be an integer 1..8")
+                continue
+            errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: {k} is read only on weapon attacks")
     return errs
 
 

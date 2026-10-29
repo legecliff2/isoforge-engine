@@ -165,7 +165,7 @@
           "exclusive": true
         }
       ],
-      "description": "Melee Weapon Attack: +6 to hit, reach 10 ft., one Medium or smaller creature. Hit: 10 (2d6 + 3) bludgeoning damage, and the target is grappled (escape DC 15). Until this grapple ends, the target is restrained, and the couatl can't constrict another target. (The Medium or smaller size gate is descriptive only: grapple has no max_size. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "description": "Melee Weapon Attack: +6 to hit, reach 10 ft., one Medium or smaller creature. Hit: 10 (2d6 + 3) bludgeoning damage, and the target is grappled (escape DC 15). Until this grapple ends, the target is restrained, and the couatl can't constrict another target. (The Medium or smaller size gate is descriptive only on this file: it does not set grapple max_size. See docs/SRD_MONSTERS_DEFERRED.md.)"
     },
     {
       "id": "change_shape",
