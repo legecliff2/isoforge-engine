@@ -923,7 +923,7 @@ A monster area ability is an action of kind `area_effect`. The loader (`compile_
 - **Origin.** `self` (the default) starts at the caster. `range_ft` is forbidden then. `point` needs `range_ft` and centres a cube or a sphere on the aim tile.
 - **Save and damage.** `save` `{ability, dc}` is required. `damage[]` needs `on_success` `half` (`OnSave::Half`, integer division) or `none` (`OnSave::None`). A breath that deals no damage (blinding, sleep, slow) uses `apply[]` and no `on_success`.
 - **Uses.** `usage` is the existing object: `recharge` with `min` 2..6 (`ActionUse`, the turn-start d6), or `per_day` / `per_rest` (`FeatureUses`). One action is one use. Two shapes that share a recharge (young brass, young copper) are not two `area_effect` actions; that choice is not this key.
-- **Not this kind.** `save_effect` is unchanged, including breaths already authored that way. Whirlwind, Whelm, and ghast Stench stay on the zones work. Cover on area saves, the square sphere, and cylinder height are not changed here.
+- **Not this kind.** `save_effect` is unchanged, including breaths already authored that way. Whirlwind is its own action (§40), not an area template. Whelm and ghast Stench stay on the zones work. Cover on area saves, the square sphere, and cylinder height are not changed here.
 
 monster@4 and character files cannot carry `area_effect`. No schema version bump: the kind is a new monster@5 enum value, and no existing file uses it.
 
@@ -1207,6 +1207,55 @@ Product calls:
 * **Forms.** The flag is not a `FormStats` field, the Flyby peer. A transform does not add it or clear it.
 * **1 inch.** Deferred. The grid has no sub-tile openings (the swarm Tiny-openings peer, and the authored ooze / shadow / Fire Form sentences that only describe the gap). Squeezing stays the existing Large+ opt-in. This flag is not squeezing and does not open a 1-inch gap.
 
-`fire_form` on the authored fire elemental includes the enter-and-stop clause and also the 1d10 contact fire. This flag does not apply that damage, so `fire_form` is not this id. The fire row stays partial. Whirlwind, Whelm, and Freeze are not this key.
+`fire_form` on the authored fire elemental includes the enter-and-stop clause and also the 1d10 contact fire. This flag does not apply that damage, so `fire_form` is not this id. The fire row stays partial. Whirlwind is §40. Whelm and Freeze are not this key.
 
 This section does not author `srd51.monster.air_elemental` or `srd51.monster.water_elemental`. Counts stay 195 authored and 15 deferred.
+
+## 40. Whirlwind (monster@5 action `whirlwind`)
+
+SRD 5.1 Air Elemental Whirlwind, as the action text states it: "Whirlwind (Recharge 4–6). Each creature in the elemental's space must make a DC 13 Strength saving throw. On a failure, a target takes 15 (3d8 + 2) bludgeoning damage and is flung up to 20 feet away from the elemental in a random direction and knocked prone. If a thrown target strikes an object, such as a wall or floor, the target takes 3 (1d6) bludgeoning damage for every 10 feet it was thrown. If the target is thrown at another creature, that creature must succeed on a DC 13 Dexterity saving throw or take the same damage and be knocked prone."
+
+The repo does not carry that sentence outside this section and the deferred ledger's paraphrase. The action text is the source. The deferred row's "half on a successful save" follows the 5e-database `success_type` tag, which this repo does not apply when the action text disagrees (winter wolf Cold Breath). `docs/proposals/AOE_MONSTER_ABILITIES.md` says the Strength success is half and not flung. That note is not the action text.
+
+It is its own action. It is not a Multiattack rider, not an `area_effect`, and not Whelm.
+
+```json
+{
+  "id": "whirlwind",
+  "name": "Whirlwind",
+  "kind": "whirlwind",
+  "save": { "ability": "str", "dc": 13 },
+  "damage": [ { "dice": "3d8+2", "type": "bludgeoning" } ],
+  "fling_ft": 20,
+  "impact": { "dice": "1d6", "per_ft": 10, "type": "bludgeoning" },
+  "impact_save": { "ability": "dex", "dc": 13 },
+  "usage": { "kind": "recharge", "min": 4 }
+}
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `save` | `{ability, dc}`. `dc` is 1..30. The Strength save | `whirlwind: missing save` / `whirlwind: bad save` |
+| `damage` | one `{dice, type}` or `{flat, type}` packet | `whirlwind: damage needs one component` / `whirlwind: bad damage` |
+| `fling_ft` | 5..60, a multiple of 5. Up to this far | `whirlwind: fling_ft must be 5..60, a multiple of 5` |
+| `impact` | `{dice` or `flat`, `per_ft`, `type}`. `per_ft` is 5..30, a multiple of 5 | `whirlwind: missing impact` / `whirlwind: bad impact` |
+| `impact_save` | `{ability, dc}` for the creature thrown into | `whirlwind: missing impact_save` / `whirlwind: bad impact_save` |
+| `usage` | `recharge` with `min` 2..6. At-will and pool are refused | `whirlwind: recharge is the sentence` |
+
+`on_success` and `apply` are not keys. Failure-only damage, prone, and the fling are the sentence. Below monster@5 the loader says `whirlwind needs a monster@5 file`. The synthetic spell id is `<archetype>#<action id>`. It is a `save_action` and it is in `spells_known`. The cast is `ActionKind::CastSpell` of that id. It spends the action and the recharge. A cast that names the user, or a creature that is not in the space, is refused with the action unspent.
+
+One `3d8+2` roll is shared by every named target (the existing save). Half is not applied. A creature killed by that packet is not flung (a dead creature is not moved). Resistance, immunity, and vulnerability are the existing per-type mitigation. The damage is not magical. Prone on a failure is untracked, the Shove peer. Immunity to prone skips the condition. The damage and the fling still apply.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The direction is an RNG draw, not a request field. Replay re-runs the save, the d8, and the walk. Next free stays **0xE5**.
+
+Product calls:
+
+* **Strength success.** The sentence names the damage, the fling, and prone only "On a failure." A success takes no damage, is not flung, and is not knocked prone. It is not half. `on_save` is `None`.
+* **In the space.** Footprint overlap, the Deadly Leap landing test (§38). B9 `enter_hostile_space` is how a same-size hostile comes to be there. The action does not require `air_form`. The caller names the creatures. The engine does not add one the caller left out. At most 8. An ally may be named. `legal_actions` lists overlapping hostiles only. Nobody overlapping: one cast with no target. The action and the recharge are spent, and no save and no dice are rolled. A named creature that does not overlap is refused (`target is not in the elemental's space`). The user is not a target.
+* **Random direction.** One d8 per creature that fails, in named-target order, from the encounter RNG, after that save and only then. Face 1 is +x and the faces go clockwise: E, SE, S, SW, W, NW, N, NE. That replaces the push's away-from-centre direction. "Away" is the fling along that ray, up to `fling_ft`. A ray that first crosses the elemental's own tiles still counts. Those tiles are not an object and not a creature. The caller cannot choose a shorter fling (`forced_feet` is not this action).
+* **Object.** The next step's footprint is not walkable (a wall, or off the map). The thrown creature takes `impact` once per `per_ft` of feet it actually moved before the stop (`feet_moved / per_ft`, integer, one roll of that many dice, or a flat bonus times that count and no roll). Under `per_ft` feet: the strike happens and the dice are 0. A clear path of the full distance strikes nothing.
+* **Creature.** The next step holds another creature, not the elemental. The lowest id wins if several share the step. The thrown creature does not take the object packet. That creature makes `impact_save`. A failure takes the same impact packet (the feet the first creature moved, not the `3d8+2`) and is knocked prone. A success takes no damage and is not prone. Not half. Evasion does not apply (it is not a half-on-success Dexterity effect). Cover is not added. Legendary Resistance can turn the failure into a success (the existing save). An object and a creature on the same step: the object wins, and there is no Dexterity save.
+* **Floor.** A fling that walks onto a ledge uses the existing fall (1d6 bludgeoning per 10 feet fallen, prone when that damage lands). Whirlwind does not add a second packet for the horizontal feet. A flat landing is not a floor strike.
+* **No grid.** With no forced-move hook the fling is reported as the full distance and strikes nothing (the existing no-hook rule). Impact is what the hook reports.
+* **Recharge.** Available at the start of combat, the breath-weapon peer. The built-in AI does not use the action.
+* **Not this action.** Whelm, Freeze, and the 1-inch gap. This section does not author `srd51.monster.air_elemental`. The row stays deferred until T&C writes the stat block. Counts stay 195 authored and 15 deferred.

@@ -416,6 +416,11 @@ using EndConditionFn = std::function<std::optional<EncounterOutcome>(const Encou
 // drop of more than 5 ft); rules applies SRD falling damage (1d6 bludgeoning per 10 ft, max 20d6) and the creature lands prone.
 struct ForcedMoveResult {
     uint16_t feet_moved = 0; bool stopped_short = false; bool hazard = false; uint16_t fell_ft = 0;
+    // B10 Whirlwind. The step that stopped the fling. An unwalkable footprint (wall, or off the map) sets
+    // struck_object. A creature other than the source on that step sets struck (the lowest id). Both stay
+    // clear when the path was open. Not hashed.
+    bool struck_object = false;
+    CombatantId struck = 0;
     std::vector<CombatantId> out_of_reach_of{};
     // appended (R-G11, Q2): the move's zone membership, as on a Move step (ascending zone ids). A forced move covers several
     // tiles, so zones_within repeats a zone id once per further 5 ft moved inside it (Spike Growth's per-5-ft damage:
@@ -619,6 +624,16 @@ struct ForcedMoveQuery {
     // Appended (B8 Deadly Leap): a push that moves 0 feet knocks the mover prone (unless immune). The no-hook
     // path reports the requested feet, so this fires only when a hook says the space was blocked. Not hashed.
     bool prone_if_blocked = false;
+    // Appended (B10 Whirlwind). dir_x/dir_y both 0: the existing away-from-source step. Otherwise that step
+    // (one of the eight grid directions). impact_per_ft > 0: after the hook, a reported strike deals impact_die
+    // once per impact_per_ft of feet_moved. struck_object damages the mover. struck is a Dexterity (impact_save)
+    // save against impact_dc; a failure takes that damage and falls prone. Not hashed. Replay re-runs the step.
+    int8_t dir_x = 0, dir_y = 0;
+    uint8_t impact_per_ft = 0;
+    DiceExpr impact_die{1, 6, 0};
+    DamageType impact_type = DamageType::Bludgeoning;
+    Ability impact_save = Ability::Dex;
+    int8_t impact_dc = 0;
 };
 // Cover (SRD 5.1 "Cover"; VERSION_BUMP_BATCH 7.2t). Rules never interpret positions: sim answers one query per source ->
 // target pair. Half = +2 to AC and Dex saves, ThreeQuarters = +5, Total = can't be targeted directly (an area effect skips

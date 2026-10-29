@@ -653,7 +653,8 @@
             "teleport",
             "area_effect",
             "pull",
-            "deadly_leap"
+            "deadly_leap",
+            "whirlwind"
           ]
         },
         "to_hit": {
@@ -1097,6 +1098,29 @@
           "multipleOf": 5,
           "description": "B8 Deadly Leap: feet a successful save pushes the creature out of the leaper's space."
         },
+        "fling_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 60,
+          "multipleOf": 5,
+          "description": "B10 Whirlwind: up to this many feet the failed save flings the creature, in a random direction."
+        },
+        "impact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["per_ft", "type"],
+          "properties": {
+            "dice": { "type": "string" },
+            "flat": { "type": "integer", "minimum": 1, "maximum": 255 },
+            "per_ft": { "type": "integer", "minimum": 5, "maximum": 30, "multipleOf": 5 },
+            "type": { "$ref": "../common/v1.schema.json#/$defs/damage_type" }
+          },
+          "description": "B10 Whirlwind: damage for every per_ft feet a thrown creature actually moved before it struck an object, and the same packet a creature it is thrown at takes on a failed impact_save. One of dice or flat."
+        },
+        "impact_save": {
+          "$ref": "../common/v2.schema.json#/$defs/save",
+          "description": "B10 Whirlwind: the save a creature the target is thrown at makes. A failure takes the impact packet and is knocked prone. A success takes neither."
+        },
         "with_attack": {
           "$ref": "../common/v1.schema.json#/$defs/local_id",
           "description": "Batch 3 teleport action: one attack (an attack action id) made after the teleport without another action (SRD 5.1 blink dog: 'Before or after teleporting, the dog can make one bite attack.'; teleport-then-bite only)."
@@ -1280,7 +1304,9 @@
                   "enum": [
                     "attack_effect",
                     "teleport",
-                    "area_effect"
+                    "area_effect",
+                    "deadly_leap",
+                    "whirlwind"
                   ]
                 }
               }
@@ -1721,6 +1747,31 @@
                 { "required": ["jump_ft"] },
                 { "required": ["save_alt"] },
                 { "required": ["push_ft"] }
+              ]
+            }
+          }
+        },
+        {
+          "description": "B10 Whirlwind: each creature in the user's space makes the save. Failure: the one damage component, prone, and a fling of up to fling_ft. A strike deals impact once per per_ft feet moved. A creature in the way makes impact_save. Success on either save takes nothing. usage recharge is required.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "whirlwind" } }
+          },
+          "then": {
+            "required": ["save", "damage", "fling_ft", "impact", "impact_save", "usage"],
+            "properties": {
+              "damage": { "minItems": 1, "maxItems": 1 }
+            },
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description", "save", "damage", "fling_ft", "impact", "impact_save", "usage"]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["fling_ft"] },
+                { "required": ["impact"] },
+                { "required": ["impact_save"] }
               ]
             }
           }

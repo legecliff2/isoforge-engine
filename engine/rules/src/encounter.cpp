@@ -1141,6 +1141,50 @@ void defer_forced(EncounterState& s, Ctx& ctx, std::vector<Event>& ev, int32_t s
     }
 }
 
+// B10: a Whirlwind fling that the hook says struck something. feet_moved / impact_per_ft is the number of times
+// impact_die is rolled (a flat die's bonus is multiplied, and draws no rng). An object damages the mover. A creature
+// saves first; a failure takes that same packet and falls prone. A success takes nothing. No reaction window on the
+// damage (the fall peer: ctx is null). The save still spends Legendary Resistance.
+void whirl_impact(EncounterState& s, const ForcedMoveQuery& q, const ForcedMoveResult& res, std::vector<Event>& ev) {
+    if (q.impact_per_ft == 0 || (!res.struck_object && res.struck == 0)) return;
+    const int dice_n = int(res.feet_moved) / int(q.impact_per_ft);
+    auto packet = [&](Combatant& who) {
+        if (dice_n <= 0 || who.dead) return;
+        DiceExpr e = q.impact_die;
+        const int count = int(e.count) * dice_n;
+        e.count = uint8_t(std::min(count, 255));
+        const int bonus = int(q.impact_die.bonus) * dice_n;
+        e.bonus = int16_t(std::clamp(bonus, -32768, 32767));
+        const int rolled = e.count == 0 ? e.bonus : roll_dice(s.rng, e);
+        if (rolled <= 0) return;
+        Combatant* src = find_mut(s, q.source);
+        TrigSrc ts{src && !src->dead ? src : nullptr, nullptr, false};
+        damage_creature(s, who, zone_apply_damage(s, who, int16_t(rolled), q.impact_type, 0), false, ev,
+                        ts.who ? &ts : nullptr, nullptr);
+    };
+    if (res.struck_object) {
+        if (Combatant* m = find_mut(s, q.mover)) packet(*m);
+        return;
+    }
+    if (res.struck == q.mover) return;
+    Combatant* other = find_mut(s, res.struck);
+    if (!other || other->dead) return;
+    SaveFromGuard guard(q.source);
+    const SaveSource src{false, bit(Condition::Prone), bit(q.impact_type)};
+    const SaveResult r = save_roll(s, *other, q.impact_save, q.impact_dc, RollMode::Normal, ev, &src, 0);
+    emit(ev, EventKind::SavingThrowRolled, other->id, CombatantId(q.impact_save), r.roll.natural, r.roll.total,
+         int32_t(r.success));
+    if (r.success) return;
+    other = find_mut(s, res.struck);
+    if (!other || other->dead) return;
+    packet(*other);
+    Combatant* t = find_mut(s, res.struck);
+    if (t && !t->dead && !t->has(Condition::Prone) && !immune_to(s, *t, Condition::Prone)) {
+        add_condition(*t, Condition::Prone);
+        emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(Condition::Prone));
+    }
+}
+
 // R-G9: resolves the step's deferred forced moves after every decision point of the step (the run can no longer be
 // discarded), so `forced_move` sees each (step, step_seq) exactly once. Each group is ordered by `forced_move_order` (a
 // permutation, else the given order); each placeholder Moved becomes Moved{a = feet actually moved} followed by
@@ -1209,6 +1253,7 @@ void finalize_forced(EncounterState& s, Ctx& ctx, std::vector<Event>& events) {
                 add_condition(*m, Condition::Prone);
                 emit(tail, EventKind::ConditionAdded, m->id, 0, int32_t(Condition::Prone));
             }
+            if (d.q.impact_per_ft > 0) whirl_impact(s, d.q, res, tail);   // B10: object impact, or the Dexterity save
             if (res.fell_ft > 0 && m && !m->dead) land_fall(s, d.q.mover, int(res.fell_ft), tail, true);   // altitude PR4
             for (CombatantId other : res.out_of_reach_of) end_grapple_pair(s, d.q.mover, other, tail);
             const uint8_t saved_depth = ctx.depth;
@@ -3652,11 +3697,14 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         const int dc = spell_save_dc(a, def);
         const uint8_t dq = def.magical ? kAttackMagical : 0;
         const DiceExpr sdice = scaled_dice(def, lvl, a.caster_level);
-        const int dmg = def.dice.count > 0 || def.dice.bonus > 0
-                            ? std::max(0, ctx.empower > 0 ? roll_empowered(s.rng, sdice, false, ctx.empower)
-                                                          : roll_dice(s.rng, sdice)) : 0;   // one roll for all targets
-        const int also_dmg = def.has_also_damage && (def.also_dice.count > 0 || def.also_dice.bonus > 0)
-                                 ? std::max(0, roll_dice(s.rng, def.also_dice)) : 0;   // 7.2zj: second packet, not upcast, not empowered
+        // B10: an empty Whirlwind names nobody, so it draws no damage dice. A named target still shares one roll.
+        const bool whirl_quiet = T.empty() && def.whirl_ft > 0;
+        const bool roll_dmg = !whirl_quiet && (def.dice.count > 0 || def.dice.bonus > 0);
+        const int dmg = roll_dmg ? std::max(0, ctx.empower > 0 ? roll_empowered(s.rng, sdice, false, ctx.empower)
+                                                                : roll_dice(s.rng, sdice))
+                                 : 0;   // one roll for all targets
+        const bool roll_also = !whirl_quiet && def.has_also_damage && (def.also_dice.count > 0 || def.also_dice.bonus > 0);
+        const int also_dmg = roll_also ? std::max(0, roll_dice(s.rng, def.also_dice)) : 0;   // 7.2zj: second packet, not upcast, not empowered
         bool applied = false;
         const bool area = def.area != AreaShape::None;
         for (Combatant* t : T) {
@@ -3720,6 +3768,18 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (def.zero_hp_rounds > 0 && dealt > 0 && hp_before > 0 && t->hp <= 0 && !t->dead)   // EC spider follow-up (flagged)
                 zero_hp_clause(s, a, *t, def, ev);
             if (!r.success) affected.push_back(t);
+            // B10: queue the fling before the untracked-prone `continue` below. Face 1 is +x; the eight faces go
+            // clockwise. The d8 is drawn only on a failure, after the save, in named-target order. A dead target is not moved.
+            if (!r.success && def.whirl_ft > 0 && !t->dead) {
+                static constexpr int8_t kDx[8] = {1, 1, 0, -1, -1, -1, 0, 1};
+                static constexpr int8_t kDy[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+                const int face = s.rng.d(8);
+                ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = 1; q.feet = def.whirl_ft;
+                q.dir_x = kDx[face - 1]; q.dir_y = kDy[face - 1];
+                q.impact_per_ft = def.impact_per_ft; q.impact_die = def.impact_die; q.impact_type = def.impact_type;
+                q.impact_save = def.impact_save; q.impact_dc = def.impact_dc;
+                ctx.forced_queue.push_back(q);
+            }
             if (r.success && def.success_immunity_hours > 0 && !t->dead)   // Tier-A §26: "immune to ... for the next 24 hours"
                 s.action_immunities.push_back(ActionImmunity{t->id, def.success_immunity_scope == 1 ? a.id : CombatantId(0), def.id,
                                                              uint32_t(s.round) + uint32_t(def.success_immunity_hours) * 600u});
@@ -4556,7 +4616,8 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     std::vector<CombatantId> ids = req.targets;
     if (ids.empty() && req.target != 0) ids.push_back(req.target);
     if (ids.empty() && (def.kind == SpellEffectKind::Teleport || def.kind == SpellEffectKind::Zone)) ids.push_back(a.id);   // R-G9 / R-G11: self
-    if (ids.empty()) return fail("target required");
+    const bool whirl_empty = ids.empty() && def.whirl_ft > 0;   // B10: no creature in the space. The action still happens.
+    if (ids.empty() && !whirl_empty) return fail("target required");
     std::vector<Combatant*> T;
     for (CombatantId id : ids) {
         Combatant* t = find_mut(s, id);
@@ -4780,6 +4841,8 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (s.budget.jumped_ft < def.requires_jumped_ft) return fail("has not jumped far enough");
         for (Combatant* t : T) if (t == &a) return fail("bad target");
     }
+    if (def.whirl_ft > 0)   // B10: the elemental is not a creature in its own space. Refused before the action is spent.
+        for (Combatant* t : T) if (t == &a) return fail("bad target");
     if (def.rider_only) {   // B3b: the multiattack free rider. The gate above already refused a bad target without consuming it.
         if (b.free_rider != def.id) return fail("only a multiattack rider");
         b.free_rider = 0;
@@ -4812,7 +4875,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     StepResult out{true, {}, {}};
     if (def.concentration && a.concentration_spell != 0) end_concentration(s, a.id, out.events);
     if (def.is_spell) emit(out.events, EventKind::SpellCast, a.id, ids[0], int32_t(def.id), lvl);
-    else emit(out.events, EventKind::ActionUsed, a.id, ids[0], int32_t(def.id), 0, def.usage_kind);   // not a spell: no SpellCast window
+    else emit(out.events, EventKind::ActionUsed, a.id, ids.empty() ? CombatantId(0) : ids[0], int32_t(def.id), 0, def.usage_kind);   // not a spell: no SpellCast window
     if (def.usage_kind == 3 && spend_pool(s, a.id, def.pool_id, pcost))
         emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(def.pool_id), pcost, find_pool(s, a.id, def.pool_id)->cur);
     if (meta_cost > 0 && spend_pool(s, a.id, a.sorcery_pool, uint16_t(meta_cost)))   // R-G14: sorcery points for Metamagic
@@ -4872,7 +4935,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.has_area_origin = false; ctx.area_x = 0; ctx.area_y = 0;
         defer_forced(s, ctx, out.events);   // R-G9: placeholders after every save and damage of the spell, before SpellResolved
     }
-    emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids[0], int32_t(def.id), lvl);
+    emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids.empty() ? CombatantId(0) : ids[0], int32_t(def.id), lvl);
     if (!ends_keys.empty()) end_on_own_action(s, a.id, kEndsOnCast, out.events, &ends_keys);   // 7.2zc: after the spell is cast
     if (harmful && !harm_keys.empty()) end_on_own_action(s, a.id, kEndsOnHarmfulCast, out.events, &harm_keys);   // 7.2zd Sanctuary
     check_end(s, out.events);
@@ -6335,6 +6398,19 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
     if (d.kind == SpellEffectKind::Teleport || d.kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self; sim adds the destination
         r.target = a.id;
         push_zone_forms(out, r, d);
+        return;
+    }
+    if (d.whirl_ft > 0) {   // B10: overlapping hostiles, or one empty cast when none are in the space
+        bool any = false;
+        for (const auto& t : s.combatants) {
+            if (t.dead || t.team == a.team || t.id == a.id || !creature_ok(t)) continue;
+            ActionRequest q = r;
+            q.target = t.id;
+            choices(q, d);
+            out.push_back(q);
+            any = true;
+        }
+        if (!any) { r.target = 0; choices(r, d); out.push_back(r); }
         return;
     }
     if (self_range_modifier(d)) {   // Blur, Expeditious Retreat: target = the caster (the hostile loop never offered self)
