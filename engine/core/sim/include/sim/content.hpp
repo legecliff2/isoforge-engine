@@ -5,11 +5,14 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "assets/clip_registry.hpp"
 #include "assets/pack_set.hpp"
 #include "assets/schema_registry.hpp"
 #include "sim/equipment.hpp"
+#include "sim/presentation.hpp"
 #include "rules5e/spells.hpp"
 #include "sim/features.hpp"
 #include "rules5e/spells.hpp"
@@ -142,6 +145,8 @@ struct Archetype {
     // Feature ids whose effect sets requires_humanoid_form (Wild Shape blocks them in a beast form, D7).
     std::vector<uint32_t> humanoid_only_features;
     std::vector<EquipmentEntry> equipment;   // equipment[] in array order (priced materials; Combat copies it per combatant)
+    // Presentation only (Engine Core M0). Not folded into Combat::hash or log_hash.
+    CreatureVisual visual;
 };
 
 // R-G12 summons (VERSION_BUMP_BATCH 7.2r, SUMMONS_TRANSFORMS.md D1): which creatures a Summon spell may bring.
@@ -174,8 +179,10 @@ public:
     // Adapter: PackSet::load({pack_dir}) + load(). Prefer building the PackSet once.
     std::vector<std::string> load_pack(const std::string& pack_dir);
     // Adds one already-migrated stat block document (owned by pack_id, may be empty).
+    // `pack_dir` is the pack root used to check visual.art_root. Empty skips the existence check
+    // (direct add() from tests). A non-empty root that is not a directory is a load error.
     std::optional<std::string> add(const assets::Json& doc, const std::string& schema_type, const std::string& pack_id = "",
-                                    uint32_t declared_version = 0);
+                                    uint32_t declared_version = 0, std::string_view pack_dir = {});
 
     // Spell definitions of every spell@1 document loaded by load() (pack order). Shared with Combat,
     // which installs it as rules5e hooks.spells. Empty when no pack has spells.
@@ -188,6 +195,8 @@ public:
     std::optional<std::string> add_item(const assets::Json& doc) { return items_->add(doc, &warnings_); }
 
     const Archetype* find(const std::string& id) const;
+    // Kit loaded from <pack>/art/clips.json. nullptr when this library has no kit with that id.
+    const assets::ClipRegistry* clip_kit(std::string_view id) const;
     const std::map<std::string, Archetype>& all() const noexcept { return by_id_; }
     // R-G12 summons: a Summon SpellDef (kind Summon) and its creature options. Until spell@1 has a `summon` arm (T&C) this is
     // the way in; the def joins spells(). Errors: not a Summon def, empty or unknown archetypes, duplicate id, max_count 0.
@@ -200,6 +209,7 @@ private:
     std::map<uint32_t, SummonOptions> summons_;
     std::vector<std::string> warnings_;
     std::map<std::string, Archetype> by_id_;
+    std::map<std::string, assets::ClipRegistry, std::less<>> clip_by_id_;
     std::deque<std::string> strings_;
     std::shared_ptr<rules5e::SpellBook> spells_ = std::make_shared<rules5e::SpellBook>();
     std::shared_ptr<ItemDefTable> items_ = std::make_shared<ItemDefTable>();

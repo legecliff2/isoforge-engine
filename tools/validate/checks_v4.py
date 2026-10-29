@@ -115,6 +115,14 @@ for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT
                                     _r4.effect_kinds | (MONSTER_AT5_EFFECT_KINDS if _typ == "monster" else frozenset()),
                                     _r4.cost_values, _r4.top_level_keys | _extra,
                                     cross_refs=True, needs_api_level=2, legacy_stamps=True)
+# Engine Core M0: monster@6 / character@6 are @5 plus optional presentation `visual`. Gates that opened at @5 stay open.
+for _typ in ("monster", "character"):
+    _r5 = TAG_TABLE[f"{_typ}@5"]
+    TAG_TABLE[f"{_typ}@6"] = TagRow(True, _r5.action_kinds, _r5.effect_kinds, _r5.cost_values,
+                                    _r5.top_level_keys | {"visual"},
+                                    cross_refs=True, needs_api_level=2, legacy_stamps=True)
+MONSTER_SINCE_5 = frozenset({"monster@5", "monster@6"})
+CHARACTER_SINCE_5 = frozenset({"character@5", "character@6"})
 TAG_TABLE["item@2"] = TagRow(False, frozenset(), frozenset(), frozenset(), frozenset(), cross_refs=True,
                              needs_api_level=2)
 
@@ -714,7 +722,7 @@ def check_grapple_rider(doc: dict) -> tuple[list[str], list[str]]:
     errs: list[str] = []
     warns: list[str] = []
     schema = str(doc.get("$schema", ""))
-    is_m5 = schema.split("@")[0] == "monster" and schema.split("@")[-1].startswith("5")
+    is_m5 = schema in MONSTER_SINCE_5
     for path, a in mechanical_actions(doc):
         for j, r in enumerate(a.get("on_hit") or []):
             if not is_grapple(r):
@@ -1037,7 +1045,7 @@ def check_save_effect_riders(doc: dict, tag: str) -> tuple[list[str], list[str]]
         if act.get("kind") != "save_effect":
             errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source are save_effect only")
             continue
-        if tag != "monster@5":
+        if tag not in MONSTER_SINCE_5:
             errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file")
             continue
         if "area" in act:
@@ -1092,7 +1100,7 @@ def check_keen_senses(doc: dict, tag: str) -> tuple[list[str], list[str]]:
         if eff.get("kind") != "keen_senses":
             continue
         did = f"{path}: {doc.get('id', '?')}"
-        if tag != "monster@5":
+        if tag not in MONSTER_SINCE_5:
             errs.append(f"{did}: keen_senses needs a monster@5 file")
             continue
         extra = sorted(k for k in eff if k not in KEEN_SENSES_KEYS)
@@ -1130,7 +1138,7 @@ def check_regen(doc: dict, tag: str) -> tuple[list[str], list[str]]:
         if eff.get("kind") != "regen":
             continue
         did = f"{path}: {doc.get('id', '?')}"
-        if tag != "monster@5":
+        if tag not in MONSTER_SINCE_5:
             errs.append(f"{did}: regen needs a monster@5 file")
             continue
         extra = sorted(k for k in eff if k not in REGEN_KEYS)
@@ -1168,7 +1176,7 @@ def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
         if eff.get("kind") != "save_advantage":
             continue
         did = f"{path}: {doc.get('id', '?')}"
-        if tag != "monster@5":
+        if tag not in MONSTER_SINCE_5:
             errs.append(f"{did}: save_advantage needs a monster@5 file")
             continue
         extra = sorted(k for k in eff if k not in SAVE_ADVANTAGE_KEYS)
@@ -1203,7 +1211,7 @@ def check_aura(doc: dict, tag: str) -> tuple[list[str], list[str]]:
         if eff.get("kind") != "aura":
             continue
         did = f"{path}: {doc.get('id', '?')}"
-        if tag != "monster@5":
+        if tag not in MONSTER_SINCE_5:
             errs.append(f"{did}: aura needs a monster@5 file")
             continue
         extra = sorted(k for k in eff if k not in AURA_KEYS)
@@ -1240,7 +1248,7 @@ def check_batch3_actions(doc: dict, tag: str) -> list[str]:
     """Batch 3 monster@5 action keys the sim reads only on weapon attacks (content.cpp attack loop): elsewhere they would be
     silently ignored, so they are errors."""
     errs: list[str] = []
-    if tag != "monster@5":
+    if tag not in MONSTER_SINCE_5:
         return errs
     for i, a in enumerate(doc.get("actions") or []):
         if not isinstance(a, dict):
@@ -1275,7 +1283,7 @@ def check_teleport_actions(doc: dict, tag: str) -> list[str]:
     """Batch 3 monster@5 `teleport` action (blink dog): with_attack names a weapon / spell attack action of this document (same
     rule as the sim loader, content.cpp compile_teleport_action)."""
     errs: list[str] = []
-    if tag != "monster@5":
+    if tag not in MONSTER_SINCE_5:
         return errs
     attack_ids = {a.get("id") for a in doc.get("actions") or [] if isinstance(a, dict) and str(a.get("kind", "")).endswith("_attack")}
     for i, a in enumerate(doc.get("actions") or []):
@@ -1294,7 +1302,7 @@ def check_multiattack_count(doc: dict, tag: str) -> list[str]:
         for sub, o in [("", eff)] + [(f"/options/{j}", o) for j, o in enumerate(eff.get("options") or [])]:
             if not isinstance(o, dict) or "count_dice" not in o:
                 continue
-            if tag != "monster@5":
+            if tag not in MONSTER_SINCE_5:
                 errs.append(f"{path}{sub}/count_dice: multiattack count_dice needs a monster@5 file")
             if len(o.get("attacks") or []) != 1:
                 errs.append(f"{path}{sub}/count_dice: count_dice needs exactly one attack")

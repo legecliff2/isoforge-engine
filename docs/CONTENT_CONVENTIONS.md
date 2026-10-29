@@ -982,7 +982,28 @@ At the start of the creature's turn, a listed damage type taken since its previo
 
 **Not this kind.** Oni and the shield guardian regain hit points only while they already have at least 1, with no damage-type list and with an ordinary death at 0. Loading `regen` on them would keep them up at 0. Radiant damage does suppress vampire spawn. The spawn still stays off `regen`: it heals only while it has at least 1 hit point, sunlight and running water also stop it, and it dies at 0. Rejuvenation (lich, ghost) is a different trait. Wild Shape and Polymorph do not copy `regeneration`: `FormStats` does not carry it, and `build_form` does not write it. The stat block is `content/packs/srd51.core/monsters/troll.json` (`srd51.monster.troll`): this effect, amount 10, `suppressed_by` acid and fire, and Keen Smell as `keen_senses` with `smell` (§30). The deferred troll row is unparked. Oni, the shield guardian, and vampire spawn still do not carry `regen`.
 
-## 32. Save grappled by the user, and grapple `max_size` (monster@5)
+## 32. Presentation visual and clip registry (character@6 / monster@6, Engine Core M0)
+
+`visual` is optional on `character@6` and `monster@6`. Migration 5 -> 6 is identity: older files do not gain a `visual` key. The loader still resolves a presentation for every stat block it accepts.
+
+| Authored | Resolved |
+|---|---|
+| `visual` absent, `type` `humanoid` | `kind` paperdoll, `kit` `paperdoll`, empty `standin_bin` |
+| `visual` absent, any other type, size tiny / small / medium / large | `kind` standin, `standin_bin` from size, `kit` `standin.<standin_bin>` |
+| `visual` absent, size huge or gargantuan | `kind` unbinned, empty `kit` (no M0 art bin) |
+| `visual.kind` / `visual.standin_bin` | override the default. `standin_bin` is `tiny`, `small`, `medium`, or `large` |
+| `visual.kit` | kit id. Wins over `presentation.sprite` |
+| `presentation.sprite` | kit id when `visual.kit` is absent |
+| `visual.art_root` | pack-relative directory under `art/`. When `ContentLibrary::add` is given the pack directory, the directory must exist. `..` is refused |
+| `visual.size_short` | stored on `CreatureVisual`. `kSizeShortRuntime` is false, so M0 does not swap `_short` plates and does not scale |
+
+`CreatureVisual` sits on `Archetype`. `ActorView` copies `visual_kind` (`"paperdoll"` / `"standin"` / `"unbinned"`), `kit`, `standin_bin`, `art_root`, and `size_short`. Clip clock fields (`clip`, `hard_land`) are Render & Platform's. None of these fields are written back into sim, and none are folded into `Combat::hash` or `log_hash`. No new `SIM_EVENTS` tag. A humanoid with no visual block, including the sample goblin, resolves to paperdoll, not `standin.<size>`.
+
+The clip registry is `content/packs/srd51.core/art/clips.json` (not a manifest content document; `validate_packs` skips `art/`). `ContentLibrary::load` reads `<pack>/art/clips.json` when the file is present. Every alias target must be a clip id in that kit. `ClipRegistry::resolve` maps `-` to `_`. The paperdoll kit resolves `hard_land` / `hard-land` to `prone_idle`, `dodge` to `guard`, `knockback` to `react`, and swim / fly idle and move to `idle` / `walk`. The stand-in kits (`standin.tiny` through `standin.large`) resolve `climb` and `crawl` to `walk`, `hide` to `idle`, and an unknown name to `idle`.
+
+Facing stays the four iso values `SouthEast`, `SouthWest`, `NorthEast`, `NorthWest`. Art still authors eight. A committed `TileMoved` or a later aim / attack sets `ActorView::facing` from the tile step (`+x` SouthEast, `+y` SouthWest). That state lives on the presentation feed, not on the combatant. `SouthWest` and `NorthWest` are the west mirror. Huge and gargantuan bins, `size_short` runtime, and an 8-value facing enum are not M0.
+
+## 33. Save grappled by the user, and grapple `max_size` (monster@5)
 
 Chuul Tentacles and Otyugh Tentacle Slam name creatures the monster has grappled. A monster@5 `save_effect` may set `target_requires_any: ["grappled_by_self"]` and nothing else from that enum. Each creature the cast names must be grappled by the user (`condition_source` of Grappled is the user). Any other target refuses the cast before the action is spent (`target must be grappled by the user`). `legal_actions` does not list those targets. The built-in AI skips the save when its current target fails the gate, and uses it when that target passes.
 
