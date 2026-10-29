@@ -765,6 +765,10 @@ struct Combatant {
     // does not clear it. Each Disease row on the encounter holds its own share; this is the sum. effective_hp_max subtracts
     // it. 0xE3 folds the rows (and this field when non-zero).
     int16_t disease_hp_max_reduction = 0;
+    // appended (B9 Air Form / Water Form, CONTENT_CONVENTIONS §39; static content, never hashed): this creature may enter a
+    // hostile creature's space and stop there. Trait ids "air_form" and "water_form" (sim content.cpp, the Flyby peer). Not a
+    // swarm: other creatures do not gain it, and a nonhostile space is still forbidden. No SIM_EVENTS tag.
+    bool enter_hostile_space = false;
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 

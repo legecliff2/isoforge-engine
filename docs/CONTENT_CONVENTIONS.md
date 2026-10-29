@@ -1178,7 +1178,35 @@ Product calls:
 * **Landing.** A Step with `jump_ft` greater than 0 may enter and end in another creature's space, including a hostile fewer than two sizes away. The occupied tile still costs as difficult terrain (the existing through-creature cost). The action does not move the token. Sim requires every named target's footprint to overlap the leaper's current footprint (`target is not in the landing space`). Rules does not see tiles: the named targets are the creatures in the space. The engine does not add a creature the caller left out. At most 8, the existing multi-target save cap. There is no size gate. Overlap is the space, so a Large leaper's footprint is the space. An ally may be named. `legal_actions` lists hostiles only, the existing save-action list, and only once `jumped_ft` meets the gate.
 * **Str or Dex.** At the roll, each target uses whichever of the two abilities has the higher `save_modifier` (ability modifier, plus proficiency when proficient in that save). A tie uses `save.ability` (Strength for the printed leap). The choice is not a request field and is not hashed. Cover's bonus and Evasion apply only when Dexterity is the one rolled (the existing Dexterity save rules). Legendary Resistance can turn a failure into a success (the existing rule). A caller cannot pick the lower bonus.
 * **Push.** A success queues the existing push (mode 1): straight away from the leaper's centre, coincident centres break toward +x, exactly `push_ft`, not "up to". That walk is the creature's choice of unoccupied space. There is no per-creature destination. If the hook moves 0 feet, the creature falls prone in the space unless it is immune to prone, and it still has the half damage. With no hook the push is reported as the full distance (the existing no-hook rule), so the blocked case is the sim.
-* **End of turn.** The existing refusal to end a turn in another creature's space still applies. A failed save, or a push that cannot move, leaves that creature in the space, so EndTurn is refused while a step out exists. The leap does not grant a lasting exception.
+* **End of turn.** The existing refusal to end a turn in another creature's space still applies to the leaper. A failed save, or a push that cannot move, leaves that creature in the space, so EndTurn is refused while a step out exists. The leap does not grant a lasting exception. A creature that already has Air Form or Water Form (§39) may keep a hostile's space. The leap's push still needs an unoccupied tile, and that form does not make its own tile unoccupied.
 * **AI.** The built-in AI does not declare a jump and does not use this action.
 
 This section does not author `srd51.monster.bulette`. Burrow is not this key. The row stays deferred.
+
+## 39. Air Form / Water Form (monster trait ids `air_form`, `water_form`)
+
+SRD 5.1 Air Form, as the deferred ledger states it: the elemental can enter a hostile creature's space and stop there. It can move through a space as narrow as 1 inch wide without squeezing. SRD 5.1 Water Form is the same two sentences. The ledger's water row parks Whelm and Freeze and does not restate the movement sentence; the movement sentence is the Air Form sentence.
+
+A descriptive trait is enough. No effect object. The Flyby peer (`traits[].id`), not a new effect kind.
+
+```json
+{ "id": "air_form", "name": "Air Form", "description": "The elemental can enter a hostile creature's space and stop there. It can move through a space as narrow as 1 inch wide without squeezing." }
+```
+
+`water_form` is the same object with that id and the name Water Form. Either id sets `Combatant::enter_hostile_space`. Both on one creature are still one flag. Any other id, including the authored `fire_form`, does not.
+
+The flag is static content. It is not hashed. No `SIM_EVENTS` tag. Next free stays **0xE5**. Replay reloads the trait with the archetype.
+
+Product calls:
+
+* **Who may overlap whom.** Only the mover with the flag. It may enter a hostile creature's space at any size difference, including fewer than two sizes apart, and it may stop there. It may end its turn there. The other creature does not gain the exception: a same-size hostile still cannot enter the elemental's space, and a creature two or more sizes apart may pass through and still may not stop. A swarm is unchanged (both ways, `occupied_except`).
+* **Hostile only.** `hostile` is a different team, the existing test. A nonhostile space is the existing rule: the elemental may move through an ally, and it may not willingly stop there. A footprint that overlaps a hostile and a nonhostile may not stop. Two allied elementals therefore may not both stop in one hostile's space, because each would also be stopping in its ally's space. Two elementals that are hostile to each other may both stop in the same hostile's space.
+* **Difficult terrain.** The occupied tile still costs as difficult terrain (the existing through-creature cost, 10 ft on open ground). The form does not waive it. An airborne or burrowed mover still ignores that cost (the existing altitude rule). A vertical span that does not overlap is not in the way.
+* **Deadly Leap.** A jump step (`jump_ft` > 0) may still end in any creature's space, and EndTurn still refuses that overlap for a leaper that lacks this flag while a step out exists (§38). The form is not granted by the leap. A success push still walks to an unoccupied tile (`occupied_except`). The form does not make the elemental's tile unoccupied, and it does not let the push end inside another creature. A push that moves 0 feet still knocks the target prone in the space.
+* **Pathing.** `occupied_except` still lists the other creature's tiles. The built-in pathing, readied moves, teleports, summons, and forced movement do not route through them. That is the size-space audit's existing deferral of AI movement through spaces. A caller Steps. The built-in AI does not seek the overlap.
+* **Forms.** The flag is not a `FormStats` field, the Flyby peer. A transform does not add it or clear it.
+* **1 inch.** Deferred. The grid has no sub-tile openings (the swarm Tiny-openings peer, and the authored ooze / shadow / Fire Form sentences that only describe the gap). Squeezing stays the existing Large+ opt-in. This flag is not squeezing and does not open a 1-inch gap.
+
+`fire_form` on the authored fire elemental includes the enter-and-stop clause and also the 1d10 contact fire. This flag does not apply that damage, so `fire_form` is not this id. The fire row stays partial. Whirlwind, Whelm, and Freeze are not this key.
+
+This section does not author `srd51.monster.air_elemental` or `srd51.monster.water_elemental`. Counts stay 195 authored and 15 deferred.

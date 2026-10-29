@@ -214,6 +214,9 @@ public:
     // (combat.cpp; what the two-argument overload passes) = any height.
     CombatantId occupant_at(Vec2i t, CombatantId except, int mover_abs_ft) const;
     bool overlaps_other(CombatantId id, Vec2i anchor, int n) const;
+    // B9: the footprint at `anchor` overlaps a living creature this mover may not stop inside. Air/Water Form may stop in a
+    // hostile. A swarm mover, and a swarm's tiles, do not count (the same exclusion as occupied_except).
+    bool forbids_stop(CombatantId id, Vec2i anchor, int n) const;
     struct StepPlan { int n = 1; int cost = 5; uint8_t squeeze = 0; bool ends_in_other = false; };
     // allow_occupied: a jump step (B8) may enter another creature's space even when may_pass is false.
     std::optional<std::string> plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze = false,
