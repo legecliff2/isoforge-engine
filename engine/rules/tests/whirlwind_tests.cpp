@@ -1,6 +1,7 @@
 // B10: Air Elemental Whirlwind. Each named creature (the ones in the elemental's space; rules has no
 // tiles) makes one Strength save. Fail: the bludgeoning packet, prone, and a fling of up to fling_ft
-// in a random direction (one d8, face 1 is +x, clockwise). Success: none of those, and not half.
+// in a random direction (one d8, face 1 is +x, clockwise). A successful Strength save takes half
+// (integer division) and is not flung or knocked prone.
 // A reported object strike deals the impact packet once per impact_per_ft of feet moved. A reported
 // creature makes the Dexterity save: fail takes that same packet and falls prone; success takes neither.
 // No new hash tag. air_elemental.json stays deferred.
@@ -28,7 +29,7 @@ SpellDef whirl_def(int dc = 30, int impact_dc = 30) {
     SpellDef d;
     d.id = kWhirl; d.content_id = "test.air#whirlwind"; d.level = 0; d.targets = 8;
     d.kind = SpellEffectKind::Save; d.is_spell = false; d.magical = false; d.components = 0;
-    d.save_ability = Ability::Str; d.fixed_dc = int8_t(dc); d.on_save = OnSave::None;
+    d.save_ability = Ability::Str; d.fixed_dc = int8_t(dc); d.on_save = OnSave::Half;
     d.dice = {0, 0, 15}; d.damage_type = DamageType::Bludgeoning;
     d.applies_condition = true; d.condition = Condition::Prone; d.condition_untracked = true;
     d.whirl_ft = 20; d.impact_per_ft = 10; d.impact_die = {0, 0, 3}; d.impact_type = DamageType::Bludgeoning;
@@ -104,7 +105,7 @@ bool dir_ok(int x, int y) { return std::abs(x) <= 1 && std::abs(y) <= 1 && (x !=
 
 }  // namespace
 
-TEST_CASE("Whirlwind: a failed Strength save deals the packet, knocks prone, and flings; a success does none of it") {
+TEST_CASE("Whirlwind: a failed Strength save deals the packet, knocks prone, and flings; a success is half and stays") {
     Seen fail_seen;
     auto failed = begin({elemental(), body(2, 10, 10)}, whirl_def(30), &fail_seen, 4);
     auto land = step(failed, at({2}));
@@ -132,7 +133,7 @@ TEST_CASE("Whirlwind: a failed Strength save deals the packet, knocks prone, and
     auto saved = begin({elemental(), body(2, 18, 10)}, whirl_def(1), &saved_seen, 4);
     auto ok = step(saved, at({2}));
     REQUIRE(ok.ok);
-    CHECK(damage_to(ok.events, 2) == 0);   // not half of 15
+    CHECK(damage_to(ok.events, 2) == 7);   // half of the flat 15, integer division
     CHECK_FALSE(prone_added(ok.events, 2));
     CHECK_FALSE(find(saved, 2)->has(Condition::Prone));
     CHECK(saved_seen.qs.empty());   // no d8, no fling

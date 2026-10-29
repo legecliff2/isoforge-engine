@@ -570,11 +570,11 @@ struct SpellDef {
     Ability save_alt = Ability::Dex;
     uint16_t leap_push_ft = 0;
     // appended (B10, Air Elemental Whirlwind, CONTENT_CONVENTIONS §40). Static content: not hashed.
-    // whirl_ft > 0: this save is Whirlwind. On a failure the target takes the damage (on_save is None: the sentence
-    // names it only on a failure), is knocked prone, and is flung up to whirl_ft in a random direction. A strike
-    // deals impact_die once per impact_per_ft of feet actually moved. A creature in the way saves with impact_save
-    // against impact_dc: a failure takes that same impact and is knocked prone. A success on either save does not
-    // take half.
+    // whirl_ft > 0: this save is Whirlwind. on_save is Half: a success takes half the damage and is not
+    // flung or knocked prone. On a failure the target takes the full damage, is knocked prone, and is flung up
+    // to whirl_ft in a random direction. A strike deals impact_die once per impact_per_ft of feet actually moved.
+    // A creature in the way saves with impact_save against impact_dc: a failure takes that same impact and is
+    // knocked prone. That Dexterity success takes nothing (not half).
     uint16_t whirl_ft = 0;
     uint8_t impact_per_ft = 0;
     DiceExpr impact_die{1, 6, 0};

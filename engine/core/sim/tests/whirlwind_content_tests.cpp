@@ -166,7 +166,7 @@ void replay_matches(const Arena& a, uint64_t seed = 1) {
 
 }  // namespace
 
-TEST_CASE("whirlwind compiles to one failure-only save with a recharge, and is not a multiattack") {
+TEST_CASE("whirlwind compiles to one half-on-success save with a recharge, and is not a multiattack") {
     auto lib = lib_of({creature("t.air", "large", true, 14, 13)});
     const auto* arch = lib.find("t.air");
     REQUIRE(arch);
@@ -177,7 +177,7 @@ TEST_CASE("whirlwind compiles to one failure-only save with a recharge, and is n
     CHECK(arch->save_actions[0].usage_kind == 1);
     const auto* d = lib.spells()->find(whirl_id("t.air"));
     REQUIRE(d);
-    CHECK(d->on_save == rules5e::OnSave::None);
+    CHECK(d->on_save == rules5e::OnSave::Half);
     CHECK(d->save_ability == rules5e::Ability::Str);
     CHECK(d->fixed_dc == 13);
     CHECK(d->whirl_ft == 20);
@@ -268,7 +268,7 @@ TEST_CASE("Whirlwind: a creature the elemental stopped on is flung into a wall, 
     replay_matches(a, 3);
 }
 
-TEST_CASE("Whirlwind: empty space spends the recharge, a creature outside is refused, and a success is not half") {
+TEST_CASE("Whirlwind: empty space spends the recharge, a creature outside is refused, and a success is half") {
     {
         Arena a;
         // A distant hostile keeps the encounter open. It is not in the space, so the listed cast has no target.
@@ -310,8 +310,10 @@ TEST_CASE("Whirlwind: empty space spends the recharge, a creature outside is ref
         CHECK_FALSE(rules5e::find_action_use(a.c->state(), elem, whirl_id("t.air"))->expended);
     }
     {
+        Json air = creature("t.air", "large", true, 14, 1);
+        air["actions"][0]["damage"] = Json::array({{{"flat", 15}, {"type", "bludgeoning"}}});
         Arena a;
-        fill(a, {creature("t.air", "large", true, 14, 1), creature("t.foe", "medium", false, 20, 13)},
+        fill(a, {air, creature("t.foe", "medium", false, 20, 13)},
              {{"t.air", {8, 8}}, {"t.foe", {10, 8}, "party"}});
         const CombatantId elem = id_at(a, 0), foe = id_at(a, 1);
         to_actor(*a.c, elem);
@@ -325,7 +327,9 @@ TEST_CASE("Whirlwind: empty space spends the recharge, a creature outside is ref
         auto res = a.c->submit(cast);
         REQUIRE_MESSAGE(res.ok, res.error);
         a.c->settle(nullptr);
-        CHECK(damages_since(*a.c, foe, from).empty());
+        const auto half = damages_since(*a.c, foe, from);
+        REQUIRE(half.size() == 1);
+        CHECK(half[0] == 7);   // half of the flat 15, integer division
         CHECK_FALSE(rules5e::find(a.c->state(), foe)->has(Condition::Prone));
         CHECK(a.c->pos(foe) == stood);
         CHECK(moved_feet(*a.c, foe, from) == -1);

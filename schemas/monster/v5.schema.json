@@ -1722,7 +1722,7 @@
           }
         },
         {
-          "description": "B10 Whirlwind: each creature in the user's space makes the save. Failure: the one damage component, prone, and a fling of up to fling_ft. A strike deals impact once per per_ft feet moved. A creature in the way makes impact_save. Success on either save takes nothing. usage recharge is required.",
+          "description": "B10 Whirlwind: each creature in the user's space makes the save. Failure: the one damage component, prone, and a fling of up to fling_ft. Success: half that damage, no fling, no prone. A strike deals impact once per per_ft feet moved. A creature in the way makes impact_save; that success takes nothing. usage recharge is required.",
           "if": {
             "required": ["kind"],
             "properties": { "kind": { "const": "whirlwind" } }

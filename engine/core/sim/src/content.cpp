@@ -801,7 +801,7 @@ std::optional<std::string> compile_deadly_leap(const std::string& arch, const Js
 // {kind: whirlwind, save: {ability, dc}, damage: {dice, type}, fling_ft, impact: {dice, per_ft, type},
 //  impact_save: {ability, dc}, usage: {kind: recharge, min}}.
 // Each named creature in the user's space saves. Fail: the damage, prone, and a fling of up to fling_ft.
-// Success: nothing (the sentence names those only on a failure). Recharge is the sentence.
+// Success: half that damage (integer division), no fling, no prone. The Dexterity impact save is not half. Recharge is the sentence.
 std::optional<std::string> compile_whirlwind(const std::string& arch, const Json& act, uint32_t declared,
                                              const std::string& schema_type, const Json& doc, rules5e::SpellDef& d,
                                              Archetype::SaveAction& sa) {
@@ -860,7 +860,7 @@ std::optional<std::string> compile_whirlwind(const std::string& arch, const Json
     d.fixed_dc = int8_t(dc);
     d.dice = *dice;
     d.damage_type = *ty;
-    d.on_save = rules5e::OnSave::None;   // the sentence names the damage only on a failure
+    d.on_save = rules5e::OnSave::Half;   // "If the saving throw is successful, the target takes half the bludgeoning damage"
     d.applies_condition = true;
     d.condition = rules5e::Condition::Prone;
     d.condition_untracked = true;
