@@ -110,7 +110,14 @@ struct Archetype {
     std::vector<std::string> innate_spell_ids;   // spellcasting.innate.* content ids (monster@4 / character@4); base.innate holds the rows
     // `multiattack` effect options as authored: option id + indices into base.attacks. ContentLibrary::add
     // turns them into base.multiattacks (ids stored in the library). Declared order = option order.
-    struct MultiattackDecl { std::string id; std::vector<uint8_t> attacks; rules5e::DiceExpr count_dice{0, 0, 0}; std::string free_rider; };   // count_dice: batch 3; free_rider: B3b action id
+    // B7: both-hits Engulf (Shambling Mound). Compiled to an ApplyCondition contain SpellDef; not an action.
+    struct EngulfBothSpec {
+        int8_t max_size = -1;   // rules5e::Size
+        int8_t escape_dc = 0;
+        rules5e::DiceExpr damage{};
+        rules5e::DamageType damage_type = rules5e::DamageType::Bludgeoning;
+    };
+    struct MultiattackDecl { std::string id; std::vector<uint8_t> attacks; rules5e::DiceExpr count_dice{0, 0, 0}; std::string free_rider; std::optional<EngulfBothSpec> engulf_both_hits; };   // count_dice: batch 3; free_rider: B3b action id; engulf_both_hits: B7
     std::vector<MultiattackDecl> multiattack_decls;
     std::optional<std::string> ai;        // behavior.ai (monster@2 / character@2), pack-relative
     // Script id of behavior.ai, resolved within the archetype's own pack: "pack_id:path".

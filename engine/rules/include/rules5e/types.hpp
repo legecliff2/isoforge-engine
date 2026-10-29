@@ -206,6 +206,9 @@ struct AttackSequence {
     // another action. 0 = none. Armed on TurnBudget::free_rider when the attacks finish, so a pincer in this same sequence
     // that just established the grapple counts. The save's own target gate still applies. One use; not a standalone action.
     uint32_t free_rider = 0;
+    // Appended (B7, Shambling Mound Engulf): spell id of an ApplyCondition contain applied when every attack in this option
+    // hits the same creature. 0 = none. Not a cast and not a free_rider. The both-hits window is TurnBudget (not hashed).
+    uint32_t engulf_both = 0;
 };
 // The attack index the multiattack in progress requires next, or -1 (none in progress / sequence done).
 inline int multiattack_next(const std::vector<AttackSequence>& ms, uint8_t sequence, uint8_t pos) {

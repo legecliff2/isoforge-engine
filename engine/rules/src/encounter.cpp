@@ -317,6 +317,9 @@ bool contain_refused(const EncounterState& s, const Combatant& a, const Combatan
     if (def.excludes_formless && t.formless) return true;
     if (def.contain == 2)
         for (const auto& e : s.effects) if (e.contain == 2 && e.caster == a.id) return true;
+    // B7: Shambling Mound Engulf holds one creature. Any contain this user already has blocks another.
+    if (def.contain_one)
+        for (const auto& e : s.effects) if (e.contain != 0 && e.caster == a.id) return true;
     return false;
 }
 
@@ -3885,6 +3888,17 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     w.object_vulnerable = def.object_vulnerable; w.object_immune = def.object_immune;
                 }
                 set_contain(s.effects.back(), def, *t, ev);   // 7.2w: Swallow (a rider of the bite)
+                // B7: blinded while restrained (Shambling Mound Engulf). Same one-entry rule as the Save path's `while`.
+                // Swallow (contain 2) already set has_also, so this does not add a second blindness.
+                if (def.has_while && !s.effects.back().has_also &&
+                    !immune_to(s, *t, def.while_condition) && !immune_from(s, *t, def.while_condition, a.id)) {
+                    s.effects.back().has_also = true; s.effects.back().also = def.while_condition;
+                    if (!t->has(def.while_condition)) {
+                        add_condition(*t, def.while_condition);
+                        emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.while_condition));
+                    }
+                    note_source(s, def.while_condition, a.id, t->id);
+                }
             }
             affected.push_back(t);
             applied = true;
@@ -5488,6 +5502,34 @@ StepResult gaze_response(EncounterState& s, Combatant& a, const ActionRequest& r
     return out;
 }
 
+// B7: one swing of a multiattack that carries engulf_both. A miss, or a hit on a different creature, spoils the engulf.
+void note_engulf_swing(TurnBudget& b, CombatantId target, bool hit) {
+    if (b.engulf_spell == 0) return;
+    if (!hit) { b.engulf_bad = true; return; }
+    if (b.engulf_hits == 0) b.engulf_hit_id = target;
+    else if (target != b.engulf_hit_id) b.engulf_bad = true;
+    if (b.engulf_hits < 255) ++b.engulf_hits;
+}
+
+// B7: the last attack of that multiattack just resolved. Both hits on one living creature apply the contain.
+// Anything else clears the window. No cast, no save, no action. The contain effect is the gelatinous-cube one.
+void finish_engulf_both(EncounterState& s, Ctx& ctx, Combatant& a, std::vector<Event>& ev) {
+    if (!s.budget.engulf_due) return;
+    const uint32_t spell = s.budget.engulf_spell;
+    const bool ok = !s.budget.engulf_bad && s.budget.engulf_hits >= 2 && s.budget.engulf_hit_id != 0;
+    const CombatantId tid = s.budget.engulf_hit_id;
+    s.budget.engulf_due = false;
+    s.budget.engulf_spell = 0;
+    s.budget.engulf_hits = 0;
+    s.budget.engulf_hit_id = 0;
+    s.budget.engulf_bad = false;
+    if (!ok) return;
+    const SpellDef* def = spell_def(s, spell);
+    Combatant* t = find_mut(s, tid);
+    if (!def || !t || t->dead) return;
+    resolve_spell(s, ctx, a, *def, 0, std::vector<Combatant*>{t}, true, ev);
+}
+
 // Small leftovers around the per-request core: Reckless Attack's declaration, Haste's extra action and Slow's limits.
 StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req);
 StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
@@ -6053,9 +6095,13 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (b.sequence > a.multiattacks.size()) return fail("bad multiattack");
             const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos);
             if (next < 0 || req.attack_index != uint8_t(next)) return fail("attack out of multiattack sequence");
-            const uint32_t rider = a.multiattacks[std::size_t(b.sequence - 1)].free_rider;   // B3b: arm after the last attack
+            const auto& seq = a.multiattacks[std::size_t(b.sequence - 1)];
+            const uint32_t rider = seq.free_rider;   // B3b: arm after the last attack
             ++b.sequence_pos;
-            if (--b.attacks_remaining == 0) { b.sequence = 0; b.sequence_pos = 0; b.free_rider = rider; }
+            if (--b.attacks_remaining == 0) {
+                b.sequence = 0; b.sequence_pos = 0; b.free_rider = rider;
+                if (seq.engulf_both != 0) b.engulf_due = true;   // B7: this swing is the last; record it, then engulf
+            }
         } else if (req.multiattack != 0) {                                // start a declared multiattack
             if (b.attacks_remaining > 0) return fail("attack action already in progress");
             if (req.multiattack > a.multiattacks.size()) return fail("bad multiattack");
@@ -6072,6 +6118,10 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             b.attacks_remaining = uint8_t(n - 1);
             if (b.attacks_remaining > 0) { b.sequence = req.multiattack; b.sequence_pos = 1; }
             else b.free_rider = a.multiattacks[std::size_t(req.multiattack - 1)].free_rider;   // B3b: the one attack was this one
+            // B7: arm both-hits Engulf only for a sequence of at least two attacks. A rolled count of one does not engulf.
+            b.engulf_hits = 0; b.engulf_hit_id = 0; b.engulf_bad = false; b.engulf_due = false; b.engulf_spell = 0;
+            if (n >= 2 && a.multiattacks[std::size_t(req.multiattack - 1)].engulf_both != 0)
+                b.engulf_spell = a.multiattacks[std::size_t(req.multiattack - 1)].engulf_both;
         } else if (b.attacks_remaining > 0) --b.attacks_remaining;       // Extra Attack
         else if (spend_action(b, a, req.kind, false)) {
             b.loading_fired = 0;
@@ -6087,16 +6137,23 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (pending_pool != 0 && spend_pool(s, a.id, pending_pool, pending_cost))
             emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(pending_pool), pending_cost, find_pool(s, a.id, pending_pool)->cur);
         if (warded && !ward_save(s, a, ward_index(s, *t, a.id), out.events)) {   // 7.2zd: a new target, or the attack is lost
-            if (!ward_alt) { check_end(s, out.events); return out; }
+            if (!ward_alt) {
+                note_engulf_swing(s.budget, t->id, false);   // B7: the swing was lost
+                finish_engulf_both(s, ctx, a, out.events);
+                check_end(s, out.events); return out;
+            }
             t = ward_alt;
         }
         ctx.bonus_attack_id = bopt ? bopt->id : 0;   // 7.2zb AttackFromFeature
         ctx.grapple_instead = req.grapple_instead;
-        do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
+        const CombatantId engulf_target = t->id;
+        const bool hit = do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
                   req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target,
                   bopt && bopt->has_damage ? &bopt->damage : nullptr, req.two_handed_grip);
         ctx.bonus_attack_id = 0;
         ctx.grapple_instead = false;
+        note_engulf_swing(s.budget, engulf_target, hit);   // B7
+        finish_engulf_both(s, ctx, a, out.events);
         check_end(s, out.events);
         return out;
     }
