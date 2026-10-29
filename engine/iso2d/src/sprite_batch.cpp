@@ -90,10 +90,12 @@ void SpriteBatch::prepare(const Camera& cam) {
         const Vec2f p = it.px ? it.iso : proj_.to_screen(it.iso.x, it.iso.y);
         const float x0 = p.x - s.anchor_x, y0 = p.y - s.anchor_y, x1 = x0 + s.w, y1 = y0 + s.h;
         const uint8_t r = to8(s.tint.r), g = to8(s.tint.g), b = to8(s.tint.b), a = to8(s.tint.a);
-        out[0] = {x0, y0, s.u0, s.v0, r, g, b, a};
-        out[1] = {x1, y0, s.u1, s.v0, r, g, b, a};
-        out[2] = {x1, y1, s.u1, s.v1, r, g, b, a};
-        out[3] = {x0, y1, s.u0, s.v1, r, g, b, a};
+        float u[4], v[4];
+        sprite_corner_uv(s.u0, s.v0, s.u1, s.v1, u, v);
+        out[0] = {x0, y0, u[0], v[0], r, g, b, a};
+        out[1] = {x1, y0, u[1], v[1], r, g, b, a};
+        out[2] = {x1, y1, u[2], v[2], r, g, b, a};
+        out[3] = {x0, y1, u[3], v[3], r, g, b, a};
         const uint32_t q = uint32_t((out - verts_.data()) / 4);
         out += 4;
         if (runs_.empty() || !(runs_.back().texture == s.texture)) runs_.push_back({s.texture, q, 1});

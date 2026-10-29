@@ -1,11 +1,13 @@
 #include "session.hpp"
 
+#include "actor_visual.hpp"
 #include "debug_cover.hpp"
 #include "event_feed.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <map>
 
 #include "assets/pack_set.hpp"
 #include "ecs/registry.hpp"
@@ -41,6 +43,32 @@ TileKind classify_tile(const std::string& id) {
 }
 
 namespace {
+const char* size_token(sim::CreatureSize s) {
+    using S = sim::CreatureSize;
+    switch (s) {
+    case S::Tiny: return "tiny";
+    case S::Small: return "small";
+    case S::Medium: return "medium";
+    case S::Large: return "large";
+    case S::Huge: return "huge";
+    case S::Gargantuan: return "gargantuan";
+    }
+    return "medium";
+}
+
+void finish_actor_visual(ActorView& a, const sim::Archetype* arch,
+                         const std::map<std::string, VisualSource, std::less<>>& hooks) {
+    const VisualSource* src = nullptr;
+    if (arch) {
+        const auto it = hooks.find(arch->id);
+        if (it != hooks.end()) src = &it->second;
+    }
+    apply_actor_visual(a, arch && arch->schema_type == "monster", arch ? size_token(arch->size) : "medium", src);
+    if (a.dead) a.clip = "death";
+    else if (a.hard_land) a.clip = "hard-land";
+    else if (a.visual_kind == VisualKind::Standin) a.clip = "idle";
+}
+
 std::string display_name(const std::string& archetype) {
     std::string s = archetype.substr(archetype.rfind('.') + 1);   // "fighter_1"
     if (auto u = s.find('_'); u != std::string::npos) s = s.substr(0, u);
@@ -202,6 +230,8 @@ struct Session::Impl {
 
     // item content id -> light preset (`light.preset` when the item has one, else the item id itself), for equipment glows.
     std::map<std::string, std::string, std::less<>> light_presets;
+    // content id → presentation.sprite / visual{kind,kit,standin_bin}. Empty when the document has neither.
+    std::map<std::string, VisualSource, std::less<>> actor_visuals;
 
     // Equipment producer: one attached source per light-capable item (Combat::equipment_lights(), light id order),
     // keyed by the sim's light id. Held or carried: Carrier::Creature on the holder (the glow follows the token); on the
@@ -381,6 +411,35 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
                                          " ignored; using " + winner + " (lowest content id)");
             m.visuals[preset] = style;
         }
+    }
+    // Creature presentation. Rules documents keep presentation.sprite (rules never read it).
+    // visual{kind,kit,standin_bin} is Core M0; read it when the loaded document carries it.
+    for (const assets::PackDocument& d : set.documents()) {
+        if (!d.doc.ok || !d.doc.data.is_object() || d.content_id.empty()) continue;
+        if (d.doc.current.type != "monster" && d.doc.current.type != "character") continue;
+        const auto& j = d.doc.data;
+        VisualSource src;
+        bool any = false;
+        if (j.contains("presentation") && j["presentation"].is_object()) {
+            const auto& p = j["presentation"];
+            if (p.contains("sprite") && p["sprite"].is_string()) {
+                src.sprite = p["sprite"].get<std::string>();
+                any = true;
+            }
+        }
+        if (j.contains("visual") && j["visual"].is_object()) {
+            const auto& v = j["visual"];
+            auto take = [&](const char* key, std::string& out) {
+                if (v.contains(key) && v[key].is_string()) {
+                    out = v[key].get<std::string>();
+                    any = true;
+                }
+            };
+            take("kind", src.kind);
+            take("kit", src.kit);
+            take("standin_bin", src.standin_bin);
+        }
+        if (any) m.actor_visuals.emplace(d.content_id, std::move(src));
     }
 
     m.content = std::make_unique<sim::ContentLibrary>();
@@ -652,6 +711,7 @@ ViewModel Session::view() const {
                 if (am.target == cb.id && am.spec.stat == rules5e::ModStat::Outlined) { a.outlined = true; break; }
             equipment_visuals(c, cb.id, a.equipment);
             if (eye != 0) fill_sight_cues(c, eye, m.fog_team, cb, a);
+            finish_actor_visual(a, arch, m.actor_visuals);
             if (a.current) v.turn = a.name;
             v.actors.push_back(std::move(a));
         }
@@ -662,11 +722,13 @@ ViewModel Session::view() const {
             a.id = sp.stable_id;
             a.name = display_name(sp.archetype);
             a.tile = sp.tile;
-            if (const sim::Archetype* arch = m.content->find(sp.archetype)) {
+            const sim::Archetype* arch = m.content->find(sp.archetype);
+            if (arch) {
                 a.hp = a.hp_max = arch->base.hp_max;
                 a.is_pc = arch->schema_type == "character";
                 a.footprint = int(arch->footprint);
             }
+            finish_actor_visual(a, arch, m.actor_visuals);
             a.team = a.is_pc ? 0 : 1;
             v.actors.push_back(std::move(a));
         }

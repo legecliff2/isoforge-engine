@@ -39,6 +39,10 @@ struct EquipVisual {
 // Presentation facing of a sprite (iso screen directions). East facings hold the main hand on the camera side.
 enum class Facing : uint8_t { SouthEast, SouthWest, NorthEast, NorthWest };
 
+// R-M0. Core M0 publishes visual.kind. None keeps the procedural pawn. Paperdoll is recorded
+// for M1 and still draws the pawn. Standin draws a mon_* frame when the kit is on disk.
+enum class VisualKind : uint8_t { None, Paperdoll, Standin };
+
 struct ActorView {
     uint32_t    id = 0;        // stable id (sort key tie-break)
     std::string name;          // "FIGHTER", "GOBLIN"
@@ -53,6 +57,14 @@ struct ActorView {
     bool        outlined = false;   // Faerie Fire / ModStat::Outlined (presentation ring)
     bool        invisible = false;  // Condition::Invisible (ghost when still drawn)
     Facing      facing = Facing::SouthEast;
+    // Core M0 visual{kind,kit,standin_bin}, or presentation.sprite plus the creature size when
+    // that object is not on the document yet. clip is the requested id (idle, walk, death,
+    // hard-land, …). hard_land is the Core signal; the alias table maps it to prone_idle, then idle.
+    VisualKind  visual_kind = VisualKind::None;
+    std::string kit;
+    std::string standin_bin;
+    std::string clip;
+    bool        hard_land = false;
     std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)
     // Sight cues for the fog-team camera combatant (presentation only; never written back into sim).
     // Defaults match an empty EncounterHooks::sight_facts: everyone sees everyone, so no cue is drawn.

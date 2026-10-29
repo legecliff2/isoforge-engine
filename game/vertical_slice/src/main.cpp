@@ -128,7 +128,8 @@ int main(int argc, char** argv) {
             if (in.was_pressed(platform::Key::L)) equip_view.handle(EqCmd::CycleLight, *session);
         }
 
-        for (uint32_t s = tick.advance(clock.tick()); s > 0; --s) {
+        const uint64_t frame_ns = clock.tick();
+        for (uint32_t s = tick.advance(frame_ns); s > 0; --s) {
             const float v = 8.f / zoom;
             const bool arrows = !equip_view.open();   // the debug equip view owns the arrows while open
             if (arrows && in.is_down(platform::Key::Left)) pan.x -= v;
@@ -153,6 +154,7 @@ int main(int argc, char** argv) {
         cam.position = {focus.x + pan.x - px.x / (2.f * zoom), focus.y + pan.y - px.y / (2.f * zoom)};
 
         if (device->begin_frame()) {
+            view->set_present_time(double(clock.total_ns()) * 1e-9);
             view->prepare(vm, cam, uint32_t(px.x), uint32_t(px.y));
             auto& cl = device->command_list();
             cl.begin_pass(render::TargetId{}, Color::rgba8(16, 17, 24));
