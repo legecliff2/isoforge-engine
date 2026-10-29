@@ -1086,6 +1086,61 @@ def check_save_effect_riders(doc: dict, tag: str) -> tuple[list[str], list[str]]
     return errs, warns
 
 
+_ESCALATE_REPEAT = frozenset({"end_of_turn", "start_of_turn", "on_damage"})
+
+
+def check_save_escalation(doc: dict, tag: str) -> list[str]:
+    """B4 (content.cpp compile_save_action): escalates / escalate_to / escalate_margin on a monster@5 save_effect,
+    including an area. The loader's refusals, same text. Gaze keeps check_gaze. No new hash tag."""
+    errs: list[str] = []
+    for i, act in enumerate(doc.get("actions") or []):
+        if not isinstance(act, dict):
+            continue
+        if not any(k in act for k in ("escalates", "escalate_to", "escalate_margin")):
+            continue
+        where = f"actions[{i}]: {doc.get('id', '?')}: save_effect '{act.get('id', '')}'"
+        if act.get("kind") != "save_effect":
+            errs.append(f"{where}: escalates / escalate_to / escalate_margin are save_effect only")
+            continue
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{where}: escalates / escalate_to / escalate_margin need a monster@5 file")
+            continue
+        if "escalates" not in act:
+            errs.append(f"{where}: escalate_to / escalate_margin need escalates")
+            continue
+        if not isinstance(act.get("escalates"), bool):
+            errs.append(f"{where}: escalates must be a boolean")
+            continue
+        if act["escalates"] is not True:
+            if "escalate_to" in act or "escalate_margin" in act:
+                errs.append(f"{where}: escalate_to / escalate_margin need escalates")
+            continue
+        to = act.get("escalate_to", "petrified")
+        if to not in GAZE_CONDITIONS:
+            errs.append(f"{where}: bad escalate_to")
+        margin = act.get("escalate_margin", 0)
+        if not isinstance(margin, int) or isinstance(margin, bool) or not 0 <= margin <= 30:
+            errs.append(f"{where}: bad escalate_margin")
+        apply = [x for x in (act.get("apply") or []) if isinstance(x, dict)]
+        prim = apply[0] if apply else None
+        dk = ((prim or {}).get("duration") or {}).get("kind") if isinstance((prim or {}).get("duration"), dict) else None
+        rs = (prim or {}).get("repeat_save", "")
+        untracked = prim is not None and prim.get("condition") == "prone" and "duration" not in prim and not rs
+        if prim is None or dk == "until_cured" or untracked:
+            errs.append(f"{where}: escalates needs a tracked primary condition in apply[]")
+        elif to == prim.get("condition"):
+            errs.append(f"{where}: escalate_to must differ from the primary condition")
+        if prim is None or (rs not in _ESCALATE_REPEAT and dk != "until_save"):
+            errs.append(f"{where}: escalates needs a repeat save on the primary condition")
+        if prim is not None and "while" in prim:
+            errs.append(f"{where}: escalates takes no while")
+        if "control" in act:
+            errs.append(f"{where}: escalates takes no control")
+        if len(apply) > 1:
+            errs.append(f"{where}: escalates applies to the primary condition only")
+    return errs
+
+
 KEEN_SENSE_NAMES = ("sight", "hearing", "smell")   # bit order of rules5e kKeenSight / kKeenHearing / kKeenSmell
 KEEN_SENSES_KEYS = frozenset({"kind", "senses"})
 

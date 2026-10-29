@@ -718,6 +718,7 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         se_errs, se_warns = c4.check_save_effect_riders(doc, tag)   # Tier-A §26 Dreadful Glare (monster@5 only)
         errs += [f"{rel}: {m}" for m in se_errs]
         warns += [f"{rel}: {m}" for m in se_warns]
+        errs += [f"{rel}: {m}" for m in c4.check_save_escalation(doc, tag)]   # B4 area save_effect petrify (gorgon)
         sa_errs, sa_warns = c4.check_save_advantage(doc, tag)   # batch 3 save_advantage (monster@5 only)
         errs += [f"{rel}: {m}" for m in sa_errs]
         warns += [f"{rel}: {m}" for m in sa_warns]

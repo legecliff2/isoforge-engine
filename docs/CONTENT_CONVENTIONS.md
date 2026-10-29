@@ -1018,3 +1018,28 @@ Grapple `max_size` is §5. Chuul's pincer is Large or smaller; an otyugh's tenta
 **Paralyzed while poisoned.** The first `apply[]` entry of that save may set `while` to a different condition (`poisoned`, `while: paralyzed`). The primary condition's effect holds both. A successful repeat save, or the timer (1 minute is 10 rounds), ends both. Immunity to the primary condition applies neither (unlike `also_on_fail_by`). `while` needs a tracked primary condition, takes no area, and takes no `also_on_fail_by` or `control`. On a later `apply[]` entry the loader says `while goes on the first apply[] entry`.
 
 Chuul is authored (`srd51.monster.chuul`): pincer `max_size: large` and `max_grapples: 2`, Multiattack `pincer` ×2 with `free_rider: tentacles`. Amphibious and Sense Magic stay descriptive.
+
+## 34. Area-save petrify escalation (`escalates` on `save_effect`, monster@5)
+
+SRD 5.1 Gorgon Petrifying Breath is the basilisk sentence on a cone, not a gaze. A failed save restrains. The restrained target repeats the save at the end of its next turn. Success ends the effect. Failure replaces restrained with petrified. That is `SpellDef::escalates` / `escalate_to` / `escalate_margin`, which the save resolver already applies. The keys now compile on a monster@5 `save_effect`, including one with an `area`. Gaze (§11) is unchanged.
+
+```json
+"kind": "save_effect", "save": { "ability": "con", "dc": 13 }, "origin": "self",
+"area": { "shape": "cone", "size_ft": 30 },
+"apply": [ { "condition": "restrained", "repeat_save": "end_of_turn" } ],
+"escalates": true, "escalate_to": "petrified", "escalate_margin": 0,
+"usage": { "kind": "recharge", "min": 5 }
+}
+```
+
+| key | rule | loader error (`<id>: save_effect '<aid>': ...`) |
+|---|---|---|
+| `escalates` | boolean, required true to turn the path on | `escalates must be a boolean`; `escalate_to / escalate_margin need escalates` |
+| `escalate_to` | common@1 condition; omitted means `petrified` | `bad escalate_to`; `escalate_to must differ from the primary condition` |
+| `escalate_margin` | integer 0..30; omitted means 0 | `bad escalate_margin`. Above 0, failing the first save by that much applies `escalate_to` at once (medusa). Gorgon is 0 |
+
+The primary `apply[]` entry must be a tracked condition with a repeat save (`end_of_turn`, `start_of_turn`, `on_damage`, or `until_save`). Further `apply[]` entries, `while`, `control`, and `also_on_fail_by` are refused. A `save_condition` rider is refused (`escalates is a save_effect action, not a rider`). Below monster@5: `escalates / escalate_to / escalate_margin need a monster@5 file`. `area_effect` does not gain the keys; breaths that already use `save_effect` with an `area` do.
+
+No new hash and no new `SIM_EVENTS` tag. `ActiveSpellEffect::escalates` is already folded under 0xAA while the repeat is pending, and cleared when the effect petrifies or ends.
+
+`srd51.monster.gorgon` authors the breath (cone 30 ft, Con DC 13, recharge 5–6, margin 0). "Until freed by the greater restoration spell" stays description only, as basilisk. Trampling Charge is the gore's `on_hit` (`moved_at_least_ft` 20, Str DC 16, prone untimed; elk / boar, so it does not also fire on hooves). The bonus-action hooves against the prone target stays a partial, the same gap as lion and tiger Pounce's bonus bite. "Straight toward" is not checked.

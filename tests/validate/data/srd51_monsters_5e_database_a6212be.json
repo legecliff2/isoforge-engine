@@ -7917,6 +7917,61 @@
     }
    ]
   },
+  "gorgon": {
+   "name": "Gorgon",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    19
+   ],
+   "hp": 114,
+   "hp_roll": "12d10+48",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    20,
+    11,
+    18,
+    2,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "petrified"
+   ],
+   "attacks": [
+    {
+     "name": "Gore",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "2d12+5",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Hooves",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "2d10+5",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
   "hell-hound": {
    "name": "Hell Hound",
    "size": "Medium",
