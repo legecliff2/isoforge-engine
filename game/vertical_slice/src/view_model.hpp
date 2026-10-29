@@ -66,14 +66,15 @@ struct ActorView {
     bool        invisible = false;  // Condition::Invisible (ghost when still drawn)
     Facing      facing = Facing::SouthEast;
     // Core M0 visual{kind,kit,standin_bin,art_root,size_short}. Copied from the archetype.
+    // kit is visual.kit, else presentation.sprite, else "paperdoll" or "standin.<standin_bin>".
     // Empty kit when M0 has no bin (huge / gargantuan). Not written into sim.
-    // size_short is stored and not applied (M1). clip is the clip-clock request (Render).
-    // There is no hard_land field: a clip id "hard-land" resolves through Core's registry.
+    // size_short is stored and not applied. clip is the clip-clock request (Render).
+    // There is no hard_land field: that name is only a registry alias.
     std::string visual_kind;   // "paperdoll", "standin", or "unbinned"
     std::string kit;
     std::string standin_bin;   // tiny | small | medium | large; empty otherwise
     std::string art_root;      // pack-relative; empty when the stat block names none
-    bool        size_short = false;
+    bool        size_short = false;   // authored; M0 does not apply plates or scale
     std::string clip;
     std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)
     // Sight cues for the fog-team camera combatant (presentation only; never written back into sim).

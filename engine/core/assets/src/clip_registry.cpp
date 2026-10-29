@@ -16,9 +16,9 @@ bool known_bin(std::string_view s) {
 }
 } // namespace
 
-bool ClipRegistry::has_clip(std::string_view id) const {
+bool ClipRegistry::has_clip(std::string_view clip_id) const {
     for (const Clip& c : clips)
-        if (c.id == id) return true;
+        if (c.id == clip_id) return true;
     return false;
 }
 
@@ -124,10 +124,10 @@ std::optional<std::string> load_clip_file(const Json& doc, ClipFile& out) {
             }
         } else {
             std::string bin;
-            if (auto b = k.find("bin"); b != k.end()) {
-                if (!b->is_string() || !known_bin(b->get<std::string>()))
+            if (auto bin_field = k.find("bin"); bin_field != k.end()) {
+                if (!bin_field->is_string() || !known_bin(bin_field->get<std::string>()))
                     return fail("kit '" + id + "': bin must be tiny, small, medium, or large");
-                bin = b->get<std::string>();
+                bin = bin_field->get<std::string>();
             }
             for (const ClipRegistry& prev : file.kits)
                 if (prev.id == id) return fail("clip registry: duplicate kit '" + id + "'");
