@@ -1,5 +1,5 @@
 // B8: Bulette Deadly Leap, content and grid. The jump step may end in another creature's space.
-// The action names the creatures already standing there. bulette.json stays deferred.
+// The action names the creatures already standing there. The fixture stays synthetic; srd51.monster.bulette is the authored block.
 #include <doctest/doctest.h>
 
 #include <fstream>
