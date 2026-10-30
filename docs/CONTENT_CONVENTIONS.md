@@ -1207,7 +1207,7 @@ Product calls:
 * **Forms.** The flag is not a `FormStats` field, the Flyby peer. A transform does not add it or clear it.
 * **1 inch.** Deferred. The grid has no sub-tile openings (the swarm Tiny-openings peer, and the authored ooze / shadow / Fire Form sentences that only describe the gap). Squeezing stays the existing Large+ opt-in. This flag is not squeezing and does not open a 1-inch gap.
 
-`fire_form` on the authored fire elemental includes the enter-and-stop clause and also the 1d10 contact fire. This flag does not apply that damage, so `fire_form` is not this id. The fire row stays partial. Whirlwind is §40. Whelm and Freeze are not this key.
+`fire_form` on the authored fire elemental includes the enter-and-stop clause and also the 1d10 contact fire. This flag does not apply that damage, so `fire_form` is not this id. The fire row stays partial. Whirlwind is §40. Whelm is §41. Freeze is §42.
 
 This section does not author `srd51.monster.air_elemental` or `srd51.monster.water_elemental`. Counts stay 195 authored and 15 deferred.
 
@@ -1258,7 +1258,7 @@ Product calls:
 * **Floor.** A fling that walks onto a ledge uses the existing fall (1d6 bludgeoning per 10 feet fallen, prone when that damage lands). Whirlwind does not add a second packet for the horizontal feet. A flat landing is not a floor strike.
 * **No grid.** With no forced-move hook the fling is reported as the full distance and strikes nothing (the existing no-hook rule). Impact is what the hook reports.
 * **Recharge.** Available at the start of combat, the breath-weapon peer. The built-in AI does not use the action.
-* **Not this action.** Whelm, Freeze, and the 1-inch gap. This section does not author `srd51.monster.air_elemental`. The row stays deferred until T&C writes the stat block. Counts stay 195 authored and 15 deferred.
+* **Not this action.** Whelm (§41), Freeze (§42), and the 1-inch gap. This section does not author `srd51.monster.air_elemental`. The row stays deferred until T&C writes the stat block. Counts stay 195 authored and 15 deferred.
 
 ## 41. Whelm (monster@5 action `whelm`)
 
@@ -1315,6 +1315,46 @@ Deferred, not approximated:
 
 * **"Unable to breathe unless it can breathe water."** Suffocation inside an encounter is the coverage row 11 gap. `no_breath` is a zone-save fact, not a lasting condition. Not modelled.
 * **Ally assist.** "A creature within 5 feet of the elemental can pull a creature or object out of it by taking an action to make a DC 14 Strength check and succeeding." That Strength check is not the grapple escape. Roper Reel pulls the roper's own victims toward the roper (§35). The gelatinous cube's "pull a creature out" is the deferred Ooze Cube sentence. Objects are not combatants. Not this action.
-* **Freeze**, and the 1-inch gap (§39). Not this action.
+* **Freeze** is §42. The 1-inch gap (§39) is not this action.
+
+This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts stay 195 authored and 15 deferred.
+
+## 42. Freeze (monster@5 trait `freeze`)
+
+SRD 5.1 Water Elemental Freeze, the whole trait:
+
+"Freeze. If the water elemental takes cold damage, it partially freezes; its speed is reduced by 20 feet until the end of its next turn."
+
+"Partially freezes" is that speed reduction. It is not a condition. The elemental is not restrained, grappled, or prone because of it.
+
+It is a trait, not an action. It is not Whelm (§41) and not Water Form (§39).
+
+```json
+"effect": { "kind": "freeze", "by": ["cold"], "speed_sub": 20 }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `by` | non-empty unique damage types (the common@1 enum). A listed type in `DamageApplied::types_dealt` applies the slow | `freeze: bad by` |
+| `speed_sub` | integer 1..255. Feet subtracted | `freeze: speed_sub must be an integer 1..255` |
+
+Any other key is `freeze: unknown key '...'`. Below monster@5 the loader says `freeze needs a monster@5 file`. On a character it says `freeze: only valid on monsters`. One freeze per creature: an identical second declaration (same `speed_sub`, same set) adds nothing (validator warning). A different second declaration is `freeze: a creature has one freeze`. The modifier id is `spell_id_of("<archetype>#<trait id>#freeze")` of the first declaration.
+
+The effect is the existing Speed modifier (§1): `speed_scale` `{"num":1,"den":1}` and `speed_sub`. `stack` is false, so a later hit replaces that same id. Duration is `Expiry::EndOfTargetNextTurn`. It is not a content key. The sentence fixes it. Applied while that creature is the current actor, the current turn does not count (`rounds_left` 2). Otherwise `rounds_left` is 1. The row ends at the end of its next turn.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The Speed row folds under the existing 0xA2 only while it is on the creature. `by`, `speed_sub`, and the modifier id are static content, copied onto the combatant at spawn, and are not hashed. Replay re-runs the cold hit. Next free stays **0xE5**.
+
+Product calls:
+
+* **Takes cold damage.** `types_dealt`, the regeneration signal (§31). A component above 0 after immunity, resistance, and vulnerability. Temporary hit points still count: the mask is taken before they absorb. A `reduce_damage` reaction that zeroes the hit clears the mask (`reduce_applied`). A mixed hit keeps every surviving type when any damage remains (the existing mask). Untyped damage (`types_dealt` 0), including a Warding Bond share, does not count. A hit that kills the creature does not apply the row.
+* **Twenty feet, once.** The sentence is one reduction of 20, not 20 more each time. A second cold hit replaces the row and starts "until the end of its next turn" again. Walk 30 and swim 90 become 10 and 70. `speed_sub` runs on every mode (`modified_speed` / `mode_speed`), the Ray of Frost peer. A speed already at 0 stays 0. Two different Speed rows (this, and a Ray of Frost) both subtract.
+* **Banked movement.** `TurnBudget::movement_ft` is written at turn start from `modified_speed`. A cold hit during the creature's own turn does not rewrite feet already banked. Dash, standing up, and a readied move read `modified_speed` after the hit, so a Dash on that turn adds the reduced speed. The next turn's budget is the reduced speed, and the row ends at the end of that turn.
+* **AI.** No new branch. The built-in AI spends `movement_ft`, so the slowed turn uses the reduced speed.
+* **Forms.** `FormStats` does not carry `freeze`. A transform does not add it or clear it (the regeneration peer).
+
+Deferred, not this trait:
+
+* The 1-inch gap (§39).
+* Whelm's "unable to breathe unless it can breathe water," and an ally's DC 14 Strength check to pull a creature or object out (§41).
 
 This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts stay 195 authored and 15 deferred.
