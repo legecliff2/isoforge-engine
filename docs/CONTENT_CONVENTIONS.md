@@ -1209,7 +1209,7 @@ Product calls:
 
 `fire_form` on the authored fire elemental includes the enter-and-stop clause and also the 1d10 contact fire. This flag does not apply that damage, so `fire_form` is not this id. The fire row stays partial. Whirlwind is §40. Whelm is §41. Freeze is §42.
 
-This section does not author `srd51.monster.air_elemental` or `srd51.monster.water_elemental`. Counts stay 195 authored and 15 deferred.
+`srd51.monster.air_elemental` authors Air Form with this id. The 1-inch gap stays description only. This section does not author `srd51.monster.water_elemental`. Counts are 196 authored and 14 deferred.
 
 ## 40. Whirlwind (monster@5 action `whirlwind`)
 
@@ -1258,7 +1258,7 @@ Product calls:
 * **Floor.** A fling that walks onto a ledge uses the existing fall (1d6 bludgeoning per 10 feet fallen, prone when that damage lands). Whirlwind does not add a second packet for the horizontal feet. A flat landing is not a floor strike.
 * **No grid.** With no forced-move hook the fling is reported as the full distance and strikes nothing (the existing no-hook rule). Impact is what the hook reports.
 * **Recharge.** Available at the start of combat, the breath-weapon peer. The built-in AI does not use the action.
-* **Not this action.** Whelm (§41), Freeze (§42), and the 1-inch gap. This section does not author `srd51.monster.air_elemental`. The row stays deferred until T&C writes the stat block. Counts stay 195 authored and 15 deferred.
+* **Not this action.** Whelm (§41), Freeze (§42), and the 1-inch gap. `srd51.monster.air_elemental` authors this action. The 1-inch gap stays description only. The built-in AI does not use it. Water elemental stays deferred. Counts are 196 authored and 14 deferred.
 
 ## 41. Whelm (monster@5 action `whelm`)
 
@@ -1317,7 +1317,7 @@ Deferred, not approximated:
 * **Ally assist.** "A creature within 5 feet of the elemental can pull a creature or object out of it by taking an action to make a DC 14 Strength check and succeeding." That Strength check is not the grapple escape. Roper Reel pulls the roper's own victims toward the roper (§35). The gelatinous cube's "pull a creature out" is the deferred Ooze Cube sentence. Objects are not combatants. Not this action.
 * **Freeze** is §42. The 1-inch gap (§39) is not this action.
 
-This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts stay 195 authored and 15 deferred.
+This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts are 196 authored and 14 deferred.
 
 ## 42. Freeze (monster@5 trait `freeze`)
 
@@ -1357,4 +1357,4 @@ Deferred, not this trait:
 * The 1-inch gap (§39).
 * Whelm's "unable to breathe unless it can breathe water," and an ally's DC 14 Strength check to pull a creature or object out (§41).
 
-This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts stay 195 authored and 15 deferred.
+This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts are 196 authored and 14 deferred.
