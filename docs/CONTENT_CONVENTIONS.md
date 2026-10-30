@@ -1063,7 +1063,11 @@ Author the tendril as a weapon attack with no `damage` array and an `on_hit` gra
 
 `feet` is 5..60, a multiple of 5. `targets` is 1..8 (default 1): how many creatures one use may name. `target_requires_any` is `["grappled_by_self"]` and nothing else. Each named creature must be grappled by the user. One that is not refuses the use before the action is spent (`target must be grappled by the user`). The engine does not add a grappled creature the caller left out. There is no save and no damage. The pull is toward the user (`ForcedMoveSpec` mode 2) and `up_to`. Omitting `ActionRequest::forced_feet` pulls the full distance. A multiple of 5 up to `feet` pulls that far and folds under the existing 0xB4. There is no second range and no sight check: being grappled is the constraint. Below monster@5 the loader says `pull needs a monster@5 file`.
 
-This is not a `free_rider`. A free rider runs after every attack in the option, and only for a `rider_only` save. Reel inside the roper's Multiattack sits between the tendril attacks and the bite. That order is not this action. `srd51.monster.roper` stays deferred (SRD_MONSTERS_DEFERRED).
+This is not a `free_rider`. A free rider runs after every attack in the option, and only for a `rider_only` save. Reel inside the roper's Multiattack sits between the tendril attacks and the bite. That order is not this action. The pull stays its own action.
+
+monster@5's action schema (and the same arm on monster@6) requires `damage` on a weapon attack unless `on_hit` contains a grapple with `no_damage` true. That attack must omit `damage`. Listing it is a schema error and the loader's `grapple no_damage can't list damage`.
+
+`srd51.monster.roper` authors the tendril (`no_damage`, `restrains`, escape DC 15, `max_grapples` 6, reach 50, no damage array) and Reel (`pull`, `feet` 25, `targets` 6). Multiattack is tendril ×4 then bite. Reel is not between them. Grasping Tendrils as attackable objects, and disadvantage on Strength checks and Strength saving throws, stay description only. The built-in AI does not use Reel (`SaveAction::range_ft` is 0, so the save-action loop skips it). False Appearance and Spider Climb stay descriptive. Counts are 198 authored and 12 deferred.
 
 Not hashed beyond 0xB4 and 0xDB. No new tag. B5 left **0xE3** free; B6 claims it (§36). Next free is **0xE4**.
 
@@ -1181,7 +1185,7 @@ Product calls:
 * **End of turn.** The existing refusal to end a turn in another creature's space still applies to the leaper. A failed save, or a push that cannot move, leaves that creature in the space, so EndTurn is refused while a step out exists. The leap does not grant a lasting exception. A creature that already has Air Form or Water Form (§39) may keep a hostile's space. The leap's push still needs an unoccupied tile, and that form does not make its own tile unoccupied.
 * **AI.** The built-in AI does not declare a jump and does not use this action.
 
-`srd51.monster.bulette` authors this action with those packets. Standing Leap's 30-foot long jump and 15-foot high jump, with or without a running start, stay description only. Burrow is the speed entry, not this key. The built-in AI does not leap. Counts are 197 authored and 13 deferred.
+`srd51.monster.bulette` authors this action with those packets. Standing Leap's 30-foot long jump and 15-foot high jump, with or without a running start, stay description only. Burrow is the speed entry, not this key. The built-in AI does not leap. Counts are 198 authored and 12 deferred.
 
 ## 39. Air Form / Water Form (monster trait ids `air_form`, `water_form`)
 
@@ -1209,7 +1213,7 @@ Product calls:
 
 `fire_form` on the authored fire elemental includes the enter-and-stop clause and also the 1d10 contact fire. This flag does not apply that damage, so `fire_form` is not this id. The fire row stays partial. Whirlwind is §40. Whelm is §41. Freeze is §42.
 
-`srd51.monster.air_elemental` authors Air Form with this id. The 1-inch gap stays description only. This section does not author `srd51.monster.water_elemental`. Counts are 197 authored and 13 deferred.
+`srd51.monster.air_elemental` authors Air Form with this id. The 1-inch gap stays description only. This section does not author `srd51.monster.water_elemental`. Counts are 198 authored and 12 deferred.
 
 ## 40. Whirlwind (monster@5 action `whirlwind`)
 
@@ -1258,7 +1262,7 @@ Product calls:
 * **Floor.** A fling that walks onto a ledge uses the existing fall (1d6 bludgeoning per 10 feet fallen, prone when that damage lands). Whirlwind does not add a second packet for the horizontal feet. A flat landing is not a floor strike.
 * **No grid.** With no forced-move hook the fling is reported as the full distance and strikes nothing (the existing no-hook rule). Impact is what the hook reports.
 * **Recharge.** Available at the start of combat, the breath-weapon peer. The built-in AI does not use the action.
-* **Not this action.** Whelm (§41), Freeze (§42), and the 1-inch gap. `srd51.monster.air_elemental` authors this action. The 1-inch gap stays description only. The built-in AI does not use it. Water elemental stays deferred. Counts are 197 authored and 13 deferred.
+* **Not this action.** Whelm (§41), Freeze (§42), and the 1-inch gap. `srd51.monster.air_elemental` authors this action. The 1-inch gap stays description only. The built-in AI does not use it. Water elemental stays deferred. Counts are 198 authored and 12 deferred.
 
 ## 41. Whelm (monster@5 action `whelm`)
 
@@ -1317,7 +1321,7 @@ Deferred, not approximated:
 * **Ally assist.** "A creature within 5 feet of the elemental can pull a creature or object out of it by taking an action to make a DC 14 Strength check and succeeding." That Strength check is not the grapple escape. Roper Reel pulls the roper's own victims toward the roper (§35). The gelatinous cube's "pull a creature out" is the deferred Ooze Cube sentence. Objects are not combatants. Not this action.
 * **Freeze** is §42. The 1-inch gap (§39) is not this action.
 
-This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts are 197 authored and 13 deferred.
+This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts are 198 authored and 12 deferred.
 
 ## 42. Freeze (monster@5 trait `freeze`)
 
@@ -1357,4 +1361,4 @@ Deferred, not this trait:
 * The 1-inch gap (§39).
 * Whelm's "unable to breathe unless it can breathe water," and an ally's DC 14 Strength check to pull a creature or object out (§41).
 
-This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts are 197 authored and 13 deferred.
+This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts are 198 authored and 12 deferred.

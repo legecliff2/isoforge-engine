@@ -640,6 +640,7 @@ class RG8GrappleRider(unittest.TestCase):
         errs: list[str] = []
         checks_v4.check_pull_actions(doc(), errs)
         self.assertEqual(errs, [])
+        self.assertEqual(checks_v4.check_batch3_actions(doc(), "monster@5"), [])
         errs = []
         checks_v4.check_pull_actions(doc(feet=100), errs)
         self.assertTrue(any("feet must be 5..60" in e for e in errs), errs)
