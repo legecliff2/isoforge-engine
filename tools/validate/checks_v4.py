@@ -1579,6 +1579,9 @@ def check_batch3_actions(doc: dict, tag: str) -> list[str]:
                 if "targets" in a and not _int_in(a.get("targets"), 1, 8):
                     errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: targets must be an integer 1..8")
                 continue
+            # B5 Reel: pull reads target_requires_any (check_pull_actions). It is not a weapon attack.
+            if k == "target_requires_any" and a.get("kind") == "pull":
+                continue
             errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: {k} is read only on weapon attacks")
     return errs
 
