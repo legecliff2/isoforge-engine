@@ -8740,6 +8740,48 @@
     }
    ]
   },
+  "bulette": {
+   "name": "Bulette",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    17
+   ],
+   "hp": 94,
+   "hp_roll": "9d10+45",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "40 ft.",
+    "burrow": "40 ft."
+   },
+   "abilities": [
+    19,
+    11,
+    21,
+    2,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "4d12+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
   "air-elemental": {
    "name": "Air Elemental",
    "size": "Large",
