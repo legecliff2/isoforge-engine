@@ -731,6 +731,9 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         fz_errs, fz_warns = c4.check_freeze(doc, tag)   # Freeze (CONTENT_CONVENTIONS §42, monster@5 only)
         errs += [f"{rel}: {m}" for m in fz_errs]
         warns += [f"{rel}: {m}" for m in fz_warns]
+        ab_errs, ab_warns = c4.check_absorb(doc, tag)   # Lightning Absorption (CONTENT_CONVENTIONS §43, monster@5 only)
+        errs += [f"{rel}: {m}" for m in ab_errs]
+        warns += [f"{rel}: {m}" for m in ab_warns]
         au_errs, au_warns = c4.check_aura(doc, tag)   # batch 3 aura (ghast Stench, monster@5 only)
         errs += [f"{rel}: {m}" for m in au_errs]
         warns += [f"{rel}: {m}" for m in au_warns]

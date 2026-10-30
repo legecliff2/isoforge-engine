@@ -27,7 +27,7 @@ schemas accept it so an in-memory migration result validates; a file on disk tha
 |---|---|---|
 | `character@4`, `monster@4` | the `@3` kinds unchanged, plus `on_event`, `apply_modifier`, `grant_action`, `heal_pool`, `gaze` (closed arms of `common@2 $defs/effect`; `gaze`: VERSION_BUMP_BATCH 7.2p, `docs/CONTENT_CONVENTIONS.md` section 11); `cost: reaction` is legal | `checks_v4.TAG_TABLE` row; cross-reference checks 1-18 of the proposal's section 8.3 |
 | a `3 -> 4` migrated file | effects of the frozen new-kind list (`on_event`, `apply_modifier`, `grant_action`, `heal_pool`, `save_effect`, `reaction`) carry `"inert": true`; parameters are **not** validated | accepted in memory; an authored `inert` is an error |
-| `monster@5` (batch 3) | monster-local trait kinds `weapon_extra_dice`, `save_advantage`, `aura` (ghast Stench: `{radius_ft, on: start_turn, save {ability, dc}, condition, duration: until_start_of_next_turn, success_immunity_hours?}`, a creature-anchored aura from the start of combat; sim features.cpp `apply_aura`), `keen_senses` (`{senses: [sight\|hearing\|smell]}`; CONTENT_CONVENTIONS §30; sim features.cpp `apply_keen_senses`), `regen` (`{amount, suppressed_by}`; CONTENT_CONVENTIONS §31; sim features.cpp `apply_regen`), and `freeze` (`{by, speed_sub}`; CONTENT_CONVENTIONS §42; sim features.cpp `apply_freeze`) | `checks_v4.check_aura`, `check_keen_senses`, `check_regen`, and `check_freeze` mirror the loader refusals |
+| `monster@5` (batch 3) | monster-local trait kinds `weapon_extra_dice`, `save_advantage`, `aura` (ghast Stench: `{radius_ft, on: start_turn, save {ability, dc}, condition, duration: until_start_of_next_turn, success_immunity_hours?}`, a creature-anchored aura from the start of combat; sim features.cpp `apply_aura`), `keen_senses` (`{senses: [sight\|hearing\|smell]}`; CONTENT_CONVENTIONS §30; sim features.cpp `apply_keen_senses`), `regen` (`{amount, suppressed_by}`; CONTENT_CONVENTIONS §31; sim features.cpp `apply_regen`), `freeze` (`{by, speed_sub}`; CONTENT_CONVENTIONS §42; sim features.cpp `apply_freeze`), and `absorb` (`{by}`; CONTENT_CONVENTIONS §43; sim features.cpp `apply_absorb`) | `checks_v4.check_aura`, `check_keen_senses`, `check_regen`, `check_freeze`, and `check_absorb` mirror the loader refusals |
 
 The engine does not apply any `@4`-only construct yet (loader: row 3); until then these documents are
 validated, not played. `@4` packs and `item@1` documents need `api_level >= 2` in the manifest.
@@ -156,6 +156,12 @@ Example: `{ "kind": "keen_senses", "senses": ["hearing", "smell"] }`
 `amount` (required, integer 1..32767) and `suppressed_by` (required, a non-empty unique list of damage types). SRD troll Regeneration (CONTENT_CONVENTIONS §31), authored on `srd51.monster.troll`. The loader writes `Combatant::regeneration`. One regeneration per creature: an identical second declaration does nothing (the validator warns); a different one is a load error. Refused below monster@5 and on a character. The 0-HP death rule is part of the effect. Oni, shield guardian, and vampire spawn do not use it. No `SIM_EVENTS` tag.
 
 Example: `{ "kind": "regen", "amount": 10, "suppressed_by": ["acid", "fire"] }`
+
+### `absorb` (static, monster@5)
+
+`by` (required): a non-empty unique list of damage types. SRD Shambling Mound Lightning Absorption (CONTENT_CONVENTIONS §43). The loader writes `Combatant::absorb`. A listed component is not taken. The creature regains hit points equal to that component's amount, before its immunity, resistance, and vulnerability. One absorb per creature: an identical second declaration does nothing (the validator warns); a different one is a load error. Refused below monster@5 and on a character. The regain is the existing heal path. No `SIM_EVENTS` tag. `shambling_mound.json` is not authored.
+
+Example: `{ "kind": "absorb", "by": ["lightning"] }`
 
 ### `aggressive` (static, T&C-G7)
 

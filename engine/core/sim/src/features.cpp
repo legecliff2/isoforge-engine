@@ -1332,6 +1332,26 @@ std::optional<std::string> apply_freeze(Archetype& a, const FeatureDecl& f, uint
     return std::nullopt;
 }
 
+// absorb {by} (CONTENT_CONVENTIONS §43). Fills Combatant::absorb. A listed type is removed from the hit and regained
+// as hit points (the source amount, before immunity, resistance, and vulnerability). An identical second declaration
+// adds nothing; a different one is an error. Static config, not hashed. The regain is the existing Healed event.
+std::optional<std::string> apply_absorb(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": absorb needs a monster@5 file";
+    if (a.schema_type != "monster") return f.id + ": absorb: only valid on monsters";
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "by")
+            return f.id + ": absorb: unknown key '" + it.key() + "'";
+    uint32_t bits = 0;
+    const auto by = f.effect.find("by");
+    if (by == f.effect.end() || !enum_bits(*by, kDamageTypesB3, bits)) return f.id + ": absorb: bad by";
+    if (a.base.absorb != 0) {
+        if (a.base.absorb == bits) return std::nullopt;
+        return f.id + ": absorb: a creature has one absorb";
+    }
+    a.base.absorb = bits;
+    return std::nullopt;
+}
+
 std::optional<std::string> apply_save_advantage(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
     if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": save_advantage needs a monster@5 file";
     if (a.schema_type != "monster") return f.id + ": save_advantage: only valid on monsters";
@@ -1413,6 +1433,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("keen_senses", {apply_keen_senses});         // monster@5 (CONTENT_CONVENTIONS §30): gated in the hook
     r.add_hook("regen", {apply_regen});                     // monster@5 (CONTENT_CONVENTIONS §31): gated in the hook
     r.add_hook("freeze", {apply_freeze});                   // monster@5 (CONTENT_CONVENTIONS §42): gated in the hook
+    r.add_hook("absorb", {apply_absorb});                   // monster@5 (CONTENT_CONVENTIONS §43): gated in the hook
     r.add_hook("aura", {apply_aura});                       // monster@5 (batch 3 ghast Stench): gated in the hook
     r.add_hook("grant_die", {apply_grant_die});         // 7.2za Bardic Inspiration: gated in the hook
     r.add_hook("half_proficiency", {apply_half_proficiency});   // 7.2za Jack of All Trades: gated in the hook
