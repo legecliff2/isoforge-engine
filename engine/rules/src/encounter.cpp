@@ -1099,6 +1099,66 @@ void zone_membership(EncounterState& s, Ctx* ctx, CombatantId who, const std::ve
                      const std::vector<uint32_t>& left, const std::vector<uint32_t>& within, std::vector<Event>& ev);
 void zone_changes(EncounterState& s, Ctx* ctx, const std::vector<ZoneChange>& changes, std::vector<Event>& ev);
 
+// B11: the crush effect lasts while the Whelm grapple does. contain stays 0 (this is a grapple, not an engulf).
+void end_whelm_crush(EncounterState& s, CombatantId source, CombatantId target, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.effects.size();) {
+        const ActiveSpellEffect& e = s.effects[i];
+        if (e.damage_when == 3 && e.contain == 0 && e.caster == source && e.target == target) {
+            const SpellDef* d = spell_def(s, e.spell_id);
+            if (d && d->whelm) { end_effect(s, i, ev); continue; }
+        }
+        ++i;
+    }
+}
+
+bool whelm_holds(const EncounterState& s, CombatantId grappler, CombatantId target) {
+    for (const auto& e : s.sourced)
+        if (e.condition == Condition::Grappled && e.source == grappler && e.target == target && e.via_attack == kWhelmGrapple)
+            return true;
+    return false;
+}
+
+// One Large, or up to two Medium or smaller. A creature this action already holds is a refresh, not a new slot.
+// Anything Large or bigger takes the single Large slot. Named-target order is the order the cast listed.
+bool whelm_has_room(const EncounterState& s, CombatantId grappler, const Combatant& incoming) {
+    if (whelm_holds(s, grappler, incoming.id)) return true;
+    int large = 0, smaller = 0;
+    for (const auto& e : s.sourced) {
+        if (e.condition != Condition::Grappled || e.source != grappler || e.via_attack != kWhelmGrapple) continue;
+        if (e.target == incoming.id) continue;
+        const Combatant* t = find(s, e.target);
+        if (!t) continue;
+        if (int(t->size) >= int(Size::Large)) ++large;
+        else ++smaller;
+    }
+    if (int(incoming.size) >= int(Size::Large)) return large == 0 && smaller == 0;
+    return large == 0 && smaller < 2;
+}
+
+void ensure_whelm_crush(EncounterState& s, const Combatant& user, const Combatant& target, const SpellDef& def) {
+    for (const auto& e : s.effects)
+        if (e.spell_id == def.id && e.caster == user.id && e.target == target.id && e.damage_when == 3 && e.contain == 0)
+            return;
+    ActiveSpellEffect x{def.id, user.id, target.id, Condition::Paralyzed, Ability::Str, 0, RepeatSave::None, false};
+    x.no_condition = true;
+    x.damage_when = 3;
+    x.damage = def.whelm_crush;
+    x.damage_type = def.whelm_crush_type;
+    x.magical = false;
+    s.effects.push_back(x);
+}
+
+void apply_whelm_grapple(EncounterState& s, Combatant& user, Combatant& target, const SpellDef& def, std::vector<Event>& ev) {
+    if (def.whelm_max_size >= 0 && int(target.size) > int(def.whelm_max_size)) return;
+    if (!whelm_has_room(s, user.id, target)) return;
+    GrappleRider g;
+    g.escape_dc = def.whelm_escape_dc;
+    g.restrains = true;
+    g.max_size = def.whelm_max_size;
+    if (!grapple(s, user.id, target.id, g, kWhelmGrapple, ev)) return;
+    ensure_whelm_crush(s, user, target, def);
+}
+
 // R-G9: ends the grapple between `x` and `y` (either way round) after a forced move left them out of reach: the sourced entries
 // go, and Grappled goes from a creature no other grappler still holds (ConditionRemoved).
 void end_grapple_pair(EncounterState& s, CombatantId x, CombatantId y, std::vector<Event>& ev) {
@@ -1110,6 +1170,7 @@ void end_grapple_pair(EncounterState& s, CombatantId x, CombatantId y, std::vect
             const SourcedCondition gone = e;
             s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
             release_grapple_restraint(s, gone, ev);
+            if (gone.via_attack == kWhelmGrapple) end_whelm_crush(s, gone.source, gone.target, ev);
         } else ++i;
     }
     for (CombatantId id : freed) {
@@ -3191,9 +3252,23 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
             emit(ev, EventKind::ConditionAdded, c.id, 0, int32_t(Condition::Prone));
         }
     if (!s.effects.empty()) release_contained(s, ev);   // 7.2w: a container that died out of a step (sim) frees first
-    if (!c.dead && !s.effects.empty()) {   // 7.2w: what it has engulfed / swallowed takes its acid now
+    if (!c.dead && !s.effects.empty()) {   // 7.2w: what it has engulfed / swallowed takes its acid now. B11: a Whelm grapple's crush.
         std::vector<ActiveSpellEffect> inside;
-        for (const auto& e : s.effects) if (e.contain != 0 && e.caster == c.id && e.damage_when == 3) inside.push_back(e);
+        std::vector<std::size_t> stale;
+        for (std::size_t i = 0; i < s.effects.size(); ++i) {
+            const auto& e = s.effects[i];
+            if (e.caster != c.id || e.damage_when != 3) continue;
+            if (e.contain != 0) { inside.push_back(e); continue; }
+            const SpellDef* d = spell_def(s, e.spell_id);
+            if (!d || !d->whelm) continue;
+            bool held = false;
+            for (const auto& sc : s.sourced)
+                if (sc.condition == Condition::Grappled && sc.source == c.id && sc.target == e.target && sc.via_attack == kWhelmGrapple)
+                    held = true;
+            if (held) inside.push_back(e);
+            else stale.push_back(i);
+        }
+        for (auto it = stale.rbegin(); it != stale.rend(); ++it) end_effect(s, *it, ev);
         for (const auto& e : inside) deal_effect_damage(s, e, ev);
     }
     if (dies_of_exhaustion(c) && !c.dead) kill(c, ev);
@@ -3698,7 +3773,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         const uint8_t dq = def.magical ? kAttackMagical : 0;
         const DiceExpr sdice = scaled_dice(def, lvl, a.caster_level);
         // B10: an empty Whirlwind names nobody, so it draws no damage dice. A named target still shares one roll.
-        const bool whirl_quiet = T.empty() && def.whirl_ft > 0;
+        const bool whirl_quiet = T.empty() && is_space_save(def);
         const bool roll_dmg = !whirl_quiet && (def.dice.count > 0 || def.dice.bonus > 0);
         const int dmg = roll_dmg ? std::max(0, ctx.empower > 0 ? roll_empowered(s.rng, sdice, false, ctx.empower)
                                                                 : roll_dice(s.rng, sdice))
@@ -3780,6 +3855,9 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 q.impact_save = def.impact_save; q.impact_dc = def.impact_dc;
                 ctx.forced_queue.push_back(q);
             }
+            // B11: the failure damage already landed. Large or smaller, and only while the cap has room.
+            // A success takes none of it (on_save is None) and is pushed below.
+            if (!r.success && def.whelm && !t->dead) apply_whelm_grapple(s, a, *t, def, ev);
             if (r.success && def.success_immunity_hours > 0 && !t->dead)   // Tier-A §26: "immune to ... for the next 24 hours"
                 s.action_immunities.push_back(ActionImmunity{t->id, def.success_immunity_scope == 1 ? a.id : CombatantId(0), def.id,
                                                              uint32_t(s.round) + uint32_t(def.success_immunity_hours) * 600u});
@@ -3904,6 +3982,12 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (r.success && def.leap_push_ft > 0 && !t->dead) {
                 ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = 1; q.feet = def.leap_push_ft;
                 q.prone_if_blocked = true;
+                ctx.forced_queue.push_back(q);
+            }
+            // B11: pushed out of the user's space. No damage on this success, and not prone if the walk stops short.
+            if (r.success && def.whelm && !t->dead) {
+                ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = 1; q.feet = kWhelmPushCapFt;
+                q.clear_of_source = true;
                 ctx.forced_queue.push_back(q);
             }
         }
@@ -4616,7 +4700,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     std::vector<CombatantId> ids = req.targets;
     if (ids.empty() && req.target != 0) ids.push_back(req.target);
     if (ids.empty() && (def.kind == SpellEffectKind::Teleport || def.kind == SpellEffectKind::Zone)) ids.push_back(a.id);   // R-G9 / R-G11: self
-    const bool whirl_empty = ids.empty() && def.whirl_ft > 0;   // B10: no creature in the space. The action still happens.
+    const bool whirl_empty = ids.empty() && is_space_save(def);   // B10 / B11: no creature in the space. The action still happens.
     if (ids.empty() && !whirl_empty) return fail("target required");
     std::vector<Combatant*> T;
     for (CombatantId id : ids) {
@@ -4841,7 +4925,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (s.budget.jumped_ft < def.requires_jumped_ft) return fail("has not jumped far enough");
         for (Combatant* t : T) if (t == &a) return fail("bad target");
     }
-    if (def.whirl_ft > 0)   // B10: the elemental is not a creature in its own space. Refused before the action is spent.
+    if (is_space_save(def))   // B10 / B11: the elemental is not a creature in its own space. Refused before the action is spent.
         for (Combatant* t : T) if (t == &a) return fail("bad target");
     if (def.rider_only) {   // B3b: the multiattack free rider. The gate above already refused a bad target without consuming it.
         if (b.free_rider != def.id) return fail("only a multiattack rider");
@@ -5514,6 +5598,7 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
                     const SourcedCondition gone = s.sourced[i];
                     s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
                     release_grapple_restraint(s, gone, ev);
+                    if (gone.via_attack == kWhelmGrapple) end_whelm_crush(s, gone.source, gone.target, ev);
                 } else ++i;
             }
             bool still = false;
@@ -6400,7 +6485,7 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
         push_zone_forms(out, r, d);
         return;
     }
-    if (d.whirl_ft > 0) {   // B10: overlapping hostiles, or one empty cast when none are in the space
+    if (is_space_save(d)) {   // B10 / B11: overlapping hostiles, or one empty cast when none are in the space
         bool any = false;
         for (const auto& t : s.combatants) {
             if (t.dead || t.team == a.team || t.id == a.id || !creature_ok(t)) continue;
@@ -7117,7 +7202,10 @@ void prune_sourced(EncounterState& s, std::vector<Event>& ev) {
             if (e.condition == Condition::Grappled) released.push_back(e);
         } else ++i;
     }
-    for (const SourcedCondition& e : released) release_grapple_restraint(s, e, ev);
+    for (const SourcedCondition& e : released) {
+        release_grapple_restraint(s, e, ev);
+        if (e.via_attack == kWhelmGrapple) end_whelm_crush(s, e.source, e.target, ev);
+    }
     for (CombatantId id : ended) {
         bool still = false;
         for (const auto& e : s.sourced) still = still || (e.condition == Condition::Grappled && e.target == id);
@@ -7169,7 +7257,7 @@ void release_grapple_restraint(EncounterState& s, const SourcedCondition& ended,
     for (auto& e : s.sourced)
         if (e.condition == Condition::Grappled && e.target == ended.target && e.restrains) { e.owns_restrained = true; return; }
     for (const auto& e : s.effects)   // another live restraint (Web, a Swallow's contain, Entangle) keeps the condition
-        if (e.target == ended.target && e.condition == Condition::Restrained) return;
+        if (!e.no_condition && e.target == ended.target && e.condition == Condition::Restrained) return;
     Combatant* t = find_mut(s, ended.target);
     if (!t || !t->has(Condition::Restrained)) return;
     remove_condition(*t, Condition::Restrained);

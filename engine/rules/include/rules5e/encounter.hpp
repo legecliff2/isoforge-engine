@@ -634,6 +634,9 @@ struct ForcedMoveQuery {
     DamageType impact_type = DamageType::Bludgeoning;
     Ability impact_save = Ability::Dex;
     int8_t impact_dc = 0;
+    // Appended (B11 Whelm). The walk stops on the first step whose footprint does not overlap the source.
+    // The source's tiles do not block it. feet is the cap (kWhelmPushCapFt). Not hashed. Replay re-runs the step.
+    bool clear_of_source = false;
 };
 // Cover (SRD 5.1 "Cover"; VERSION_BUMP_BATCH 7.2t). Rules never interpret positions: sim answers one query per source ->
 // target pair. Half = +2 to AC and Dex saves, ThreeQuarters = +5, Total = can't be targeted directly (an area effect skips
@@ -914,6 +917,13 @@ struct GrappleRider {
     int8_t max_size = -1;
     bool extended() const { return restrains || exclusive || max_grapples != 0 || instead_of_damage || no_damage; }
 };
+
+// B11 Whelm (CONTENT_CONVENTIONS §41). The grapple is not an attack, so via_attack is 0xFE (not 0xFF, which
+// 0xDB skips, and not an attack index). Reach stays 5 feet: the index is past the attack list. 0xDB already
+// folds via_attack and restrains. Not a new hash tag. The push walks at most this far and stops once the
+// mover's footprint no longer overlaps the user. The sentence names no distance.
+inline constexpr uint8_t kWhelmGrapple = 0xFE;
+inline constexpr uint16_t kWhelmPushCapFt = 60;
 
 // R-G12 rules PR 3 (D3): a Spiritual Weapon: not a combatant (no HP, not a target, no turn). token_id comes from the summon
 // counter (sim's token); end_round 0 = no limit, else it ends at the start of the owner's turn in that round.

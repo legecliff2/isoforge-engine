@@ -106,7 +106,7 @@ TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), froze
 _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
                                "proficiency_bonus_reason", "emits_light", "passive_perception_reason"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
-MONSTER_AT5_ACTION_KINDS = frozenset({"teleport", "area_effect", "pull", "deadly_leap", "whirlwind"})   # teleport: batch 3 blink dog; area_effect: monster area loader; pull: B5 Reel; deadly_leap: B8; whirlwind: B10
+MONSTER_AT5_ACTION_KINDS = frozenset({"teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm"})   # teleport: batch 3 blink dog; area_effect: monster area loader; pull: B5 Reel; deadly_leap: B8; whirlwind: B10; whelm: B11
 MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench), keen_senses (§30), regen (§31)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
@@ -456,6 +456,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     check_pull_actions(doc, errs)
     check_deadly_leap_actions(doc, errs)
     check_whirlwind_actions(doc, errs)
+    check_whelm_actions(doc, errs)
     check_untimed_save_condition_riders(doc, errs)
     check_save_max_size(doc, errs)
     check_refused_condition_durations(doc, errs, warns)
@@ -854,6 +855,70 @@ def check_whirlwind_actions(doc: dict, errs: list[str]) -> None:
         usage = a.get("usage")
         if not isinstance(usage, dict) or usage.get("kind") != "recharge":
             errs.append(f"{where}: whirlwind: recharge is the sentence")
+        else:
+            mn = usage.get("min")
+            if not isinstance(mn, int) or isinstance(mn, bool) or mn < 2 or mn > 6:
+                errs.append(f"{where}: bad recharge min")
+
+
+def check_whelm_actions(doc: dict, errs: list[str]) -> None:
+    """B11 Whelm. Loader wording from compile_whelm."""
+    tag = str(doc.get("$schema") or "")
+    sizes = ("tiny", "small", "medium", "large", "huge", "gargantuan")
+    for i, a in enumerate(doc.get("actions") or []):
+        if not isinstance(a, dict) or a.get("kind") != "whelm":
+            continue
+        path = f"/actions/{i}"
+        where = f"{path}: whelm '{a.get('id', '')}'"
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{where}: whelm needs a monster@5 file")
+            continue
+        aid = a.get("id", "")
+        if not isinstance(aid, str) or not aid or "#" in aid:
+            errs.append(f"{where}: id must be non-empty and contain no '#'")
+        for k in a:
+            if k not in ("id", "name", "kind", "description", "save", "damage", "grapple", "crush", "usage"):
+                errs.append(f"{where}: whelm: unknown key '{k}'")
+        sv = a.get("save")
+        if not isinstance(sv, dict):
+            errs.append(f"{where}: whelm: missing save")
+        else:
+            ab = sv.get("ability")
+            dc = sv.get("dc")
+            if ab not in ("str", "dex", "con", "int", "wis", "cha") or not isinstance(dc, int) or isinstance(dc, bool) or dc < 1 or dc > 30:
+                errs.append(f"{where}: whelm: bad save")
+        dm = a.get("damage")
+        if not isinstance(dm, list) or len(dm) != 1 or not isinstance(dm[0], dict):
+            errs.append(f"{where}: whelm: damage needs one component")
+        else:
+            has_dice = isinstance(dm[0].get("dice"), str)
+            has_flat = isinstance(dm[0].get("flat"), int) and not isinstance(dm[0].get("flat"), bool)
+            if has_dice == has_flat or not isinstance(dm[0].get("type"), str):
+                errs.append(f"{where}: whelm: bad damage")
+        gr = a.get("grapple")
+        if not isinstance(gr, dict):
+            errs.append(f"{where}: whelm: missing grapple")
+        else:
+            for k in gr:
+                if k not in ("escape_dc", "max_size"):
+                    errs.append(f"{where}: whelm: unknown grapple key '{k}'")
+            edc = gr.get("escape_dc")
+            if not isinstance(edc, int) or isinstance(edc, bool) or edc < 1 or edc > 30 or gr.get("max_size") not in sizes:
+                errs.append(f"{where}: whelm: bad grapple")
+        cr = a.get("crush")
+        if not isinstance(cr, dict):
+            errs.append(f"{where}: whelm: missing crush")
+        else:
+            for k in cr:
+                if k not in ("dice", "flat", "type"):
+                    errs.append(f"{where}: whelm: unknown crush key '{k}'")
+            has_dice = isinstance(cr.get("dice"), str)
+            has_flat = isinstance(cr.get("flat"), int) and not isinstance(cr.get("flat"), bool)
+            if has_dice == has_flat or not isinstance(cr.get("type"), str):
+                errs.append(f"{where}: whelm: bad crush")
+        usage = a.get("usage")
+        if not isinstance(usage, dict) or usage.get("kind") != "recharge":
+            errs.append(f"{where}: whelm: recharge is the sentence")
         else:
             mn = usage.get("min")
             if not isinstance(mn, int) or isinstance(mn, bool) or mn < 2 or mn > 6:

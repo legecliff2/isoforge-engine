@@ -74,6 +74,7 @@ struct Archetype {
         bool rider_only = false;        // B3b: not a standalone action; only the multiattack free rider (chuul Tentacles)
         bool leap = false;              // B8: Deadly Leap. The built-in AI does not declare a jump or pick a landing.
         bool whirl = false;             // B10: Whirlwind. The built-in AI does not pick a random fling.
+        bool whelm = false;             // B11: Whelm. The built-in AI does not use it.
     };
     std::vector<SaveAction> save_actions;
     // resources[] (row 13): pools Combat::create registers (resolved against the archetype's level / abilities at load).

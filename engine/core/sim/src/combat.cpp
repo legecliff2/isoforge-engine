@@ -38,11 +38,12 @@ std::optional<std::string> spawn_team_name(const world::EntitySpawn& sp, const A
     return name;
 }
 
-// Tiles a Grappled entry still holds across. The Grapple action (via_attack 0xFF) is 5 ft. An extended rider
-// (restrains, exclusive, max_grapples, instead_of_damage, no_damage) records the attack, and that attack's reach
-// is the grappling effect's reach (SRD: the grapple ends when the creature leaves that reach).
+// Tiles a Grappled entry still holds across. The Grapple action (via_attack 0xFF) is 5 ft. B11 Whelm records
+// 0xFE, which is not an attack index, so it is 5 ft as well. An extended rider (restrains, exclusive, max_grapples,
+// instead_of_damage, no_damage) records the attack, and that attack's reach is the grappling effect's reach
+// (SRD: the grapple ends when the creature leaves that reach).
 int grapple_reach_tiles(const rules5e::EncounterState& s, const rules5e::SourcedCondition& sc) {
-    if (sc.via_attack == 0xFF) return 1;
+    if (sc.via_attack == 0xFF || sc.via_attack == rules5e::kWhelmGrapple) return 1;
     const rules5e::Combatant* g = rules5e::find(s, sc.source);
     if (!g || sc.via_attack >= g->attacks.size()) return 1;
     const int ft = int(g->attacks[sc.via_attack].reach_or_range_ft);
@@ -336,7 +337,7 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
 }
 
 bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const {
-    if (def.requires_jumped_ft > 0 || def.whirl_ft > 0) {   // B8 landing / B10 Whirlwind: footprints overlap
+    if (def.requires_jumped_ft > 0 || rules5e::is_space_save(def)) {   // B8 landing / B10 Whirlwind / B11 Whelm: footprints overlap
         if (caster == target || !rules5e::find(state_, target)) return false;
         const Spot a = spot(caster), b = spot(target);
         return a.p.x < b.p.x + b.n && b.p.x < a.p.x + a.n && a.p.y < b.p.y + b.n && b.p.y < a.p.y + a.n;
@@ -1663,8 +1664,8 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
                 if (!spell_in_reach(*ldef, actor, id)) { r.error = "target is not in the landing space"; return r; }
             }
         }
-        // B10: every named creature must already stand in the elemental's space. An empty list is an empty space.
-        if (const auto* wdef = spells_->find(req.spell_id); wdef->whirl_ft > 0 && !req.sustain) {
+        // B10 / B11: every named creature must already stand in the elemental's space. An empty list is an empty space.
+        if (const auto* wdef = spells_->find(req.spell_id); rules5e::is_space_save(*wdef) && !req.sustain) {
             std::vector<rules5e::CombatantId> ids = req.targets;
             if (ids.empty() && req.target != 0) ids.push_back(req.target);
             for (rules5e::CombatantId id : ids) {
@@ -1779,7 +1780,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             if (harmful && hits) { r.error = "charmed: cannot target the charmer with a harmful spell"; derived_area_ = false; return r; }
         }
         // B10: an empty Whirlwind names nobody. There is no first target to check.
-        const bool whirl_empty = spells_->find(req.spell_id)->whirl_ft > 0 && req.targets.empty() && req.target == 0;
+        const bool whirl_empty = rules5e::is_space_save(*spells_->find(req.spell_id)) && req.targets.empty() && req.target == 0;
         const CombatantId first = !req.targets.empty() ? req.targets[0] : req.target;
         if (!whirl_empty && !rules5e::find(state_, first)) { r.error = "bad target"; return r; }
         // R-G15 Revivify: a dead creature does not block its tiles, so another may stand there now; it cannot come back
@@ -2867,6 +2868,19 @@ rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery&
                         if (o != 0 && o != q.source && (struck == 0 || o < struck)) struck = o;
                     }
                 if (struck != 0) { res.struck = struck; break; }
+            } else if (q.clear_of_source) {   // B11: leave the source's space. Its tiles are not a wall.
+                bool free = grid_.footprint_walkable(nx, fp);
+                for (int yy = 0; yy < fp && free; ++yy)
+                    for (int xx = 0; xx < fp && free; ++xx) {
+                        const CombatantId o = occupant_at({nx.x + xx, nx.y + yy}, q.mover);
+                        if (o != 0 && o != q.source) free = false;
+                    }
+                if (!free) break;
+                cur = nx;
+                walked.push_back(cur);
+                const bool overlap = cur.x < ss.p.x + ss.n && ss.p.x < cur.x + fp && cur.y < ss.p.y + ss.n && ss.p.y < cur.y + fp;
+                if (!overlap) { ++moved; break; }   // this step counts; the for-increment does not run
+                continue;
             } else {
                 bool free = grid_.footprint_walkable(nx, fp);
                 for (int yy = 0; yy < fp && free; ++yy)

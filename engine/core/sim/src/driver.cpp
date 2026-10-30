@@ -728,7 +728,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     if (const Archetype* arch = c.archetype(self); arch && !beast_form && s.budget.action && s.budget.sequence == 0 &&
                                                    s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t))
         for (const auto& sa : arch->save_actions) {
-            if (sa.teleport || sa.rider_only || sa.leap || sa.whirl) continue;   // blink dog: destination not guessed. B3b: a free rider is not this action. B8: the AI does not jump or land. B10: the AI does not pick a random fling
+            if (sa.teleport || sa.rider_only || sa.leap || sa.whirl || sa.whelm) continue;   // blink dog: destination not guessed. B3b: a free rider is not this action. B8: the AI does not jump or land. B10: the AI does not pick a random fling. B11: the AI does not use Whelm.
             if (sa.usage_kind == 1) {
                 const auto* u = rules5e::find_action_use(s, self, sa.spell_id);
                 if (u && u->expended) continue;
