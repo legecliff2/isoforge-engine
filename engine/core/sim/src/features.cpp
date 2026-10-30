@@ -1306,6 +1306,32 @@ std::optional<std::string> apply_regen(Archetype& a, const FeatureDecl& f, uint3
     return std::nullopt;
 }
 
+// freeze {by, speed_sub} (CONTENT_CONVENTIONS §42). Fills Combatant::freeze. A listed type in types_dealt applies one
+// Speed modifier (speed_scale 1/1, speed_sub) until the end of this creature's next turn. An identical second
+// declaration adds nothing; a different one is an error. Static config, not hashed. The modifier is the existing 0xA2 row.
+std::optional<std::string> apply_freeze(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": freeze needs a monster@5 file";
+    if (a.schema_type != "monster") return f.id + ": freeze: only valid on monsters";
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "by" && it.key() != "speed_sub")
+            return f.id + ": freeze: unknown key '" + it.key() + "'";
+    const auto sub = f.effect.find("speed_sub");
+    if (sub == f.effect.end() || !sub->is_number_integer()) return f.id + ": freeze: speed_sub must be an integer 1..255";
+    const int64_t n = sub->get<int64_t>();
+    if (n < 1 || n > 255) return f.id + ": freeze: speed_sub must be an integer 1..255";
+    uint32_t bits = 0;
+    const auto by = f.effect.find("by");
+    if (by == f.effect.end() || !enum_bits(*by, kDamageTypesB3, bits)) return f.id + ": freeze: bad by";
+    if (a.base.freeze.by != 0) {
+        if (a.base.freeze.by == bits && a.base.freeze.speed_sub == uint8_t(n)) return std::nullopt;
+        return f.id + ": freeze: a creature has one freeze";
+    }
+    a.base.freeze.by = bits;
+    a.base.freeze.speed_sub = uint8_t(n);
+    a.base.freeze.modifier_id = rules5e::spell_id_of(a.id + "#" + f.id + "#freeze");
+    return std::nullopt;
+}
+
 std::optional<std::string> apply_save_advantage(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
     if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": save_advantage needs a monster@5 file";
     if (a.schema_type != "monster") return f.id + ": save_advantage: only valid on monsters";
@@ -1386,6 +1412,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("save_advantage", {apply_save_advantage});   // monster@5 (batch 3): gated in the hook, like transparent
     r.add_hook("keen_senses", {apply_keen_senses});         // monster@5 (CONTENT_CONVENTIONS §30): gated in the hook
     r.add_hook("regen", {apply_regen});                     // monster@5 (CONTENT_CONVENTIONS §31): gated in the hook
+    r.add_hook("freeze", {apply_freeze});                   // monster@5 (CONTENT_CONVENTIONS §42): gated in the hook
     r.add_hook("aura", {apply_aura});                       // monster@5 (batch 3 ghast Stench): gated in the hook
     r.add_hook("grant_die", {apply_grant_die});         // 7.2za Bardic Inspiration: gated in the hook
     r.add_hook("half_proficiency", {apply_half_proficiency});   // 7.2za Jack of All Trades: gated in the hook

@@ -230,6 +230,32 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "freeze"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/freeze_effect"
+                }
+              }
+            }
           }
         ]
       },
@@ -2014,6 +2040,37 @@
             "$ref": "../common/v1.schema.json#/$defs/damage_type"
           },
           "description": "Damage types that suppress the next start-of-turn regeneration. A type reduced to 0 by resistance or immunity does not count."
+        }
+      }
+    },
+    "freeze_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "by",
+        "speed_sub"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §42; common@2 unchanged): if the creature takes a listed damage type, every speed is reduced by speed_sub feet until the end of its next turn. SRD Water Elemental Freeze: {kind freeze, by [cold], speed_sub 20}. One reduction; a later hit refreshes it.",
+      "properties": {
+        "kind": {
+          "const": "freeze"
+        },
+        "by": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 13,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/damage_type"
+          },
+          "description": "Damage types that apply the slow. A type reduced to 0 by resistance or immunity does not count (DamageApplied::types_dealt)."
+        },
+        "speed_sub": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255,
+          "description": "Feet subtracted from every speed after speed_scale 1/1 (rules5e ModifierSpec::speed_sub)."
         }
       }
     },

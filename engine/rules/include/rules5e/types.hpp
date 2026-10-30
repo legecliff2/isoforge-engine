@@ -225,6 +225,10 @@ inline int multiattack_next(const std::vector<AttackSequence>& ms, uint8_t seque
 // amount > 0 that is reduced to 0 HP is not dead until its next turn starts without regenerating (SRD troll:
 // "dies only if it starts its turn with 0 hit points and doesn't regenerate").
 struct Regeneration { int16_t amount = 0; uint32_t suppressed_by = 0; };   // suppressed_by: bitmask over DamageType
+// SRD Freeze (CONTENT_CONVENTIONS §42): when a listed type is in DamageApplied::types_dealt, one Speed modifier
+// (speed_sub feet, until the end of this creature's next turn) is applied. by == 0 means the trait is absent.
+// Static config. The modifier itself folds under the existing 0xA2. No new SIM_EVENTS tag.
+struct Freeze { uint32_t by = 0; uint8_t speed_sub = 0; uint32_t modifier_id = 0; };
 // Conditional advantage/disadvantage trait (T&C-G7); semantics and examples in traits.hpp.
 enum class TraitRoll : uint8_t {
     Attack,       // this creature's own attack rolls
@@ -769,6 +773,9 @@ struct Combatant {
     // hostile creature's space and stop there. Trait ids "air_form" and "water_form" (sim content.cpp, the Flyby peer). Not a
     // swarm: other creatures do not gain it, and a nonhostile space is still forbidden. No SIM_EVENTS tag.
     bool enter_hostile_space = false;
+    // appended (B12 Freeze, CONTENT_CONVENTIONS §42; static content, never hashed): cold (or the listed types) in
+    // types_dealt applies one Speed modifier. FormStats does not carry it. No SIM_EVENTS tag (the row is 0xA2).
+    Freeze freeze{};
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 

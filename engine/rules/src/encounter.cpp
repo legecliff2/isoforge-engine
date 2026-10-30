@@ -2220,6 +2220,19 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         }
     }
     after_damage(t, applied, critical, ev);
+    if (!t.dead && t.freeze.by != 0 && t.freeze.speed_sub != 0 && (applied.types_dealt & t.freeze.by)) {
+        // B12 Freeze: one Speed row, refreshed (stack is false). EndOfTargetNextTurn: the acting creature's current
+        // turn does not count. types_dealt is the regeneration signal (above 0 after mitigation, before temp HP).
+        ModifierSpec spec;
+        spec.id = t.freeze.modifier_id;
+        spec.source = t.freeze.modifier_id;
+        spec.stat = ModStat::Speed;
+        spec.speed_num = 1;
+        spec.speed_den = 1;
+        spec.speed_sub = t.freeze.speed_sub;
+        spec.expiry = uint8_t(Expiry::EndOfTargetNextTurn);
+        apply_modifier(s, t.id, t.id, spec, ev);
+    }
     if (applied.dealt > 0 && attacker && s.hooks.spells) {   // 7.2zj: damage from the caster's team ends the charm on this creature
         std::vector<std::pair<uint32_t, CombatantId>> ended;
         for (std::size_t i = 0; i < s.effects.size();) {
