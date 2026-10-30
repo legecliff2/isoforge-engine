@@ -1240,6 +1240,7 @@
       },
       "allOf": [
         {
+          "description": "Weapon attacks need to_hit. damage is required below, except a B5 no_damage grapple (CONTENT_CONVENTIONS §35).",
           "if": {
             "properties": {
               "kind": {
@@ -1249,9 +1250,61 @@
           },
           "then": {
             "required": [
-              "to_hit",
+              "to_hit"
+            ]
+          }
+        },
+        {
+          "description": "B5: a weapon attack whose on_hit grapple sets no_damage lists no damage array. Every other _attack still requires damage.",
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "_attack$"
+              }
+            },
+            "not": {
+              "properties": {
+                "on_hit": {
+                  "contains": {
+                    "type": "object",
+                    "required": ["kind", "no_damage"],
+                    "properties": {
+                      "kind": { "const": "grapple" },
+                      "no_damage": { "const": true }
+                    }
+                  }
+                }
+              },
+              "required": ["on_hit"]
+            }
+          },
+          "then": {
+            "required": [
               "damage"
             ]
+          }
+        },
+        {
+          "description": "B5: no_damage forbids a damage array (the loader's 'can't list damage').",
+          "if": {
+            "required": ["on_hit"],
+            "properties": {
+              "on_hit": {
+                "contains": {
+                  "type": "object",
+                  "required": ["kind", "no_damage"],
+                  "properties": {
+                    "kind": { "const": "grapple" },
+                    "no_damage": { "const": true }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": ["damage"]
+            }
           }
         },
         {

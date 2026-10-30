@@ -7,7 +7,7 @@ content_validate_* files; this PR does not register a ctest name):
   python3 tools/validate/run_unittest_file.py tests/validate/test_bestiary_ledger.py
 
 ledger.py and validate_bridge.py must not import Tk. Counts are pinned to the
-ledger after bulette left Deferred (deadly_leap): 197 authored, 13 deferred.
+ledger after roper left Deferred (Reel): 198 authored, 12 deferred.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ EDITOR = ROOT / "tools" / "bestiary_editor"
 PACK = ROOT / "content" / "packs" / "srd51.core"
 VALIDATOR = ROOT / "tools" / "validate" / "validate_packs.py"
 
-# Deferred table ids after bulette left Deferred (## Deferred (13)).
+# Deferred table ids after roper left Deferred (## Deferred (12)).
 PARKED_IDS = (
     "srd51.monster.mimic",
     "srd51.monster.doppelganger",
@@ -38,7 +38,6 @@ PARKED_IDS = (
     "srd51.monster.ghost",
     "srd51.monster.water_elemental",
     "srd51.monster.shambling_mound",
-    "srd51.monster.roper",
     "srd51.monster.unicorn",
     "srd51.monster.invisible_stalker",
     "srd51.monster.mage",
@@ -97,12 +96,12 @@ class LedgerTests(unittest.TestCase):
         for name in ("ledger.py", "validate_bridge.py"):
             self.assertEqual(_imports_tk(EDITOR / name), [], name)
 
-    def test_counts_match_headings_197_and_13(self):
+    def test_counts_match_headings_198_and_12(self):
         book = self.book
-        self.assertEqual(book.authored_expected, 197)
-        self.assertEqual(len(book.authored), 197)
-        self.assertEqual(book.parked_expected, 13)
-        self.assertEqual(len(book.parked), 13)
+        self.assertEqual(book.authored_expected, 198)
+        self.assertEqual(len(book.authored), 198)
+        self.assertEqual(book.parked_expected, 12)
+        self.assertEqual(len(book.parked), 12)
         self.assertEqual(book.count_errors(), ())
 
     def test_partial_is_subset_of_authored(self):
@@ -124,11 +123,15 @@ class LedgerTests(unittest.TestCase):
         self.assertTrue(wolf.path.is_file())
         kobold = by_id["srd51.monster.kobold"]
         self.assertTrue(kobold.partial)
+        roper = by_id["srd51.monster.roper"]
+        self.assertTrue(roper.partial)
+        self.assertEqual(roper.path, ledger.DEFAULT_MONSTERS_DIR / "roper.json")
         self.assertEqual(kobold.path, ledger.DEFAULT_MONSTERS_DIR / "kobold.json")
         will = by_id["srd51.monster.will_o_wisp"]
         self.assertEqual(will.name, "Will-o'-Wisp")
         self.assertTrue(will.path.is_file())
         parked = {row.monster_id: row for row in self.book.parked}
+        self.assertNotIn("srd51.monster.roper", parked)
         mimic = parked["srd51.monster.mimic"]
         self.assertEqual(mimic.name, "Mimic")
         self.assertIsNone(mimic.path)

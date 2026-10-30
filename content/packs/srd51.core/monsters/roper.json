@@ -1,0 +1,141 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.roper",
+  "name": "Roper",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "monstrosity",
+  "alignment": "neutral evil",
+  "armor_class": {
+    "value": 20,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 21,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 93,
+    "formula": "11d10+33"
+  },
+  "speed": {
+    "walk": 10,
+    "climb": 10
+  },
+  "abilities": {
+    "str": 18,
+    "dex": 8,
+    "con": 17,
+    "int": 7,
+    "wis": 16,
+    "cha": 6
+  },
+  "skills": {
+    "perception": 6,
+    "stealth": 5
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 16
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "5",
+    "xp": 1800
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "false_appearance",
+      "name": "False Appearance",
+      "description": "While the roper remains motionless, it is indistinguishable from a normal cave formation, such as a stalagmite."
+    },
+    {
+      "id": "grasping_tendrils",
+      "name": "Grasping Tendrils",
+      "description": "The roper can have up to six tendrils at a time. Each tendril can be attacked (AC 20; 10 hit points; immunity to poison and psychic damage). Destroying a tendril deals no damage to the roper, which can extrude a replacement tendril on its next turn. A tendril can also be broken if a creature takes an action and succeeds on a DC 15 Strength check against it. (Descriptive only: tendrils are not attackable objects. The web object is a restraint, not a grapple. The six-hold cap is the tendril attack's max_grapples. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "spider_climb",
+      "name": "Spider Climb",
+      "description": "The roper can climb difficult surfaces, including upside down on ceilings, without needing to make an ability check."
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The roper makes four attacks with its tendrils, uses Reel, and makes one attack with its bite. (Descriptive only for the order: Reel is its own pull action and is not between the tendril attacks and the bite. A free_rider runs only after every attack and only for a save. This option is tendril ×4 then bite. See docs/CONTENT_CONVENTIONS.md §35.)",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "tendrils_bite",
+            "attacks": [
+              "tendril",
+              "tendril",
+              "tendril",
+              "tendril",
+              "bite"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "4d8",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "4d8+4",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 22 (4d8 + 4) piercing damage."
+    },
+    {
+      "id": "tendril",
+      "name": "Tendril",
+      "kind": "melee_weapon_attack",
+      "ability": "str",
+      "to_hit": 7,
+      "reach": 50,
+      "targets": 1,
+      "on_hit": [
+        {
+          "kind": "grapple",
+          "escape_dc": 15,
+          "restrains": true,
+          "no_damage": true,
+          "max_grapples": 6
+        }
+      ],
+      "description": "Melee Weapon Attack: +7 to hit, reach 50 ft., one creature. Hit: The target is grappled (escape DC 15). Until the grapple ends, the target is restrained and has disadvantage on Strength checks and Strength saving throws, and the roper can't use the same tendril on another target. (The hit deals no damage: on_hit grapple no_damage with restrains, escape DC 15, max_grapples 6. Disadvantage on Strength checks and Strength saving throws is description only; restrained does not impose it. See docs/CONTENT_CONVENTIONS.md §35.)"
+    },
+    {
+      "id": "reel",
+      "name": "Reel",
+      "kind": "pull",
+      "feet": 25,
+      "targets": 6,
+      "target_requires_any": [
+        "grappled_by_self"
+      ],
+      "description": "The roper pulls each creature grappled by it up to 25 ft. straight toward it. (Its own action. The caller names the creatures. The built-in AI does not use it. Not between the tendril attacks and the bite. See docs/CONTENT_CONVENTIONS.md §35.)"
+    }
+  ]
+}
