@@ -80,7 +80,7 @@
     {
       "id": "invisibility",
       "name": "Invisibility",
-      "description": "The stalker is invisible. (Innate Invisibility, CONTENT_CONVENTIONS §44: the Invisible condition, with no duration and no concentration. Attacking or casting does not end it. Spell Invisibility's ends_on is unchanged. Faultless Tracker is not this trait. See Invisibility, Faerie Fire outlined, and Branding Smite reveal_invisible versus a permanent holder are not decided. The built-in AI is not changed. Whether Invisible needs a Combat::hash tag is not decided.)",
+      "description": "The stalker is invisible. (Innate Invisibility, CONTENT_CONVENTIONS §44: the Invisible condition, with no duration and no concentration. Attacking or casting does not end it. Spell Invisibility's ends_on is unchanged. Faultless Tracker is not this trait. See Invisibility, Faerie Fire outlined, and Branding Smite reveal_invisible versus a permanent holder are not decided. The built-in AI is not changed. Whether Invisible needs a Combat::hash tag is not decided. Heard or noticed hiding is not modelled.)",
       "effect": {
         "kind": "innate_invisibility"
       }

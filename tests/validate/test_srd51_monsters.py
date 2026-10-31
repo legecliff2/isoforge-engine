@@ -81,7 +81,7 @@ DEVIATIONS = {
     "werebear": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be werebear-human); bite and claw are not weapon attacks on that form.",
     "wraith": "damage_resistances lists the five plain types: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (resistances.nonmagical_not_silvered, as wight). speed.hover is the printed fly hover flag. Create Specter is not an attack.",
     "shambling-mound": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, exhaustion (as ochre jelly / shrieker). senses.blindsight is the integer 60; the printed parenthetical 'blind beyond this radius' has no separate key (as gray ooze). Engulf is not a weapon attack: both-hits contain is engulf_both_hits on Multiattack (CONTENT_CONVENTIONS §37).",
-    "invisible-stalker": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as air elemental).",
+    "invisible-stalker": "The fixture row was absent while deferred (tests asserted the index was not in the table). Appended at authoring from 5e-database a6212be index invisible-stalker (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27), reduced like the other rows; the pinned fields match that object. damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as air elemental).",
 }
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
@@ -3301,6 +3301,7 @@ class MonsterTable(unittest.TestCase):
         self.assertIn("not decided", traits["invisibility"]["description"])
         self.assertIn("Combat::hash", traits["invisibility"]["description"])
         self.assertIn("built-in AI is not changed", traits["invisibility"]["description"])
+        self.assertIn("Heard or noticed hiding is not modelled", traits["invisibility"]["description"])
         self.assertNotIn("effect", traits["faultless_tracker"])
         self.assertIn("Descriptive only", traits["faultless_tracker"]["description"])
         self.assertIn("not a tracking mechanic", traits["faultless_tracker"]["description"])
