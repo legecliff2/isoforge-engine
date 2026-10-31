@@ -229,6 +229,10 @@ struct Regeneration { int16_t amount = 0; uint32_t suppressed_by = 0; };   // su
 // (speed_sub feet, until the end of this creature's next turn) is applied. by == 0 means the trait is absent.
 // Static config. The modifier itself folds under the existing 0xA2. No new SIM_EVENTS tag.
 struct Freeze { uint32_t by = 0; uint8_t speed_sub = 0; uint32_t modifier_id = 0; };
+// SRD Lightning Absorption (CONTENT_CONVENTIONS §43): Combatant::absorb, a bitmask over DamageType. A listed
+// type is not taken. The creature regains hit points equal to that component's amount (the number passed to
+// apply_damage, before immunity, resistance, and vulnerability). 0 means the trait is absent. Static config.
+// The regain is EventKind::Healed. No new SIM_EVENTS tag.
 // Conditional advantage/disadvantage trait (T&C-G7); semantics and examples in traits.hpp.
 enum class TraitRoll : uint8_t {
     Attack,       // this creature's own attack rolls
@@ -776,6 +780,10 @@ struct Combatant {
     // appended (B12 Freeze, CONTENT_CONVENTIONS §42; static content, never hashed): cold (or the listed types) in
     // types_dealt applies one Speed modifier. FormStats does not carry it. No SIM_EVENTS tag (the row is 0xA2).
     Freeze freeze{};
+    // appended (B13 Lightning Absorption, CONTENT_CONVENTIONS §43; static content, never hashed): bitmask over
+    // DamageType. A listed component is removed from the hit and regained as hit points. FormStats does not
+    // carry it. No SIM_EVENTS tag (the regain is Healed, and hit points are already in the state).
+    uint32_t absorb = 0;
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 

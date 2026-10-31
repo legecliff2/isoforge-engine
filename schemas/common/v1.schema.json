@@ -129,7 +129,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["max_size", "escape_dc", "while", "damage"],
-      "description": "B7 (monster@5 only, Shambling Mound): when every attack in the option hits the same creature, that creature is engulfed. At least two attacks. Not with count_dice or free_rider. Not a save and not its own action. Restrained, blinded while that lasts, a Strength escape check at escape_dc (the printed grapple escape; no second Grappled condition), and contain damage at the start of each of the user's turns. That damage is automatic (gelatinous cube Engulf). The SRD Constitution save is not rolled. One engulfed creature at a time. A target larger than max_size is not engulfed. No new Combat::hash tag (the contain effect folds under 0xAC). Lightning Absorption is not this key.",
+      "description": "B7 (monster@5 only, Shambling Mound): when every attack in the option hits the same creature, that creature is engulfed. At least two attacks. Not with count_dice or free_rider. Not a save and not its own action. Restrained, blinded while that lasts, a Strength escape check at escape_dc (the printed grapple escape; no second Grappled condition), and contain damage at the start of each of the user's turns. That damage is automatic (gelatinous cube Engulf). The SRD Constitution save is not rolled. One engulfed creature at a time. A target larger than max_size is not engulfed. No new Combat::hash tag (the contain effect folds under 0xAC). Lightning Absorption is CONTENT_CONVENTIONS §43, not this key.",
       "properties": {
         "max_size": { "enum": ["tiny", "small", "medium", "large", "huge", "gargantuan"] },
         "escape_dc": { "type": "integer", "minimum": 1, "maximum": 30 },

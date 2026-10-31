@@ -40,6 +40,14 @@ DamageApplied absorb(const Combatant& c, int dmg) {
 } // namespace
 
 DamageApplied apply_damage(const Combatant& c, int16_t amount, DamageType type, uint8_t qualifiers) {
+    // Lightning Absorption (§43): the listed type is not taken. Immunity, resistance, and vulnerability do not
+    // change the number; the trait names the source's amount. types_dealt stays clear (a zeroed type, the regen signal).
+    if ((c.absorb & bit(type)) != 0) {
+        const int heal = amount < 0 ? 0 : int(amount);
+        DamageApplied d = absorb(c, 0);
+        d.absorbed_heal = int16_t(heal);
+        return d;
+    }
     const int m = modified(c, amount, type, qualifiers);
     DamageApplied d = absorb(c, m);
     if (m > 0) d.types_dealt = bit(type);
@@ -53,14 +61,21 @@ DamageApplied apply_damage_fixed(const Combatant& c, int16_t amount) {
 
 DamageApplied apply_damage_parts(const Combatant& c, std::span<const DamagePiece> parts, uint8_t qualifiers) {
     int total = 0;
+    int heal = 0;
     uint32_t types = 0;
     for (const DamagePiece& p : parts) {
+        if ((c.absorb & bit(p.type)) != 0) {
+            if (p.amount > 0) heal += p.amount;
+            continue;   // not taken: not in the sum, not in types_dealt
+        }
         const int m = modified(c, p.amount, p.type, qualifiers);
         total += m;
         if (m > 0) types |= bit(p.type);
     }
+    if (heal > 32767) heal = 32767;
     DamageApplied d = absorb(c, total);
     d.types_dealt = types;
+    d.absorbed_heal = int16_t(heal);
     return d;
 }
 
@@ -68,6 +83,7 @@ DamageApplied reduce_applied(const Combatant& c, const DamageApplied& d, int red
     const int r = reduction < 0 ? 0 : (reduction > d.dealt ? int(d.dealt) : reduction);
     DamageApplied out = absorb(c, d.dealt - r);
     out.types_dealt = out.dealt > 0 ? d.types_dealt : 0u;
+    out.absorbed_heal = d.absorbed_heal;   // a reduce_damage reaction does not eat the absorbed regain
     return out;
 }
 

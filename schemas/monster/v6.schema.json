@@ -256,6 +256,32 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "absorb"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/absorb_effect"
+                }
+              }
+            }
           }
         ]
       },
@@ -2154,6 +2180,30 @@
           "minimum": 1,
           "maximum": 255,
           "description": "Feet subtracted from every speed after speed_scale 1/1 (rules5e ModifierSpec::speed_sub)."
+        }
+      }
+    },
+    "absorb_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "by"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §43; common@2 unchanged): a listed damage type is not taken. The creature regains hit points equal to that component's amount, before its immunity, resistance, and vulnerability. SRD Shambling Mound Lightning Absorption: {kind absorb, by [lightning]}. One mask per creature.",
+      "properties": {
+        "kind": {
+          "const": "absorb"
+        },
+        "by": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 13,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/damage_type"
+          },
+          "description": "Damage types that heal instead of harm. The amount is the component passed to apply_damage, not the post-immunity total. A listed type is left out of DamageApplied::types_dealt."
         }
       }
     },

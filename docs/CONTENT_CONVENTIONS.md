@@ -1136,7 +1136,7 @@ Product calls, not a second contain model:
 * Turn-start damage is automatic, the gelatinous cube's contain damage. The printed "DC 14 Constitution saving throw or take 13 (2d8 + 4)" is not rolled. The dice are the printed `2d8+4`.
 * "Unable to breathe" is the existing suffocation gap (coverage row 11). Not modelled.
 * "If the mound moves, the engulfed target moves with it" is the existing contain carry. `container_of` is set. Sim movement of contained creatures stays pending.
-* Lightning Absorption (lightning damage heals instead) has no peer in tree. It is not this key.
+* Lightning Absorption is §43. It is not this key.
 
 This section does not author `srd51.monster.shambling_mound`. The row stays deferred.
 
@@ -1362,3 +1362,46 @@ Deferred, not this trait:
 * Whelm's "unable to breathe unless it can breathe water," and an ally's DC 14 Strength check to pull a creature or object out (§41).
 
 This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts are 198 authored and 12 deferred.
+
+## 43. Lightning Absorption (monster@5 trait `absorb`)
+
+SRD 5.1 Shambling Mound Lightning Absorption, the whole trait:
+
+"Lightning Absorption. Whenever the shambling mound is subjected to lightning damage, it takes no damage and regains a number of hit points equal to the lightning damage dealt."
+
+The same stat block lists lightning under Damage Immunities. The trait is the specific rule. Immunity is the general rule that would make the hit points dealt 0. Reading "the lightning damage dealt" as that 0 would make the trait do nothing on the printed block.
+
+It is a trait, not an action. It is not Engulf (§37) and not Freeze (§42).
+
+```json
+"effect": { "kind": "absorb", "by": ["lightning"] }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `by` | non-empty unique damage types (the common@1 enum). A listed component is not taken. The creature regains hit points equal to that component's amount | `absorb: bad by` |
+
+Any other key is `absorb: unknown key '...'`. Below monster@5 the loader says `absorb needs a monster@5 file`. On a character it says `absorb: only valid on monsters`. One absorb per creature: an identical second declaration (the same set) adds nothing (validator warning). A different second declaration is `absorb: a creature has one absorb`.
+
+The amount is the component passed to `apply_damage` / `apply_damage_parts`. That is the number after the source's own critical hit and after `OnSave::Half`, and before this creature's immunity, resistance, and vulnerability. Those three do not change it. The creature takes none of that type, so a modifier of damage taken does not apply. The mound is immune to lightning, not resistant or vulnerable to it.
+
+The component is left out of `dealt` and out of `types_dealt` (a type reduced to 0, the regeneration signal, §31). Temporary hit points are not spent by it. A `reduce_damage` reaction does not reduce the regain. Other types in the same hit are one ordinary hit. The regain is applied after that hit is committed, and only when the creature is not dead.
+
+The regain is the existing heal path: `heal_hp`, `commit_healing`, `EventKind::Healed`. It is capped at the hit point maximum. `NoHealing` and `no_regain_hp` block the regain. The lightning is still not taken. A creature healed from 0 hit points follows that path (death saves reset, Unconscious ends, Prone stays). A monster killed by another type in the same hit is not brought back.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `by` is static content, copied onto the combatant at spawn, and is not hashed. The regain is hit points and `Healed`, which a fight already records. Replay re-runs the lightning hit. Next free stays **0xE5**.
+
+Product calls:
+
+* **Subjected to lightning.** The source's lightning number, not the post-immunity total. A successful save that already halved the packet heals the half. A critical hit heals the doubled dice, because that doubling happens before `apply_damage`. A component of 0 heals nothing.
+* **Takes no damage.** No concentration check when the hit's `dealt` is 0. Sleep and "until damaged" do not end on a pure lightning hit. A Warding Bond share copies `dealt` and is untyped, so it is not this trait. Temporary hit points stay.
+* **Mixed hit.** The other types resolve first. If they leave the creature alive, the regain follows. If they kill it, there is no regain.
+* **Not Freeze and not regeneration.** Freeze and regeneration read `types_dealt`. An absorbed type is not in that mask, so it does not slow and does not suppress regeneration.
+* **Forms.** `FormStats` does not carry `absorb`. A transform does not add it or clear it (the regeneration and Freeze peer).
+
+Deferred, not this trait:
+
+* Engulf's printed Constitution save, "unable to breathe," and moving the engulfed creature (§37).
+* `shambling_mound.json` is not authored.
+
+This section does not author `srd51.monster.shambling_mound`. The row stays deferred until T&C writes the stat block. Counts stay 198 authored and 12 deferred.

@@ -107,7 +107,7 @@ _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjus
                                "proficiency_bonus_reason", "emits_light", "passive_perception_reason"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
 MONSTER_AT5_ACTION_KINDS = frozenset({"teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm"})   # teleport: batch 3 blink dog; area_effect: monster area loader; pull: B5 Reel; deadly_leap: B8; whirlwind: B10; whelm: B11
-MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench), keen_senses (§30), regen (§31), freeze (§42)
+MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze", "absorb"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench), keen_senses (§30), regen (§31), freeze (§42), absorb (§43)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
     _r4 = TAG_TABLE[f"{_typ}@4"]
@@ -1467,6 +1467,42 @@ def check_freeze(doc: dict, tag: str) -> tuple[list[str], list[str]]:
                 warns.append(f"{path}: duplicate freeze; a second declaration adds nothing")
             else:
                 errs.append(f"{did}: freeze: a creature has one freeze")
+        else:
+            seen = eff
+    return errs, warns
+
+
+ABSORB_KEYS = frozenset({"kind", "by"})
+
+
+def check_absorb(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Lightning Absorption (CONTENT_CONVENTIONS §43; sim features.cpp apply_absorb). The loader's refusals as errors.
+    An identical second declaration (same damage-type set) warns. A different second declaration errors."""
+    errs: list[str] = []
+    warns: list[str] = []
+    seen: dict | None = None
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "absorb":
+            continue
+        did = f"{path}: {doc.get('id', '?')}"
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{did}: absorb needs a monster@5 file")
+            continue
+        extra = sorted(k for k in eff if k not in ABSORB_KEYS)
+        if extra:
+            errs.append(f"{did}: absorb: unknown key '{extra[0]}'")
+            continue
+        types = eff.get("by")
+        names = [s for s in types if isinstance(s, str)] if isinstance(types, list) else []
+        if (not isinstance(types, list) or not types or len(names) != len(types)
+                or any(s not in REGEN_DAMAGE_TYPES for s in names) or len(names) != len(set(names))):
+            errs.append(f"{did}: absorb: bad by")
+            continue
+        if seen is not None:
+            if set(seen.get("by") or []) == set(names):
+                warns.append(f"{path}: duplicate absorb; a second declaration adds nothing")
+            else:
+                errs.append(f"{did}: absorb: a creature has one absorb")
         else:
             seen = eff
     return errs, warns

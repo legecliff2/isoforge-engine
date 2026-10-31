@@ -2233,6 +2233,15 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         spec.expiry = uint8_t(Expiry::EndOfTargetNextTurn);
         apply_modifier(s, t.id, t.id, spec, ev);
     }
+    if (!t.dead && applied.absorbed_heal > 0) {
+        // B13 Lightning Absorption: the listed type was not part of this hit. Regain that amount on the existing
+        // heal path (NoHealing, no_regain_hp, the maximum, and a dead creature). A killing blow from another type
+        // in the same hit has already set dead; this does not bring the creature back. Pure lightning leaves
+        // dealt at 0, so the concentration check below does not run.
+        auto h = heal_hp(s, t, applied.absorbed_heal);
+        commit_healing(t, h);
+        emit(ev, EventKind::Healed, t.id, t.id, h.healed, h.hp_after, h.from_zero);
+    }
     if (applied.dealt > 0 && attacker && s.hooks.spells) {   // 7.2zj: damage from the caster's team ends the charm on this creature
         std::vector<std::pair<uint32_t, CombatantId>> ended;
         for (std::size_t i = 0; i < s.effects.size();) {
