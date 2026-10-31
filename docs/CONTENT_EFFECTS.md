@@ -159,7 +159,7 @@ Example: `{ "kind": "regen", "amount": 10, "suppressed_by": ["acid", "fire"] }`
 
 ### `absorb` (static, monster@5)
 
-`by` (required): a non-empty unique list of damage types. SRD Shambling Mound Lightning Absorption (CONTENT_CONVENTIONS §43). The loader writes `Combatant::absorb`. A listed component is not taken. The creature regains hit points equal to that component's amount, before its immunity, resistance, and vulnerability. One absorb per creature: an identical second declaration does nothing (the validator warns); a different one is a load error. Refused below monster@5 and on a character. The regain is the existing heal path. No `SIM_EVENTS` tag. `shambling_mound.json` is not authored.
+`by` (required): a non-empty unique list of damage types. SRD Shambling Mound Lightning Absorption (CONTENT_CONVENTIONS §43). The loader writes `Combatant::absorb`. A listed component is not taken. The creature regains hit points equal to that component's amount, before its immunity, resistance, and vulnerability. One absorb per creature: an identical second declaration does nothing (the validator warns); a different one is a load error. Refused below monster@5 and on a character. The regain is the existing heal path. No `SIM_EVENTS` tag. `srd51.monster.shambling_mound` authors `{ "kind": "absorb", "by": ["lightning"] }`.
 
 Example: `{ "kind": "absorb", "by": ["lightning"] }`
 
