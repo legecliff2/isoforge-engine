@@ -7,7 +7,7 @@ content_validate_* files; this PR does not register a ctest name):
   python3 tools/validate/run_unittest_file.py tests/validate/test_bestiary_ledger.py
 
 ledger.py and validate_bridge.py must not import Tk. Counts are pinned to the
-ledger after shambling mound left Deferred (Lightning Absorption and both-hits Engulf): 199 authored, 11 deferred.
+ledger after invisible stalker left Deferred (Innate Invisibility; Faultless Tracker stays description only): 200 authored, 10 deferred.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ EDITOR = ROOT / "tools" / "bestiary_editor"
 PACK = ROOT / "content" / "packs" / "srd51.core"
 VALIDATOR = ROOT / "tools" / "validate" / "validate_packs.py"
 
-# Deferred table ids after shambling mound left Deferred (## Deferred (11)).
+# Deferred table ids after invisible stalker left Deferred (## Deferred (10)).
 PARKED_IDS = (
     "srd51.monster.mimic",
     "srd51.monster.doppelganger",
@@ -38,7 +38,6 @@ PARKED_IDS = (
     "srd51.monster.ghost",
     "srd51.monster.water_elemental",
     "srd51.monster.unicorn",
-    "srd51.monster.invisible_stalker",
     "srd51.monster.mage",
     "srd51.monster.shield_guardian",
 )
@@ -95,12 +94,12 @@ class LedgerTests(unittest.TestCase):
         for name in ("ledger.py", "validate_bridge.py"):
             self.assertEqual(_imports_tk(EDITOR / name), [], name)
 
-    def test_counts_match_headings_199_and_11(self):
+    def test_counts_match_headings_200_and_10(self):
         book = self.book
-        self.assertEqual(book.authored_expected, 199)
-        self.assertEqual(len(book.authored), 199)
-        self.assertEqual(book.parked_expected, 11)
-        self.assertEqual(len(book.parked), 11)
+        self.assertEqual(book.authored_expected, 200)
+        self.assertEqual(len(book.authored), 200)
+        self.assertEqual(book.parked_expected, 10)
+        self.assertEqual(len(book.parked), 10)
         self.assertEqual(book.count_errors(), ())
 
     def test_partial_is_subset_of_authored(self):
@@ -129,6 +128,10 @@ class LedgerTests(unittest.TestCase):
         self.assertTrue(mound.partial)
         self.assertEqual(mound.name, "Shambling Mound")
         self.assertEqual(mound.path, ledger.DEFAULT_MONSTERS_DIR / "shambling_mound.json")
+        stalker = by_id["srd51.monster.invisible_stalker"]
+        self.assertTrue(stalker.partial)
+        self.assertEqual(stalker.name, "Invisible Stalker")
+        self.assertEqual(stalker.path, ledger.DEFAULT_MONSTERS_DIR / "invisible_stalker.json")
         self.assertEqual(kobold.path, ledger.DEFAULT_MONSTERS_DIR / "kobold.json")
         will = by_id["srd51.monster.will_o_wisp"]
         self.assertEqual(will.name, "Will-o'-Wisp")
@@ -136,6 +139,7 @@ class LedgerTests(unittest.TestCase):
         parked = {row.monster_id: row for row in self.book.parked}
         self.assertNotIn("srd51.monster.roper", parked)
         self.assertNotIn("srd51.monster.shambling_mound", parked)
+        self.assertNotIn("srd51.monster.invisible_stalker", parked)
         mimic = parked["srd51.monster.mimic"]
         self.assertEqual(mimic.name, "Mimic")
         self.assertIsNone(mimic.path)
