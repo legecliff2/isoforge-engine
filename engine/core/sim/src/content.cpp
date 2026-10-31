@@ -1497,7 +1497,30 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
     }
     if (d.has_while && (d.also_margin > 0 || d.control != rules5e::ControlKind::None))
         return where + ": while takes no also_on_fail_by / control";
-    if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition && d.control == rules5e::ControlKind::None)
+    // B15 Death Glare. drop_to_zero is the failed-save outcome (not damage). target_has_condition is frightened only.
+    // caster_sees_target is the existing cast gate (the hag can see the target).
+    if (act.contains("drop_to_zero") || act.contains("target_has_condition") || act.contains("caster_sees_target")) {
+        if (!monster_since_5())
+            return where + ": drop_to_zero / target_has_condition / caster_sees_target need a monster@5 file";
+        if (has_area) return where + ": drop_to_zero / target_has_condition / caster_sees_target take no area";
+        if (auto dz = act.find("drop_to_zero"); dz != act.end()) {
+            if (!dz->is_boolean() || !dz->get<bool>()) return where + ": drop_to_zero must be true";
+            if (d.dice.count != 0 || d.dice.bonus != 0 || d.applies_condition || d.control != rules5e::ControlKind::None)
+                return where + ": drop_to_zero takes no damage, apply or control";
+            d.drop_to_zero = true;
+        }
+        if (auto tc = act.find("target_has_condition"); tc != act.end()) {
+            if (!tc->is_string() || tc->get<std::string>() != "frightened")
+                return where + ": target_has_condition must be frightened";
+            d.has_target_condition = true;
+            d.target_condition = rules5e::Condition::Frightened;
+        }
+        if (auto cs = act.find("caster_sees_target"); cs != act.end()) {
+            if (!cs->is_boolean() || !cs->get<bool>()) return where + ": caster_sees_target must be true";
+            d.caster_sees_target = true;
+        }
+    }
+    if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition && d.control == rules5e::ControlKind::None && !d.drop_to_zero)
         return where + ": needs damage[], apply[] or control";
     if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported); e || unsupported) return e;
     sa.usage_kind = d.usage_kind;

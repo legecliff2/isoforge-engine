@@ -558,6 +558,11 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         look.request = {self, ActionKind::GazeResponse};   // avert_gaze false; submit fills gaze_seen
         return look;
     }
+    if (s.budget.appearance_pending) {   // B15 Horrific Appearance: the gaze peer. Look. Do not avert. Even while surprised.
+        Command look;
+        look.request = {self, ActionKind::AppearanceResponse};
+        return look;
+    }
     const auto* me = rules5e::find(s, self);
     if (!me || !rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return end;
     if (me->surprised) return end;   // R-G16: a surprised creature's first turn accepts only EndTurn
@@ -776,6 +781,10 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 sd && (sd->target_requires_any & rules5e::kTargetGateGrappledBySelf) &&
                 !(t->has(rules5e::Condition::Grappled) && rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) == self))
                 continue;
+            if (const auto* sd = c.spell_def(sa.spell_id);
+                sd && ((sd->has_target_condition && !t->has(sd->target_condition)) ||
+                       (sd->caster_sees_target && !rules5e::sight(s, self, t->id).can_see)))
+                continue;   // B15 Death Glare: a refused cast would stall the turn
             Command cast;
             cast.request = {self, ActionKind::CastSpell, t->id};
             cast.request.spell_id = sa.spell_id;

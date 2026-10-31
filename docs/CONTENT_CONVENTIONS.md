@@ -1448,3 +1448,98 @@ Deferred, not this trait:
 `FormStats` does not carry `innate_invisible`. A transform does not add the flag or clear it (the regeneration, Freeze, and Lightning Absorption peer).
 
 `srd51.monster.invisible_stalker` authors this trait (`{"kind": "innate_invisibility"}`). Faultless Tracker stays description only. See Invisibility, Faerie Fire outlined, and Branding Smite `reveal_invisible` versus a permanent holder stay open. Built-in AI targeting stays unchanged. Whether Invisible needs a `Combat::hash` tag stays open. Counts are 200 authored and 10 deferred.
+
+## 45. Horrific Appearance (monster@5 trait `horrific_appearance`)
+
+SRD 5.1 Sea Hag Horrific Appearance, the whole trait except the two clauses called out under product calls:
+
+"Horrific Appearance. Any humanoid that starts its turn within 30 feet of the hag and can see the hag's true form must make a DC 11 Wisdom saving throw. On a failed save, the creature is frightened for 1 minute. A creature can repeat the saving throw at the end of each of its turns, with disadvantage if the hag is within line of sight, ending the effect on itself on a success. If a creature's saving throw is successful or the effect ends for it, the creature is immune to the hag's Horrific Appearance for the next 24 hours. Unless the target is surprised or the revelation of the hag's true form is sudden, the target can avert its eyes and avoid making the initial saving throw. Until the start of its next turn, a creature that averts its eyes has disadvantage on attack rolls against the hag."
+
+It is a trait, not an action. It is not ghast Stench (§4 / `aura`) and not Petrifying Gaze (§11). Illusory Appearance is not this trait.
+
+```json
+"effect": { "kind": "horrific_appearance", "radius_ft": 30, "save": { "ability": "wis", "dc": 11 }, "immunity_hours": 24 }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `radius_ft` | multiple of 5 in 5..120. The feature aura's radius | `horrific_appearance: radius_ft must be a multiple of 5 in 5..120` |
+| `save` | `{ability, dc}`. `dc` is 1..30. The initial save and the repeat save | `horrific_appearance: save {ability, dc} required` / `horrific_appearance: bad save.ability` / `horrific_appearance: save.dc must be 1..30` / `horrific_appearance: unknown save key '...'` |
+| `immunity_hours` | integer 1..168. Per this owner, in `EncounterState::aura_immunities` | `horrific_appearance: immunity_hours must be 1..168` |
+
+Any other key is `horrific_appearance: unknown key '...'`. Below monster@5 the loader says `horrific_appearance needs a monster@5 file`. On a character it says `horrific_appearance: only valid on monsters`. One trait per creature: an identical second declaration (same radius, same save, same hours) adds nothing (validator warning). A different second declaration is `horrific_appearance: a creature has one horrific appearance`.
+
+The loader compiles one synthetic Zone `SpellDef` (`is_spell` false, `magical` false, anchor Creature, sphere `radius_ft`) and `add_feature_aura` attaches it, the Stench peer. It works while the owner is alive, including unconscious, and ends when the owner dies. The row does not resolve during `start_turn`. `TurnBudget::appearance_pending` is set when a row would apply. The actor answers with `ActionKind::AppearanceResponse` before any other action, after a pending Petrifying Gaze. `appearance_pending` is not hashed.
+
+What the kind fixes, because the sentence fixes it:
+
+* **Humanoid.** Other creature types are not offered the answer and make no save.
+* **Can see.** `sight` must be `can_see` and `Sense::Sight` (the Petrifying Gaze peer). No sight hook: `Sight{}` is that (everyone sees everyone). Blinded, or a viewer who perceives the owner only by blindsight or truesight, makes no save.
+* **Within the radius.** Feature-aura membership (`zone_contains`). The owner is not affected by its own aura.
+* **Frightened for 1 minute.** 10 rounds (`Expiry::Rounds`). The existing Frightened condition, with `note_source` so the owner is the source. Not magical, so Magic Resistance does not apply.
+* **Repeat save.** At the end of each of the frightened creature's turns. Disadvantage when `SightFacts::line_of_sight` to the owner is true. No sight hook: within line of sight (Fear's no-hook = seen). A success ends the effect.
+* **Already carrying this owner's effect.** No new initial save. The repeat save is the one that ends it.
+* **Immunity.** A successful initial save, or the effect ending (a successful repeat save, or the minute), pushes `aura_immunities` for `immunity_hours` from this owner (0xDE). An immune creature makes no save. A failed save that applies no condition, because the creature is immune to frightened, does not grant it.
+* **Avert.** Unless `surprised`, `AppearanceResponse` with `avert_gaze` (log_hash 0xBB, the same bit as GazeResponse) skips the initial save. It does not set `gaze_averted`. It applies one AttackRoll disadvantage modifier (`mark_scope`, mark = the owner) until the start of the averter's next turn (`Expiry::StartOfTargetNextTurn`, the existing 0xA2 row). Attack rolls against anyone else are not affected. A surprised creature is offered only the look, and averting is refused (`surprised: cannot avert the eyes`).
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The aura zone folds under the existing 0xAB. The modifier folds under 0xA2. The immunity folds under 0xDE. The frightened effect folds under the existing effect rows. Replay re-runs the turn start and the save. Next free stays **0xE5**.
+
+Product calls, not decided here:
+
+* **Sudden revelation.** The sentence also refuses the avert when "the revelation of the hag's true form is sudden." That clause belongs to Illusory Appearance, which is not this trait. There is no sudden flag. Avert is refused only while surprised.
+* **True form.** Without Illusory Appearance, the creature the viewer sees is the owner. A disguise that hides the true form is not modelled.
+* **Truesight and See Invisibility.** The initial save requires `Sense::Sight`, the gaze peer. A viewer who sees the owner only through truesight does not make it. See Invisibility is not wired. Whether either should count as seeing the true form is not decided here.
+* **Built-in AI.** It looks and does not avert, the Petrifying Gaze default. A different policy is not decided here.
+
+Deferred, not this trait:
+
+* Illusory Appearance.
+* Death Glare is §46.
+* `sea_hag.json` is not authored.
+
+This section does not author `srd51.monster.sea_hag`. The row stays deferred until T&C writes the stat block. Illusory Appearance is still the block. Counts stay 200 authored and 10 deferred.
+
+## 46. Death Glare (monster@5 `save_effect` keys)
+
+SRD 5.1 Sea Hag Death Glare, the whole action:
+
+"Death Glare. The hag targets one frightened creature she can see within 30 feet of her. If the target can see the hag, it must succeed on a DC 11 Wisdom saving throw against this magic or drop to 0 hit points."
+
+It is an action, not the trait in §45. It is not mummy Dreadful Glare (§26), which frightens. This action does not apply a condition.
+
+```json
+{ "id": "death_glare", "name": "Death Glare", "kind": "save_effect", "range_ft": 30,
+  "save": { "ability": "wis", "dc": 11 }, "magical": true,
+  "target_must_see_source": true, "caster_sees_target": true,
+  "target_has_condition": "frightened", "drop_to_zero": true }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `drop_to_zero` | `true`. A failed save sets the target's hit points to 0. No `damage`, `apply`, or `control`. No area | `drop_to_zero must be true` / `drop_to_zero takes no damage, apply or control` |
+| `target_has_condition` | `"frightened"` only. The named target must already have it, or the cast is refused and the action is not spent (`target is not frightened`) | `target_has_condition must be frightened` |
+| `caster_sees_target` | `true`. The existing cast gate: the user must be able to see the target (`caster cannot see the target`). No sight hook: the cast is allowed | `caster_sees_target must be true` |
+| `target_must_see_source` | the §26 key. A target that cannot see the user makes no save and is not dropped (FeatureTriggered c = 3). The action is still spent | (the §26 strings) |
+| `magical` | `true`. The save is magic (`SaveSource::magical`), so Magic Resistance applies | (existing) |
+| `range_ft` / `save` | the existing save_effect fields. 30 feet, Wisdom DC 11 for the sea hag | (existing) |
+
+Below monster@5, or on an action that is not `save_effect`, or with an area, the loader says `drop_to_zero / target_has_condition / caster_sees_target need a monster@5 file`, `... are save_effect only` is the validator's kind check, and `... take no area`.
+
+`drop_to_zero` is not damage. There is no `DamageDealt`, no damage type, and no resistance or immunity. `DropToZero` triggers do not run (Undead Fortitude is damage). Temporary hit points are cleared: the creature is in the existing downed state (hit points 0, temporary hit points 0). They are not spent as a buffer in front of a damage packet. A monster without death saves dies (`CombatantDied`). A creature with death saves is downed (`CombatantDowned`, unconscious, prone) on the existing path. A regenerator is `regen_down` instead of dead, the troll peer. A Polymorph or Wild Shape form reverts with overflow 0 (there is no damage to carry onto the true form). Concentration ends when hit points are 0, the existing path.
+
+The action is not offered for a creature that is not frightened, or that the user cannot see. The built-in AI skips those targets the way it skips a `grappled_by_self` save the current target fails.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The save is the existing `SavingThrowRolled`. The drop is hit points and the existing downed or dead events. Replay re-runs the cast. Next free stays **0xE5**.
+
+Product calls, not decided here:
+
+* **Temporary hit points remaining.** This reading clears them so a downed creature matches every other drop to 0 in this engine. A ruling that they should stay, because the sentence is not damage, is not taken.
+* **The true form under Polymorph.** Overflow is 0. The true form keeps the hit points `revert_form` restores. A ruling that the creature itself should be at 0 hit points is not taken.
+
+Deferred, not this action:
+
+* Illusory Appearance.
+* Horrific Appearance is §45. This action does not frighten; it requires frightened.
+* `sea_hag.json` is not authored.
+
+This section does not author `srd51.monster.sea_hag`. The row stays deferred until T&C writes the stat block. Illusory Appearance is still the block. Counts stay 200 authored and 10 deferred.

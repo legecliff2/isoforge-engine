@@ -258,6 +258,19 @@ struct ZoneTriggerRow {
     // hours (EncounterState::aura_immunities, per source): later rows of the aura skip it (no FeatureTriggered, no roll).
     uint8_t condition_until = 0;
     uint16_t success_immunity_hours = 0;
+    // ---- appended (B15 Horrific Appearance). Zero defaults leave ghast Stench unchanged. Not hashed (spell content). ----
+    // creature_types: 0 = any. Otherwise the creature's type must be in the mask or the row does nothing.
+    // must_see_source: the creature must see the owner with sight (can_see and Sense::Sight), the gaze peer.
+    // condition_rounds > 0: the failed-save condition lasts that many rounds and uses effect.repeat_save.
+    // repeat_los_disadvantage: that repeat save is at disadvantage while the owner is within line of sight.
+    // immunity_on_end: ending the condition effect grants success_immunity_hours (aura_immunities), not only a success.
+    // avert_eyes: a StartTurn row does not resolve during start_turn. AppearanceResponse looks or averts.
+    uint32_t creature_types = 0;
+    bool must_see_source = false;
+    uint16_t condition_rounds = 0;
+    bool repeat_los_disadvantage = false;
+    bool immunity_on_end = false;
+    bool avert_eyes = false;
 };
 // R-G12 rules PR 2 (SUMMONS_TRANSFORMS.md §2.2 A): how summoned creatures act. initiative: Own = each rolls (Find Familiar),
 // Group = one roll for the cast, consecutive turns ordered by id (conjure family, Animate Dead: D2). control: None = acts on
@@ -539,6 +552,12 @@ struct SpellDef {
     bool charm_immune = false;
     bool caster_sees_target = false;
     bool requires_hearing = false;
+    // appended (B15 Death Glare). Static content: not hashed.
+    // drop_to_zero: a failed save sets hit points to 0 (the existing downed / dead path). Not a damage packet.
+    // has_target_condition: each named target must already have target_condition or the cast is refused, action unspent.
+    bool drop_to_zero = false;
+    bool has_target_condition = false;
+    Condition target_condition = Condition::Frightened;
     // appended (Chuul Tentacles / Otyugh Tentacle Slam): kTargetGate* bits on a non-spell Save. Non-zero = each named target
     // must meet at least one (the cast is refused, action unspent, when any does not). Content sets only
     // kTargetGateGrappledBySelf. 0 = any target. Static content: not hashed. `targets` is how many creatures one cast may name.

@@ -1131,6 +1131,51 @@ class InnateInvisibility(unittest.TestCase):
         self.assertTrue(any("unknown key 'note'" in e for e in errs), errs)
 
 
+class HorrificAppearance(unittest.TestCase):
+    """B15: monster@5 trait horrific_appearance. An identical second declaration warns."""
+
+    def doc(self, schema="monster@5", effects=None):
+        if effects is None:
+            effects = [{"kind": "horrific_appearance", "radius_ft": 30,
+                        "save": {"ability": "wis", "dc": 11}, "immunity_hours": 24}]
+        return {"$schema": schema, "id": "t.hag",
+                "traits": [{"id": f"ha_{i}", "name": "Horrific Appearance", "description": "x", "effect": e}
+                           for i, e in enumerate(effects)]}
+
+    def test_ok_and_refusals(self):
+        self.assertEqual(checks_v4.check_horrific_appearance(self.doc(), "monster@5"), ([], []))
+        same = {"kind": "horrific_appearance", "radius_ft": 30,
+                "save": {"ability": "wis", "dc": 11}, "immunity_hours": 24}
+        errs, warns = checks_v4.check_horrific_appearance(self.doc(effects=[same, dict(same)]), "monster@6")
+        self.assertEqual(errs, [])
+        self.assertTrue(any("duplicate horrific_appearance" in w for w in warns), warns)
+        other = dict(same)
+        other["radius_ft"] = 20
+        errs, _ = checks_v4.check_horrific_appearance(self.doc(effects=[same, other]), "monster@5")
+        self.assertTrue(any("one horrific appearance" in e for e in errs), errs)
+        errs, _ = checks_v4.check_horrific_appearance(self.doc("monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        bad = dict(same)
+        bad["note"] = 1
+        errs, _ = checks_v4.check_horrific_appearance(self.doc(effects=[bad]), "monster@5")
+        self.assertTrue(any("unknown key 'note'" in e for e in errs), errs)
+
+    def test_death_glare(self):
+        act = {"kind": "save_effect", "id": "death_glare", "name": "Death Glare", "range_ft": 30,
+               "save": {"ability": "wis", "dc": 11}, "magical": True, "target_must_see_source": True,
+               "caster_sees_target": True, "target_has_condition": "frightened", "drop_to_zero": True}
+        doc = {"$schema": "monster@5", "id": "t.hag", "actions": [act]}
+        self.assertEqual(checks_v4.check_death_glare(doc, "monster@5"), ([], []))
+        bad = dict(act)
+        bad["target_has_condition"] = "poisoned"
+        errs, _ = checks_v4.check_death_glare({"$schema": "monster@5", "id": "t.hag", "actions": [bad]}, "monster@5")
+        self.assertTrue(any("must be frightened" in e for e in errs), errs)
+        bad = dict(act)
+        bad["drop_to_zero"] = False
+        errs, _ = checks_v4.check_death_glare({"$schema": "monster@5", "id": "t.hag", "actions": [bad]}, "monster@5")
+        self.assertTrue(any("drop_to_zero must be true" in e for e in errs), errs)
+
+
 class LoaderValidatorStrings(unittest.TestCase):
     """fix/rules-loader-validator-strings: each loader / validator error pair of #214 / #218 carries one identical string."""
     PAIRS = ["pick_one needs choice ask on a hit or crit trigger",

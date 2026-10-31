@@ -308,6 +308,32 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "horrific_appearance"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/horrific_appearance_effect"
+                }
+              }
+            }
           }
         ]
       },
@@ -1219,6 +1245,18 @@
           "type": "boolean",
           "description": "Tier-A §26 (save_effect only; 'One creature ... that can see the mummy'): a target that cannot see the user (blinded, or the sight hook says so) makes no save and gains no immunity (FeatureTriggered c = 3)."
         },
+        "drop_to_zero": {
+          "type": "boolean",
+          "description": "B15 Death Glare (save_effect, monster@5): a failed save drops the target to 0 hit points. Not a damage packet. Takes no damage, apply, control, or area. CONTENT_CONVENTIONS §46."
+        },
+        "target_has_condition": {
+          "const": "frightened",
+          "description": "B15 Death Glare (save_effect, monster@5): the named target must already be frightened or the cast is refused before the action is spent."
+        },
+        "caster_sees_target": {
+          "type": "boolean",
+          "description": "B15 Death Glare (save_effect, monster@5): the user must be able to see the target (the existing caster_sees_target cast gate) or the cast is refused before the action is spent."
+        },
         "escalates": {
           "type": "boolean",
           "description": "B4 (monster@5 save_effect, including an area): a failed save applies the primary apply[] condition; a failed repeat save replaces it with escalate_to. Same SpellDef fields as gaze (basilisk / medusa). SRD 5.1 Gorgon Petrifying Breath. ActiveSpellEffect::escalates is already hashed; no new tag."
@@ -1374,6 +1412,11 @@
               {
                 "required": [
                   "control"
+                ]
+              },
+              {
+                "required": [
+                  "drop_to_zero"
                 ]
               }
             ],
@@ -2213,6 +2256,51 @@
       "properties": {
         "kind": {
           "const": "innate_invisibility"
+        }
+      }
+    },
+    "horrific_appearance_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "radius_ft",
+        "save",
+        "immunity_hours"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §45; common@2 unchanged): a humanoid that starts its turn within radius_ft and can see this creature's true form makes the save or is frightened for 1 minute. It repeats the save at the end of each of its turns, with disadvantage while this creature is within line of sight. A success, or the effect ending, makes it immune to this creature's Horrific Appearance for immunity_hours. Unless surprised, it may avert its eyes and skip the initial save; until the start of its next turn its attack rolls against this creature have disadvantage. SRD Sea Hag: {kind horrific_appearance, radius_ft 30, save {wis, 11}, immunity_hours 24}. Not Illusory Appearance. One trait per creature.",
+      "properties": {
+        "kind": {
+          "const": "horrific_appearance"
+        },
+        "radius_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "save": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dc"
+          ],
+          "properties": {
+            "ability": {
+              "$ref": "../common/v1.schema.json#/$defs/ability"
+            },
+            "dc": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            }
+          }
+        },
+        "immunity_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 168
         }
       }
     },

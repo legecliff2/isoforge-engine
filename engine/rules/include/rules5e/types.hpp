@@ -174,7 +174,10 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   // appended (7.2y Fast Hands): Use an Object, a Dexterity (Sleight of Hand) check, or thieves' tools
                                   // (disarm a trap / open a lock): ActionRequest::object_use 1 / 2 / 3, with `dc` for 2 and 3. An
                                   // action, or the bonus action when bonus_action_grants has it (Fast Hands).
-                                  UseObject };
+                                  UseObject,
+                                  // appended (B15 Horrific Appearance): turn-start answer. avert_gaze reuses the gaze
+                                  // caller bit (log_hash 0xBB when set). It is not GazeResponse and does not set gaze_averted.
+                                  AppearanceResponse };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.
