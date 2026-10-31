@@ -189,6 +189,7 @@ class AppendOnly(unittest.TestCase):
                           "ability",   # CONTENT_CONVENTIONS "Attack ability"
                           "also_on_fail_by", "immune_on_success", "target_must_see_source",   # Tier-A §26
                           "drop_to_zero", "target_has_condition", "caster_sees_target",   # B15 Death Glare
+                          "charm_command", "drain_max_hp",   # B16 Charm and Draining Kiss
                           "rider_only",   # B3b chuul Tentacles free rider
                           "escalates", "escalate_to", "escalate_margin",   # B4 area save petrify
                           "jump_ft", "save_alt", "push_ft",   # B8 Deadly Leap

@@ -443,10 +443,12 @@ class GrappledBySelfSave(unittest.TestCase):
         self.assertEqual(e, [], e)
 
     def test_refused(self):
-        e, _w = run(self.tentacles(target_requires_any=["willing"]))
-        self.assertTrue([m for m in e if "grappled_by_self only" in m], e)
+        e, _w = run(self.tentacles(target_requires_any=["restrained"]))
+        self.assertTrue([m for m in e if "grappled_by_self, charmed_by_self, or willing" in m], e)
         e, _w = run(self.tentacles(target_requires_any=["grappled_by_self", "restrained"]))
-        self.assertTrue([m for m in e if "grappled_by_self only" in m], e)
+        self.assertTrue([m for m in e if "grappled_by_self, charmed_by_self, or willing" in m], e)
+        e, _w = run(self.tentacles(target_requires_any=["charmed_by_self", "willing"]))
+        self.assertEqual(e, [], e)
         e, _w = run(self.tentacles(area={"shape": "sphere", "size_ft": 5}))
         self.assertTrue([m for m in e if "takes no area" in m or "area" in m], e)
         e, _w = run(self.tentacles(targets=9))

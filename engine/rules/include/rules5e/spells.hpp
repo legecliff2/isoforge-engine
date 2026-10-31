@@ -114,8 +114,10 @@ enum class RepeatSave : uint8_t { None, EndOfTurn, StartOfTurn, OnDamage,
 //   Fear: while frightened by it, Move, Dash, Dodge, StandUp (sim moves it away from the caster).
 //   Laughter (Hideous Laughter): prone and incapacitated; can't stand up.
 //   Command: on the target's next turn, by ActionRequest::command_word (CommandWord).
+//   Charm (CONTENT_CONVENTIONS §47): the same Command control, with no word at the cast. A later command_word
+//   sets the order. Suicidal is not stored: it offers the repeat save.
 enum class ControlKind : uint8_t { None, Turned, Fear, Laughter, Command };
-enum class CommandWord : uint8_t { None, Approach, Drop, Flee, Grovel, Halt };   // ActionRequest::command_word (log_hash 0xC4)
+enum class CommandWord : uint8_t { None, Approach, Drop, Flee, Grovel, Halt, Suicidal };   // ActionRequest::command_word (log_hash 0xC4)
 
 // One further effect of a multi-effect spell (SpellDef::extra_effects; effects 2..n of spell@1 `effects`).
 // Mirrors the per-effect fields of SpellDef. Extra effects resolve in order over the same targets as the
@@ -558,9 +560,21 @@ struct SpellDef {
     bool drop_to_zero = false;
     bool has_target_condition = false;
     Condition target_condition = Condition::Frightened;
-    // appended (Chuul Tentacles / Otyugh Tentacle Slam): kTargetGate* bits on a non-spell Save. Non-zero = each named target
-    // must meet at least one (the cast is refused, action unspent, when any does not). Content sets only
-    // kTargetGateGrappledBySelf. 0 = any target. Static content: not hashed. `targets` is how many creatures one cast may name.
+    // appended (B16 Charm, CONTENT_CONVENTIONS §47). Static content: not hashed.
+    // charm_command: control is Command, but the cast takes no word. The failed save applies charmed and that
+    // control with command_word 0. A later cast at the same target with command_word 1..5 sets the order and
+    // does not spend the action. command_word 6 (Suicidal) offers the Wisdom save again and is not obeyed.
+    // This caster's this action charms one creature: applying it ends the previous effect. Ending the effect
+    // grants the same action immunity as a successful save (immune_on_success hours and scope).
+    bool charm_command = false;
+    // appended (B16 Draining Kiss, CONTENT_CONVENTIONS §48). Static content: not hashed.
+    // save_drain_max_hp: after the save's damage (half on a success when on_save is Half), the target's hit
+    // point maximum drops by the damage taken. No second save. life_drain with dc 0. A maximum of 0 kills.
+    bool save_drain_max_hp = false;
+    // appended (Chuul Tentacles / Otyugh Tentacle Slam; B16 Draining Kiss): kTargetGate* bits on a non-spell Save.
+    // Non-zero = each named target must meet at least one (the cast is refused, action unspent, when any does not).
+    // A save may set grappled_by_self, charmed_by_self, and willing. 0 = any target. Static content: not hashed.
+    // `targets` is how many creatures one cast may name. willing is ActionRequest::target_willing (0xDD), an ally only.
     uint8_t target_requires_any = 0;
     // appended (B3b chuul Tentacles): the primary condition's effect also holds while_condition for as long as that
     // effect lasts ("paralyzed while poisoned"). Applied only when the primary condition is applied, so immunity to

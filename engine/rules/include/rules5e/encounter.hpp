@@ -240,6 +240,8 @@ struct ActionRequest {
     int16_t alt_to = 0;
     // appended (control conditions, 7.2v; log_hash 0xC4 when non-zero): CastSpell of a Command spell (SpellDef::control
     // Command): the CommandWord, 1 Approach, 2 Drop, 3 Flee, 4 Grovel, 5 Halt. Required there; 0 otherwise.
+    // B16 Charm (CONTENT_CONVENTIONS §47) reuses this byte: 0 on the Charm cast, 1..5 to order a creature this
+    // caster already charmed, 6 Suicidal (the repeat save, not an order). No new tag.
     uint8_t command_word = 0;
     // appended (vision 7.2x; log_hash 0xC6 when set): on an Attack against a creature hidden from the attacker, the tile the
     // attacker guesses (sim tile, opaque to rules; EncounterHooks::guess_correct). Required then; ignored otherwise.
@@ -543,6 +545,11 @@ struct ActiveSpellEffect {
     // repeat_los_disadvantage: the end-of-turn repeat save is at disadvantage while the caster is within line of sight.
     uint16_t immunity_on_end_hours = 0;
     bool repeat_los_disadvantage = false;
+    // appended (B16 Charm). Derived from the SpellDef. Not hashed.
+    // action_immunity_on_end_hours > 0: ending this effect grants action immunity (0xE1) for that many hours.
+    // scope 0 = every user of the action (source 0); 1 = this caster only.
+    uint16_t action_immunity_on_end_hours = 0;
+    uint8_t action_immunity_on_end_scope = 0;
 };
 
 // 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).
@@ -1167,6 +1174,11 @@ bool attack_locked(const EncounterState&, CombatantId actor, uint8_t attack_inde
 // same target, else remove Restrained (ConditionRemoved).
 void release_grapple_restraint(EncounterState&, const SourcedCondition& ended, std::vector<Event>&);
 CombatantId condition_source(const EncounterState&, CombatantId target, Condition);   // 0 = none recorded
+// True when `actor` is charmed by `source` (a sourced Charmed row, not suppressed).
+bool charmed_by(const EncounterState&, CombatantId actor, CombatantId source);
+// Empty when `target` meets at least one bit of `gates` (0 = any target). `willing` is ActionRequest::target_willing.
+// A willing target must also be on the actor's team. kTargetGateCharmedBySelf is charmed by the actor.
+std::string_view target_gate_reason(const EncounterState&, const Combatant& actor, const Combatant& target, uint8_t gates, bool willing);
 std::vector<CombatantId> grappled_by(const EncounterState&, CombatantId grappler);     // creatures the grappler is holding
 // Drops entries whose condition is gone; a grapple also ends when the grappler is dead or incapacitated. Called after every step.
 void prune_sourced(EncounterState&, std::vector<Event>&);

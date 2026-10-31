@@ -1164,13 +1164,14 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "description": "Batch 3 (vampire spawn Bite: \"one willing creature, or a creature that is grappled by the vampire, incapacitated, or restrained\"): the target must meet at least one. willing counts only for an ally with ActionRequest target_willing. On a weapon attack, any of the four gates. On a monster@5 save_effect, only grappled_by_self (Chuul Tentacles, Otyugh Tentacle Slam): each named target must be grappled by the user, and the cast is refused before the action is spent. targets (1..8, default 1) on that save is how many creatures one cast may name. No area. Chuul Tentacles also sets rider_only, so the save is the Multiattack free rider and not its own action.",
+          "description": "Batch 3 (vampire spawn Bite: \"one willing creature, or a creature that is grappled by the vampire, incapacitated, or restrained\"): the target must meet at least one. willing counts only for an ally with ActionRequest target_willing. On a weapon attack, any of the four gates. On a monster@5 save_effect, grappled_by_self (Chuul Tentacles, Otyugh Tentacle Slam), charmed_by_self, and willing (B16 Draining Kiss): each named target must meet one, and the cast is refused before the action is spent. A willing target is an ally with target_willing. charmed_by_self is the Charmed condition sourced to the user. targets (1..8, default 1) on that save is how many creatures one cast may name. No area. Chuul Tentacles also sets rider_only, so the save is the Multiattack free rider and not its own action.",
           "items": {
             "enum": [
               "willing",
               "grappled_by_self",
               "incapacitated",
-              "restrained"
+              "restrained",
+              "charmed_by_self"
             ]
           }
         },
@@ -1286,6 +1287,14 @@
         "caster_sees_target": {
           "type": "boolean",
           "description": "B15 Death Glare (save_effect, monster@5): the user must be able to see the target (the existing caster_sees_target cast gate) or the cast is refused before the action is spent."
+        },
+        "charm_command": {
+          "const": true,
+          "description": "B16 Charm (save_effect, monster@5, CONTENT_CONVENTIONS §47): control command with no word at the cast. A failed save applies charmed and Command control. A later command_word 1..5 orders that target and does not spend the action. 6 is a suicidal command (the repeat save). One target at a time. Ending the effect grants immune_on_success. Needs control command, magical, caster_sees_target, a tracked charmed apply with repeat_save on_damage and a rounds duration, immune_on_success, and target_creature_types."
+        },
+        "drain_max_hp": {
+          "const": true,
+          "description": "B16 Draining Kiss (save_effect, monster@5, CONTENT_CONVENTIONS §48): the target's hit point maximum is reduced by the damage taken from this save (full, or half when on_success is half), after immunity, resistance, and vulnerability, before temporary hit points. No second save. The reduction lasts until a long rest. A maximum of 0 kills. Not the weapon-attack drain object."
         },
         "escalates": {
           "type": "boolean",

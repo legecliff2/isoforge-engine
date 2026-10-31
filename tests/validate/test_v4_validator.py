@@ -1175,6 +1175,30 @@ class HorrificAppearance(unittest.TestCase):
         errs, _ = checks_v4.check_death_glare({"$schema": "monster@5", "id": "t.hag", "actions": [bad]}, "monster@5")
         self.assertTrue(any("drop_to_zero must be true" in e for e in errs), errs)
 
+    def test_charm_and_draining_kiss(self):
+        charm = {"kind": "save_effect", "id": "charm", "name": "Charm", "range_ft": 30,
+                 "save": {"ability": "wis", "dc": 15}, "magical": True, "caster_sees_target": True,
+                 "target_creature_types": ["humanoid"], "control": "command", "charm_command": True,
+                 "immune_on_success": {"hours": 24, "scope": "same_source"},
+                 "apply": [{"condition": "charmed", "duration": {"kind": "rounds", "n": 14400},
+                            "repeat_save": "on_damage"}]}
+        kiss = {"kind": "save_effect", "id": "draining_kiss", "name": "Draining Kiss", "range_ft": 5,
+                "save": {"ability": "con", "dc": 15}, "magical": True, "on_success": "half",
+                "damage": [{"dice": "5d10+5", "type": "psychic"}], "drain_max_hp": True,
+                "target_requires_any": ["charmed_by_self", "willing"]}
+        doc = {"$schema": "monster@5", "id": "t.fiend", "actions": [charm, kiss]}
+        self.assertEqual(checks_v4.check_charm_command(doc, "monster@5"), ([], []))
+        self.assertEqual(checks_v4.check_drain_max_hp(doc, "monster@5"), ([], []))
+        self.assertEqual(checks_v4.check_batch3_actions(doc, "monster@5"), [])
+        bad = dict(charm)
+        bad["charm_command"] = False
+        errs, _ = checks_v4.check_charm_command({"$schema": "monster@5", "id": "t.fiend", "actions": [bad]}, "monster@5")
+        self.assertTrue(any("charm_command must be true" in e for e in errs), errs)
+        bare = {"kind": "save_effect", "id": "kiss", "name": "Kiss", "drain_max_hp": True,
+                "save": {"ability": "con", "dc": 15}}
+        errs, _ = checks_v4.check_drain_max_hp({"$schema": "monster@5", "id": "t.fiend", "actions": [bare]}, "monster@5")
+        self.assertTrue(any("drain_max_hp needs damage" in e for e in errs), errs)
+
 
 class LoaderValidatorStrings(unittest.TestCase):
     """fix/rules-loader-validator-strings: each loader / validator error pair of #214 / #218 carries one identical string."""

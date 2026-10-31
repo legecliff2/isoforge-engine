@@ -1431,16 +1431,25 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             d.target_sees_source = ts->get<bool>();
         }
     }
-    // Chuul Tentacles / Otyugh Tentacle Slam: the named targets must be grappled by the user. monster@5 save_effect only,
-    // and only the grappled_by_self gate (the other target_requires_any values stay weapon-attack-only). No area: the
-    // caller names the creatures. `targets` (1..8, default 1) is how many one cast may name, so Tentacle Slam can name
-    // each grappled creature; the cast does not add a grappled creature the caller left out.
+    // Chuul Tentacles / Otyugh Tentacle Slam: grappled_by_self. B16 Draining Kiss: charmed_by_self and willing.
+    // monster@5 save_effect only. incapacitated and restrained stay weapon-attack-only. No area: the caller names
+    // the creatures. `targets` (1..8, default 1) is how many one cast may name.
     if (auto tg = act.find("target_requires_any"); tg != act.end()) {
         if (!monster_since_5()) return where + ": target_requires_any on a save_effect needs a monster@5 file";
         if (has_area) return where + ": target_requires_any takes no area";
-        if (!tg->is_array() || tg->size() != 1 || !(*tg)[0].is_string() || (*tg)[0].get<std::string>() != "grappled_by_self")
-            return where + ": target_requires_any on a save_effect is grappled_by_self only";
-        d.target_requires_any = rules5e::kTargetGateGrappledBySelf;
+        if (!tg->is_array() || tg->empty())
+            return where + ": target_requires_any on a save_effect is grappled_by_self, charmed_by_self, or willing";
+        uint8_t gates = 0;
+        for (const Json& item : *tg) {
+            const std::string k = item.is_string() ? item.get<std::string>() : "";
+            const uint8_t b = k == "grappled_by_self" ? rules5e::kTargetGateGrappledBySelf
+                            : k == "charmed_by_self" ? rules5e::kTargetGateCharmedBySelf
+                            : k == "willing" ? rules5e::kTargetGateWilling : 0;
+            if (b == 0 || (gates & b) != 0)
+                return where + ": target_requires_any on a save_effect is grappled_by_self, charmed_by_self, or willing";
+            gates = uint8_t(gates | b);
+        }
+        d.target_requires_any = gates;
         if (act.contains("targets")) {
             const int n = geti(act, "targets", 0);
             if (n < 1 || n > 8) return where + ": targets must be an integer 1..8";
@@ -1472,7 +1481,9 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                   : k == "laughter" ? rules5e::ControlKind::Laughter : k == "command" ? rules5e::ControlKind::Command
                   : rules5e::ControlKind::None;
         if (d.control == rules5e::ControlKind::None) return where + ": bad control";
-        if (d.control == rules5e::ControlKind::Command) return where + ": control command needs a spell (the word is a cast choice)";
+        if (d.control == rules5e::ControlKind::Command &&
+            !(act.contains("charm_command") && act["charm_command"].is_boolean() && act["charm_command"].get<bool>()))
+            return where + ": control command needs a spell (the word is a cast choice)";
         if (auto ex = act.find("control_excludes_creature_types"); ex != act.end()) {
             if (!ex->is_array() || ex->empty()) return where + ": bad control_excludes_creature_types";
             for (const Json& t : *ex) {
@@ -1519,6 +1530,37 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             if (!cs->is_boolean() || !cs->get<bool>()) return where + ": caster_sees_target must be true";
             d.caster_sees_target = true;
         }
+    }
+    // B16 Charm (CONTENT_CONVENTIONS §47). control command is allowed only with this key. One target, and ending
+    // the effect grants the immune_on_success immunity. The word is not chosen at the cast.
+    if (act.contains("charm_command")) {
+        if (!monster_since_5()) return where + ": charm_command needs a monster@5 file";
+        if (has_area) return where + ": charm_command takes no area";
+        const Json& cc = act["charm_command"];
+        if (!cc.is_boolean() || !cc.get<bool>()) return where + ": charm_command must be true";
+        if (d.control != rules5e::ControlKind::Command) return where + ": charm_command needs control command";
+        if (!d.magical) return where + ": charm_command needs magical: true";
+        if (!d.caster_sees_target) return where + ": charm_command needs caster_sees_target";
+        if (!d.applies_condition || d.condition != rules5e::Condition::Charmed || d.condition_untracked)
+            return where + ": charm_command needs a tracked charmed apply";
+        if (d.repeat_save != rules5e::RepeatSave::OnDamage) return where + ": charm_command needs repeat_save on_damage";
+        if (d.expiry != uint8_t(rules5e::Expiry::Rounds) || d.duration_rounds == 0)
+            return where + ": charm_command needs a rounds duration";
+        if (d.success_immunity_hours == 0) return where + ": charm_command needs immune_on_success";
+        if (d.target_types == 0) return where + ": charm_command needs target_creature_types";
+        if (d.drop_to_zero) return where + ": charm_command takes no drop_to_zero";
+        d.charm_command = true;
+    }
+    // B16 Draining Kiss (CONTENT_CONVENTIONS §48). The same save's damage, full or half, reduces the maximum.
+    // Not the weapon-attack drain object (that one can roll a second Constitution save).
+    if (act.contains("drain_max_hp")) {
+        if (!monster_since_5()) return where + ": drain_max_hp needs a monster@5 file";
+        if (has_area) return where + ": drain_max_hp takes no area";
+        const Json& dm = act["drain_max_hp"];
+        if (!dm.is_boolean() || !dm.get<bool>()) return where + ": drain_max_hp must be true";
+        if (d.dice.count == 0 && d.dice.bonus == 0) return where + ": drain_max_hp needs damage";
+        if (d.charm_command || d.drop_to_zero) return where + ": drain_max_hp takes no charm_command or drop_to_zero";
+        d.save_drain_max_hp = true;
     }
     if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition && d.control == rules5e::ControlKind::None && !d.drop_to_zero)
         return where + ": needs damage[], apply[] or control";
