@@ -22,6 +22,9 @@ namespace rules5e {
 
 namespace {
 
+// Set for the duration of a step to the pre-step state (sight reads that). Declared here so repeat saves can see it.
+thread_local const EncounterState* g_sight_base = nullptr;
+
 Combatant* find_mut(EncounterState& s, CombatantId id) {
     for (auto& c : s.combatants) if (c.id == id) return &c;
     return nullptr;
@@ -454,6 +457,35 @@ void after_damage(Combatant& t, const DamageApplied& d, bool critical, std::vect
     }
 }
 
+// B15 Death Glare: hit points become 0. Not a damage packet: no DamageDealt, no damage type, no resistance,
+// no DropToZero trigger (Undead Fortitude is damage). Temporary hit points are cleared so the creature is in the
+// existing downed state. A Polymorph / Wild Shape form reverts with no overflow (there is no damage to carry).
+void drop_to_zero_hp(EncounterState& s, Combatant& t, std::vector<Event>& ev) {
+    if (t.dead || t.hp <= 0) return;
+    if (t.form == FormKind::Polymorph || t.form == FormKind::WildShape) {
+        form_reverted(t, 2, 0, ev);
+        return;
+    }
+    t.hp = 0;
+    t.temp_hp = 0;
+    if (!t.uses_death_saves && t.regeneration.amount > 0) {
+        t.regen_down = true;
+        emit(ev, EventKind::CombatantDowned, t.id);
+    } else if (!t.uses_death_saves) {
+        kill(t, ev);
+    } else {
+        emit(ev, EventKind::CombatantDowned, t.id);
+        t.death = DeathSaves{};
+        for (Condition k : {Condition::Unconscious, Condition::Prone}) {
+            if (!t.has(k)) {
+                add_condition(t, k);
+                if (t.has(k)) emit(ev, EventKind::ConditionAdded, t.id, 0, int32_t(k));
+            }
+        }
+    }
+    if (t.dead || t.hp <= 0) end_concentration(s, t.id, ev);
+}
+
 // ---- Lasting spell effects and concentration ----
 
 // 7.2zj: a Calm Emotions effect ending lets suppressed charmed / frightened resume when a holder is still live.
@@ -534,6 +566,11 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
     } else {
         emit(ev, EventKind::SpellEffectEnded, t->id, 0, int32_t(e.spell_id), -1);
     }
+    // B15: a success is recorded at the save. Ending the effect (repeat success or the minute) grants the same
+    // per-source aura immunity. A dead creature is not recorded.
+    if (e.immunity_on_end_hours > 0 && !t->dead)
+        s.aura_immunities.push_back(AuraImmunity{e.target, e.caster, e.spell_id,
+                                                 uint32_t(s.round) + uint32_t(e.immunity_on_end_hours) * 600u});
 }
 
 // ---- R-G11 zones: lifetime (triggers are further down, after damage_creature) ----
@@ -712,8 +749,19 @@ void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::ve
             return o.spell_id == e.spell_id && o.caster == e.caster && o.target == e.target; });
         if (it == s.effects.end()) continue;
         const SaveSource ssrc{true, 0, 0};
-        const RollMode rm = timing == RepeatSave::OnDamage && e.repeat_save == RepeatSave::EndOfTurnOrDamageAdv
-                                ? RollMode::Advantage : RollMode::Normal;   // Hideous Laughter: advantage when damage triggers it
+        RollMode rm = timing == RepeatSave::OnDamage && e.repeat_save == RepeatSave::EndOfTurnOrDamageAdv
+                          ? RollMode::Advantage : RollMode::Normal;   // Hideous Laughter: advantage when damage triggers it
+        if (e.repeat_los_disadvantage && timing == RepeatSave::EndOfTurn) {   // B15: disadvantage while the source is in line of sight
+            bool los = true;   // no sight hook: within line of sight (Fear's no-hook = seen)
+            const Combatant* caster = find(s, e.caster);
+            if (s.hooks.sight_facts && caster) {
+                const EncounterState* b = g_sight_base ? g_sight_base : &s;
+                const Combatant* vv = find(*b, cid);
+                const Combatant* cc = find(*b, caster->id);
+                if (vv && cc) los = s.hooks.sight_facts(*b, *vv, *cc).line_of_sight;
+            }
+            if (los) rm = rm == RollMode::Advantage ? RollMode::Normal : RollMode::Disadvantage;
+        }
         auto r = save_roll(s, *c, e.save_ability, e.dc, rm, ev, &ssrc);   // an ongoing spell effect
         emit(ev, EventKind::SavingThrowRolled, cid, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
         if (!r.success) {
@@ -1774,9 +1822,7 @@ static std::string_view target_gate_refusal(const EncounterState& s, const Comba
     if (g == kTargetGateGrappledBySelf) return "target must be grappled by the user";
     return "target must be willing, grappled by the attacker, incapacitated, or restrained";
 }
-
-// 7.2x: the start-of-step state the sight hook is asked about during a step (set by attempt while the hook exists).
-thread_local const EncounterState* g_sight_base = nullptr;
+// g_sight_base is declared at the top of this namespace (7.2x: the start-of-step state sight reads during a step).
 
 // 7.2y: is `atk` the weapon a wielded-scope modifier is bound to?
 // 7.2z: scope_ability's code for the ability an attack uses (rules5e::attack_ability): 1 Str, 2 Dex, 0 other.
@@ -2938,7 +2984,7 @@ bool zone_affects(const ActiveZone& z, const SpellDef& def, const Combatant& c) 
 // damage and condition exactly as a Save / ApplyCondition effect would. Nothing is copied by pointer: damage can end the
 // owner's concentration and with it the zone.
 void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_index, CombatantId who, bool hook_membership,
-              std::vector<Event>& ev) {
+              std::vector<Event>& ev, bool explicit_look = false) {
     const ActiveZone* zp = find_zone(s, zone_id);
     const SpellDef* def = zp ? spell_def(s, zp->spell_id) : nullptr;
     Combatant* t = find_mut(s, who);
@@ -2960,6 +3006,17 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
     if (row.success_immunity_hours != 0)   // batch 3 ghast Stench: immune to THIS owner's aura after a success (per source)
         for (const auto& im : s.aura_immunities)
             if (im.creature == who && im.source == z.owner && im.spell_id == z.spell_id && s.round < im.until_round) return;
+    // B15 Horrific Appearance. These return before the once-per-turn mark, so a deferred avert row can still resolve
+    // when AppearanceResponse looks. A creature already carrying this owner's effect is not saved again.
+    if (row.creature_types != 0 && (row.creature_types & bit(t->creature_type)) == 0) return;
+    if (row.must_see_source) {
+        const Sight seen = sight(s, who, z.owner);
+        if (!seen.can_see || seen.sense != Sense::Sight) return;
+    }
+    if (row.avert_eyes && std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+            return o.spell_id == z.spell_id && o.caster == z.owner && o.target == who; }))
+        return;
+    if (row.avert_eyes && !explicit_look) return;
     if (row.group != 0) {   // once per creature per zone per turn, per group (D2)
         const uint32_t now = turn_stamp(s);
         ActiveZone* zm = find_zone_mut(s, zone_id);
@@ -3016,10 +3073,18 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
             add_condition(*t, e.condition);
             emit(ev, EventKind::ConditionAdded, who, 0, int32_t(e.condition));
         }
+        note_source(s, e.condition, z.owner, who);
         if (row.while_in_zone && find_zone(s, zone_id)) {   // lasts while in the zone (Web): ends on leaving, escape, zone end
             ActiveSpellEffect x{z.spell_id, z.owner, who, e.condition, e.save_ability, z.dc, RepeatSave::None, z.concentration,
                                 Timed{}, z.slot_level, false};
             x.zone_id = zone_id;
+            s.effects.push_back(x);
+        } else if (row.condition_rounds > 0) {   // B15: frightened for 1 minute (10 rounds), repeat save on the effect
+            ActiveSpellEffect x{z.spell_id, z.owner, who, e.condition, e.save_ability, z.dc, e.repeat_save, false,
+                                make_timed(Expiry::Rounds, row.condition_rounds, false), z.slot_level, false};
+            x.no_condition = untracked_prior;
+            x.repeat_los_disadvantage = row.repeat_los_disadvantage;
+            x.immunity_on_end_hours = row.immunity_on_end ? row.success_immunity_hours : uint16_t(0);
             s.effects.push_back(x);
         } else if (row.condition_until == 1) {   // batch 3 ghast Stench: "poisoned until the start of its next turn"
             ActiveSpellEffect x{z.spell_id, z.owner, who, e.condition, e.save_ability, z.dc, RepeatSave::None, false,
@@ -3206,6 +3271,44 @@ void disease_checks(EncounterState& s, Combatant& c, std::vector<Event>& ev) {
     }
 }
 
+// B15: one Horrific Appearance row that would force a save at the start of `who`'s turn. Range is the feature
+// aura (zone membership). Seeing the owner is can_see and Sense::Sight. Already frightened by this owner, or
+// immune to this owner's aura, is not asked again.
+struct AppearanceHit { uint32_t zone_id; std::size_t row; CombatantId owner; uint32_t spell_id; };
+std::vector<AppearanceHit> appearance_hits(const EncounterState& s, CombatantId who) {
+    std::vector<AppearanceHit> out;
+    const Combatant* t = find(s, who);
+    if (!t || t->dead || t->hp <= 0 || !s.hooks.zone_contains) return out;
+    std::vector<uint32_t> ids;
+    for (const auto& z : s.zones) ids.push_back(z.zone_id);
+    std::sort(ids.begin(), ids.end());
+    for (uint32_t id : ids) {
+        const ActiveZone* z = find_zone(s, id);
+        const SpellDef* def = z ? spell_def(s, z->spell_id) : nullptr;
+        if (!z || !def || zone_suppressed(s, *z, *def)) continue;
+        if (!zone_affects(*z, *def, *t)) continue;
+        const Combatant* owner = find(s, z->owner);
+        if (!owner || owner->dead) continue;
+        for (std::size_t i = 0; i < def->zone.triggers.size(); ++i) {
+            const ZoneTriggerRow& row = def->zone.triggers[i];
+            if (!row.avert_eyes || row.on != ZoneTrigger::StartTurn) continue;
+            if (row.creature_types != 0 && (row.creature_types & bit(t->creature_type)) == 0) continue;
+            if (!s.hooks.zone_contains(s, id, who, row.completely_within)) continue;
+            if (row.success_immunity_hours != 0 && std::any_of(s.aura_immunities.begin(), s.aura_immunities.end(),
+                    [&](const AuraImmunity& im) { return im.creature == who && im.source == z->owner && im.spell_id == z->spell_id &&
+                                                         s.round < im.until_round; }))
+                continue;
+            if (std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& e) {
+                    return e.spell_id == z->spell_id && e.caster == z->owner && e.target == who; }))
+                continue;
+            const Sight seen = sight(s, who, owner->id);
+            if (!seen.can_see || seen.sense != Sense::Sight) continue;
+            out.push_back(AppearanceHit{id, i, z->owner, z->spell_id});
+        }
+    }
+    return out;
+}
+
 void start_turn(EncounterState& s, std::vector<Event>& ev) {
     Combatant& c = *find_mut(s, s.order[s.turn_index].id);
     c.reaction_used = false;
@@ -3365,6 +3468,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         s.budget.haste_action = true;
     }
     s.budget.gaze_pending = gaze_applies(s, c);   // Petrifying Gaze: answered by GazeResponse before anything else
+    s.budget.appearance_pending = !appearance_hits(s, c.id).empty();   // B15: after gaze; AppearanceResponse before anything else
     check_end(s, ev);
 }
 
@@ -3882,6 +3986,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             // B11: the failure damage already landed. Large or smaller, and only while the cap has room.
             // A success takes none of it (on_save is None) and is pushed below.
             if (!r.success && def.whelm && !t->dead) apply_whelm_grapple(s, a, *t, def, ev);
+            if (!r.success && def.drop_to_zero && !t->dead) drop_to_zero_hp(s, *t, ev);   // B15 Death Glare
             if (r.success && def.success_immunity_hours > 0 && !t->dead)   // Tier-A §26: "immune to ... for the next 24 hours"
                 s.action_immunities.push_back(ActionImmunity{t->id, def.success_immunity_scope == 1 ? a.id : CombatantId(0), def.id,
                                                              uint32_t(s.round) + uint32_t(def.success_immunity_hours) * 600u});
@@ -4902,6 +5007,9 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     if (def.target_requires_any != 0)   // Chuul Tentacles / Otyugh Tentacle Slam: each named target, before the action is spent
         for (Combatant* t : T)
             if (const auto why = target_gate_refusal(s, a, *t, def.target_requires_any, false); !why.empty()) return fail(why);
+    if (def.has_target_condition)   // B15 Death Glare: the named target must already be frightened. Action unspent.
+        for (Combatant* t : T)
+            if (!t->has(def.target_condition)) return fail("target is not frightened");
     if (!req.summon_archetypes.empty() && def.kind != SpellEffectKind::Summon) return fail("summon: not a summon spell");
     if (!req.summon_tiles.empty() && def.kind != SpellEffectKind::Summon && def.kind != SpellEffectKind::SummonWeapon)
         return fail("summon: not a summon spell");
@@ -5700,6 +5808,38 @@ StepResult gaze_response(EncounterState& s, Combatant& a, const ActionRequest& r
     return out;
 }
 
+// B15 Horrific Appearance. Looking resolves each deferred StartTurn row (the save). Averting skips the save and puts
+// an AttackRoll disadvantage on the actor against that source until the start of the actor's next turn. Not gaze_averted.
+StepResult appearance_response(EncounterState& s, Combatant& a, const ActionRequest& req) {
+    if (!s.budget.appearance_pending) return fail("no appearance pending");
+    if (req.avert_gaze && a.surprised) return fail("surprised: cannot avert the eyes");
+    StepResult out{true, {}, {}};
+    s.budget.appearance_pending = false;
+    const std::vector<AppearanceHit> hits = appearance_hits(s, a.id);
+    if (req.avert_gaze) {
+        for (const AppearanceHit& h : hits) {
+            const SpellDef* d = spell_def(s, h.spell_id);
+            if (!d) continue;
+            ModifierSpec spec;
+            spec.id = spell_id_of(d->content_id + "#avert");
+            spec.source = d->id;
+            spec.stat = ModStat::AttackRoll;
+            spec.mode = RollMode::Disadvantage;
+            spec.mark_scope = 1;
+            spec.expiry = uint8_t(Expiry::StartOfTargetNextTurn);
+            spec.applies_to = ModAppliesTo::Target;
+            if (!apply_modifier(s, h.owner, a.id, spec, out.events)) continue;
+            for (auto& am : s.modifiers)
+                if (am.spec.id == spec.id && am.target == a.id && am.caster == h.owner) am.mark = h.owner;
+        }
+    } else {
+        for (const AppearanceHit& h : hits)
+            zone_row(s, nullptr, h.zone_id, h.row, a.id, true, out.events, true);
+    }
+    check_end(s, out.events);
+    return out;
+}
+
 // B7: one swing of a multiattack that carries engulf_both. A miss, or a hit on a different creature, spoils the engulf.
 void note_engulf_swing(TurnBudget& b, CombatantId target, bool hit) {
     if (b.engulf_spell == 0) return;
@@ -5851,6 +5991,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     if ((a.dead || a.hp <= 0) && req.kind != ActionKind::EndTurn) return fail("actor is down");
     if (req.kind == ActionKind::GazeResponse) return gaze_response(s, a, req);   // Petrifying Gaze (7.2p): also while surprised
     if (s.budget.gaze_pending) return fail("gaze pending: answer with GazeResponse first");
+    if (req.kind == ActionKind::AppearanceResponse) return appearance_response(s, a, req);   // B15: also while surprised
+    if (s.budget.appearance_pending) return fail("appearance pending: answer with AppearanceResponse first");
     if (a.surprised && req.kind != ActionKind::EndTurn) return fail("surprised: can only end the turn");
     if (req.kind != ActionKind::CommandSummons && (req.command != 0 || !req.command_ids.empty()))
         return fail("command: CommandSummons only");
@@ -6467,7 +6609,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         return out;
     }
     case ActionKind::OpportunityAttack: case ActionKind::ReactionDecision:
-    case ActionKind::Heal: case ActionKind::AbilityCheck: case ActionKind::GazeResponse: break;  // handled above
+    case ActionKind::Heal: case ActionKind::AbilityCheck: case ActionKind::GazeResponse:
+    case ActionKind::AppearanceResponse: break;  // handled above
     }
     return fail("unknown action");
 }
@@ -6550,6 +6693,8 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
         if (heal ? t.team != a.team : (t.team == a.team || t.id == a.id)) continue;
         if (!creature_ok(t)) continue;
         if (const auto why = target_gate_refusal(s, a, t, d.target_requires_any, false); !why.empty()) continue;
+        if (d.has_target_condition && !t.has(d.target_condition)) continue;   // B15: not offered when the cast would be refused
+        if (d.caster_sees_target && s.hooks.sight_facts && !sight(s, a.id, t.id).can_see) continue;
         if (heat) {   // one action per eligible worn or held metal item; none when submit would refuse the cast
             if (!s.hooks.loadout_of) continue;
             const LoadoutView* v = s.hooks.loadout_of(s, t.id);
@@ -6584,6 +6729,11 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (b.gaze_pending) {   // Petrifying Gaze: only the turn-start answer (sim fills gaze_seen)
         add(ActionKind::GazeResponse);
         if (!a.surprised) { ActionRequest r{a.id, ActionKind::GazeResponse}; r.avert_gaze = true; out.push_back(r); }
+        return out;
+    }
+    if (b.appearance_pending) {   // B15 Horrific Appearance: look, or avert unless surprised
+        add(ActionKind::AppearanceResponse);
+        if (!a.surprised) { ActionRequest r{a.id, ActionKind::AppearanceResponse}; r.avert_gaze = true; out.push_back(r); }
         return out;
     }
     if (a.surprised) { add(ActionKind::EndTurn); return out; }   // R-G16

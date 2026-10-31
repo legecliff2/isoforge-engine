@@ -735,8 +735,14 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         errs += [f"{rel}: {m}" for m in ab_errs]
         warns += [f"{rel}: {m}" for m in ab_warns]
         ii_errs, ii_warns = c4.check_innate_invisibility(doc, tag)   # Innate Invisibility (CONTENT_CONVENTIONS §44, monster@5 only)
+        ha_errs, ha_warns = c4.check_horrific_appearance(doc, tag)   # Horrific Appearance (CONTENT_CONVENTIONS §45, monster@5 only)
+        dg_errs, dg_warns = c4.check_death_glare(doc, tag)   # Death Glare (CONTENT_CONVENTIONS §46, monster@5 save_effect)
         errs += [f"{rel}: {m}" for m in ii_errs]
         warns += [f"{rel}: {m}" for m in ii_warns]
+        errs += [f"{rel}: {m}" for m in ha_errs]
+        warns += [f"{rel}: {m}" for m in ha_warns]
+        errs += [f"{rel}: {m}" for m in dg_errs]
+        warns += [f"{rel}: {m}" for m in dg_warns]
         au_errs, au_warns = c4.check_aura(doc, tag)   # batch 3 aura (ghast Stench, monster@5 only)
         errs += [f"{rel}: {m}" for m in au_errs]
         warns += [f"{rel}: {m}" for m in au_warns]
