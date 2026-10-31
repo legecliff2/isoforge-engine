@@ -571,6 +571,17 @@ struct SpellDef {
     // save_drain_max_hp: after the save's damage (half on a success when on_save is Half), the target's hit
     // point maximum drops by the damage taken. No second save. life_drain with dc 0. A maximum of 0 kills.
     bool save_drain_max_hp = false;
+    // appended (B17 Horrifying Visage, CONTENT_CONVENTIONS §49). Static content: not hashed.
+    // age_margin > 0: failing the save by that much or more (total <= dc - margin, the also_on_fail_by
+    // comparison) adds (the age_dice roll) times age_years_per to Combatant::aged_years. Not a condition.
+    // It still applies when the target is immune to the primary condition. No ability scores and no reversal.
+    // immune_on_effect_end: ending the applied condition grants the immune_on_success immunity (hours and scope).
+    // The repeat save then uses this action's magical flag. A non-spell Save's excluded_types is
+    // exclude_creature_types: those creatures make no save.
+    uint8_t age_margin = 0;
+    DiceExpr age_dice{0, 0, 0};
+    uint8_t age_years_per = 0;
+    bool immune_on_effect_end = false;
     // appended (Chuul Tentacles / Otyugh Tentacle Slam; B16 Draining Kiss): kTargetGate* bits on a non-spell Save.
     // Non-zero = each named target must meet at least one (the cast is refused, action unspent, when any does not).
     // A save may set grappled_by_self, charmed_by_self, and willing. 0 = any target. Static content: not hashed.

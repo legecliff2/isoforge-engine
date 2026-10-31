@@ -1404,7 +1404,9 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             if (!ref || ref->type != "monster" || ref->version < 5)
                 return where + ": also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file";
         }
-        if (has_area) return where + ": also_on_fail_by / immune_on_success / target_must_see_source take no area";
+        // also_on_fail_by still takes no area (a second condition on one entry). immune_on_success and
+        // target_must_see_source may ride an area save (B17 Horrifying Visage, CONTENT_CONVENTIONS §49).
+        if (has_area && act.contains("also_on_fail_by")) return where + ": also_on_fail_by takes no area";
         if (auto af = act.find("also_on_fail_by"); af != act.end()) {
             if (!af->is_object()) return where + ": bad also_on_fail_by";
             const int m = geti(*af, "margin", 0);
@@ -1561,6 +1563,54 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
         if (d.dice.count == 0 && d.dice.bonus == 0) return where + ": drain_max_hp needs damage";
         if (d.charm_command || d.drop_to_zero) return where + ": drain_max_hp takes no charm_command or drop_to_zero";
         d.save_drain_max_hp = true;
+    }
+    // B17 Horrifying Visage (CONTENT_CONVENTIONS §49). exclude_creature_types skips those types (an area save does not
+    // refuse the cast). immune_on_end stamps the applied condition so ending it grants immune_on_success. age_on_fail_by
+    // is the fail-by margin (the also_on_fail_by comparison) as years, not a second condition.
+    if (act.contains("exclude_creature_types") || act.contains("immune_on_end") || act.contains("age_on_fail_by")) {
+        if (!monster_since_5())
+            return where + ": age_on_fail_by / immune_on_end / exclude_creature_types need a monster@5 file";
+        if (auto ex = act.find("exclude_creature_types"); ex != act.end()) {
+            if (!ex->is_array() || ex->empty()) return where + ": bad exclude_creature_types";
+            for (const Json& t : *ex) {
+                auto c = creature_type_of(t.is_string() ? t.get<std::string>() : "");
+                if (!c) return where + ": bad exclude_creature_types";
+                d.excluded_types |= rules5e::bit(*c);
+            }
+        }
+        if (auto ie = act.find("immune_on_end"); ie != act.end()) {
+            if (!ie->is_boolean() || !ie->get<bool>()) return where + ": immune_on_end must be true";
+            if (d.success_immunity_hours == 0) return where + ": immune_on_end needs immune_on_success";
+            if (!d.applies_condition || d.condition_untracked)
+                return where + ": immune_on_end needs a tracked primary condition";
+            d.immune_on_effect_end = true;
+        }
+        if (auto ag = act.find("age_on_fail_by"); ag != act.end()) {
+            if (!ag->is_object()) return where + ": bad age_on_fail_by";
+            const int m = geti(*ag, "margin", 0);
+            auto dice = ag->contains("dice") && (*ag)["dice"].is_string() ? parse_dice((*ag)["dice"].get<std::string>()) : std::nullopt;
+            const int per = geti(*ag, "years_per", 0);
+            if (m < 1 || m > 30) return where + ": bad age_on_fail_by margin (1..30)";
+            if (!dice || dice->count == 0) return where + ": bad age_on_fail_by dice";
+            if (per < 1 || per > 255) return where + ": bad age_on_fail_by years_per (1..255)";
+            if (!has_area || d.area != rules5e::AreaShape::Sphere) return where + ": age_on_fail_by needs a sphere area";
+            if (d.range_ft != 0) return where + ": age_on_fail_by needs origin self";
+            if (!d.target_sees_source) return where + ": age_on_fail_by needs target_must_see_source";
+            if (d.excluded_types == 0) return where + ": age_on_fail_by needs exclude_creature_types";
+            if (d.success_immunity_hours == 0) return where + ": age_on_fail_by needs immune_on_success";
+            if (!d.immune_on_effect_end) return where + ": age_on_fail_by needs immune_on_end";
+            if (!d.applies_condition || d.condition_untracked || d.repeat_save != rules5e::RepeatSave::EndOfTurn)
+                return where + ": age_on_fail_by needs a tracked primary condition with an end-of-turn repeat";
+            if (d.expiry != uint8_t(rules5e::Expiry::Rounds) || d.duration_rounds == 0)
+                return where + ": age_on_fail_by needs a rounds duration";
+            if (d.also_margin > 0 || d.escalates || d.control != rules5e::ControlKind::None || d.has_while)
+                return where + ": age_on_fail_by takes no also_on_fail_by / control / escalates / while";
+            if (d.drop_to_zero || d.charm_command || d.save_drain_max_hp)
+                return where + ": age_on_fail_by takes no drop_to_zero / charm_command / drain_max_hp";
+            d.age_margin = uint8_t(m);
+            d.age_dice = *dice;
+            d.age_years_per = uint8_t(per);
+        }
     }
     if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition && d.control == rules5e::ControlKind::None && !d.drop_to_zero)
         return where + ": needs damage[], apply[] or control";

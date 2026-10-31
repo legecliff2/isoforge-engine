@@ -748,7 +748,7 @@ void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::ve
         auto it = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
             return o.spell_id == e.spell_id && o.caster == e.caster && o.target == e.target; });
         if (it == s.effects.end()) continue;
-        const SaveSource ssrc{true, 0, 0};
+        const SaveSource ssrc{it->repeat_save_magical, 0, 0};   // B17: a visage repeat follows the action; every other effect stays magical
         RollMode rm = timing == RepeatSave::OnDamage && e.repeat_save == RepeatSave::EndOfTurnOrDamageAdv
                           ? RollMode::Advantage : RollMode::Normal;   // Hideous Laughter: advantage when damage triggers it
         if (e.repeat_los_disadvantage && timing == RepeatSave::EndOfTurn) {   // B15: disadvantage while the source is in line of sight
@@ -3914,6 +3914,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 continue;   // 7.2w: too large / already holding one: no save (also a size-gated save_condition rider: Shield Bash)
             if (!def.is_spell && def.target_types != 0 && !valid_target_type(def, *t))
                 continue;   // 7.2y target_creature_types (Turn Undead: undead): others are not affected and make no save
+            if (!def.is_spell && (def.excluded_types & bit(t->creature_type)) != 0)
+                continue;   // B17 exclude_creature_types (Horrifying Visage: undead): no save, no immunity, no aging
             if ((def.control == ControlKind::Turned || (def.control == ControlKind::Command && !def.charm_command)) && s.hooks.sight_facts &&
                 !sight(s, t->id, a.id).perceives)
                 continue;   // 7.2x: Turn Undead / Command need the target to see or hear the user. Charm is telepathic (no perceive gate).
@@ -3989,6 +3991,13 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (r.success && def.success_immunity_hours > 0 && !t->dead)   // Tier-A §26: "immune to ... for the next 24 hours"
                 s.action_immunities.push_back(ActionImmunity{t->id, def.success_immunity_scope == 1 ? a.id : CombatantId(0), def.id,
                                                              uint32_t(s.round) + uint32_t(def.success_immunity_hours) * 600u});
+            // B17: fail by age_margin or more ages, even when the primary condition is not applied. Not a second condition.
+            if (def.age_margin > 0 && !r.success && !t->dead && int(r.roll.total) <= dc - int(def.age_margin)) {
+                const int rolled = std::max(0, roll_dice(s.rng, def.age_dice));
+                const int years = rolled * int(def.age_years_per);
+                if (years > 0)
+                    t->aged_years = uint16_t(std::min(65535, int(t->aged_years) + years));
+            }
             if (!r.success && !t->dead && def.disease)   // B6: the failed disease save. Immunity to the condition does not skip it.
                 contract_disease(s, *t, def, a.id, dc);
             if (r.success && def.contain == 1 && !t->dead) s.contain_exits.push_back({a.id, t->id, 3});   // 7.2w: sim pushes it 5 ft
@@ -4090,6 +4099,11 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 if (def.charm_command && def.success_immunity_hours > 0) {   // B16: the effect ending grants the same immunity as a success
                     s.effects.back().action_immunity_on_end_hours = def.success_immunity_hours;
                     s.effects.back().action_immunity_on_end_scope = def.success_immunity_scope;
+                }
+                if (def.immune_on_effect_end && def.success_immunity_hours > 0) {   // B17: the fright ending grants the same immunity
+                    s.effects.back().action_immunity_on_end_hours = def.success_immunity_hours;
+                    s.effects.back().action_immunity_on_end_scope = def.success_immunity_scope;
+                    s.effects.back().repeat_save_magical = def.magical;
                 }
                 // 7.2v: prone and incapacitated. Incapacitated is this effect's own only if it added it, so ending the
                 // laughter never strips an Incapacitated from another source.
@@ -4847,6 +4861,11 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     for (CombatantId id : ids) {
         Combatant* t = find_mut(s, id);
         if (!t || (t->dead && def.kind != SpellEffectKind::Revive)) return fail("bad target");
+        // B17: an area save skips an excluded type (the cast still happens). A single-target save that names one is refused.
+        if (!def.is_spell && def.kind == SpellEffectKind::Save && (def.excluded_types & bit(t->creature_type)) != 0) {
+            if (def.area != AreaShape::None) continue;
+            return fail("invalid creature type for this spell");
+        }
         if (def.kind == SpellEffectKind::Revive) {
             if (!t->dead) return fail("target is not dead");
             if (t->died_round == 0 || int(s.round) - int(t->died_round) > int(def.revive_within_rounds)) return fail("dead too long");

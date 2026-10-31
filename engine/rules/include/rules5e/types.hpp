@@ -791,6 +791,10 @@ struct Combatant {
     // has Condition::Invisible with no duration and no concentration. end_effect treats this as a holder, so a
     // spell's ends_on does not clear the bit. FormStats does not carry it. No SIM_EVENTS tag.
     bool innate_invisible = false;
+    // appended (B17 Horrifying Visage, CONTENT_CONVENTIONS §49). Years added by age_on_fail_by. Not an aging
+    // system: no ability scores, no death from old age, no greater restoration. Not hashed. No SIM_EVENTS tag.
+    // Replay re-rolls the dice. Saturates at 65535. FormStats does not carry it; the years stay on the creature.
+    uint16_t aged_years = 0;
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 

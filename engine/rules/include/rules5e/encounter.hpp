@@ -550,6 +550,10 @@ struct ActiveSpellEffect {
     // scope 0 = every user of the action (source 0); 1 = this caster only.
     uint16_t action_immunity_on_end_hours = 0;
     uint8_t action_immunity_on_end_scope = 0;
+    // appended (B17 Horrifying Visage). Derived from the SpellDef. Not hashed.
+    // repeat_save_magical: the end-of-turn repeat save's SaveSource::magical. Default true keeps every earlier
+    // repeat save magical. A visage sets it from SpellDef::magical (the sentence does not say "against this magic").
+    bool repeat_save_magical = true;
 };
 
 // 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).

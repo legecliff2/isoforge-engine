@@ -1246,8 +1246,9 @@ SAVE_EFFECT_RIDER_KEYS = ("also_on_fail_by", "immune_on_success", "target_must_s
 
 def check_save_effect_riders(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     """Tier-A §26 (mummy Dreadful Glare; sim content.cpp compile_save_action): also_on_fail_by / immune_on_success /
-    target_must_see_source, the loader's refusals as errors (same text). Warning: also_on_fail_by with a repeat_save (a
-    successful repeat save ends both conditions: one effect entry)."""
+    target_must_see_source, the loader's refusals as errors (same text). also_on_fail_by takes no area.
+    immune_on_success and target_must_see_source may ride an area save (B17). Warning: also_on_fail_by with a
+    repeat_save (a successful repeat save ends both conditions: one effect entry)."""
     errs: list[str] = []
     warns: list[str] = []
     for i, act in enumerate(doc.get("actions") or []):
@@ -1260,8 +1261,8 @@ def check_save_effect_riders(doc: dict, tag: str) -> tuple[list[str], list[str]]
         if tag not in MONSTER_SINCE_5:
             errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file")
             continue
-        if "area" in act:
-            errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source take no area")
+        if "area" in act and "also_on_fail_by" in act:
+            errs.append(f"{where}: also_on_fail_by takes no area")
         apply = [x for x in (act.get("apply") or []) if isinstance(x, dict)]
         af = act.get("also_on_fail_by")
         if af is not None:
@@ -1685,6 +1686,101 @@ def check_drain_max_hp(doc: dict, tag: str) -> tuple[list[str], list[str]]:
             errs.append(f"{where}: drain_max_hp needs damage")
         if act.get("charm_command") is True or act.get("drop_to_zero") is True:
             errs.append(f"{where}: drain_max_hp takes no charm_command or drop_to_zero")
+    return errs, []
+
+
+_CREATURE_TYPES = frozenset({
+    "aberration", "beast", "celestial", "construct", "dragon", "elemental", "fey", "fiend",
+    "giant", "humanoid", "monstrosity", "ooze", "plant", "undead",
+})
+
+
+def _dice_has_a_die(dice) -> bool:
+    """True when the string is the loader's NdS[+/-B] with count and sides at least 1."""
+    if not isinstance(dice, str) or "d" not in dice:
+        return False
+    count, _, rest = dice.partition("d")
+    if not count.isdigit() or int(count) < 1 or int(count) > 255:
+        return False
+    sides = rest
+    for mark in "+-":
+        if mark in sides:
+            sides = sides.split(mark, 1)[0]
+            break
+    return sides.isdigit() and 1 <= int(sides) <= 255
+
+
+def check_horrifying_visage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Horrifying Visage (CONTENT_CONVENTIONS §49; sim content.cpp compile_save_action). The loader's refusals as errors."""
+    errs: list[str] = []
+    keys = ("exclude_creature_types", "immune_on_end", "age_on_fail_by")
+    for i, act in enumerate(doc.get("actions") or []):
+        if not isinstance(act, dict) or not any(k in act for k in keys):
+            continue
+        where = f"actions[{i}]: {doc.get('id', '?')}: save_effect '{act.get('id', '')}'"
+        if act.get("kind") != "save_effect":
+            errs.append(f"{where}: age_on_fail_by / immune_on_end / exclude_creature_types are save_effect only")
+            continue
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{where}: age_on_fail_by / immune_on_end / exclude_creature_types need a monster@5 file")
+            continue
+        if "exclude_creature_types" in act:
+            ex = act.get("exclude_creature_types")
+            if not isinstance(ex, list) or not ex or any(t not in _CREATURE_TYPES for t in ex):
+                errs.append(f"{where}: bad exclude_creature_types")
+        if "immune_on_end" in act:
+            if act.get("immune_on_end") is not True:
+                errs.append(f"{where}: immune_on_end must be true")
+            else:
+                immune = act.get("immune_on_success")
+                if not isinstance(immune, dict) or not immune.get("hours"):
+                    errs.append(f"{where}: immune_on_end needs immune_on_success")
+                apply = [x for x in (act.get("apply") or []) if isinstance(x, dict)]
+                prim = apply[0] if apply else None
+                dk = ((prim or {}).get("duration") or {}).get("kind") if isinstance((prim or {}).get("duration"), dict) else None
+                untracked = prim is not None and prim.get("condition") == "prone" and "duration" not in prim and "repeat_save" not in prim
+                if prim is None or dk == "until_cured" or untracked:
+                    errs.append(f"{where}: immune_on_end needs a tracked primary condition")
+        if "age_on_fail_by" not in act:
+            continue
+        ag = act.get("age_on_fail_by")
+        if not isinstance(ag, dict):
+            errs.append(f"{where}: bad age_on_fail_by")
+            continue
+        margin = ag.get("margin")
+        if not isinstance(margin, int) or isinstance(margin, bool) or not 1 <= margin <= 30:
+            errs.append(f"{where}: bad age_on_fail_by margin (1..30)")
+        if not _dice_has_a_die(ag.get("dice")):
+            errs.append(f"{where}: bad age_on_fail_by dice")
+        per = ag.get("years_per")
+        if not isinstance(per, int) or isinstance(per, bool) or not 1 <= per <= 255:
+            errs.append(f"{where}: bad age_on_fail_by years_per (1..255)")
+        area = act.get("area") if isinstance(act.get("area"), dict) else {}
+        if area.get("shape") != "sphere":
+            errs.append(f"{where}: age_on_fail_by needs a sphere area")
+        if act.get("origin", "self") != "self":
+            errs.append(f"{where}: age_on_fail_by needs origin self")
+        if act.get("target_must_see_source") is not True:
+            errs.append(f"{where}: age_on_fail_by needs target_must_see_source")
+        ex = act.get("exclude_creature_types")
+        if not isinstance(ex, list) or not ex:
+            errs.append(f"{where}: age_on_fail_by needs exclude_creature_types")
+        immune = act.get("immune_on_success")
+        if not isinstance(immune, dict) or not immune.get("hours"):
+            errs.append(f"{where}: age_on_fail_by needs immune_on_success")
+        if act.get("immune_on_end") is not True:
+            errs.append(f"{where}: age_on_fail_by needs immune_on_end")
+        apply = [x for x in (act.get("apply") or []) if isinstance(x, dict)]
+        prim = apply[0] if apply else {}
+        dur = prim.get("duration") if isinstance(prim.get("duration"), dict) else {}
+        if prim.get("repeat_save") != "end_of_turn":
+            errs.append(f"{where}: age_on_fail_by needs a tracked primary condition with an end-of-turn repeat")
+        if dur.get("kind") != "rounds" or not isinstance(dur.get("n"), int) or isinstance(dur.get("n"), bool) or dur.get("n") < 1:
+            errs.append(f"{where}: age_on_fail_by needs a rounds duration")
+        if "also_on_fail_by" in act or act.get("escalates") or "control" in act or "while" in prim:
+            errs.append(f"{where}: age_on_fail_by takes no also_on_fail_by / control / escalates / while")
+        if act.get("drop_to_zero") is True or act.get("charm_command") is True or act.get("drain_max_hp") is True:
+            errs.append(f"{where}: age_on_fail_by takes no drop_to_zero / charm_command / drain_max_hp")
     return errs, []
 
 
