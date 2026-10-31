@@ -190,6 +190,7 @@ class AppendOnly(unittest.TestCase):
                           "also_on_fail_by", "immune_on_success", "target_must_see_source",   # Tier-A §26
                           "drop_to_zero", "target_has_condition", "caster_sees_target",   # B15 Death Glare
                           "charm_command", "drain_max_hp",   # B16 Charm and Draining Kiss
+                          "exclude_creature_types", "immune_on_end", "age_on_fail_by",   # B17 Horrifying Visage
                           "rider_only",   # B3b chuul Tentacles free rider
                           "escalates", "escalate_to", "escalate_margin",   # B4 area save petrify
                           "jump_ft", "save_alt", "push_ft",   # B8 Deadly Leap
@@ -667,6 +668,30 @@ class StructuralChecks(unittest.TestCase):
         self.assertTrue(any("ends both conditions" in x for x in w), w)
         import checks_v4 as c4
         e, _w = c4.check_save_effect_riders({"id": "x", "actions": [copy.deepcopy(glare)]}, "monster@4")
+        self.assertTrue(any("need a monster@5 file" in x for x in e), e)
+
+    def test_horrifying_visage_keys(self):   # B17: area save, non-undead, see-source, fail-by aging, immunity on end
+        visage = {"kind": "save_effect", "id": "horrifying_visage", "name": "Horrifying Visage",
+                  "origin": "self", "area": {"shape": "sphere", "size_ft": 60},
+                  "save": {"ability": "wis", "dc": 13}, "target_must_see_source": True,
+                  "exclude_creature_types": ["undead"],
+                  "immune_on_success": {"hours": 24, "scope": "same_source"}, "immune_on_end": True,
+                  "age_on_fail_by": {"margin": 5, "dice": "1d4", "years_per": 10},
+                  "apply": [{"condition": "frightened", "duration": {"kind": "rounds", "n": 10},
+                             "repeat_save": "end_of_turn"}]}
+        b = bugbear5(); b["actions"].append(copy.deepcopy(visage))
+        e, _w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertEqual(e, [])
+        b = bugbear5(); g = copy.deepcopy(visage); g["age_on_fail_by"]["margin"] = 0; b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "bad age_on_fail_by margin")
+        b = bugbear5(); g = copy.deepcopy(visage); g["area"] = {"shape": "cone", "size_ft": 60}; b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "age_on_fail_by needs a sphere area")
+        b = bugbear5(); g = copy.deepcopy(visage)
+        g["also_on_fail_by"] = {"margin": 5, "condition": "paralyzed"}
+        b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "also_on_fail_by takes no area")
+        import checks_v4 as c4
+        e, _w = c4.check_horrifying_visage({"id": "x", "actions": [copy.deepcopy(visage)]}, "monster@4")
         self.assertTrue(any("need a monster@5 file" in x for x in e), e)
 
     def test_reasons(self):

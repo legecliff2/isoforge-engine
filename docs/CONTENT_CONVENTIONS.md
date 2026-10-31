@@ -885,7 +885,10 @@ Parked monsters are soft-blocked from these playable encounters. A roster `arche
   hashed under 0xE1 only when non-empty (separate from the ghast aura 0xDE). An immune target makes no roll.
 - `target_must_see_source: true`: a target that cannot see the user (blinded, or the sight hook) makes no roll and gains no
   immunity; FeatureTriggered (actor user, target, a = spell_id, c = 3).
-- Exemptions (undead, elves) are authored only where the SRD text says so; Dreadful Glare has none.
+- An area save may carry `immune_on_success` and `target_must_see_source` (B17, §49). `also_on_fail_by` still takes no
+  area (`also_on_fail_by takes no area`).
+- Exemptions (undead, elves) are authored only where the SRD text says so; Dreadful Glare has none. Horrifying Visage's
+  non-undead gate is `exclude_creature_types` (§49), not this section's margin condition.
 - Mummy Multiattack (glare + fist) is deferred: the glare is its own action (SRD_COMBAT_COVERAGE).
 
 ## 27. Grapple instead of damage (monster@5 grapple rider `instead_of_damage`, Tier-A)
@@ -1646,4 +1649,64 @@ Deferred, not this action:
 * `succubus.json` is not authored.
 
 This section does not author `srd51.monster.succubus`. The row stays deferred until T&C writes the stat block. Etherealness and Shapechanger are still the block. Counts stay 201 authored and 9 deferred.
+
+## 49. Horrifying Visage (monster@5 `save_effect` keys)
+
+SRD 5.1 Ghost Horrifying Visage, the whole action except the aging-reversal sentence called out under product calls:
+
+"Horrifying Visage. Each non-undead creature within 60 feet of the ghost that can see it must succeed on a DC 13 Wisdom saving throw or be frightened for 1 minute. If the save fails by 5 or more, the target also ages 1d4 × 10 years. A frightened target can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success. If a target's saving throw is successful or the effect ends for it, the target is immune to this ghost's Horrifying Visage for the next 24 hours."
+
+It is an action. It is not mummy Dreadful Glare (§26), which is one creature, frightens until the end of the mummy's next turn, and paralyzes on a fail by 5. It is not Sea Hag Horrific Appearance (§45), which is a trait that fires at the start of a humanoid's turn. The sentence does not say "against this magic."
+
+```json
+{ "id": "horrifying_visage", "name": "Horrifying Visage", "kind": "save_effect", "origin": "self",
+  "area": { "shape": "sphere", "size_ft": 60 },
+  "save": { "ability": "wis", "dc": 13 }, "target_must_see_source": true,
+  "exclude_creature_types": ["undead"],
+  "immune_on_success": { "hours": 24, "scope": "same_source" }, "immune_on_end": true,
+  "age_on_fail_by": { "margin": 5, "dice": "1d4", "years_per": 10 },
+  "apply": [{ "condition": "frightened", "duration": { "kind": "rounds", "n": 10 }, "repeat_save": "end_of_turn" }] }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `area` | a sphere. `origin` self (the default), so `range_ft` is 0. 60 feet is the ghost's radius. Membership is the existing self-origin sphere, Chebyshev tiles, including the boundary | `age_on_fail_by needs a sphere area` / `age_on_fail_by needs origin self` |
+| `exclude_creature_types` | a non-empty list of creature types. An area save skips them: no roll, no immunity, no aging, and the cast is not refused. A single-target save that names one is refused (`invalid creature type for this spell`) and the action is not spent | `bad exclude_creature_types` |
+| `target_must_see_source` | the §26 key. A target that cannot see the user makes no save, gains no immunity, and does not age (FeatureTriggered c = 3) | `age_on_fail_by needs target_must_see_source` |
+| `apply` | one tracked condition, `repeat_save: end_of_turn`, `duration` rounds. 1 minute is 10 rounds. The ghost uses frightened | `age_on_fail_by needs a tracked primary condition with an end-of-turn repeat` / `age_on_fail_by needs a rounds duration` |
+| `immune_on_success` | `{hours, scope}`. `same_source` is this ghost only (`action_immunities`, 0xE1). A success pushes it. 24 hours is 14400 rounds | `age_on_fail_by needs immune_on_success` |
+| `immune_on_end` | `true`. Ending the applied condition (a successful repeat save, or the minute) pushes the same immunity. Needs `immune_on_success` and a tracked primary condition. The repeat save uses this action's magical flag | `immune_on_end must be true` / `immune_on_end needs immune_on_success` / `immune_on_end needs a tracked primary condition` / `age_on_fail_by needs immune_on_end` |
+| `age_on_fail_by` | `{margin, dice, years_per}`. `margin` is 1..30. `dice` is `NdS[+/-B]` with at least one die. `years_per` is 1..255. Failing by `margin` or more (the §26 comparison, total <= dc - margin) adds the dice roll times `years_per` to `Combatant::aged_years`. The ghost is margin 5, `1d4`, 10 | `bad age_on_fail_by` / `bad age_on_fail_by margin (1..30)` / `bad age_on_fail_by dice` / `bad age_on_fail_by years_per (1..255)` |
+
+Any of the three keys below monster@5 is `age_on_fail_by / immune_on_end / exclude_creature_types need a monster@5 file`. On an action that is not `save_effect`, the validator says `age_on_fail_by / immune_on_end / exclude_creature_types are save_effect only`. `also_on_fail_by` with an area is still `also_on_fail_by takes no area`. `age_on_fail_by` takes no `also_on_fail_by`, `control`, `escalates`, `while`, `drop_to_zero`, `charm_command`, or `drain_max_hp`.
+
+What the keys fix, because the sentence fixes it:
+
+* **Each creature within 60 feet.** A self-origin sphere. The caster is not in `area_targets`. Allies are. The built-in AI uses the existing area-save policy.
+* **Non-undead.** `exclude_creature_types: ["undead"]`. Other types save.
+* **That can see it.** `target_must_see_source`. No sight hook: only blinded blocks the save, the §26 peer.
+* **Wisdom save or frightened for 1 minute.** The existing Frightened condition, sourced to the ghost (`note_source`). 10 rounds. Not magical, so Magic Resistance does not apply to the initial save or to this action's repeat save.
+* **Repeat save.** At the end of each of the frightened creature's turns. A success ends the effect. No disadvantage while the ghost is in sight (the sentence does not say that; Horrific Appearance does).
+* **Fail by 5 or more.** Ages `1d4 × 10` years, one roll per such creature, in target order, from the encounter RNG. The years are added to `Combatant::aged_years` (uint16, saturates at 65535). The same comparison as `also_on_fail_by`. It still applies when the target is immune to the primary condition, the §26 margin ruling. It is not a second condition, and ending the fright does not remove the years.
+* **Immunity.** A successful initial save pushes `action_immunities` for 24 hours from this ghost (0xE1, `same_source`). Ending the effect pushes the same row. An immune creature makes no save and does not age. A failed save that applies no condition does not grant it. A dead creature is not recorded, the existing `end_effect` gate. Another ghost's action is a different source.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The immunity reuses 0xE1. The frightened effect folds under the existing effect rows. The years are not hashed: nothing reads them. Replay re-runs the save and the d4. Next free stays **0xE5**.
+
+Product calls, not decided here:
+
+* **Greater restoration.** The SRD sentence continues: "The aging effect can be reversed with a greater restoration spell, but only within 24 hours of it occurring." There is no aging subsystem and no peer for reversing a year counter. This key does not wire that reversal, and it does not start a 24-hour clock on the years.
+* **Ability scores.** The sentence ages the target. It does not reduce ability scores. This key does not.
+* **Not magical.** The sentence does not say "against this magic." The action leaves `magical` off. A ruling that Magic Resistance should apply is not taken.
+* **Immune to frightened.** A fail by 5 or more still ages, and does not grant the 24-hour immunity, because the save failed and no effect started. A ruling that immunity to frightened skips the aging is not taken.
+* **The built-in AI.** It uses the existing area-save policy: it will not catch an ally, and it wants two hostiles, or one when no attack is legal. The sentence does affect allies. Whether the AI should, and whether it should ignore undead when it counts hostiles, is not decided here.
+* **`aged_years` is not hashed.** A fight that differs only in the year counter hashes the same. The d4 still consumes the encounter RNG, which is already hashed.
+
+Deferred, not this action:
+
+* Possession.
+* Etherealness.
+* Shapechange. No shape, no forms, no shapechanger effect.
+* `ghost.json` is not authored.
+
+This section does not author `srd51.monster.ghost`. The row stays deferred until T&C writes the stat block. Possession and Etherealness are still the block. Counts stay 201 authored and 9 deferred.
 

@@ -74,6 +74,7 @@ SpellDef effect_view(const SpellDef& base, const SpellEffect& e) {
     v.charm_immune = false; v.caster_sees_target = false; v.requires_hearing = false;
     v.drop_to_zero = false; v.has_target_condition = false;   // B15: Death Glare is the primary save only
     v.charm_command = false; v.save_drain_max_hp = false;    // B16: Charm and Draining Kiss are the primary save only
+    v.age_margin = 0; v.age_dice = {}; v.age_years_per = 0; v.immune_on_effect_end = false;   // B17: the visage is the primary save only
     v.has_while = false;   // B3b: while is the primary save's, not a rider effect's
     v.rider_only = false;
     v.requires_jumped_ft = 0; v.has_save_choice = false; v.leap_push_ft = 0;   // B8: the leap is the primary save only

@@ -1274,7 +1274,26 @@
         },
         "target_must_see_source": {
           "type": "boolean",
-          "description": "Tier-A §26 (save_effect only; 'One creature ... that can see the mummy'): a target that cannot see the user (blinded, or the sight hook says so) makes no save and gains no immunity (FeatureTriggered c = 3)."
+          "description": "Tier-A §26 (save_effect only; 'One creature ... that can see the mummy'): a target that cannot see the user (blinded, or the sight hook says so) makes no save and gains no immunity (FeatureTriggered c = 3). An area save may use it (B17 Horrifying Visage)."
+        },
+        "exclude_creature_types": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_types",
+          "description": "B17 Horrifying Visage (save_effect, monster@5, CONTENT_CONVENTIONS §49): these creature types are unaffected. An area save skips them (no roll, no immunity, no aging). A single-target save that names one is refused. SRD ghost: [\"undead\"]."
+        },
+        "immune_on_end": {
+          "const": true,
+          "description": "B17 (save_effect, monster@5): ending the applied condition grants the same action immunity as immune_on_success (hours and scope, 0xE1). Needs immune_on_success and a tracked primary condition. The repeat save uses the action's magical flag. Dreadful Glare does not set this."
+        },
+        "age_on_fail_by": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["margin", "dice", "years_per"],
+          "properties": {
+            "margin": {"type": "integer", "minimum": 1, "maximum": 30},
+            "dice": {"$ref": "../common/v1.schema.json#/$defs/dice"},
+            "years_per": {"type": "integer", "minimum": 1, "maximum": 255}
+          },
+          "description": "B17 Horrifying Visage (save_effect, monster@5, CONTENT_CONVENTIONS §49): failing the save by margin or more adds (the dice) times years_per to the target's aged years. Not a condition and not an aging system. Needs a self-origin sphere, target_must_see_source, exclude_creature_types, immune_on_success, immune_on_end, and a tracked primary condition with an end-of-turn repeat and a rounds duration. No also_on_fail_by, control, escalates, or while."
         },
         "drop_to_zero": {
           "type": "boolean",

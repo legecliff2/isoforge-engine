@@ -739,6 +739,7 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         dg_errs, dg_warns = c4.check_death_glare(doc, tag)   # Death Glare (CONTENT_CONVENTIONS §46, monster@5 save_effect)
         ch_errs, ch_warns = c4.check_charm_command(doc, tag)   # Charm (CONTENT_CONVENTIONS §47, monster@5 save_effect)
         dk_errs, dk_warns = c4.check_drain_max_hp(doc, tag)   # Draining Kiss (CONTENT_CONVENTIONS §48, monster@5 save_effect)
+        hv_errs, hv_warns = c4.check_horrifying_visage(doc, tag)   # Horrifying Visage (CONTENT_CONVENTIONS §49, monster@5 save_effect)
         errs += [f"{rel}: {m}" for m in ii_errs]
         warns += [f"{rel}: {m}" for m in ii_warns]
         errs += [f"{rel}: {m}" for m in ha_errs]
@@ -749,6 +750,8 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         warns += [f"{rel}: {m}" for m in ch_warns]
         errs += [f"{rel}: {m}" for m in dk_errs]
         warns += [f"{rel}: {m}" for m in dk_warns]
+        errs += [f"{rel}: {m}" for m in hv_errs]
+        warns += [f"{rel}: {m}" for m in hv_warns]
         au_errs, au_warns = c4.check_aura(doc, tag)   # batch 3 aura (ghast Stench, monster@5 only)
         errs += [f"{rel}: {m}" for m in au_errs]
         warns += [f"{rel}: {m}" for m in au_warns]
