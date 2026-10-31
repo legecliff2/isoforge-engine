@@ -9995,6 +9995,62 @@
      ]
     }
    ]
+  },
+  "invisible-stalker": {
+   "name": "Invisible Stalker",
+   "size": "Medium",
+   "type": "elemental",
+   "ac": [
+    14
+   ],
+   "hp": 104,
+   "hp_roll": "16d8+32",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "50 ft.",
+    "fly": "50 ft.",
+    "hover": true
+   },
+   "abilities": [
+    16,
+    19,
+    14,
+    10,
+    15,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "unconscious"
+   ],
+   "attacks": [
+    {
+     "name": "Slam",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

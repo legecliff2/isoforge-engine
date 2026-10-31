@@ -1067,7 +1067,7 @@ This is not a `free_rider`. A free rider runs after every attack in the option, 
 
 monster@5's action schema (and the same arm on monster@6) requires `damage` on a weapon attack unless `on_hit` contains a grapple with `no_damage` true. That attack must omit `damage`. Listing it is a schema error and the loader's `grapple no_damage can't list damage`.
 
-`srd51.monster.roper` authors the tendril (`no_damage`, `restrains`, escape DC 15, `max_grapples` 6, reach 50, no damage array) and Reel (`pull`, `feet` 25, `targets` 6). Multiattack is tendril ×4 then bite. Reel is not between them. Grasping Tendrils as attackable objects, and disadvantage on Strength checks and Strength saving throws, stay description only. The built-in AI does not use Reel (`SaveAction::range_ft` is 0, so the save-action loop skips it). False Appearance and Spider Climb stay descriptive. Counts are 199 authored and 11 deferred.
+`srd51.monster.roper` authors the tendril (`no_damage`, `restrains`, escape DC 15, `max_grapples` 6, reach 50, no damage array) and Reel (`pull`, `feet` 25, `targets` 6). Multiattack is tendril ×4 then bite. Reel is not between them. Grasping Tendrils as attackable objects, and disadvantage on Strength checks and Strength saving throws, stay description only. The built-in AI does not use Reel (`SaveAction::range_ft` is 0, so the save-action loop skips it). False Appearance and Spider Climb stay descriptive. Counts are 200 authored and 10 deferred.
 
 Not hashed beyond 0xB4 and 0xDB. No new tag. B5 left **0xE3** free; B6 claims it (§36). Next free is **0xE4**.
 
@@ -1138,7 +1138,7 @@ Product calls, not a second contain model:
 * "If the mound moves, the engulfed target moves with it" is the existing contain carry. `container_of` is set. Sim movement of contained creatures stays pending.
 * Lightning Absorption is §43. It is not this key.
 
-`srd51.monster.shambling_mound` authors this option on Multiattack (`slams`: slam ×2) and Lightning Absorption (§43). Slam is natural 2d8 Str (+7 / 2d8 + 4 bludgeoning, reach 5). The printed Constitution save is not rolled. There is no sourced Grappled condition. Unable to breathe, and the engulfed creature moving with the mound, stay the contain gaps. Counts are 199 authored and 11 deferred.
+`srd51.monster.shambling_mound` authors this option on Multiattack (`slams`: slam ×2) and Lightning Absorption (§43). Slam is natural 2d8 Str (+7 / 2d8 + 4 bludgeoning, reach 5). The printed Constitution save is not rolled. There is no sourced Grappled condition. Unable to breathe, and the engulfed creature moving with the mound, stay the contain gaps. Counts are 200 authored and 10 deferred.
 
 ## 38. Deadly Leap (monster@5 action `deadly_leap`)
 
@@ -1185,7 +1185,7 @@ Product calls:
 * **End of turn.** The existing refusal to end a turn in another creature's space still applies to the leaper. A failed save, or a push that cannot move, leaves that creature in the space, so EndTurn is refused while a step out exists. The leap does not grant a lasting exception. A creature that already has Air Form or Water Form (§39) may keep a hostile's space. The leap's push still needs an unoccupied tile, and that form does not make its own tile unoccupied.
 * **AI.** The built-in AI does not declare a jump and does not use this action.
 
-`srd51.monster.bulette` authors this action with those packets. Standing Leap's 30-foot long jump and 15-foot high jump, with or without a running start, stay description only. Burrow is the speed entry, not this key. The built-in AI does not leap. Counts are 199 authored and 11 deferred.
+`srd51.monster.bulette` authors this action with those packets. Standing Leap's 30-foot long jump and 15-foot high jump, with or without a running start, stay description only. Burrow is the speed entry, not this key. The built-in AI does not leap. Counts are 200 authored and 10 deferred.
 
 ## 39. Air Form / Water Form (monster trait ids `air_form`, `water_form`)
 
@@ -1213,7 +1213,7 @@ Product calls:
 
 `fire_form` on the authored fire elemental includes the enter-and-stop clause and also the 1d10 contact fire. This flag does not apply that damage, so `fire_form` is not this id. The fire row stays partial. Whirlwind is §40. Whelm is §41. Freeze is §42.
 
-`srd51.monster.air_elemental` authors Air Form with this id. The 1-inch gap stays description only. This section does not author `srd51.monster.water_elemental`. Counts are 199 authored and 11 deferred.
+`srd51.monster.air_elemental` authors Air Form with this id. The 1-inch gap stays description only. This section does not author `srd51.monster.water_elemental`. Counts are 200 authored and 10 deferred.
 
 ## 40. Whirlwind (monster@5 action `whirlwind`)
 
@@ -1262,7 +1262,7 @@ Product calls:
 * **Floor.** A fling that walks onto a ledge uses the existing fall (1d6 bludgeoning per 10 feet fallen, prone when that damage lands). Whirlwind does not add a second packet for the horizontal feet. A flat landing is not a floor strike.
 * **No grid.** With no forced-move hook the fling is reported as the full distance and strikes nothing (the existing no-hook rule). Impact is what the hook reports.
 * **Recharge.** Available at the start of combat, the breath-weapon peer. The built-in AI does not use the action.
-* **Not this action.** Whelm (§41), Freeze (§42), and the 1-inch gap. `srd51.monster.air_elemental` authors this action. The 1-inch gap stays description only. The built-in AI does not use it. Water elemental stays deferred. Counts are 199 authored and 11 deferred.
+* **Not this action.** Whelm (§41), Freeze (§42), and the 1-inch gap. `srd51.monster.air_elemental` authors this action. The 1-inch gap stays description only. The built-in AI does not use it. Water elemental stays deferred. Counts are 200 authored and 10 deferred.
 
 ## 41. Whelm (monster@5 action `whelm`)
 
@@ -1321,7 +1321,7 @@ Deferred, not approximated:
 * **Ally assist.** "A creature within 5 feet of the elemental can pull a creature or object out of it by taking an action to make a DC 14 Strength check and succeeding." That Strength check is not the grapple escape. Roper Reel pulls the roper's own victims toward the roper (§35). The gelatinous cube's "pull a creature out" is the deferred Ooze Cube sentence. Objects are not combatants. Not this action.
 * **Freeze** is §42. The 1-inch gap (§39) is not this action.
 
-This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts are 199 authored and 11 deferred.
+This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts are 200 authored and 10 deferred.
 
 ## 42. Freeze (monster@5 trait `freeze`)
 
@@ -1361,7 +1361,7 @@ Deferred, not this trait:
 * The 1-inch gap (§39).
 * Whelm's "unable to breathe unless it can breathe water," and an ally's DC 14 Strength check to pull a creature or object out (§41).
 
-This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts are 199 authored and 11 deferred.
+This section does not author `srd51.monster.water_elemental`. The row stays deferred until T&C writes the stat block. Counts are 200 authored and 10 deferred.
 
 ## 43. Lightning Absorption (monster@5 trait `absorb`)
 
@@ -1403,7 +1403,7 @@ Deferred, not this trait:
 
 * Engulf's printed Constitution save, "unable to breathe," and moving the engulfed creature (§37).
 
-`srd51.monster.shambling_mound` authors this trait (`by: ["lightning"]`) with the printed lightning immunity. Multiattack is §37. The Constitution save, suffocation, and contain-carry stay unmodelled on that row. Counts are 199 authored and 11 deferred.
+`srd51.monster.shambling_mound` authors this trait (`by: ["lightning"]`) with the printed lightning immunity. Multiattack is §37. The Constitution save, suffocation, and contain-carry stay unmodelled on that row. Counts are 200 authored and 10 deferred.
 
 ## 44. Innate Invisibility (monster@5 trait `innate_invisibility`)
 
@@ -1441,11 +1441,10 @@ Product calls, not decided in this trait:
 
 Deferred, not this trait:
 
-* Faultless Tracker.
+* Faultless Tracker. `srd51.monster.invisible_stalker` carries the SRD sentences as a description-only trait. It is not `innate_invisibility` and it is not a tracking mechanic.
 * Heard or noticed hiding (coverage: Invisible is attack advantage and disadvantage only).
 * Will-o'-wisp's optional Invisibility action, duergar Invisibility, and green hag Invisible Passage.
-* `invisible_stalker.json` is not authored.
 
 `FormStats` does not carry `innate_invisible`. A transform does not add the flag or clear it (the regeneration, Freeze, and Lightning Absorption peer).
 
-This section does not author `srd51.monster.invisible_stalker`. The row stays deferred until T&C writes the stat block. Counts stay 199 authored and 11 deferred.
+`srd51.monster.invisible_stalker` authors this trait (`{"kind": "innate_invisibility"}`). Faultless Tracker stays description only. See Invisibility, Faerie Fire outlined, and Branding Smite `reveal_invisible` versus a permanent holder stay open. Built-in AI targeting stays unchanged. Whether Invisible needs a `Combat::hash` tag stays open. Counts are 200 authored and 10 deferred.
