@@ -169,6 +169,14 @@ No fields. SRD Invisible Stalker Invisibility (CONTENT_CONVENTIONS §44). The lo
 
 Example: `{ "kind": "innate_invisibility" }`
 
+### `horrific_appearance` (static, monster@5)
+
+`radius_ft`, `save` `{ability, dc}`, and `immunity_hours`. SRD Sea Hag Horrific Appearance (CONTENT_CONVENTIONS §45). The loader attaches one feature aura. A humanoid that starts its turn inside the radius and can see the owner with sight saves or is frightened for 1 minute. It repeats the save at the end of each of its turns, with disadvantage while the owner is within line of sight. A success, or the effect ending, grants immunity to this owner's aura for `immunity_hours`. Unless surprised, the actor may avert: no initial save, and attack rolls against that owner have disadvantage until the averter's next turn starts. Not `gaze_averted`. Not magical. An identical second declaration adds nothing (the validator warns). A different one is a load error. Refused below monster@5 and on a character. No `SIM_EVENTS` tag and no new `Combat::hash` tag. `srd51.monster.sea_hag` authors `{ "kind": "horrific_appearance", "radius_ft": 30, "save": { "ability": "wis", "dc": 11 }, "immunity_hours": 24 }`. Illusory Appearance is not this kind. Sudden revelation is not a flag. The built-in AI looks and does not avert (§45).
+
+Death Glare is not this kind. It is the monster@5 `save_effect` in §46 (`drop_to_zero`, `target_has_condition: frightened`, `caster_sees_target`). `srd51.monster.sea_hag` authors that action. A failed save drops the target to 0 hit points. Not a damage packet.
+
+Example: `{ "kind": "horrific_appearance", "radius_ft": 30, "save": { "ability": "wis", "dc": 11 }, "immunity_hours": 24 }`
+
 ### `aggressive` (static, T&C-G7)
 
 No fields. SRD orc Aggressive (sim #129: rules5e `Combatant::aggressive`): a bonus-action Dash whose extra movement must take the
