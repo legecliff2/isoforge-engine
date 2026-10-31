@@ -734,6 +734,9 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         ab_errs, ab_warns = c4.check_absorb(doc, tag)   # Lightning Absorption (CONTENT_CONVENTIONS §43, monster@5 only)
         errs += [f"{rel}: {m}" for m in ab_errs]
         warns += [f"{rel}: {m}" for m in ab_warns]
+        ii_errs, ii_warns = c4.check_innate_invisibility(doc, tag)   # Innate Invisibility (CONTENT_CONVENTIONS §44, monster@5 only)
+        errs += [f"{rel}: {m}" for m in ii_errs]
+        warns += [f"{rel}: {m}" for m in ii_warns]
         au_errs, au_warns = c4.check_aura(doc, tag)   # batch 3 aura (ghast Stench, monster@5 only)
         errs += [f"{rel}: {m}" for m in au_errs]
         warns += [f"{rel}: {m}" for m in au_warns]

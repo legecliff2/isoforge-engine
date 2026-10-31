@@ -1404,3 +1404,48 @@ Deferred, not this trait:
 * Engulf's printed Constitution save, "unable to breathe," and moving the engulfed creature (§37).
 
 `srd51.monster.shambling_mound` authors this trait (`by: ["lightning"]`) with the printed lightning immunity. Multiattack is §37. The Constitution save, suffocation, and contain-carry stay unmodelled on that row. Counts are 199 authored and 11 deferred.
+
+## 44. Innate Invisibility (monster@5 trait `innate_invisibility`)
+
+SRD 5.1 Invisible Stalker Invisibility, the whole trait:
+
+"Invisibility. The stalker is invisible."
+
+That is the Invisible condition (SRD Appendix A). It is not the Invisibility spell. The spell ends when the target attacks or casts a spell, and it is concentration. This trait does not.
+
+```json
+"effect": { "kind": "innate_invisibility" }
+```
+
+The object has no other key. The sentence has no number, no duration, and no save.
+
+| key | rule | loader error |
+|---|---|---|
+| (none) | the creature has `Condition::Invisible` | — |
+
+Any other key is `innate_invisibility: unknown key '...'`. Below monster@5 the loader says `innate_invisibility needs a monster@5 file`. On a character it says `innate_invisibility: only valid on monsters`. A second declaration adds nothing (validator warning). There is no second shape.
+
+The loader sets `Combatant::innate_invisible` and calls `add_condition` for Invisible. A condition immunity still refuses the bit (`add_condition`). The flag stays set. The trait does not bypass immunity.
+
+There is no `ActiveSpellEffect`, so there is no timer and no concentration. `end_effect` treats the flag as a holder of Invisible: a spell effect that applied Invisible still ends, and that caster's concentration still ends once nothing of the spell remains, and the condition bit stays. A creature without the flag is unchanged. Spell `ends_on` is not edited.
+
+Attack rolls use the existing Invisible condition (`attack_roll_mode`: the attacker's rolls have advantage, rolls against it have disadvantage, unless outlined). Sight uses the existing fact: sim sets `SightFacts::subject_invisible` from the condition, and `derive_sight` reads that fact. `Combat::gaze_seen` already skips a gazer who has the condition. Petrifying Gaze's turn-start save already requires the actor to see the gazer with `sight`.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `innate_invisible` is static content, copied onto the combatant at spawn, and is not hashed. The condition bit is the existing Invisible bit. It is not a new fold. Replay copies the archetype again. Next free stays **0xE5**.
+
+Product calls, not decided in this trait:
+
+* **See Invisibility, Faerie Fire outlined, and Branding Smite `reveal_invisible`.** This trait does not add an exemption and does not re-apply the condition after those paths. See Invisibility is out of encounter scope and is not wired. Faerie Fire's existing outlined state still clears `subject_invisible` and suppresses Invisible's attack modes for any creature who has the condition. Branding Smite's existing `reveal_branded` still removes `Condition::Invisible` after it ends Invisible effects, including a bit this trait set. Whether a permanent-trait holder should be revealed by any of those is not decided here.
+* **Built-in AI targeting.** No new branch. `NearestEnemyPolicy` does not skip Invisible creatures. The Wild Shape proximity check already ignores a hostile who has the condition. Whether the AI should treat a permanent-trait holder differently is not decided here.
+* **A hash tag.** Not claimed. Whether the starting Invisible bit needs one, because `Combat::hash` does not fold the condition mask, is not decided here.
+
+Deferred, not this trait:
+
+* Faultless Tracker.
+* Heard or noticed hiding (coverage: Invisible is attack advantage and disadvantage only).
+* Will-o'-wisp's optional Invisibility action, duergar Invisibility, and green hag Invisible Passage.
+* `invisible_stalker.json` is not authored.
+
+`FormStats` does not carry `innate_invisible`. A transform does not add the flag or clear it (the regeneration, Freeze, and Lightning Absorption peer).
+
+This section does not author `srd51.monster.invisible_stalker`. The row stays deferred until T&C writes the stat block. Counts stay 199 authored and 11 deferred.
