@@ -107,7 +107,7 @@ _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjus
                                "proficiency_bonus_reason", "emits_light", "passive_perception_reason"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
 MONSTER_AT5_ACTION_KINDS = frozenset({"teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm"})   # teleport: batch 3 blink dog; area_effect: monster area loader; pull: B5 Reel; deadly_leap: B8; whirlwind: B10; whelm: B11
-MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze", "absorb", "innate_invisibility"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench), keen_senses (§30), regen (§31), freeze (§42), absorb (§43), innate_invisibility (§44)
+MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze", "absorb", "innate_invisibility", "horrific_appearance"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench), keen_senses (§30), regen (§31), freeze (§42), absorb (§43), innate_invisibility (§44), horrific_appearance (§45)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
     _r4 = TAG_TABLE[f"{_typ}@4"]
@@ -1533,6 +1533,89 @@ def check_innate_invisibility(doc: dict, tag: str) -> tuple[list[str], list[str]
         else:
             seen = True
     return errs, warns
+
+
+HORRIFIC_KEYS = frozenset({"kind", "radius_ft", "save", "immunity_hours"})
+DEATH_GLARE_KEYS = ("drop_to_zero", "target_has_condition", "caster_sees_target")
+
+
+def _same_horrific(a: dict, b: dict) -> bool:
+    return a.get("radius_ft") == b.get("radius_ft") and a.get("immunity_hours") == b.get("immunity_hours") and a.get("save") == b.get("save")
+
+
+def check_horrific_appearance(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Horrific Appearance (CONTENT_CONVENTIONS §45; sim features.cpp apply_horrific_appearance). The loader's
+    refusals as errors. An identical second declaration adds nothing (validator warning). A different one is an error."""
+    errs: list[str] = []
+    warns: list[str] = []
+    first: dict | None = None
+    first_path = ""
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "horrific_appearance":
+            continue
+        did = f"{path}: {doc.get('id', '?')}"
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{did}: horrific_appearance needs a monster@5 file")
+            continue
+        extra = sorted(k for k in eff if k not in HORRIFIC_KEYS)
+        if extra:
+            errs.append(f"{did}: horrific_appearance: unknown key '{extra[0]}'")
+            continue
+        radius = eff.get("radius_ft")
+        if not _int_in(radius, 5, 120) or radius % 5 != 0:
+            errs.append(f"{did}: horrific_appearance: radius_ft must be a multiple of 5 in 5..120")
+            continue
+        save = eff.get("save")
+        if not isinstance(save, dict):
+            errs.append(f"{did}: horrific_appearance: save {{ability, dc}} required")
+            continue
+        extra_s = sorted(k for k in save if k not in ("ability", "dc"))
+        if extra_s:
+            errs.append(f"{did}: horrific_appearance: unknown save key '{extra_s[0]}'")
+            continue
+        if save.get("ability") not in ("str", "dex", "con", "int", "wis", "cha"):
+            errs.append(f"{did}: horrific_appearance: bad save.ability")
+            continue
+        if not _int_in(save.get("dc"), 1, 30):
+            errs.append(f"{did}: horrific_appearance: save.dc must be 1..30")
+            continue
+        if not _int_in(eff.get("immunity_hours"), 1, 168):
+            errs.append(f"{did}: horrific_appearance: immunity_hours must be 1..168")
+            continue
+        if first is None:
+            first, first_path = eff, path
+        elif _same_horrific(first, eff):
+            warns.append(f"{path}: duplicate horrific_appearance (same as {first_path}); a second declaration adds nothing")
+        else:
+            errs.append(f"{did}: horrific_appearance: a creature has one horrific appearance")
+    return errs, warns
+
+
+def check_death_glare(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Death Glare (CONTENT_CONVENTIONS §46; sim content.cpp compile_save_action). The loader's refusals as errors."""
+    errs: list[str] = []
+    for i, act in enumerate(doc.get("actions") or []):
+        if not isinstance(act, dict) or not any(k in act for k in DEATH_GLARE_KEYS):
+            continue
+        where = f"actions[{i}]: {doc.get('id', '?')}: save_effect '{act.get('id', '')}'"
+        if act.get("kind") != "save_effect":
+            errs.append(f"{where}: drop_to_zero / target_has_condition / caster_sees_target are save_effect only")
+            continue
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{where}: drop_to_zero / target_has_condition / caster_sees_target need a monster@5 file")
+            continue
+        if "area" in act:
+            errs.append(f"{where}: drop_to_zero / target_has_condition / caster_sees_target take no area")
+        if "drop_to_zero" in act:
+            if act.get("drop_to_zero") is not True:
+                errs.append(f"{where}: drop_to_zero must be true")
+            elif act.get("damage") or act.get("apply") or act.get("control"):
+                errs.append(f"{where}: drop_to_zero takes no damage, apply or control")
+        if "target_has_condition" in act and act.get("target_has_condition") != "frightened":
+            errs.append(f"{where}: target_has_condition must be frightened")
+        if "caster_sees_target" in act and act.get("caster_sees_target") is not True:
+            errs.append(f"{where}: caster_sees_target must be true")
+    return errs, []
 
 
 def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:

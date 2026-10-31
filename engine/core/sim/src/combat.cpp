@@ -1861,6 +1861,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to, uint1
     SubmitResult r;
     const CombatantId mover = rules5e::current_actor(state_);
     if (state_.budget.gaze_pending) { r.error = "gaze pending: answer with GazeResponse first"; return r; }
+    if (state_.budget.appearance_pending) { r.error = "appearance pending: answer with AppearanceResponse first"; return r; }
     const Vec2i from = pos(mover);
     if (alt_to != 0) {   // altitude PR2: vertical movement in place (5 ft per 5 ft from the shared budget)
         if (to != from) { r.error = "alt_to: a vertical move is a Step to the mover's own tile"; return r; }

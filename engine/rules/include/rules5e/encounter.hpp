@@ -51,6 +51,9 @@ struct TurnBudget {
     bool action_lost = false;
     // Petrifying Gaze (appended): the turn started with a gazer present; the actor must answer with GazeResponse first.
     bool gaze_pending = false;
+    // B15 Horrific Appearance: a humanoid who can see a hag's true form within the aura must answer before anything
+    // else (after a pending gaze). Not hashed (replay re-runs the turn start). Cleared by AppearanceResponse.
+    bool appearance_pending = false;
     // appended (SRD 5.1 movement modes, feat/move-modes): Dash actions taken this turn (a Dash grants each speed once more).
     uint8_t dashes = 0;
     // Appended (B3b, chuul Tentacles): spell id of a multiattack free rider still available this turn (0 = none). Set when
@@ -197,7 +200,9 @@ struct ActionRequest {
     uint8_t flexible = 0, flexible_level = 0;
     // appended (Petrifying Gaze, ActionKind::GazeResponse, VERSION_BUMP_BATCH 7.2p): the turn-start answer while
     // TurnBudget::gaze_pending. avert_gaze (caller input, log_hash 0xBB): avert the eyes (refused while surprised): no save,
-    // gazers unseen until its next turn starts. gaze_seen (sim fact, not folded): the gazers it can see now (line of sight,
+    // gazers unseen until its next turn starts. B15 Horrific Appearance reuses this bit on ActionKind::AppearanceResponse
+    // (not gaze_averted): no initial save, and attack rolls against that source have disadvantage until the actor's next
+    // turn starts. gaze_seen (sim fact, not folded): the gazers it can see now (line of sight,
     // within the gaze's range_ft, not Blinded, the gazer not invisible to it); rules treats the list as opaque.
     bool avert_gaze = false;
     std::vector<CombatantId> gaze_seen = {};
@@ -533,6 +538,11 @@ struct ActiveSpellEffect {
     uint32_t suppress_untracked = 0;
     uint8_t granted_fly = 0;
     bool ends_on_restoration = false;
+    // appended (B15 Horrific Appearance). Derived from the zone row. Not hashed.
+    // immunity_on_end_hours > 0: ending this effect grants aura immunity from its caster for that many hours (0xDE).
+    // repeat_los_disadvantage: the end-of-turn repeat save is at disadvantage while the caster is within line of sight.
+    uint16_t immunity_on_end_hours = 0;
+    bool repeat_los_disadvantage = false;
 };
 
 // 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).

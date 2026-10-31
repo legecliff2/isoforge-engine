@@ -1367,6 +1367,81 @@ std::optional<std::string> apply_innate_invisibility(Archetype& a, const Feature
     return std::nullopt;
 }
 
+// horrific_appearance {radius_ft, save, immunity_hours} (CONTENT_CONVENTIONS §45). A feature aura (the ghast Stench
+// peer) whose StartTurn row is deferred for AppearanceResponse. Humanoid, sight, 1 minute frightened, end-of-turn
+// repeat at disadvantage in line of sight, immunity on success or when the effect ends, and avert-eyes are the kind.
+// One per creature. Static spell content, not hashed. Immunity rows are the existing 0xDE aura_immunities.
+std::optional<std::string> apply_horrific_appearance(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": horrific_appearance needs a monster@5 file";
+    if (a.schema_type != "monster") return f.id + ": horrific_appearance: only valid on monsters";
+    const Json& e = f.effect;
+    for (auto it = e.begin(); it != e.end(); ++it)
+        if (it.key() != "kind" && it.key() != "radius_ft" && it.key() != "save" && it.key() != "immunity_hours")
+            return f.id + ": horrific_appearance: unknown key '" + it.key() + "'";
+    const auto r = e.find("radius_ft");
+    if (r == e.end() || !r->is_number_integer() || r->get<int>() < 5 || r->get<int>() > 120 || r->get<int>() % 5 != 0)
+        return f.id + ": horrific_appearance: radius_ft must be a multiple of 5 in 5..120";
+    const auto sv = e.find("save");
+    if (sv == e.end() || !sv->is_object()) return f.id + ": horrific_appearance: save {ability, dc} required";
+    for (auto it = sv->begin(); it != sv->end(); ++it)
+        if (it.key() != "ability" && it.key() != "dc") return f.id + ": horrific_appearance: unknown save key '" + it.key() + "'";
+    int ab = -1;
+    {
+        const std::string v = sv->value("ability", "");
+        int i = 0;
+        for (const char* n : kAbilities7z) { if (v == n) ab = i; ++i; }
+    }
+    if (ab < 0) return f.id + ": horrific_appearance: bad save.ability";
+    const auto dc = sv->find("dc");
+    if (dc == sv->end() || !dc->is_number_integer() || dc->get<int>() < 1 || dc->get<int>() > 30)
+        return f.id + ": horrific_appearance: save.dc must be 1..30";
+    const auto hours = e.find("immunity_hours");
+    if (hours == e.end() || !hours->is_number_integer() || hours->get<int>() < 1 || hours->get<int>() > 168)
+        return f.id + ": horrific_appearance: immunity_hours must be 1..168";
+    const int radius = r->get<int>();
+    const int save_dc = dc->get<int>();
+    const int immune_h = hours->get<int>();
+    for (const rules5e::SpellDef& have : a.aura_defs) {
+        if (have.zone.triggers.empty() || !have.zone.triggers[0].avert_eyes) continue;
+        const rules5e::ZoneTriggerRow& row = have.zone.triggers[0];
+        if (have.zone.size_ft == radius && have.fixed_dc == save_dc && int(row.effect.save_ability) == ab &&
+            row.success_immunity_hours == immune_h)
+            return std::nullopt;
+        return f.id + ": horrific_appearance: a creature has one horrific appearance";
+    }
+    rules5e::SpellDef d{};
+    d.content_id = a.id + "#" + f.id;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.kind = rules5e::SpellEffectKind::Zone;
+    d.is_spell = false;
+    d.magical = false;
+    d.fixed_dc = int8_t(save_dc);
+    d.zone.shape = rules5e::AreaShape::Sphere;
+    d.zone.anchor = rules5e::ZoneAnchor::Creature;
+    d.zone.size_ft = uint16_t(radius);
+    d.zone.needs_conscious_owner = false;
+    rules5e::ZoneTriggerRow row{};
+    row.on = rules5e::ZoneTrigger::StartTurn;
+    row.group = 1;
+    row.effect.kind = rules5e::SpellEffectKind::Save;
+    row.effect.save_ability = rules5e::Ability(ab);
+    row.effect.on_save = rules5e::OnSave::None;
+    row.effect.applies_condition = true;
+    row.effect.condition = rules5e::Condition::Frightened;
+    row.effect.repeat_save = rules5e::RepeatSave::EndOfTurn;
+    row.condition_rounds = 10;   // 1 minute
+    row.success_immunity_hours = uint16_t(immune_h);
+    row.creature_types = rules5e::bit(rules5e::CreatureType::Humanoid);
+    row.must_see_source = true;
+    row.repeat_los_disadvantage = true;
+    row.immunity_on_end = true;
+    row.avert_eyes = true;
+    d.zone.triggers.push_back(row);
+    a.aura_defs.push_back(std::move(d));
+    return std::nullopt;
+}
+
 std::optional<std::string> apply_save_advantage(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
     if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": save_advantage needs a monster@5 file";
     if (a.schema_type != "monster") return f.id + ": save_advantage: only valid on monsters";
@@ -1450,6 +1525,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("freeze", {apply_freeze});                   // monster@5 (CONTENT_CONVENTIONS §42): gated in the hook
     r.add_hook("absorb", {apply_absorb});                   // monster@5 (CONTENT_CONVENTIONS §43): gated in the hook
     r.add_hook("innate_invisibility", {apply_innate_invisibility});   // monster@5 (CONTENT_CONVENTIONS §44): gated in the hook
+    r.add_hook("horrific_appearance", {apply_horrific_appearance});   // monster@5 (CONTENT_CONVENTIONS §45): gated in the hook
     r.add_hook("aura", {apply_aura});                       // monster@5 (batch 3 ghast Stench): gated in the hook
     r.add_hook("grant_die", {apply_grant_die});         // 7.2za Bardic Inspiration: gated in the hook
     r.add_hook("half_proficiency", {apply_half_proficiency});   // 7.2za Jack of All Trades: gated in the hook
