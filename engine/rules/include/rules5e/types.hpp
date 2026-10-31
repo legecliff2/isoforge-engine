@@ -146,7 +146,7 @@ struct Attack {
 inline constexpr int8_t kAttackAbilityFinesse = 6;
 inline constexpr int8_t kAttackAbilityNone = 7;
 inline constexpr uint8_t kTargetGateWilling = 1, kTargetGateGrappledBySelf = 2, kTargetGateIncapacitated = 4,
-                         kTargetGateRestrained = 8;
+                         kTargetGateRestrained = 8, kTargetGateCharmedBySelf = 16;
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
 // Range facts for a ranged attack at `dist_ft`: out of reach entirely, or beyond normal range (disadvantage).

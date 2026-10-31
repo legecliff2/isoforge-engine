@@ -775,12 +775,21 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 !c.line_of_sight(self, t->id))
                 continue;
             if (const auto* sd = c.spell_def(sa.spell_id); sd && sd->kind == rules5e::SpellEffectKind::Descriptive) continue;
-            // Chuul Tentacles / Otyugh Tentacle Slam: do not offer a save the current target fails. The cast would be
-            // refused and the turn would stall. Other targets stay the caller's choice.
+            // A gate the current target fails would refuse the cast and stall the turn. Willing is a caller
+            // flag; the built-in AI does not mark a target willing. Other targets stay the caller's choice.
             if (const auto* sd = c.spell_def(sa.spell_id);
-                sd && (sd->target_requires_any & rules5e::kTargetGateGrappledBySelf) &&
-                !(t->has(rules5e::Condition::Grappled) && rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) == self))
+                sd && sd->target_requires_any != 0 &&
+                !rules5e::target_gate_reason(s, *me, *t, sd->target_requires_any, false).empty())
                 continue;
+            if (const auto* sd = c.spell_def(sa.spell_id); sd && sd->charm_command) {
+                if (sd->target_types != 0 && (sd->target_types & rules5e::bit(t->creature_type)) == 0) continue;
+                bool held = false;
+                for (const auto& e : s.effects)
+                    if (e.spell_id == sd->id && e.caster == self && e.target == t->id &&
+                        e.control == uint8_t(rules5e::ControlKind::Command))
+                        held = true;
+                if (held) continue;   // B16: ordering the charmed creature is not this AI's choice
+            }
             if (const auto* sd = c.spell_def(sa.spell_id);
                 sd && ((sd->has_target_condition && !t->has(sd->target_condition)) ||
                        (sd->caster_sees_target && !rules5e::sight(s, self, t->id).can_see)))

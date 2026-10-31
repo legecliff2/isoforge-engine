@@ -269,11 +269,7 @@ void note_source(EncounterState& s, Condition c, CombatantId source, CombatantId
     for (auto& e : s.sourced) if (e.condition == c && e.target == target && e.source == source) return;
     s.sourced.push_back(SourcedCondition{c, target, source, 0});
 }
-bool charmed_by(const EncounterState& s, CombatantId actor, CombatantId other) {
-    for (const auto& e : s.sourced)
-        if (e.condition == Condition::Charmed && e.target == actor && e.source == other && e.suppress_count == 0) return true;
-    return false;
-}
+// charmed_by is public (encounter.hpp): the driver and the kiss gate both read it.
 
 // R-G12 PR 2: summon `c` ends (reason 1 concentration, 3 0 HP, 5 encounter ended): SummonEnded, then it is dead and gone (no
 // CombatantDied of its own; a form it wears ends silently with it).
@@ -571,6 +567,10 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
     if (e.immunity_on_end_hours > 0 && !t->dead)
         s.aura_immunities.push_back(AuraImmunity{e.target, e.caster, e.spell_id,
                                                  uint32_t(s.round) + uint32_t(e.immunity_on_end_hours) * 600u});
+    // B16 Charm: ending the effect (a repeat save, the day, or a new charm) grants the same action immunity as a success.
+    if (e.action_immunity_on_end_hours > 0 && !t->dead)
+        s.action_immunities.push_back(ActionImmunity{e.target, e.action_immunity_on_end_scope == 1 ? e.caster : CombatantId(0),
+                                                     e.spell_id, uint32_t(s.round) + uint32_t(e.action_immunity_on_end_hours) * 600u});
 }
 
 // ---- R-G11 zones: lifetime (triggers are further down, after damage_creature) ----
@@ -1810,17 +1810,9 @@ void life_drain(EncounterState& s, Combatant& t, int taken, int dc, CombatantId 
     if (cap <= 0) { kill(t, ev); check_end(s, ev); }
 }
 
-// Batch 3 (vampire spawn Bite): a gate mask needs one of: a willing target (the request says so and it is on the attacker's
-// team), grappled by the attacker, incapacitated, restrained. Empty = allowed. A mask that is only grappled-by-self (Chuul
-// Tentacles / Otyugh Tentacle Slam, on a save as well as an attack) names that one requirement.
+// The body is target_gate_reason (public). Kept as a name the cast path already uses.
 static std::string_view target_gate_refusal(const EncounterState& s, const Combatant& a, const Combatant& t, uint8_t g, bool willing) {
-    if (g == 0) return {};
-    if ((g & kTargetGateWilling) && willing && t.team == a.team) return {};
-    if ((g & kTargetGateGrappledBySelf) && t.has(Condition::Grappled) && condition_source(s, t.id, Condition::Grappled) == a.id) return {};
-    if ((g & kTargetGateIncapacitated) && is_incapacitated(t)) return {};
-    if ((g & kTargetGateRestrained) && t.has(Condition::Restrained)) return {};
-    if (g == kTargetGateGrappledBySelf) return "target must be grappled by the user";
-    return "target must be willing, grappled by the attacker, incapacitated, or restrained";
+    return target_gate_reason(s, a, t, g, willing);
 }
 // g_sight_base is declared at the top of this namespace (7.2x: the start-of-step state sight reads during a step).
 
@@ -3922,9 +3914,9 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 continue;   // 7.2w: too large / already holding one: no save (also a size-gated save_condition rider: Shield Bash)
             if (!def.is_spell && def.target_types != 0 && !valid_target_type(def, *t))
                 continue;   // 7.2y target_creature_types (Turn Undead: undead): others are not affected and make no save
-            if ((def.control == ControlKind::Turned || def.control == ControlKind::Command) && s.hooks.sight_facts &&
+            if ((def.control == ControlKind::Turned || (def.control == ControlKind::Command && !def.charm_command)) && s.hooks.sight_facts &&
                 !sight(s, t->id, a.id).perceives)
-                continue;   // 7.2x: Turn Undead / Command need the target to see or hear the user (no hook: sim's target list)
+                continue;   // 7.2x: Turn Undead / Command need the target to see or hear the user. Charm is telepathic (no perceive gate).
             if (def.charm_immune && (immune_to(s, *t, Condition::Charmed) || immune_from(s, *t, Condition::Charmed, a.id)))
                 continue;   // 7.2zj Suggestion: immune to the charmed condition, so immune to the effect (no save)
             if (def.requires_hearing && t->has(Condition::Deafened))
@@ -3961,7 +3953,14 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (spared && ctx.spared_no_damage) dealt = 0;
             if (t->evasion && ab == Ability::Dex && def.on_save == OnSave::Half) dealt = r.success ? 0 : dmg / 2;   // Evasion
             const int16_t hp_before = t->hp;
-            if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dealt), def.damage_type, dq), false, ev, &ts, &ctx); }
+            int drained = 0;   // B16: the mitigated packet, before temporary hit points and before a reduce-damage reaction
+            if (dealt > 0) {
+                const DamageApplied preview = zone_apply_damage(s, *t, int16_t(std::min(dealt, 32767)), def.damage_type, dq);
+                drained = preview.dealt;
+                const TrigSrc ts{&a, nullptr, true};
+                damage_creature(s, *t, preview, false, ev, &ts, &ctx);
+            }
+            if (def.save_drain_max_hp && drained > 0 && !t->dead) life_drain(s, *t, drained, 0, a.id, ev);
             if (def.has_also_damage && !t->dead) {   // 7.2zj Ice Storm: the cold packet uses the same save, half, and Evasion
                 int extra = r.success ? (def.on_save == OnSave::Half ? also_dmg / 2 : 0) : also_dmg;
                 if (spared && ctx.spared_no_damage) extra = 0;
@@ -4064,6 +4063,15 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 continue;
             }
             if (def.applies_condition && !r.success && !t->dead && !immune_to(s, *t, cond) && !immune_from(s, *t, cond, a.id)) {
+                if (def.charm_command) {   // one charmed target: the previous effect ends (and that ending grants the immunity)
+                    for (;;) {
+                        auto old = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+                            return o.spell_id == def.id && o.caster == a.id && o.target != t->id &&
+                                   o.control == uint8_t(ControlKind::Command); });
+                        if (old == s.effects.end()) break;
+                        end_effect(s, std::size_t(old - s.effects.begin()), ev);
+                    }
+                }
                 if (!t->has(cond)) {
                     add_condition(*t, cond);
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(cond));
@@ -4079,6 +4087,10 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 s.effects.back().ends_on_restoration = def.ends_on_restoration;   // 7.2zj Geas
                 if (def.escalates && !at_once) { s.effects.back().escalates = true; s.effects.back().escalate_to = def.escalate_to; }
                 s.effects.back().control = uint8_t(def.control);
+                if (def.charm_command && def.success_immunity_hours > 0) {   // B16: the effect ending grants the same immunity as a success
+                    s.effects.back().action_immunity_on_end_hours = def.success_immunity_hours;
+                    s.effects.back().action_immunity_on_end_scope = def.success_immunity_scope;
+                }
                 // 7.2v: prone and incapacitated. Incapacitated is this effect's own only if it added it, so ending the
                 // laughter never strips an Incapacitated from another source.
                 if (def.control == ControlKind::Laughter && !t->has(Condition::Incapacitated)) {
@@ -4843,7 +4855,9 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, def, *t)) return fail("invalid spell target");
         // 7.2t: a creature with total cover can't be targeted directly (an area skips it at resolution instead)
         if (req.has_area_origin && def.area == AreaShape::None) return fail("area_origin: area spells only");
-        if (def.control == ControlKind::Command ? (req.command_word < 1 || req.command_word > 5) : req.command_word != 0)
+        if (def.charm_command) {
+            if (req.command_word > uint8_t(CommandWord::Suicidal)) return fail("command_word: 0..6 for a Charm");
+        } else if (def.control == ControlKind::Command ? (req.command_word < 1 || req.command_word > 5) : req.command_word != 0)
             return fail("command_word: 1..5 for a Command spell only");
         if (def.area == AreaShape::None && t != &a) {
             const bool sw = def.kind == SpellEffectKind::SummonWeapon && !req.summon_tiles.empty();   // from the spawn tile
@@ -5004,9 +5018,9 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         for (Combatant* t : T)
             if (!sight(s, a.id, t->id).can_see) return fail("caster cannot see the target");
     }
-    if (def.target_requires_any != 0)   // Chuul Tentacles / Otyugh Tentacle Slam: each named target, before the action is spent
+    if (def.target_requires_any != 0)   // Chuul Tentacles / Otyugh Tentacle Slam / B16 Draining Kiss: before the action is spent
         for (Combatant* t : T)
-            if (const auto why = target_gate_refusal(s, a, *t, def.target_requires_any, false); !why.empty()) return fail(why);
+            if (const auto why = target_gate_refusal(s, a, *t, def.target_requires_any, req.target_willing); !why.empty()) return fail(why);
     if (def.has_target_condition)   // B15 Death Glare: the named target must already be frightened. Action unspent.
         for (Combatant* t : T)
             if (!t->has(def.target_condition)) return fail("target is not frightened");
@@ -5052,6 +5066,38 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
             std::find(ids.begin(), ids.end(), req.ward_alternate) != ids.end())
             return fail("ward_alternate: not a legal alternate target");
         ward_alt = find_mut(s, req.ward_alternate);
+    }
+    if (def.charm_command && T.size() == 1) {   // B16: an order does not spend the action and does not save again
+        ActiveSpellEffect* held = nullptr;
+        for (auto& e : s.effects)
+            if (e.spell_id == def.id && e.caster == a.id && e.target == T[0]->id && e.control == uint8_t(ControlKind::Command))
+                held = &e;
+        if (held) {
+            if (req.command_word < 1 || req.command_word > uint8_t(CommandWord::Suicidal))
+                return fail("command_word: 1..6 to command the charmed target");
+            StepResult out{true, {}, {}};
+            if (req.command_word == uint8_t(CommandWord::Suicidal)) {
+                const SaveSource ssrc{true, 0, 0};
+                auto r = save_roll(s, *T[0], held->save_ability, held->dc, RollMode::Normal, out.events, &ssrc);
+                emit(out.events, EventKind::SavingThrowRolled, T[0]->id, CombatantId(held->save_ability),
+                     r.roll.natural, r.roll.total, int32_t(r.success));
+                if (r.success) {
+                    const uint32_t sid = def.id;
+                    const CombatantId caster = a.id, target = T[0]->id;
+                    for (;;) {
+                        auto it = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+                            return o.spell_id == sid && o.caster == caster && o.target == target; });
+                        if (it == s.effects.end()) break;
+                        end_effect(s, std::size_t(it - s.effects.begin()), out.events);
+                    }
+                }
+            } else {
+                held->command_word = req.command_word;
+            }
+            check_end(s, out.events);
+            return out;
+        }
+        if (req.command_word != 0) return fail("command_word: a Charm cast takes no word");
     }
     if (def.requires_jumped_ft > 0) {   // B8 Deadly Leap: the jump already happened. The action is not spent when it did not.
         if (s.budget.jumped_ft < def.requires_jumped_ft) return fail("has not jumped far enough");
@@ -6693,6 +6739,13 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
         if (heal ? t.team != a.team : (t.team == a.team || t.id == a.id)) continue;
         if (!creature_ok(t)) continue;
         if (const auto why = target_gate_refusal(s, a, t, d.target_requires_any, false); !why.empty()) continue;
+        if (d.charm_command) {   // a creature this caster already charmed is ordered, not charmed again
+            bool held = false;
+            for (const auto& e : s.effects)
+                if (e.spell_id == d.id && e.caster == a.id && e.target == t.id && e.control == uint8_t(ControlKind::Command))
+                    held = true;
+            if (held) continue;
+        }
         if (d.has_target_condition && !t.has(d.target_condition)) continue;   // B15: not offered when the cast would be refused
         if (d.caster_sees_target && s.hooks.sight_facts && !sight(s, a.id, t.id).can_see) continue;
         if (heat) {   // one action per eligible worn or held metal item; none when submit would refuse the cast
@@ -6921,11 +6974,27 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             out.push_back(r);
         }
     add(ActionKind::EndTurn);
-    {   // 7.2v: a Command cast is listed once per word (step requires one)
+    if (s.hooks.spells && !is_incapacitated(a)) {   // B16: order the charmed creature. Does not spend the action.
+        for (const auto& e : s.effects) {
+            if (e.caster != a.id || e.control != uint8_t(ControlKind::Command)) continue;
+            const SpellDef* d = s.hooks.spells->find(e.spell_id);
+            if (!d || !d->charm_command) continue;
+            const Combatant* t = find(s, e.target);
+            if (!t || t->dead) continue;
+            for (uint8_t w = 1; w <= uint8_t(CommandWord::Suicidal); ++w) {
+                ActionRequest r{a.id, ActionKind::CastSpell, t->id};
+                r.spell_id = d->id;
+                r.command_word = w;
+                r.targets = {t->id};
+                out.push_back(r);
+            }
+        }
+    }
+    {   // 7.2v: a Command cast is listed once per word (step requires one). Charm lists word 0; the orders are above.
         std::vector<ActionRequest> x; x.reserve(out.size());
         for (auto& r : out) {
             const SpellDef* d = r.kind == ActionKind::CastSpell && r.zone_move == 0 && !r.sustain ? spell_def(s, r.spell_id) : nullptr;
-            if (d && d->control == ControlKind::Command && r.command_word == 0)
+            if (d && d->control == ControlKind::Command && !d->charm_command && r.command_word == 0)
                 for (uint8_t w = 1; w <= 5; ++w) { x.push_back(r); x.back().command_word = w; }
             else x.push_back(std::move(r));
         }
@@ -7353,6 +7422,26 @@ bool apply_sourced_condition(EncounterState& s, CombatantId source, CombatantId 
 CombatantId condition_source(const EncounterState& s, CombatantId target, Condition c) {
     for (const auto& e : s.sourced) if (e.condition == c && e.target == target) return e.source;
     return 0;
+}
+
+bool charmed_by(const EncounterState& s, CombatantId actor, CombatantId other) {
+    for (const auto& e : s.sourced)
+        if (e.condition == Condition::Charmed && e.target == actor && e.source == other && e.suppress_count == 0) return true;
+    return false;
+}
+
+std::string_view target_gate_reason(const EncounterState& s, const Combatant& a, const Combatant& t, uint8_t g, bool willing) {
+    if (g == 0) return {};
+    if ((g & kTargetGateWilling) && willing && t.team == a.team) return {};
+    if ((g & kTargetGateGrappledBySelf) && t.has(Condition::Grappled) && condition_source(s, t.id, Condition::Grappled) == a.id) return {};
+    if ((g & kTargetGateIncapacitated) && is_incapacitated(t)) return {};
+    if ((g & kTargetGateRestrained) && t.has(Condition::Restrained)) return {};
+    if ((g & kTargetGateCharmedBySelf) && charmed_by(s, t.id, a.id)) return {};
+    if (g == kTargetGateGrappledBySelf) return "target must be grappled by the user";
+    if (g == kTargetGateCharmedBySelf) return "target must be charmed by the user";
+    if (g == kTargetGateWilling) return "target must be willing";
+    if (g == (kTargetGateCharmedBySelf | kTargetGateWilling)) return "target must be charmed by the user or willing";
+    return "target must be willing, grappled by the attacker, incapacitated, or restrained";
 }
 
 std::vector<CombatantId> grappled_by(const EncounterState& s, CombatantId g) {

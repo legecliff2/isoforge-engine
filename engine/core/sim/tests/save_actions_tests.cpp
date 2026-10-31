@@ -398,8 +398,8 @@ TEST_CASE("save_effect grappled_by_self: one cast names only creatures the user 
         CHECK(e->find(needle) != std::string::npos);
     };
     Json bad = m;
-    bad["actions"].back()["target_requires_any"] = Json::array({"willing"});
-    refuse(bad, "t.badgate", "grappled_by_self only");
+    bad["actions"].back()["target_requires_any"] = Json::array({"restrained"});
+    refuse(bad, "t.badgate", "grappled_by_self, charmed_by_self, or willing");
     bad = m;
     bad["actions"].back()["area"] = {{"shape", "sphere"}, {"size_ft", 5}};
     refuse(bad, "t.badarea", "takes no area");

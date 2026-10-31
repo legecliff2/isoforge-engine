@@ -1543,3 +1543,109 @@ Deferred, not this action:
 * `sea_hag.json` is not authored.
 
 This section does not author `srd51.monster.sea_hag`. The row stays deferred until T&C writes the stat block. Illusory Appearance is still the block. Counts stay 200 authored and 10 deferred.
+
+## 47. Charm (monster@5 `save_effect` key `charm_command`)
+
+SRD 5.1 Succubus/Incubus Charm, the whole action except the clauses called out under product calls:
+
+"Charm. One humanoid the fiend can see within 30 feet of it must succeed on a DC 15 Wisdom saving throw or be magically charmed for 1 day. The charmed target obeys the fiend's verbal or telepathic commands. If the target suffers any harm or receives a suicidal command, it can repeat the saving throw, ending the effect on a success. If the target successfully saves against the effect, or if the effect on it ends, the target is immune to this fiend's Charm for the next 24 hours. The fiend can have only one target charmed at a time. If it charms another, the effect on the previous target ends."
+
+It is an action. It is not Charm Person (`ends_on_ally_harm` ends with no save, and only when the caster's team deals the damage). It is not the Command spell (the word is chosen at that cast, and the effect is one round). This action uses both: the charmed condition, and `ControlKind::Command` with no word until the fiend gives one.
+
+```json
+{ "id": "charm", "name": "Charm", "kind": "save_effect", "range_ft": 30,
+  "save": { "ability": "wis", "dc": 15 }, "magical": true, "caster_sees_target": true,
+  "target_creature_types": ["humanoid"], "control": "command", "charm_command": true,
+  "immune_on_success": { "hours": 24, "scope": "same_source" },
+  "apply": [{ "condition": "charmed", "duration": { "kind": "rounds", "n": 14400 }, "repeat_save": "on_damage" }] }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `charm_command` | `true`. Allows `control: command` on a monster save. The cast takes no word | `charm_command must be true` / `charm_command needs control command` / `control command needs a spell (the word is a cast choice)` when the key is absent |
+| `control` | `"command"` | `charm_command needs control command` |
+| `magical` | `true`. The save is magic, so Magic Resistance applies | `charm_command needs magical: true` |
+| `caster_sees_target` | `true`. The fiend must be able to see the target (`caster cannot see the target`). No sight hook: the cast is allowed | `charm_command needs caster_sees_target` |
+| `target_creature_types` | `["humanoid"]` for this action. Another type is `invalid creature type for this spell`, and the action is not spent | `charm_command needs target_creature_types` |
+| `apply` | one tracked `charmed`, `repeat_save: on_damage`, `duration` rounds. 1 day is 14400 rounds (24 × 600) | `charm_command needs a tracked charmed apply` / `charm_command needs repeat_save on_damage` / `charm_command needs a rounds duration` |
+| `immune_on_success` | `{hours, scope}`. `same_source` is this fiend only (`action_immunities`, 0xE1) | `charm_command needs immune_on_success` |
+
+Any area is `charm_command takes no area`. Below monster@5 the loader says `charm_command needs a monster@5 file`. `drop_to_zero` is `charm_command takes no drop_to_zero`.
+
+What the key fixes, because the sentence fixes it:
+
+* **Charmed for 1 day.** The existing Charmed condition, sourced to the fiend (`note_source`), so a later kiss can tell this fiend's charm from someone else's. `ControlKind::Command` is on the same effect, with `command_word` 0. Ending the effect ends both.
+* **Obeys commands.** On the fiend's later turn, `CastSpell` of this same action at the charmed creature with `command_word` 1..5 (Approach, Drop, Flee, Grovel, Halt) sets the word. It does not roll a save and it does not spend the action. The existing Command restrictions then apply on the charmed creature's turns until the word changes. Word 0 leaves the charmed restriction only: it cannot attack its charmer.
+* **Suicidal command.** `command_word` 6 (`CommandWord::Suicidal`) is not stored and is not obeyed. The target repeats the Wisdom save immediately. A success ends the effect. A failure leaves the charm and the previous word.
+* **Any harm.** `repeat_save: on_damage` is the existing repeat save, from any creature's damage, not only the fiend's team. A success ends the effect.
+* **Immunity.** A successful initial save pushes `action_immunities` for `immune_on_success.hours` (0xE1). `same_source` records this fiend. Ending the effect (the repeat save, the day, or a replacement) pushes the same row. An immune creature makes no save. The action is still spent.
+* **One at a time.** Applying the charm ends this fiend's previous charm from this action. That ending grants the previous target the immunity.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The word reuses `command_word` (log_hash 0xC4), including 6. The immunity reuses 0xE1. The charmed effect folds under the existing effect rows. Replay re-runs the cast and the save. Next free stays **0xE5**.
+
+The built-in AI casts Charm (word 0) at a humanoid it can see. It does not issue a later word. A creature it already charmed is not offered the cast again, so the turn does not stall on a refused order.
+
+Product calls, not decided here:
+
+* **A command costs nothing and is given on the fiend's turn.** The sentence does not spend an action. Language and a telepathy channel are not modelled, the same gap as the Command spell.
+* **The five Command words, plus suicidal as 6.** A command other than those words is not expressible. On a failed suicidal save the command is not carried out.
+* **Sight on a later command.** The order uses the spell's `caster_sees_target` gate. A command given while the fiend cannot see the target is refused.
+* **Replacement grants immunity.** The previous target's effect ended, so the sentence's immunity applies. A ruling that replacement should not immunize is not taken.
+* **The fiend's death.** The charm is not concentration. The fiend dying does not end it.
+* **The Command spell's "the target must see or hear you" gate does not apply.** The commands are telepathic. `charm_command` does not use that gate.
+
+Deferred, not this action:
+
+* Etherealness.
+* Shapechanger. No shape, no forms, no shapechanger effect.
+* Draining Kiss is §48.
+* `succubus.json` is not authored.
+
+This section does not author `srd51.monster.succubus`. The row stays deferred until T&C writes the stat block. Etherealness and Shapechanger are still the block. Counts stay 200 authored and 10 deferred.
+
+## 48. Draining Kiss (monster@5 `save_effect` keys `drain_max_hp` and `charmed_by_self`)
+
+SRD 5.1 Succubus/Incubus Draining Kiss, the whole action except the willing-enemy clause called out under product calls:
+
+"Draining Kiss. The fiend kisses a creature charmed by it or a willing creature. The target must make a DC 15 Constitution saving throw against this magic, taking 32 (5d10 + 5) psychic damage on a failed save, or half as much damage on a successful one. The target's hit point maximum is reduced by an amount equal to the damage taken. This reduction lasts until the target finishes a long rest. The target dies if this effect reduces its hit point maximum to 0."
+
+It is an action. It is not weapon-attack Life Drain. That `drain` object deals its damage on a hit and may roll a second Constitution save to avoid the reduction. This action has one save. The reduction equals the damage taken on a failure and on a success.
+
+```json
+{ "id": "draining_kiss", "name": "Draining Kiss", "kind": "save_effect", "range_ft": 5,
+  "save": { "ability": "con", "dc": 15 }, "magical": true, "on_success": "half",
+  "damage": [{ "dice": "5d10+5", "type": "psychic" }], "drain_max_hp": true,
+  "target_requires_any": ["charmed_by_self", "willing"] }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `drain_max_hp` | `true`. After the save's damage, `life_drain` with DC 0 reduces the maximum by the damage taken. A maximum of 0 kills. A long rest clears `hp_max_reduction` | `drain_max_hp must be true` / `drain_max_hp needs damage` / `drain_max_hp takes no charm_command or drop_to_zero` |
+| `damage` / `on_success` | the existing save damage. `half` is this kiss | (existing) |
+| `magical` | `true`. Psychic damage is magic, and the save is magic | (existing) |
+| `target_requires_any` | `charmed_by_self`, `willing`, or `grappled_by_self`, any non-empty set of those three. `charmed_by_self` is Charmed sourced to the user. `willing` is the existing `ActionRequest::target_willing` (0xDD) and only an ally | `target_requires_any on a save_effect is grappled_by_self, charmed_by_self, or willing` |
+
+`incapacitated` and `restrained` stay weapon-attack gates. No area. Below monster@5 the loader says `drain_max_hp needs a monster@5 file` or `target_requires_any on a save_effect needs a monster@5 file`. A target that meets neither gate is refused before the action is spent (`target must be charmed by the user or willing` when both bits are set).
+
+The damage taken is `DamageApplied::dealt`: after immunity, resistance, and vulnerability, before temporary hit points. Half on a success is halved before that mitigation (the existing `OnSave::Half` path). Overkill counts. A creature immune to psychic takes 0 and the maximum does not drop. A creature already dead from the damage is not reduced again. A creature with death saves that is only downed still takes the reduction, and a maximum of 0 uses the existing `kill` path.
+
+The built-in AI does not offer the kiss when the current target fails the gate, and it does not set `target_willing`. A willing ally is a caller request. `legal_actions` lists hostile targets, so it does not list that ally.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `target_willing` reuses 0xDD. The maximum reduction is the existing `hp_max_reduction` fold. The save is the existing `SavingThrowRolled`. Replay re-runs the cast. Next free stays **0xE5**.
+
+Product calls, not decided here:
+
+* **A hostile creature with `target_willing` set is not willing.** The existing gate requires the same team. A willing enemy is not this gate.
+* **A reaction that reduces the damage does not reduce the maximum-HP loss.** The reduction is the mitigated packet computed before that reaction.
+* **Temporary hit points do not shrink the reduction.** They absorb current hit points only.
+* **Range.** The sentence says the fiend kisses. `range_ft` 5 is the touch the stat block will author. This key does not force 5.
+
+Deferred, not this action:
+
+* Etherealness.
+* Shapechanger. No shape, no forms, no shapechanger effect.
+* Charm is §47.
+* `succubus.json` is not authored.
+
+This section does not author `srd51.monster.succubus`. The row stays deferred until T&C writes the stat block. Etherealness and Shapechanger are still the block. Counts stay 200 authored and 10 deferred.
+

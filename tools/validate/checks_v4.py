@@ -1618,6 +1618,76 @@ def check_death_glare(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     return errs, []
 
 
+def check_charm_command(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Charm (CONTENT_CONVENTIONS §47; sim content.cpp compile_save_action). The loader's refusals as errors."""
+    errs: list[str] = []
+    for i, act in enumerate(doc.get("actions") or []):
+        if not isinstance(act, dict) or "charm_command" not in act:
+            continue
+        where = f"actions[{i}]: {doc.get('id', '?')}: save_effect '{act.get('id', '')}'"
+        if act.get("kind") != "save_effect":
+            errs.append(f"{where}: charm_command is save_effect only")
+            continue
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{where}: charm_command needs a monster@5 file")
+            continue
+        if "area" in act:
+            errs.append(f"{where}: charm_command takes no area")
+        if act.get("charm_command") is not True:
+            errs.append(f"{where}: charm_command must be true")
+            continue
+        if act.get("control") != "command":
+            errs.append(f"{where}: charm_command needs control command")
+        if act.get("magical") is not True:
+            errs.append(f"{where}: charm_command needs magical: true")
+        if act.get("caster_sees_target") is not True:
+            errs.append(f"{where}: charm_command needs caster_sees_target")
+        apply = act.get("apply") if isinstance(act.get("apply"), list) else []
+        first = apply[0] if apply and isinstance(apply[0], dict) else {}
+        dur = first.get("duration") if isinstance(first.get("duration"), dict) else {}
+        if first.get("condition") != "charmed" or dur.get("kind") != "rounds":
+            errs.append(f"{where}: charm_command needs a tracked charmed apply")
+        if first.get("repeat_save") != "on_damage":
+            errs.append(f"{where}: charm_command needs repeat_save on_damage")
+        if not isinstance(dur.get("n"), int) or dur.get("n") < 1:
+            errs.append(f"{where}: charm_command needs a rounds duration")
+        immune = act.get("immune_on_success")
+        if not isinstance(immune, dict) or not immune.get("hours"):
+            errs.append(f"{where}: charm_command needs immune_on_success")
+        types = act.get("target_creature_types")
+        if not isinstance(types, list) or not types:
+            errs.append(f"{where}: charm_command needs target_creature_types")
+        if act.get("drop_to_zero") is True:
+            errs.append(f"{where}: charm_command takes no drop_to_zero")
+    return errs, []
+
+
+def check_drain_max_hp(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Draining Kiss (CONTENT_CONVENTIONS §48; sim content.cpp compile_save_action). The loader's refusals as errors."""
+    errs: list[str] = []
+    for i, act in enumerate(doc.get("actions") or []):
+        if not isinstance(act, dict) or "drain_max_hp" not in act:
+            continue
+        where = f"actions[{i}]: {doc.get('id', '?')}: save_effect '{act.get('id', '')}'"
+        if act.get("kind") != "save_effect":
+            errs.append(f"{where}: drain_max_hp is save_effect only")
+            continue
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{where}: drain_max_hp needs a monster@5 file")
+            continue
+        if "area" in act:
+            errs.append(f"{where}: drain_max_hp takes no area")
+        if act.get("drain_max_hp") is not True:
+            errs.append(f"{where}: drain_max_hp must be true")
+            continue
+        damage = act.get("damage")
+        if not isinstance(damage, list) or not damage:
+            errs.append(f"{where}: drain_max_hp needs damage")
+        if act.get("charm_command") is True or act.get("drop_to_zero") is True:
+            errs.append(f"{where}: drain_max_hp takes no charm_command or drop_to_zero")
+    return errs, []
+
+
 def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     """Batch 3 save_advantage (sim features.cpp apply_save_advantage): the loader's refusals as errors (same text), and a
     warning for an identical second declaration (adds nothing). Distinct save_advantage traits stack (Magic Resistance plus
@@ -1716,10 +1786,12 @@ def check_batch3_actions(doc: dict, tag: str) -> list[str]:
         for k in BATCH3_WEAPON_ONLY_KEYS:
             if k not in a:
                 continue
-            # Chuul Tentacles / Otyugh Tentacle Slam: a save_effect may require grappled_by_self, and nothing else.
+            # Chuul Tentacles / Otyugh Tentacle Slam: grappled_by_self. B16 Draining Kiss: charmed_by_self and willing.
             if k == "target_requires_any" and a.get("kind") == "save_effect":
-                if a.get("target_requires_any") != ["grappled_by_self"]:
-                    errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: target_requires_any on a save_effect is grappled_by_self only")
+                gates = a.get("target_requires_any")
+                allowed = {"grappled_by_self", "charmed_by_self", "willing"}
+                if not isinstance(gates, list) or not gates or any(g not in allowed for g in gates) or len(gates) != len(set(gates)):
+                    errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: target_requires_any on a save_effect is grappled_by_self, charmed_by_self, or willing")
                 if "area" in a:
                     errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: target_requires_any takes no area")
                 if "targets" in a and not _int_in(a.get("targets"), 1, 8):
