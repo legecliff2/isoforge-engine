@@ -507,3 +507,287 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Innate Invisibility | invisible stalker | NEW (wiring) | monster@5 trait `innate_invisibility` (CONTENT_CONVENTIONS §44). The creature has `Condition::Invisible` from spawn. No duration, no concentration, and an attack or a cast does not end it. A spell effect with `ends_on` still ends; if this trait holds the condition, the bit stays. Attack advantage and disadvantage are the existing Invisible condition. Sight sets `subject_invisible` from that condition. No new hash tag. `srd51.monster.invisible_stalker` authors this trait. Faultless Tracker stays description only (not this trait, and not a tracking mechanic). See Invisibility, Faerie Fire outlined, and Branding Smite `reveal_invisible` versus a permanent holder stay open. The built-in AI is not changed. Whether Invisible needs a Combat::hash tag stays open. Heard/noticed hiding is still not modelled. |
 | Horrific Appearance | sea hag | NEW (wiring) | monster@5 trait `horrific_appearance` (CONTENT_CONVENTIONS §45). A humanoid that starts its turn within `radius_ft` and can see the owner with sight saves or is frightened for 1 minute (10 rounds). End-of-turn repeat save, with disadvantage while the owner is within line of sight. Success, or the effect ending, grants 24-hour immunity to this owner's aura (0xDE). Unless surprised, AppearanceResponse may avert: no initial save, and attack rolls against that owner have disadvantage until the averter's next turn starts (an AttackRoll modifier, not `gaze_averted`). The choice reuses `avert_gaze` (0xBB). Not magical. The built-in AI looks and does not avert. Illusory Appearance is not this trait. `sea_hag.json` is not authored. |
 | Death Glare | sea hag | NEW (wiring) | monster@5 `save_effect` keys `drop_to_zero`, `target_has_condition: frightened`, `caster_sees_target`, plus `target_must_see_source` and `magical` (CONTENT_CONVENTIONS §46). One frightened creature the user can see. If that creature can see the user, a failed Wisdom save drops it to 0 hit points. Not a damage packet: no `DamageDealt`, no damage type. A creature that is not frightened is refused before the action is spent. No new hash tag. `sea_hag.json` is not authored. |
+| Reel (damageless restraining grapple, and pull) | roper | NEW (wiring) | monster@5 `on_hit` grapple `no_damage` with `restrains` (CONTENT_CONVENTIONS §35) and action `pull` (`feet` 25, `targets` 6, `target_requires_any: [grappled_by_self]`). A hit grapples and deals no damage. The pull moves each named creature grappled by the user up to 25 feet toward the user (`forced_feet` / 0xB4). Not a free rider. Not hashed beyond 0xB4 and 0xDB. `srd51.monster.roper` authors both. Grasping Tendrils as attackable objects, disadvantage on Strength checks and Strength saving throws, and Reel between the tendril attacks and the bite stay description only. The built-in AI does not use Reel. |
+| Petrifying Gaze / Touch (delayed condition progression) | basilisk, cockatrice | NEW (wiring) | `SpellDef::escalates` / `escalate_to` / `escalate_margin`: restrained, petrified on the failed repeat save (or at once when failing by the margin) (small leftovers, VERSION_BUMP_BATCH 7.2j). Gaze trigger (7.2p): `Combatant::gazes`, turn-start `GazeResponse` (`gaze_seen` sim fact, `avert_gaze` caller input, log_hash 0xBB; averted state Combat::hash 0xAE), averted eyes = gazer unseen (disadvantage against it, its attacks with advantage). Medusa (margin 5) and basilisk covered. Sim (7.2p EC): loader `gaze` feature kind (synthetic Save SpellDef + `Combatant::Gaze`), `Combat::gaze_seen` (line of sight, within `range_ft`, not Blinded, gazer not Invisible; one fact for both directions until R-G13) filled at submit, folds 0xBB / 0xAE, AI / headless driver answer without averting (surprised turn: `GazeResponse`, then `EndTurn`). Pending: schema (T&C). Cockatrice's touch is an on-hit rider, not a gaze. Gorgon Petrifying Breath is a monster@5 area `save_effect` with the same `escalates` / `escalate_to` / `escalate_margin` (failed save restrained, failed end-of-turn repeat petrified; margin 0). No new hash tag (`ActiveSpellEffect::escalates` is already folded). The bonus-action hooves after Trampling Charge stays a partial. |
+| Teleport action (Recharge 4-6) | blink dog | NEW (wiring) | An action, not a bonus action (SRD 5.1: "Teleport (Recharge 4-6). The dog magically teleports, along with any equipment it is wearing or carrying, up to 40 feet to an unoccupied space it can see. Before or after teleporting, the dog can make one bite attack."). Innate `Teleport` effect (R-G9, 7.2k); monster@5 `kind:"teleport"` + `with_attack` (EC feat/monster-batch3-riders) does teleport-then-bite. **Deferred:** bite-then-teleport; the AI does not pick the action. |
+| Shapechanger | werewolf, doppelganger | NEW (wiring) | R-G12 rules PR 1 (7.2q): `FeatureSpec{form = Shapechanger}` form swap with one HP pool, action `Revert`, reverts on death; Polymorph refuses shapechangers (D13). Sim done (R-G12 sim PR 1): trait kind `shapechanger {cost, forms: [{id, name, size?, armor_class?, speed?, actions?, creature_type?}]}` (needs the fact `shapechanger: true`; `speed` keeps its walk, `actions` drops the other own actions' attacks), `build_form` from the creature's own block with the listed overrides, one HP pool; the AI keeps the spawn form. T&C schema: #163. |
+| Rust Metal / Corrode / Stench | rust monster, ghast | NEW (Stench: sim done, content pending) | Stench: monster@5 trait `effect.kind: "aura"` (feat/monster-ghast-stench) -> synthetic creature-anchored Zone, attached at Combat::create; works while the ghast is alive (unconscious included), ends at its death; DC 10 Con at the start of a turn within 5 ft, poisoned until the start of its next turn; a success gives 24 h per-source immunity (0xDE). Stench expiry is per source (Lich): its instance (spell_id, ghast) ends alone; poison from another effect, a sourced condition or an untracked prior instance stays. Rust Metal / Corrode: T&C-G5 (0xE0 reserved). The bite disease schedule is CONTENT_CONVENTIONS §36 (0xE3). Mummy rot's automatic 24h loss, Lesser Restoration's disease clause, Lay on Hands' disease spend, and Divine Health are not that key. |
+| Auras on summoned creatures | (none supported today) | DEFERRED | Creature auras (monster@5 `effect.kind: "aura"`) attach only at `Combat::create`; a creature summoned mid-combat (`Combat::spawn_summon`) never gets its aura (TODO at both sites). No supported summon target has one: `content/packs` has no creature-summoning spell (only `summon_weapon`: Spiritual Weapon, Flame Blade) and no monster with an `aura` trait. |
+| Blood Frenzy (advantage vs damaged creatures) | sharks | NEW (wiring) | Rules done: `{Attack, Advantage, kWhenTargetDamaged}` (reads target HP). Content loader is T&C's. |
+| False Appearance, ambush setups | mimic | OOS | Only surprise (R-G16) matters. |
+| Amphibious, Hold Breath, Spider Climb, Web Walker, Web Sense | crocodile, giant spider | OOS | Non-combat movement/sense. |
+
+(Representative lists name examples to size the mechanic, not a complete CR 0-5 roster. Per-monster counts are the Tools & Content task.)
+
+## 10. Summary counts
+
+### 10.1 Row counts by status
+
+Row counts are over the tables in sections 1-9 (one row per mechanic or feature; spell rows that group several OOS utility spells in one cell count as one row, see 10.2 for per-spell counts). They measure **mechanics rows**, not SRD populations.
+
+| Category | DATA | NEW | OOS | Rows |
+|---|---|---|---|---|
+| 1. Core rules engine | 17 | 10 | 5 | 32 |
+| 2. Weapons (properties) | 11 | 5 | 0 | 16 |
+| 3. Armor, shields and equipment | 2 | 4 | 1 | 7 |
+| 4. Conditions (SRD Appendix A) | 15 | 3 | 0 | 18 |
+| 5. Damage types and damage handling | 6 | 3 | 0 | 9 |
+| 6.1 Fighter (full) | 4 | 8 | 0 | 12 |
+| 6.2 Cleric (full; Life domain) | 5 | 5 | 1 | 11 |
+| 6.3 Wizard (full; Evocation) | 5 | 2 | 1 | 8 |
+| 6.4 Lower tier (nine classes) | 17 | 40 | 12 | 69 |
+| 6.5 Races | 1 | 8 | 0 | 9 |
+| 7. Core spell mechanics | 13 | 0 | 2 | 15 |
+| 8.1 Cantrips | 7 | 6 | 1 | 14 |
+| 8.2 Level 1 | 6 | 24 | 1 | 31 |
+| 8.3 Level 2 | 3 | 29 | 1 | 33 |
+| 8.4 Level 3 | 4 | 19 | 1 | 24 |
+| 9. Monsters: stat blocks, traits, actions | 13 | 26 | 5 | 44 |
+| **Total** | **129** | **192** | **31** | **352** |
+
+"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW; the grapple / shove PR (R-G8) moved 5 more (grapple and shove, Charmed, Frightened, Grappled, crawling), still counted NEW; the static-feature-kinds PR (R-G5) moved 3 more (Archery, Defense, Improved Critical), still counted NEW; the R-G7 roll-window PR moved 4 more (Lucky, Cutting Words, Great Weapon Fighting, Evasion), still counted NEW; the R-G15 spell-kinds PR moved 5 more (dispel / end effects, Color Spray, Sleep, Dispel Magic, Revivify), still counted NEW; the R-G15 follow-up moved 3 more (Lesser Restoration, Acid Arrow, Heat Metal), still counted NEW; the R-G16 PR moved 4 more (surprise, Hit Dice / rests, Arcane Recovery, Natural Recovery), still counted NEW; the R-G14 PR moved 3 more (Sculpt Spells, Metamagic, Blindness/Deafness), still counted NEW; the small-leftovers PR (7.2j) moved 8 more (Maximum HP reduction, Reckless Attack, Haste, Slow, Aggressive, Reckless, Life Drain, Petrifying Gaze), still counted NEW; the R-G9 rules PR (7.2k) moved 3 more (Thunderwave, Misty Step, blink dog teleport), still counted NEW; the R-G11 rules PR 1 (7.2l) moved 5 more (Spirit Guardians, Moonbeam, Spike Growth, Grease, Web), still counted NEW; the R-G11 rules PR 2 (7.2m) moved 2 more (Silence, Stinking Cloud), still counted NEW (Fog Cloud and Darkness stay plain NEW until R-G13; Wall of Fire is level 4, outside the tables). This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
+
+### 10.2 Spells, per spell (SRD 5.1 levels 0-3)
+
+SRD 5.1 has **168** spells of level 0-3 (24 cantrips, 48 level 1, 54 level 2, 42 level 3). Hunter's Mark is non-SRD, excluded (PHB-only; not NEW and not Authored); an earlier mirror pass counted 169 / 49 level 1 because it included that spell. Every remaining SRD spell is named in section 8 (the first draft missed six and listed 13 that are not in SRD 5.1). The first-census status split was **DATA 20, NEW 77, OOS 72** over that 169 and counted the excluded spell; current authored / NEW / OOS counts are in `docs/SRD_SPELLS_DEFERRED.md` (79 / 17 / 72). Restoring Spike Growth on the ranger level-5 list does not change 79 / 17 / 72: the spell was already authored for the druid, and the ranger knows 4 spells at level 5. DATA at that census: Burning Hands, Fireball, Lightning Bolt, Shatter (area templates, #78), Acid Splash, Eldritch Blast, Fire Bolt, Poison Spray, Produce Flame, Sacred Flame, Spare the Dying, Cure Wounds, Healing Word, Inflict Wounds, Magic Missile, Shield, Hold Person, Scorching Ray, Counterspell, Mass Healing Word.
+
+### 10.3 Reconciliation with the Tools & Content inventory
+
+T&C (`srd_content_inventory.md`, against the same mirror commit `a6212be`) counts **SRD populations** (monsters, weapons, armor, gear); this document counts **mechanics**. They are different units and are not meant to match one-to-one. Population counts below were re-derived from the mirror and agree with T&C's.
+
+| Population | Count | Source / check |
+|---|---|---|
+| Monsters | 334 (CR <= 2: 181; CR 3-5: 64; CR 6+: 89; CR <= 5: 245) | Mirror recount = T&C. |
+| Monsters with Multiattack | 148 | Matches T&C (T&C-G1 impact). |
+| Monsters with legendary actions | 32 (31 at CR 10+, Unicorn CR 5; none at CR <= 2) | Matches T&C; fixes this doc's earlier "CR 10+". |
+| Weapons | 37 (14 simple, 23 martial; 28 melee, 9 ranged) | Matches T&C. |
+| Armor incl. shield | 13 (3 light, 5 medium, 4 heavy, 1 shield); 7 impose stealth disadvantage | Matches T&C; stealth count is new here. |
+| Adventuring gear / tools / mounts-vehicles | 116 / 31 / 40 | T&C figures; confirmed by the mirror's equipment categories. Not audited row by row here (combat-irrelevant). |
+| Spells level 0-3 | 168 | Hunter's Mark is non-SRD, excluded. Not in T&C (monsters + items only); see 10.2. |
+| T&C monster readiness tiers | A 16, B 26, C 292 (CR <= 2: 16 / 25 / 140) | T&C classification; this doc does not re-classify monsters. |
+
+Why numbers differ: section 9 has 44 mechanics rows that touch many monsters each (for example the single "Multiattack" row stands for T&C's 148 monsters); T&C's per-monster tiers are the authority on monster counts. The weapon/armor rows in sections 2-3 are property rows (finesse, light, stealth disadvantage), not a 37 + 13 item list. Where this doc's examples name monsters, each was re-checked against the mirror (see 12).
+
+## 11. Missing mechanics, prioritized
+
+Sizes: S = days, M = about a week, L = multi-week / cross-module. "Batch" = **N** no schema bump (adapter wiring or additive effect kinds), **B** the single version bump (`common@2` / `monster@4` / `character@4` plus new `item@1`), **E** engine only, **D** deferred. Priority follows the Director's work order: content-to-sim wiring (with Engine Core), then multiattack, then multiple damage components, then magic-weapon qualifiers; then the rest.
+
+### 11.1 Unified gap table (prioritized)
+
+| Pri | Id | Mechanic | Unlocks | Owner | Size | Batch |
+|---|---|---|---|---|---|---|
+| 1 | R-G1 + T&C-G2 (plain lists) + T&C-G3 + T&C-G14 + T&C-G15 + T&C-G16 | **Content-to-sim wiring.** `ContentLibrary` loads resistances/immunities/vulnerabilities (for `monster@3`, now), condition immunities (new `Combatant` mask), creature type, size and multi-tile footprint (Engine Core verifies Large+), skills / passive Perception, `attacks_per_action`, and the `CastSpell` plumbing in `Combat` (hooks `spells`, `spell_target_ok`, `targets_within`, `can_see`, `can_provide_components`); T&C normalizes alignment/type (swarm = beast + tag). | 165 monsters with resistances/immunities (T&C), 92 with condition immunities, every caster; Hide actually opposed | Engine Core (adapter) M; Rules S; T&C S (normalization) | M | N |
+| 2 | T&C-G1 | **Multiattack as a declared sequence.** An id-addressable multiattack option is an ordered list of attack refs inside one Attack action; each attack resolves separately with reaction windows and Ready allowed between attacks; the AI picks by id (several options per monster). PC Extra Attack reuses `attacks_per_action`; `loading` limits one shot per action (T&C-G18). | 148 monsters; Fighter/Barbarian/Monk/Paladin/Ranger L5; Thirsting Blade | Rules M; T&C S (additive effect + validator) | M | N |
+| 3 | T&C-G6 | **Multiple damage components per attack** (`damage[]` beyond the first; crit doubles each die group). Adapter/engine only; schema already allows it. | ankheg, basilisk, flaming/elemental weapons, smites | Rules S; Engine Core S | S | N |
+| 4 | R-G17 + T&C-G2 (qualifiers) | **Magic-weapon and material qualifiers**: magic / silvered / adamantine flag on attacks and qualified resistance masks (additive `damage_mitigation` effect). | 70 qualified resistances (werewolf, gargoyle, specter, golems), Magic Weapon, Ki-Empowered | Rules S; T&C S | S | N |
+| 5 | T&C-G18 | **Weapon property semantics**: finesse (adapter hard-codes false), light, loading, thrown, reach, heavy, ammunition; closed vocabulary later in `item@1`. **Rules side done**: `rules5e/weapon.hpp` (`WeaponProperty` bits, `weapon_property_from_string`, `attack_ability`, `weapon_disadvantage`), `Attack::properties`, `Combatant::size`, Loading enforced per action. Adapter (Engine Core) still sets `properties`/`size` from content. | equipment-driven attacks | T&C S; Rules S | S | N |
+| 6 | T&C-G7 (+ R-G4, R-G5, R-G7 PC analogues) | **Small generic conditional/trigger effect set designed by Rules** (**roll-mode part done in rules**: `RollTrait` conditional advantage/disadvantage on attacks, attacks against, and saves, `rules5e/traits.hpp`; `extra_damage` and `on_event` triggers are still open) (`advantage_when`, `extra_damage`, `on_event`): Pack Tactics, Blood Frenzy, Charge/Pounce, Aggressive, Rampage, Undead Fortitude, Death Burst, Magic Resistance, Reckless, Sneak Attack, Colossus Slayer, Relentless Endurance, Gnome Cunning. | most CR 0-5 trait monsters; Rogue/Ranger/Paladin | Rules M (design); T&C M | M | N |
+| 7 | T&C-G8 | **Regeneration / Rejuvenation** (`regen` effect, suppression by damage type). **Regeneration rules and the monster@5 `regen` loader are done** (`Combatant::regeneration`, `DamageApplied::types_dealt`, CONTENT_CONVENTIONS §31). `srd51.monster.troll` is authored (`content/packs/srd51.core/monsters/troll.json`, `regen` 10, acid and fire). Rejuvenation (lich/ghost) is not. Vampire spawn's sunlight / running water / holy water are not this effect, and that stat block stays description-only. | troll, vampire spawn | Rules S; T&C S | S | N |
+| 8 | R-G2 | **Effects array (S6)**: N effects per spell, a no-save apply-condition effect, per-cast option. **Done except the per-cast option** (rules + loader + validator; schema additive: new `apply_condition` kind and optional `applies_to`, no version bump). | Guiding Bolt, Vicious Mockery, Hideous Laughter, Thunderwave, Chill Touch, Shocking Grasp | Rules S-M; T&C S | M | N |
+| 9 | T&C-G13 | **Senses/vision data consumed** (darkvision, blindsight, tremorsense, truesight); effective only with R-G13. Data is already in schema. | most monsters | Engine Core | M | N (with R-G13) |
+| 10 | T&C-G4 | **Save-based/area monster actions + Recharge 5-6 + limited use** (`usage`): first-class `save_effect` action kind, no interim trait effects. | dragon breath, hell hound, giant spider web, Leadership, Turn Undead-like | Rules M; T&C M-L | M-L | B |
+| 11 | T&C-G5 | **On-hit riders** (save/condition/grapple/swallow/prone) as first-class `on_hit` on attack actions; depends on R-G8 for grapple/swallow. | wolf, ghoul, giant spider/scorpion, crocodile, Stunning Strike, net, smites | Rules M; T&C M | M | B |
+| 12 | T&C-G9 + R-G7 (PC reaction features, d20 modify/reroll windows) | **Reactions**: unreserve `cost: reaction` behind `monster@4` (and `character@4`); roll-modifier windows. | Parry (gladiator, knight, bandit captain), Uncanny Dodge, Deflect Missiles, Cutting Words, Hellish Rebuke, Protection, Great Weapon Fighting reroll | Rules M; Engine Core M | M | B |
+| 13 | T&C-G10 | **Monster spellcasting / Innate Spellcasting** in `monster@4`: slots, known/prepared, at-will and N/day lists, cross-refs to `spell@1`; needs R-G1 cast plumbing. | acolyte, priest, druid, mage, couatl, dryad, drow, green hag | T&C L (only 6 spells authored); Rules S | L | B |
+| 14 | T&C-G17 | **`item@1` + `character@4` equipment model with AC recompute**, stealth disadvantage, Strength requirement, weapon/armor properties, magic flag. | all 37 weapons / 13 armor entries driving attacks and AC | T&C L; Rules M; Engine Core M | L | B |
+| 15 | R-G3 | **Timed modifier effects** (buff/debuff with duration, source, concentration link; attack/save/check bonus dice, advantage grants, AC set/bonus, speed, temp HP, resistances; expiry of timed durations). | Bless, Bane, Shield of Faith, Mage Armor, Haste, Slow, Faerie Fire, Rage, Leadership | Rules L; T&C M | L | N |
+| 16 | R-G4 | **On-hit / once-per-turn damage riders** (Sneak Attack, Divine Smite spending a slot, Colossus Slayer, Agonizing Blast, Disciple of Life). | Rogue, Paladin, Ranger, Warlock, Cleric | Rules M; Engine Core S (adjacency fact) | M | N |
+| 17 | R-G5 | **Feature resource pools and more active kinds** (ki, rage, Channel Divinity, Lay on Hands, Bardic Inspiration, sorcery points, Action Surge, `attack_bonus`, `ac_bonus`, `crit_range`). | Fighter 1-5, Barbarian, Monk, Paladin, Bard, Cleric, Sorcerer | Rules M; T&C M | M | N |
+| 18 | R-G6 | **Bonus-action attacks** (two-weapon fighting, Martial Arts, Flurry, Frenzy). | Monk, Berserker, dual wielders | Rules M | M | E |
+| 19 | R-G10 | **Area templates on the grid** (cone, cube, cylinder, line, sphere): compute targets, LOS/cover for Dex saves, feed `ActionRequest::targets`. | Burning Hands, Fireball, Lightning Bolt, Thunderwave, Shatter, dragon breath, Fear | Engine Core M; Rules S | M | E |
+| 20 | R-G8 | **Conditions with a source; grapple/shove; swallow/engulf**; crawl cost. | Charm Person, Command, Fear, Turn Undead, grapple monsters | Rules M; Engine Core S | M | E |
+| 21 | R-G13 | **Cover from the grid (AC and Dex saves) and lighting/obscurement/vision.** Cover **done** (#178 / #187). Remaining: lighting / obscurement / vision. | Darkness, Fog Cloud, darkvision, unseen attacker | Engine Core M | M | E |
+| 22 | R-G9 | **Forced movement and teleport** with OA rules. | Thunderwave push, Repelling Blast, Misty Step, Open Hand | Engine Core M; Rules S | M | E |
+| 23 | R-G15 | **Spell kinds**: HP-pool (Sleep, Color Spray), dispel/cleanse, delayed/sustained damage, resurrection, expiry for non-concentration spells. | Sleep, Lesser Restoration, Revivify, Dispel Magic | Rules S-M each | M | N |
+| 24 | R-G14 | **Per-cast options**: Metamagic, Sculpt Spells, chosen condition/mode, Eldritch Spear range. | Sorcerer 3, Evocation Wizard 2 | Rules M | M | N |
+| 25 | R-G16 | **Surprise, Hit Dice, Arcane/Natural Recovery.** | round-1 ambush, attrition | Rules S | S | E |
+| 26 | R-G11 | **Persistent zones and auras** with enter/start-of-turn triggers. | Spirit Guardians, Moonbeam, Spike Growth, Web, Entangle, Stinking Cloud | Rules L; Engine Core L | L | E |
+| 27 | R-G12 | **Summons, familiars, bonded weapons, transforms** (Wild Shape, Shapechanger, Conjure Animals, Spiritual Weapon). | Druid, Warlock Chain, Cleric 2, werewolf | Rules L; Engine Core L; T&C M | L | E |
+| parallel | T&C-G19 | **Luau API level 2**, additive only (`engine.level2.d.luau`, manifest `api_level` 2); level 1 stays frozen. Scripts need adjacency/movement facts for Pack/Charge. | AI reach | Engine Core / T&C M | M | N |
+| deferred | T&C-G12 | **Non-walk movement / elevation.** Fly, swim, climb are treated as walk speed; a forward-compat flag is recorded in content. | 178 monsters with non-walk speeds | Engine Core (later) | M-L | D |
+| deferred | T&C-G11 | **Legendary actions, lair actions, Legendary Resistance.** 32 monsters (31 at CR 10+, Unicorn CR 5). | Not needed for CR 0-4 | Rules L | L | D |
+
+Recommended grouping: priorities 1-4 are the first sequence (content-to-sim wiring, multiattack, multiple damage components, magic-weapon qualifiers); 5-9 finish the no-bump batch; 10-14 are the one version bump (save actions, riders, reactions, monster spellcasting, `item@1`/`character@4`); 15-27 are spell and class-feature depth in the order that unlocks the level 1-5 party.
+
+### 11.4 Status on main (after #45, #47, #48, #49)
+
+| Item | Status | Remaining |
+|---|---|---|
+| R-G1 + T&C-G2 (plain lists) + T&C-G3 | **Done**: #45 (resistances, immunities, vulnerabilities, condition immunities) and #49 (creature type, size stored, spellcasting block, `CastSpell` plumbing, hooks, event schema v5) | skills / passive Perception (T&C-G16), `attacks_per_action` loading, alignment/type normalization (T&C-G15), footprint (T&C-G14; `size` is stored only) |
+| T&C-G1 multiattack | **Rules done** (#48) | content `multiattack` effect + loader, `extra_attack` / `attacks_per_action` loading, sim AI choosing an option by id (T&C / Engine Core) |
+| T&C-G6 multiple damage components | **Done** (#45: rules + loader) | none |
+| R-G17 + T&C-G2 (qualifiers) | **Rules done** (#47) | content qualified-resistance field, `Attack::qualifiers` from weapon data / "Magic Weapons", additive `damage_mitigation` effect (T&C / Engine Core) |
+| T&C-G10 monster spellcasting | **Partial**: slot-based `spellcasting` block on monster@3 / character@3 (#49) | innate (at-will / N per day) lists in `monster@4`; final block shape is T&C's |
+
+Update after #91 / #93 (version-bump batch):
+
+| Item | Status | Remaining |
+|---|---|---|
+| T&C-G4 save actions, recharge, usage | **Done** end to end: rules #70, sim #77 (compile, recharge/pool registration, single-target AI), area targets #78, timed apply durations #83 | `per_day` / `per_rest` non-spell actions, Leadership-style usage, `until_save` variants beyond repeat saves |
+| T&C-G5 on-hit riders / R-G4 | **Done** for hit/crit extra damage, event triggers, `bonus_attack`, `area_save`, `set_hp`, save and apply-condition riders, `ask` + `spend` + `per_slot_level`: rules #82, #85, #86; sim #84, #88, #90 | grapple / swallow / push riders (R-G8, R-G9); Colossus Slayer-style "below max HP" predicate check; AI that opts in to `ask` riders (default declines) |
+| T&C-G9 / R-G7 reactions | **Rules done** (#87: `Damaged`, `AllyAttacked`, `ReduceDamage`, `Retaliate`, `Attack`, `ImposeDisadvantage`) | `reactions[]` compile, `damaged_options` / `being_hit_options` hooks, default decline policy for the new windows (Engine Core); d20 modify/reroll windows (Cutting Words, Lucky, Great Weapon Fighting) are still open |
+| T&C-G10 monster spellcasting | **Done** for slots (#49) and innate (rules #73, sim #79) | authored monster spells (T&C) |
+| R-G3 timed modifiers | **Rules done** (#89: attack, save, check, AC, speed, weapon damage, temp HP, resistance, attacks-against; replace/stack; rounds / target-turn / caster-turn / concentration expiry) | `spell@1` `apply_modifier` kind and loader, `feature_modifiers` hook, 0xA2 fold (Engine Core / T&C) |
+| R-G5 pools and feature kinds | **Rules done** for pool-backed features, cost kinds, `grant_action`, `heal_pool`, Legendary Resistance (#91; pools and `ResourceSpent` since #68) | `resources[]` registration, `feature_spec` hook, `legendary_pool` (Engine Core); `attack_bonus`, `ac_bonus`, `crit_range` static kinds remain open |
+| T&C-G17 equipment and AC | `item@1` + SRD items (#67, #72); **rules done** `compute_ac` (#93) | apply at archetype build, read `{item, equipped}` (Engine Core); Hide reading `stealth_disadvantage` |
+| R-G10 area templates | **Done** in sim (#78) | cover for Dex saves **done** (#178 / #187); lighting (R-G13) |
+
+### 11.4a TODO: campaign carry-over input (owned by Engine Core)
+
+- **TODO (Engine Core):** a future optional per-creature carry-over input to `Combat::create` for the campaign layer: current HP,
+  remaining Hit Dice, spell slots, feature / pool uses and consumed items (the combat-local equipment after priced materials were
+  used up). Today every combat starts from content (full HP, full slots, the content `equipment[]`), and consumption is
+  combat-local only (CONTENT_CONVENTIONS §7: nothing is written back). The input would be a replay input like the seed and the
+  surprised set; absent, behaviour and every hash stay as today.
+- **TODO (R-G12 carry-over between fights, campaign layer; `docs/proposals/SUMMONS_TRANSFORMS.md` §3.5, D15):** today Combat ends every summon and transform at
+  the end of the encounter (Q15). Carrying long-lived summons (Find Familiar, Find Steed, Animate Dead control) and lasting
+  transforms into the next fight belongs in this carry-over input: summon records with their ids from a campaign-level counter,
+  hashed under 0xAF, and replayed like the surprised set.
+
+### 11.2 Mapping: first-draft id -> unified id
+
+| First draft | Unified | Note |
+|---|---|---|
+| G1 (wiring) | R-G1; T&C-G2 (plain lists), T&C-G3, T&C-G10 (monster casting), T&C-G14, T&C-G15, T&C-G16 | Old umbrella split; the `CastSpell` plumbing stays R-G1. |
+| A1 Multiattack / extra attack / loading | T&C-G1; loading under T&C-G18 | |
+| A2 Multiple damage components | T&C-G6 | |
+| A3 Attack riders | T&C-G5 (save/condition riders); T&C-G4 (save actions); T&C-G7 (Pounce/Charge) | |
+| A4 Nonmagical/silvered qualifiers + magic flag | T&C-G2 (qualifiers) + R-G17 (flag) | |
+| B1 Effects array | R-G2 | Rules-only. |
+| B2 Timed modifiers | R-G3 | Rules-only. |
+| B3 Damage riders | R-G4 | Rules-only; shares T&C-G7's generic set. |
+| B4 Resource pools / feature kinds | R-G5 | Rules-only. |
+| B5 Bonus-action attacks | R-G6 | Rules-only (light property under T&C-G18). |
+| B6 Reactions and roll modifiers | T&C-G9 (monster reactions) + R-G7 (PC reactions, roll windows) | |
+| B7 Monster trait hooks | T&C-G7 (conditional/trigger), T&C-G8 (regeneration), T&C-G4 (recharge/limited use), T&C-G10 (innate) | |
+| C1 Conditions with source, grapple | R-G8 | T&C-G5 depends on it. |
+| C2 Forced movement/teleport | R-G9 | |
+| C3 Area templates | R-G10 | Monster area actions: T&C-G4. |
+| C4 Zones/auras | R-G11 | |
+| C5 Summons/transforms | R-G12 | |
+| C6 Movement modes, size/space | T&C-G12 (modes, deferred) + T&C-G14 (footprint) | |
+| C7 Cover, lighting, vision | R-G13 (engine) + T&C-G13 (senses data) | |
+| C8 Per-cast options | R-G14 | |
+| C9 Spell kinds | R-G15 | |
+| C10 Surprise, Hit Dice, recoveries | R-G16 | |
+| C11 Legendary actions | T&C-G11 | Deferred. |
+| (new) | T&C-G15, T&C-G16 (skills), T&C-G17 (item@1), T&C-G18, T&C-G19 | No first-draft counterpart; added from the T&C inventory. |
+
+### 11.3 Director decisions folded in
+
+- **Multiattack** is a declared sequence of attack refs inside one Attack action, with reactions and Ready allowed between attacks; options are id-addressable (T&C-G1).
+- **Resistances** are wired now for `monster@3`; the qualifier flags and masks are now in rules (#47); content wiring remains (T&C-G2, R-G17).
+- **One version bump** (`common@2` / `monster@4` / `character@4` + `item@1`) carries first-class save actions (T&C-G4), riders (T&C-G5), reactions behind a version gate (T&C-G9), monster spellcasting (T&C-G10) and equipment (T&C-G17); no interim trait effects.
+- **Deferred**: legendary actions (T&C-G11) and elevation (T&C-G12; fly/swim/climb act as walk speed, forward-compat flag in content).
+- **Luau API level 2** is additive; level 1 stays frozen (T&C-G19).
+- T&C-G7 is a small generic effect set designed by Rules; T&C-G14 multi-tile footprints are verified by Engine Core; T&C-G15 normalization is content-side.
+- **Work order**: content-to-sim wiring (with Engine Core), multiattack, multiple damage components, magic-weapon qualifiers.
+
+### 11.5 Remaining rules-only gaps and proposed order (after #91 / #93)
+
+Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is listed in 11.4), with the proposed order. Sizes follow 11 (S days, M about a week, L multi-week).
+
+| Order | Id | Gap | Unlocks | Size |
+|---|---|---|---|---|
+| 1 | R-G3 follow-ups | **Done in rules** (this PR): one-shot / until-damaged expiry (`consume`), speed reduction (`speed_sub`), AC floor (`ac_floor`), per-turn temp HP (`per_turn`), general `when` scope (attack roll, attacks against, AC, damage), and `apply_modifier` as a rider effect. Haste's restricted extra action done in 7.2j. Still open: `when` on saves / checks, a "marked target" scope, "frightened immunity" (Heroism) | Needs only wiring now: Guiding Bolt, Vicious Mockery, Ray of Frost, Mage Armor, Barkskin, Heroism (True Strike's chosen-target advantage is Done, 7.2zi) | done |
+| 2 | R-G5 rest | **Done in rules**: static feature kinds `attack_bonus`, `ac_bonus`, `crit_range` (loader kinds pending). Dueling stays a baked `damage_bonus` | Archery, Defense, Champion Improved Critical | done |
+| 3 | R-G8 | **Done in rules** (conditions with a source, grapple / shove / escape, drag, one-size limit). Still open: swallow / engulf, web-style restrain, sim wiring of the push / drag | grapple monsters, crocodile, Charm Person, Fear | done |
+| 4 | R-G6 | **Done in rules**: bonus-action attack options (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy) with prerequisites, pool spend and an off-hand damage override. Still open: Open Hand Technique riders, Frenzy's exhaustion, a rules-side `legal_actions` listing | Monk, Berserker, dual wielders need wiring only | done |
+| 5 | R-G7 rest | **Done in rules**: Lucky (`reroll_ones`), Cutting Words on attack rolls (`AttackRolled` + `SubtractRoll`), Great Weapon Fighting, Evasion. Still open: Cutting Words on checks / damage, Bardic Inspiration spending by the ally, Guidance / Resistance, roller-chosen rerolls (Lucky feat, Indomitable, Portent) | Bard, Halfling, Fighter style, Rogue / Monk | M (done) |
+| 6 | R-G15 | **Done in rules**: HP-pool (Sleep, Color Spray), Dispel Magic, Revivify (7.2f); end-a-condition, delayed / sustained damage, Wake action (`special` 5) (7.2g). Loader / sim wiring done (EC #120); remaining: spell@1 schema / validator arms (T&C); Revivify's material done (priced materials, CONTENT_CONVENTIONS §7) | Sleep, Color Spray, Dispel Magic, Revivify, Lesser Restoration, Acid Arrow, Heat Metal done | - |
+| 7 | R-G16 | **Done in rules** (7.2h): surprise (`surprised`, Stealth vs passive Perception helper), Hit Dice, `short_rest` / `long_rest` over combatant and table state, Arcane / Natural Recovery (`recover_spell_slots`). Sim wiring: surprise setup + 0xA8, Hit Dice loader, rest entry points (EC #123). Remaining: party layer carry-over, ambush content flag, Arcane / Natural Recovery content kind | round-1 ambush, attrition | done |
+| 8 | R-G9 | **Done in rules** (7.2k): `ForcedMove` / `Teleport` effect kinds (per-effect `max_size`), the synchronous `forced_move` hook (+ `forced_move_order`), `Moved.c` flags with schema v8, grapples ending out of reach, shove through the hook. Spec: co-design proposal `docs/proposals/FORCED_MOVEMENT.md` (#110, merged). Still open: sim hook and paths (Engine Core), Open Hand Technique rider, Dimension Door companions and the 4d6 failure, Gust of Wind, falling / hazard damage (R-G11) | Thunderwave push, Repelling Blast, Misty Step, Open Hand | done (rules) |
+| 9 | R-G14 | **Done in rules** (7.2i): Metamagic (all eight options, sorcery-point pool), Sculpt Spells, cast-time damage type / condition choices. Still open: Eldritch Spear (feature range modifier), Font of Magic slot / point conversion (rules 7.2o; sim wiring done), Empowered / Careful on non-Save effects beyond those listed | Sorcerer, Evocation Wizard, Blindness/Deafness, Chromatic Orb | done |
+| 10 | Large / elevation follow-ups | Multi-tile footprints landed in sim (#50, #51, #55); remaining: Large reach and OA edge cases in rules, size limits for grapple / swallow (with R-G8), swarm (Tiny sharing space, half damage), and elevation / fly / swim / climb (T&C-G12, deferred; today all non-walk speeds act as walk) with the Flyby OA exception and falling damage | owlbear, troll, swarms, bat, eagle, owl | M-L, mostly Engine Core |
+| 11 | R-G11 | **PR 1 done in rules** (7.2l): `SpellEffectKind::Zone` (`ZoneSpec`, `ActiveZone`), Appear / Enter / StartTurn / EndTurn / MoveWithin rows with once-per-turn groups, `counts_aura_move_as_enter` (D1), concentration and timer endings, Move membership lists, zone moves, `ForcedMoveResult` membership with recorded results (Q7), `zone_contains` hook, schema v9; Spirit Guardians, Moonbeam, Spike Growth, Grease, Web. Spec: `docs/proposals/ZONES_AURAS.md` (#113, merged). **PR 2 done in rules** (7.2m): Silence, Stinking Cloud, Wall of Fire (line / ring, chosen side, `zone_side_contains`), Fog Cloud / Darkness flags, Moonbeam's shapechanger disadvantage, the evil caster's necrotic, D7 feature-aura fields (`add_feature_aura`, `aura_modifier` saves, `aura_immunity`, `needs_conscious_owner`). Still open: the sim contract (Engine Core), loader keys (T&C), paladin aura content (D7) | Spirit Guardians, Moonbeam, Web, Spike Growth, Grease, Silence, Stinking Cloud, Wall of Fire done; Entangle, Rust Metal later | L (PR 1 + 2 done) |
+| 12 | R-G12 | **PR 1 (transforms) done in rules** (7.2q): Wild Shape, Polymorph, shapechanger forms, overflow, D15 teardown, events 50 / 51 (schema v10), 0xAF / 0xBD. **PR 2 (summons)** (7.2r): Conjure Animals, Find Familiar, Animate Dead, events 48 / 49 / 52, 0xBC. **PR 3** (7.2s): Spiritual Weapon token, Pact of the Chain attack trade, 0xBE. Open: Conjure Elemental hostile turn (D5), sim + content wiring. | Druid, Warlock Chain, werewolf | L |
+| deferred | T&C-G11 | Legendary actions and lair actions (Legendary Resistance is already a pool, #91) | CR 10+ monsters, unicorn | L |
+
+Also open but small: Hide opposed by passive Perception (R-G1 / T&C-G16, sim; rules now has `passive_perception`). **Done in rules** (7.2j): Haste / Slow as full spells and the monster one-offs (Life Drain max-HP reduction, Reckless, Aggressive's bonus-action move, Petrifying Gaze progression); still open from that list: Slow's spell-casting delay, Haste's Use an Object, ability drain, and the gaze trigger (rules and sim wiring done in 7.2p; schema key pending).
+
+### 11.6 Size and space audit (SRD 5.1 "Size", "Space", "Squeezing"; feat/size-space)
+
+Audit of #165's footprints against the SRD size rules.
+
+| Rule | Status |
+|---|---|
+| Space by size: Tiny/Small/Medium 1 tile, Large 2x2, Huge 3x3, Gargantuan 4x4 | done (#165) |
+| Occupancy, pathing, diagonal steps (every new tile free and in bounds) | done (#165) |
+| Reach, adjacency, opportunity attacks, ranges from the nearest occupied tile | done (#165) |
+| Grapple / shove: target at most one size larger | done (rules `size_within_one`) |
+| Forced movement and teleport with footprints; summon and revert placement | done (#165 / R-G12) |
+| Areas and zones hit any occupied tile | done (#165 / R-G11) |
+| Size changes (forms) keep the footprint in sync | done (#165) |
+| Move through an ally's space; through a hostile's only if 2+ sizes apart; that space is difficult terrain; can't end the move there | **fixed here** (sim `plan_step`; a Step or EndTurn that would end in another space is refused unless no step out is possible). B9: `enter_hostile_space` (Air Form / Water Form, CONTENT_CONVENTIONS §39) may also enter and stop in a hostile's space. The tile stays difficult terrain. Pathing is unchanged |
+| Squeezing: a Large+ fits a space one size smaller; +1 ft per ft; disadvantage on its attacks and Dex saves; advantage on attacks against it | **fixed here** (opt-in Step `request.squeeze = 1`; rules5e `Combatant::squeezing`, `ActionRequest::squeeze`; tags 0xC1 / 0xC2) |
+| Tiny creatures sharing a space (several Tiny in one tile) | deferred: the grid holds one creature per tile |
+| Medium squeezing into a Small space | deferred: below one tile, not representable |
+| Enlarge / Reduce | deferred: no such spell in content yet |
+| Teleport range measured from the anchor, not the nearest tile | deferred (minor) |
+| AI moving through spaces or squeezing | deferred: the AI paths with occupied tiles blocked (keeps goldens). Air/Water Form does not change that pathing |
+
+### 11.7 Movement modes (SRD 5.1 "Movement", "Special Types of Movement", "Flying Movement"; feat/move-modes)
+
+| Rule | Status |
+|---|---|
+| Fly / swim / climb speeds from stat blocks (`speed.fly/swim/climb/hover`) and Wild Shape / shapechanger forms | done: rules5e `Combatant::fly_ft/swim_ft/climb_ft/hover`, `FormStats` likewise |
+| Burrow speed from stat blocks (`speed.burrow`) and the same form copy | done: `Combatant::burrow_ft` / `FormStats::burrow_ft` (uint8_t feet, 0 = none), loaded and copied like fly / swim / climb, not folded |
+| Burrow movement (altitude PR2, feat/altitude-move) | **implemented**: `move_mode` 4 spends `burrow_ft` via `move_allowance` (shared budget like the other speeds; no burrow speed = cannot burrow); burrowed creatures pass under difficult ground, ledges and surface creatures. Tunnelling (passable tunnels, solid rock) out of scope unless the stat block says otherwise |
+| Terrain: water (existing chunk flag bit 3), climbable (new bit 4), open air / chasm (new bit 5) | done: `Grid::water/climbable/open_air/enterable` |
+| A creature uses the speed that fits the terrain | done: sim `step_mode` (open air: fly; a destination that is `Combat::on_climb_wall`, or a rise of more than 5 ft: climb > fly > walk; water: swim > fly > walk; ground: walk, then fly). Vertical `alt_to` climbs only while `on_climb_wall` (some footprint tile is climbable and none is walkable; the same predicate as `subject_grounded`). A walkable climbable floor is not a wall. Fly is preferred when the creature can fly |
+| Climbing / swimming without the speed: +1 ft per ft (+2 in difficult terrain) | done: `Grid::tile_cost_ft` |
+| Switching speeds subtracts the distance already moved | done: rules `move_allowance` (shared budget; Dash grants every speed again) |
+| A prone creature cannot fly | done (rules refuses `move_mode` 1 while prone) |
+| AI pathing over the modes | done: `Grid::path(..., MoveCaps)`, same deterministic Dijkstra; AI steps only while `step_mode` fits |
+| Falling (prone / speed 0 while flying without hover) and fall damage 1d6 per 10 ft | done (altitude PR4): see 11.8 "Falling" |
+| Climbing / swimming ability checks (Athletics for hard surfaces, rough water) | deferred |
+| Wild Shape `no_fly_below` / `no_swim_below` | unchanged (build_form, #176) |
+
+### 11.8 Altitude (altitude PR2-PR5, feat/altitude-move .. feat/altitude-sight)
+
+| Rule | Status |
+|---|---|
+| Ground height from chunk@3 (`elevation` x 5 ft; chunk@1 / chunk@2 stay flat) | done: `Grid::ground_ft`, footprint ground = max over its tiles (docs/CHUNK_HASH.md "chunk@3 ground") |
+| Ledges: step up of 5 ft or less costs nothing extra | done: `eng::sim::step_cost_ft` returns 0 |
+| Descending costs nothing extra | done: `step_cost_ft` returns 0 for any descent |
+| Rise above 5 ft is a climb (`rise` with climb / fly speed, else `2 * rise`) | done: `step_cost_ft`, `step_mode` picks climb > fly > walk |
+| Falls: stepping off a drop of more than 5 ft | done: AltitudeChanged event (cause `kAltFall`), `Combat::falls()` (current turn only, cleared at each TurnStarted); pathing never plans a fall for a non-flyer. Falling damage applies (altitude PR4, row below) |
+| Airborne flyers (`alt_ft > 0`, fly speed, not prone) | done: fly over difficult tiles, lower obstacles and creatures whose vertical span they do not overlap; a flyer stepping off a ledge becomes airborne |
+| Falling damage (altitude PR4) | done: 1d6 bludgeoning per 10 ft fallen, max 20d6, rolled on the rules RNG; the creature lands prone (not when the fall deals no damage: under 10 ft or immune). Applied to ledge falls (sim `step_altitude` -> `rules5e::fall`), to `ForcedMoveResult::fell_ft` (after the Moved event), and to flyers that fall. No reaction window opens for falling damage |
+| Flyers fall when knocked prone, at speed 0, or on losing their fly speed (altitude PR4) | done: checked at the end of every rules step and by `settle_falls` / `revoke_fly`; a creature with `hover` never falls; a creature held aloft by a granted fly speed (magic, e.g. the Fly spell) does not fall from prone / speed 0 (SRD), only when the grant ends. The landing sets `alt_ft` to 0 and sim emits AltitudeChanged (cause `kAltFall`) and lists it in `Combat::falls()` |
+| Fly speed hook (altitude PR4) | done: `rules5e::grant_fly(state, id, fly_ft, source)` / `revoke_fly(state, id, source, events)`; fly speed = max(`fly_ft`, `granted_fly_ft`); revoking mid-air runs the fall check. Grants hash under 0xD6 (sub-byte 1) only while non-zero |
+| Swim depth clamp | done: a vertical move below the surface stops at the water depth (`Grid::water_depth_ft`) |
+| Line of sight with heights (altitude PR5) | done: `Grid::line_of_sight(a, b, a_ft, b_ft)` and `Combat::line_of_sight` / `los_spots` use absolute heights (`abs_height_ft`: feet, no eye height) at both ends. A mid tile blocks only where the line's height there is below `Grid::sight_top_ft`: a blocks_sight cell's top (convention 4: elevation x 5 ft, 0 = full height; always full on chunk@1 / chunk@2) or, on chunk@3, higher ground (its ground_ft). Height at a tile = integer interpolation by supercover step (Manhattan steps k of n), compared exactly as `a*(n-k) + b*k < top*n` (int64, no division, symmetric); corner pass-through tiles use k+1 |
+| Cover with heights (altitude PR5) | done: `cover_between(origin, n, origin_ft, target, n, target_ft, ...)`; every DMG corner line runs origin_ft -> target_ft, a tile's height interpolated by its centre's doubled Manhattan distance from the origin corner over the line's doubled Manhattan length. Walls / higher ground obstruct only below their top; a creature footprint gives half cover only when the line height there is inside its span [abs, abs + height). `cover_of` uses absolute heights (a point origin sits on its tile's ground); the 6-arg form uses ground heights |
+| `sight_facts_of` (altitude PR5) | done: `line_of_sight` is the 3D LoS. `between` obscurement unchanged (zones cover every altitude, convention 2). `subject_grounded` is the altitude fact below; eye height is not used |
+| Tremorsense and altitude | done: `subject_grounded` is false while airborne (`alt_ft > 0`, a fly speed, not prone). A creature above the ground that is not airborne is grounded only while `Combat::on_climb_wall`: some footprint tile is climbable and none is walkable. A climbable floor is not contact. `alt_ft <= 0` (on the ground, swimming, or burrowed) is grounded. The same predicate gates `alt_to` climb and `step_mode`'s wall branch. Rules `derive_sight` already requires the flag, so tremorsense does not perceive an airborne subject. The fact is the subject's contact only: the viewer on the same surface, and incorporeal creatures, are not modeled |
+| Lighting with heights (altitude PR5) | per-tile 2D by design: `LightDriver` / `light_reaches` ignore height (walls block light at any height, no height attenuation); a flyer is lit by the tile under it. The visibility (fog) pass stays 2D too |
+| Flat equivalence (altitude PR5) | every height 0 (all chunk@1 / chunk@2 maps) gives exactly the 2D LoS and cover (tests/altitude_sight_tests.cpp; cover_tests and sight_facts_tests unchanged) |
+| Forced movement off a ledge | done: a creature on the ground (`alt_ft == 0`) shoved or pushed off a drop of more than 5 ft falls (`ForcedMoveResult::fell_ft`, cause `kAltFall`) unless it can fly (fly speed, not prone). A flyer that can fly becomes airborne at that drop (cause `kAltForced`): absolute height is kept, so `alt_ft` is the drop against the lower ground. An already airborne flyer keeps its absolute height the same way; ground that rises into it lands it at `alt_ft` 0 with no falling damage. A rise or a drop of 5 ft or less stands on the new ground. A climber (`alt_ft > 0`, not airborne) falls that absolute drop, or lands at `alt_ft` 0 when the new ground is within 5 ft of their feet. Swimming and burrowing are unchanged. Drag is not forced movement and does not adjust the held creature's altitude |
+| Vertical climb | done: `alt_to` climbs only while `Combat::on_climb_wall` (some footprint tile is climbable and none is walkable; the same predicate as `subject_grounded` and as `step_mode`'s wall branch). A walkable climbable floor does not allow a vertical climb. It spends the climb speed at 1 ft per ft (`move_mode` 3), or walking at double cost when there is no climb speed. A descent on that wall is clamped to the ground. A creature that can fly uses fly for that vertical move. The AI does not send `alt_to` |
+| Moving along a wall | done: a creature with `alt_ft > 0` that is not airborne keeps that `alt_ft` while `Combat::on_climb_wall` (the same predicate as tremorsense contact and as `step_mode`'s wall branch). A footprint that mixes a walkable tile with a wall is not a wall. The step costs the climb tile (5 ft with a climb or fly speed, else 10). A ground rise of more than 5 ft still selects climb mode without `on_climb_wall` |
+| Leaving a wall | done: stepping onto a walkable tile prices and resolves from absolute height, not from the wall's base. Within 5 ft of the new ground, `alt_ft` becomes 0 (cause `kAltMove`) and the step is not a ground-to-ground climb. A greater drop is a fall (cause `kAltFall`, falling damage, prone). A new ground more than 5 ft above the climber's feet costs the climb |
+
+#### Altitude engine conventions (approved)
+
+The SRD is silent on these; they are documented engine conventions approved by the project owner (the single source
+of truth; other docs and code comments point here):
+
+1. Medium and smaller creatures are 5 ft tall; N×N creatures are N tiles tall.
+2. Zones cover every altitude.
+3. Ground is elevation×5 ft on chunk@3 maps, using the highest point under the footprint; on water, elevation is the depth.
+4. A blocking cell's top is elevation×5 ft; 0 means full height.
+5. A rise of 5 ft or less is free; a rise over 5 ft must be climbed or flown.
+6. Airborne flyers pass over difficult ground, lower obstacles and creatures whose height doesn't overlap theirs; a flyer that steps off a ledge stays airborne.
+7. Swimmers can't descend below the water depth.
+8. Burrowed creatures pass under the surface.
+
+~~KNOWN DEVIATION from SRD: a flyer knocked prone stays airborne.~~ Fixed by altitude PR4 (feat/altitude-fall): a non-hover flyer knocked prone, at speed 0 or without its fly speed falls and takes falling damage.
+
+## 12. Source notes and verification
+
+- **SRD source**: SRD 5.1 (CC-BY-4.0) as mirrored by <https://github.com/5e-bits/5e-database> at commit `a6212be` (`src/2014/en`: Spells, Monsters, Features, Subclasses, Classes, Conditions, Equipment, Weapon-Properties, Rule-Sections, Traits). The published PDF was **not** re-read; the first draft's statement that it was checked against the PDF was inaccurate and is removed.
+- **Verified against the mirror in this revision**: spell names, levels, casting times and the 0-3 spell list (all 168 SRD spells; Hunter's Mark is non-SRD, excluded); class and subclass features through level 5, fighting styles per class, eldritch invocations; conditions (including Petrified's poison/disease immunity); weapon properties and special rules (lance, net); armor stealth disadvantage and Strength requirements; cover bonuses and crawling cost; Hit Dice and surprise rules; every monster named in section 9 (existence, CR, and the trait or action cited), plus population counts (monsters, CR bands, multiattack, legendary, weapons, armor).
+- **UNVERIFIED** (not checked against SRD text): Cloud of Daggers is **not** in the mirror (so not listed; a PDF check could confirm whether SRD 5.1 omits it); the exact SRD wording of Hide/Search/Influence as actions (these are 2024-style action names, kept as engine concepts only); the per-row sizes and owners in section 11 (estimates, not SRD facts); gear (116) and tools (31) beyond the category counts.
+- **Code claims** ("current code" statements) were verified on `main` at `6012567`: `engine/rules` (types, encounter, spells), `engine/rules/content` (spell loader), `engine/core/sim` (content loader, features, combat), `schemas/{common,character,monster,spell}`, and `tools/validate`. The `Hide` row was re-verified in this revision (no passive-Perception comparison exists).
+- Where an example monster list is inexact, treat it as illustrative; Tools & Content owns the authoritative per-monster classification (`srd_content_inventory.md`, `gap_crosswalk.md`).
