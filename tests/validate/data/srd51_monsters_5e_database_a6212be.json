@@ -1,5 +1,5 @@
 {
- "_source": "5e-bits/5e-database commit a6212be, src/2014/en/5e-SRD-Monsters.json (fields copied verbatim; see tests/validate/test_srd51_monsters.py for the two documented deviations). The invisible-stalker row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index invisible-stalker (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Slam attack_bonus plus damage dice and type. Those fields match that object.",
+ "_source": "5e-bits/5e-database commit a6212be, src/2014/en/5e-SRD-Monsters.json (fields copied verbatim; see tests/validate/test_srd51_monsters.py for the two documented deviations). The invisible-stalker row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index invisible-stalker (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Slam attack_bonus plus damage dice and type. Those fields match that object. The sea-hag row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index sea-hag (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claws attack_bonus plus damage dice and type. Death Glare and Illusory Appearance are not attack rows. Those fields match that object.",
  "monsters": {
   "commoner": {
    "name": "Commoner",
@@ -10046,6 +10046,48 @@
        [
         "2d6+3",
         "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "sea-hag": {
+   "name": "Sea Hag",
+   "size": "Medium",
+   "type": "fey",
+   "ac": [
+    14
+   ],
+   "hp": 52,
+   "hp_roll": "7d8+21",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    16,
+    13,
+    16,
+    12,
+    12,
+    13
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "slashing"
        ]
       ]
      ]
