@@ -1,0 +1,133 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.invisible_stalker",
+  "name": "Invisible Stalker",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "elemental",
+  "alignment": "neutral",
+  "armor_class": {
+    "value": 14
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 104,
+    "formula": "16d8+32"
+  },
+  "speed": {
+    "walk": 50,
+    "fly": 50,
+    "hover": true
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 19,
+    "con": 14,
+    "int": 10,
+    "wis": 15,
+    "cha": 11
+  },
+  "skills": {
+    "perception": 8,
+    "stealth": 10
+  },
+  "damage_immunities": [
+    "poison"
+  ],
+  "condition_immunities": [
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "unconscious"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 18
+  },
+  "languages": [
+    "Auran",
+    "understands Common but doesn't speak it"
+  ],
+  "challenge": {
+    "rating": "6",
+    "xp": 2300
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "damage_resistances_nonmagical",
+      "name": "Damage Resistances",
+      "description": "Resistant to bludgeoning, piercing, and slashing from nonmagical weapons.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "resistances": {
+          "nonmagical": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "invisibility",
+      "name": "Invisibility",
+      "description": "The stalker is invisible. (Innate Invisibility, CONTENT_CONVENTIONS §44: the Invisible condition, with no duration and no concentration. Attacking or casting does not end it. Spell Invisibility's ends_on is unchanged. Faultless Tracker is not this trait. See Invisibility, Faerie Fire outlined, and Branding Smite reveal_invisible versus a permanent holder are not decided. The built-in AI is not changed. Whether Invisible needs a Combat::hash tag is not decided. Heard or noticed hiding is not modelled.)",
+      "effect": {
+        "kind": "innate_invisibility"
+      }
+    },
+    {
+      "id": "faultless_tracker",
+      "name": "Faultless Tracker",
+      "description": "The stalker is given a quarry by its summoner. The stalker knows the direction and distance to its quarry as long as the two of them are on the same plane of existence. The stalker also knows the location of its summoner. (Descriptive only: Faultless Tracker is not innate_invisibility and is not a tracking mechanic. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The stalker makes two slam attacks.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "slam_x2",
+            "attacks": [
+              "slam",
+              "slam"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "slam",
+      "name": "Slam",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+3",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 10 (2d6 + 3) bludgeoning damage."
+    }
+  ]
+}
