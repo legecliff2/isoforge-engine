@@ -784,6 +784,10 @@ struct Combatant {
     // DamageType. A listed component is removed from the hit and regained as hit points. FormStats does not
     // carry it. No SIM_EVENTS tag (the regain is Healed, and hit points are already in the state).
     uint32_t absorb = 0;
+    // appended (B14 Innate Invisibility, CONTENT_CONVENTIONS §44; static content, never hashed): the creature
+    // has Condition::Invisible with no duration and no concentration. end_effect treats this as a holder, so a
+    // spell's ends_on does not clear the bit. FormStats does not carry it. No SIM_EVENTS tag.
+    bool innate_invisible = false;
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 

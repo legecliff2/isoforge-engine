@@ -1352,6 +1352,21 @@ std::optional<std::string> apply_absorb(Archetype& a, const FeatureDecl& f, uint
     return std::nullopt;
 }
 
+// innate_invisibility {} (CONTENT_CONVENTIONS §44). Sets Combatant::innate_invisible and the existing Invisible
+// condition (add_condition, so a condition immunity still refuses the bit). No duration, no concentration, no
+// ends_on. An identical second declaration adds nothing. Static config, not hashed. The condition is the existing bit.
+std::optional<std::string> apply_innate_invisibility(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": innate_invisibility needs a monster@5 file";
+    if (a.schema_type != "monster") return f.id + ": innate_invisibility: only valid on monsters";
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind")
+            return f.id + ": innate_invisibility: unknown key '" + it.key() + "'";
+    if (a.base.innate_invisible) return std::nullopt;
+    a.base.innate_invisible = true;
+    rules5e::add_condition(a.base, rules5e::Condition::Invisible);
+    return std::nullopt;
+}
+
 std::optional<std::string> apply_save_advantage(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
     if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": save_advantage needs a monster@5 file";
     if (a.schema_type != "monster") return f.id + ": save_advantage: only valid on monsters";
@@ -1434,6 +1449,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("regen", {apply_regen});                     // monster@5 (CONTENT_CONVENTIONS §31): gated in the hook
     r.add_hook("freeze", {apply_freeze});                   // monster@5 (CONTENT_CONVENTIONS §42): gated in the hook
     r.add_hook("absorb", {apply_absorb});                   // monster@5 (CONTENT_CONVENTIONS §43): gated in the hook
+    r.add_hook("innate_invisibility", {apply_innate_invisibility});   // monster@5 (CONTENT_CONVENTIONS §44): gated in the hook
     r.add_hook("aura", {apply_aura});                       // monster@5 (batch 3 ghast Stench): gated in the hook
     r.add_hook("grant_die", {apply_grant_die});         // 7.2za Bardic Inspiration: gated in the hook
     r.add_hook("half_proficiency", {apply_half_proficiency});   // 7.2za Jack of All Trades: gated in the hook

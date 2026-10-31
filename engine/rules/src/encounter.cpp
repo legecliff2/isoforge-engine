@@ -510,8 +510,10 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
         t->hp_max = int16_t(std::max(1, int(t->hp_max) - int(e.max_hp_bonus)));
         if (t->hp > t->hp_max) t->hp = t->hp_max;
     }
-    // EC spider follow-up (flagged): an effect's `also` condition holds the condition too, and ends with its effect
+    // EC spider follow-up (flagged): an effect's `also` condition holds the condition too, and ends with its effect.
+    // B14: an innate-invisibility trait holds Invisible. The spell effect still ends; the bit does not.
     auto held = [&](Condition k) {
+        if (k == Condition::Invisible && t->innate_invisible) return true;
         return std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
             return o.target == e.target && ((!o.no_condition && o.condition == k) || (o.has_also && o.also == k)); }) ||
                // Lich ruling (Stench expiry is per source): a sourced instance (R-G8) of the same condition from ANOTHER

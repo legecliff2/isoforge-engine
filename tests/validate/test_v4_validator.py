@@ -1108,6 +1108,29 @@ class BardFollowups214(unittest.TestCase):
         self.assertEqual(checks_v4.check_bard_hooks(d), [])
 
 
+class InnateInvisibility(unittest.TestCase):
+    """B14: monster@5 trait innate_invisibility. No parameters. A second declaration warns."""
+
+    def doc(self, schema="monster@5", effects=None):
+        if effects is None:
+            effects = [{"kind": "innate_invisibility"}]
+        return {"$schema": schema, "id": "t.stalker",
+                "traits": [{"id": f"invis_{i}", "name": "Invisibility", "description": "x", "effect": e}
+                           for i, e in enumerate(effects)]}
+
+    def test_ok_and_refusals(self):
+        self.assertEqual(checks_v4.check_innate_invisibility(self.doc(), "monster@5"), ([], []))
+        errs, warns = checks_v4.check_innate_invisibility(
+            self.doc(effects=[{"kind": "innate_invisibility"}, {"kind": "innate_invisibility"}]), "monster@6")
+        self.assertEqual(errs, [])
+        self.assertTrue(any("duplicate innate_invisibility" in w for w in warns), warns)
+        errs, _ = checks_v4.check_innate_invisibility(self.doc("monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        errs, _ = checks_v4.check_innate_invisibility(
+            self.doc(effects=[{"kind": "innate_invisibility", "note": 1}]), "monster@5")
+        self.assertTrue(any("unknown key 'note'" in e for e in errs), errs)
+
+
 class LoaderValidatorStrings(unittest.TestCase):
     """fix/rules-loader-validator-strings: each loader / validator error pair of #214 / #218 carries one identical string."""
     PAIRS = ["pick_one needs choice ask on a hit or crit trigger",

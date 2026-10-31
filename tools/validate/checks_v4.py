@@ -107,7 +107,7 @@ _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjus
                                "proficiency_bonus_reason", "emits_light", "passive_perception_reason"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
 MONSTER_AT5_ACTION_KINDS = frozenset({"teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm"})   # teleport: batch 3 blink dog; area_effect: monster area loader; pull: B5 Reel; deadly_leap: B8; whirlwind: B10; whelm: B11
-MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze", "absorb"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench), keen_senses (§30), regen (§31), freeze (§42), absorb (§43)
+MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze", "absorb", "innate_invisibility"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench), keen_senses (§30), regen (§31), freeze (§42), absorb (§43), innate_invisibility (§44)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
     _r4 = TAG_TABLE[f"{_typ}@4"]
@@ -1505,6 +1505,33 @@ def check_absorb(doc: dict, tag: str) -> tuple[list[str], list[str]]:
                 errs.append(f"{did}: absorb: a creature has one absorb")
         else:
             seen = eff
+    return errs, warns
+
+
+INNATE_INVISIBILITY_KEYS = frozenset({"kind"})
+
+
+def check_innate_invisibility(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Innate Invisibility (CONTENT_CONVENTIONS §44; sim features.cpp apply_innate_invisibility). The loader's
+    refusals as errors. A second declaration adds nothing (validator warning). The sentence has no parameters."""
+    errs: list[str] = []
+    warns: list[str] = []
+    seen = False
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "innate_invisibility":
+            continue
+        did = f"{path}: {doc.get('id', '?')}"
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{did}: innate_invisibility needs a monster@5 file")
+            continue
+        extra = sorted(k for k in eff if k not in INNATE_INVISIBILITY_KEYS)
+        if extra:
+            errs.append(f"{did}: innate_invisibility: unknown key '{extra[0]}'")
+            continue
+        if seen:
+            warns.append(f"{path}: duplicate innate_invisibility; a second declaration adds nothing")
+        else:
+            seen = True
     return errs, warns
 
 

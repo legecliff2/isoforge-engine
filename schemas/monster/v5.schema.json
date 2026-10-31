@@ -282,6 +282,32 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "innate_invisibility"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/innate_invisibility_effect"
+                }
+              }
+            }
           }
         ]
       },
@@ -2174,6 +2200,19 @@
             "$ref": "../common/v1.schema.json#/$defs/damage_type"
           },
           "description": "Damage types that heal instead of harm. The amount is the component passed to apply_damage, not the post-immunity total. A listed type is left out of DamageApplied::types_dealt."
+        }
+      }
+    },
+    "innate_invisibility_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §44; common@2 unchanged): the creature has the Invisible condition, with no duration and no concentration. Attacking or casting does not end it. SRD Invisible Stalker Invisibility: {kind innate_invisibility}. Spell Invisibility's ends_on is a different effect. One trait per creature; a second declaration adds nothing.",
+      "properties": {
+        "kind": {
+          "const": "innate_invisibility"
         }
       }
     },
