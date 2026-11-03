@@ -31,8 +31,9 @@ struct DamageApplied {
 // (resistance never stacks).
 DamageApplied apply_damage(const Combatant&, int16_t amount, DamageType, uint8_t qualifiers = 0);
 
-// 7.2zi Warding Bond: `amount` hit points, ignoring immunity, resistance and vulnerability. Temporary hit points still
-// absorb. types_dealt stays 0 (the share is not a typed hit). amount < 0 is 0.
+// 7.2zi Warding Bond, and B18 Bound's transferred integer (CONTENT_CONVENTIONS §50): `amount` hit points, ignoring
+// immunity, resistance and vulnerability. Temporary hit points still absorb. types_dealt stays 0 (not a typed hit).
+// amount < 0 is 0. Bound does not use the share_damage modifier; this is only the delivery of a resolved integer.
 DamageApplied apply_damage_fixed(const Combatant&, int16_t amount);
 
 // True if a qualified mask entry is active against a source with these AttackQualifier bits.

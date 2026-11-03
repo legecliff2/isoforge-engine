@@ -107,7 +107,7 @@ _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjus
                                "proficiency_bonus_reason", "emits_light", "passive_perception_reason"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
 MONSTER_AT5_ACTION_KINDS = frozenset({"teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm"})   # teleport: batch 3 blink dog; area_effect: monster area loader; pull: B5 Reel; deadly_leap: B8; whirlwind: B10; whelm: B11
-MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze", "absorb", "innate_invisibility", "horrific_appearance"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench), keen_senses (§30), regen (§31), freeze (§42), absorb (§43), innate_invisibility (§44), horrific_appearance (§45)
+MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze", "absorb", "innate_invisibility", "horrific_appearance", "bound"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench), keen_senses (§30), regen (§31), freeze (§42), absorb (§43), innate_invisibility (§44), horrific_appearance (§45), bound (§50)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
     _r4 = TAG_TABLE[f"{_typ}@4"]
@@ -1589,6 +1589,42 @@ def check_horrific_appearance(doc: dict, tag: str) -> tuple[list[str], list[str]
             warns.append(f"{path}: duplicate horrific_appearance (same as {first_path}); a second declaration adds nothing")
         else:
             errs.append(f"{did}: horrific_appearance: a creature has one horrific appearance")
+    return errs, warns
+
+
+BOUND_KEYS = frozenset({"kind", "radius_ft"})
+
+
+def check_bound(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Bound (CONTENT_CONVENTIONS §50; sim features.cpp apply_bound). The loader's refusals as errors. An identical
+    second declaration (same radius_ft) warns. A different second declaration errors."""
+    errs: list[str] = []
+    warns: list[str] = []
+    seen: int | None = None
+    seen_path = ""
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "bound":
+            continue
+        did = f"{path}: {doc.get('id', '?')}"
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{did}: bound needs a monster@5 file")
+            continue
+        extra = sorted(k for k in eff if k not in BOUND_KEYS)
+        if extra:
+            errs.append(f"{did}: bound: unknown key '{extra[0]}'")
+            continue
+        radius = eff.get("radius_ft")
+        if (not isinstance(radius, int) or isinstance(radius, bool) or radius < 5 or radius > 120 or radius % 5 != 0):
+            errs.append(f"{did}: bound: radius_ft must be a multiple of 5 in 5..120")
+            continue
+        if seen is not None:
+            if seen == radius:
+                warns.append(f"{path}: duplicate bound (same as {seen_path}); a second declaration adds nothing")
+            else:
+                errs.append(f"{did}: bound: a creature has one bound")
+        else:
+            seen = radius
+            seen_path = path
     return errs, warns
 
 

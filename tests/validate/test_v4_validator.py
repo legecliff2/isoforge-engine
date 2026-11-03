@@ -1200,6 +1200,32 @@ class HorrificAppearance(unittest.TestCase):
         self.assertTrue(any("drain_max_hp needs damage" in e for e in errs), errs)
 
 
+class BoundTrait(unittest.TestCase):
+    """B18: monster@5 trait bound. An identical second declaration warns."""
+
+    def doc(self, schema="monster@5", effects=None):
+        if effects is None:
+            effects = [{"kind": "bound", "radius_ft": 60}]
+        return {"$schema": schema, "id": "t.guard",
+                "traits": [{"id": f"bound_{i}", "name": "Bound", "description": "x", "effect": e}
+                           for i, e in enumerate(effects)]}
+
+    def test_ok_and_refusals(self):
+        self.assertEqual(checks_v4.check_bound(self.doc(), "monster@5"), ([], []))
+        same = {"kind": "bound", "radius_ft": 60}
+        errs, warns = checks_v4.check_bound(self.doc(effects=[same, dict(same)]), "monster@6")
+        self.assertEqual(errs, [])
+        self.assertTrue(any("duplicate bound" in w for w in warns), warns)
+        errs, _ = checks_v4.check_bound(self.doc(effects=[same, {"kind": "bound", "radius_ft": 30}]), "monster@5")
+        self.assertTrue(any("a creature has one bound" in e for e in errs), errs)
+        errs, _ = checks_v4.check_bound(self.doc("monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        errs, _ = checks_v4.check_bound(self.doc(effects=[{"kind": "bound", "radius_ft": 7}]), "monster@5")
+        self.assertTrue(any("radius_ft must be a multiple of 5" in e for e in errs), errs)
+        errs, _ = checks_v4.check_bound(self.doc(effects=[{"kind": "bound", "radius_ft": 60, "note": 1}]), "monster@5")
+        self.assertTrue(any("unknown key 'note'" in e for e in errs), errs)
+
+
 class LoaderValidatorStrings(unittest.TestCase):
     """fix/rules-loader-validator-strings: each loader / validator error pair of #214 / #218 carries one identical string."""
     PAIRS = ["pick_one needs choice ask on a hit or crit trigger",

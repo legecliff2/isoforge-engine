@@ -1710,3 +1710,49 @@ Deferred, not this action:
 
 This section does not author `srd51.monster.ghost`. The row stays deferred until T&C writes the stat block. Possession and Etherealness are still the block. Counts stay 201 authored and 9 deferred.
 
+## 50. Bound (monster@5 trait `bound`)
+
+SRD 5.1 Shield Guardian Bound, the damage sentence only:
+
+"If the guardian is within 60 feet of the amulet's wearer, half of any damage the wearer takes (rounded up) is transferred to the guardian."
+
+The rest of the trait (same plane, the telepathic call, the guardian knowing the distance and direction to the amulet) is not modelled. This is not Warding Bond. That spell's `share_damage` modifier copies `DamageApplied.dealt` 1:1 onto the caster, and `end_beyond_ft` ends the spell when the two are farther than 60 feet (`end_at_zero: caster` ends it when the caster drops to 0). Bound does not grant AC, saves, or resistance. The half rounded up is removed from the wearer. The link does not end past 60 feet, and it does not end when the guardian drops to 0 hit points. The roles are the guardian and the amulet's wearer, not a spell's caster and target. `share_damage` cannot say that, so this is a trait, not a reuse of that modifier.
+
+```json
+{ "id": "bound", "name": "Bound", "kind": "bound", "radius_ft": 60 }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `radius_ft` | a multiple of 5 in 5..120. The shield guardian is 60. The transfer happens only when `EncounterHooks::sight_facts` reports `distance_ft` less than or equal to this, from the guardian to the wearer. No sight hook: the distance is unknown, so nothing is transferred (rules have no positions). The link stays | `bound: radius_ft must be a multiple of 5 in 5..120` |
+
+The wearer is not a content field. The trait fills `Combatant::bound.radius_ft` on the guardian. `Combatant::bound.wearer` is the link: a spawn override `bound_wearer` (that combatant's id), or a caller writing the field. It is not an amulet item. A wearer of 0 does nothing. The override is refused when the spawn has no `bound` trait (`spawn overrides.bound_wearer needs the bound trait`), when it names the guardian (`spawn overrides.bound_wearer cannot be the guardian`), when it is not an id (`spawn overrides.bound_wearer must be a combatant id`), or when that id is not in the fight (`spawn overrides.bound_wearer is not a combatant in this fight`). One trait per creature: an identical second declaration adds nothing; a different radius is `bound: a creature has one bound`. Below monster@5, or on a character, the loader says `bound needs a monster@5 file` or `bound: only valid on monsters`.
+
+What the sentence fixes, read against the damage pipeline:
+
+* **Damage the wearer takes** is `DamageApplied::dealt` after the wearer's immunity, resistance, and vulnerability (`apply_damage`: immunity to 0, resistance halves rounding down, then vulnerability doubles) and after a Damaged `reduce_damage` reaction, and before temporary hit points. `dealt` is that integer (`damage.hpp`: after mitigation, before temp HP). Warding Bond already treats it as the damage taken. A halving reaction leaves `dealt / 2` (the reduction is the larger half, so the remainder rounds down). Bound then runs, before the drop is committed, before Undead Fortitude, and before concentration.
+* **Half, rounded up**, is `(dealt + 1) / 2`. That many hit points are removed from the wearer's packet (`reduce_applied`). The wearer keeps the rest (`dealt / 2`). 11 becomes 6 transferred and 5 kept. 1 becomes 1 transferred and 0 kept. 0 transfers nothing.
+* **Transferred** means those hit points are not kept. The guardian is damaged for that integer through `apply_damage_fixed` (the same delivery Warding Bond uses for a resolved number, not the `share_damage` modifier). SRD 5.1 does not name a type for the transferred half, and `dealt` is already one sum: `apply_damage_parts` has added the mitigated components. Immunity, resistance, and vulnerability on the guardian do not apply again. Temporary hit points on the guardian still absorb it. `types_dealt` on that packet stays 0. The source is null, so the guardian does not retaliate and the hit is not an attack by the original damager.
+* **Within 60 feet** is the gate for that hit. At 60 feet the transfer happens. At 65 it does not, and `bound.wearer` is unchanged, so a later hit inside the radius transfers again. Warding Bond's `end_beyond_ft` would have ended the bond instead.
+* **Concentration** uses the post-transfer `applied.dealt` (`max(10, dealt / 2)`). A transfer of the whole point leaves 0, so no concentration save is rolled. Warding Bond's share, if the wearer also has one, copies that same post-transfer `dealt`.
+* **Temporary hit points on the wearer** absorb only the remainder. They are not part of `dealt`.
+* **A cycle** (each is the other's wearer) stops when the creature is already on the transfer stack. A second guardian of the same wearer, in combatant order, transfers half of what still remains, rounded up, so the parts still add up to the original `dealt`. The SRD states one guardian.
+
+`Combat::hash` tag **0xE5** folds the link only while some `bound.wearer` is non-zero: count, then per such combatant in order the guardian id, the wearer id, and `radius_ft`. A radius with no wearer is static and is not hashed. No new `SIM_EVENTS` tag. Next free is **0xE6**. Replay reads `bound_wearer` from the spawn override. `FormStats` does not carry the trait; the fields stay on the creature. Shapechange is not this trait.
+
+Product calls, not decided here:
+
+* **The guardian's resistances.** SRD 5.1 does not say they apply, and it does not say they do not. The 2024 sentence "damage transferred in this way can't be reduced" is not imported. The pipeline only has the summed integer, so the transfer uses `apply_damage_fixed`.
+* **Two guardians, one wearer.** Sequential half-up of the remainder is what keeps "transferred" from handing out more hit points than the wearer took. A ruling that only the first guardian receives the half is not taken.
+* **No sight hook.** Nothing is transferred. A ruling that missing positions count as within 60 feet is not taken.
+
+Deferred, not this trait:
+
+* Spell Storing.
+* The Shield reaction (+2 AC to the wearer while the guardian is within 5 feet). It is the same amulet, and it is not this damage transfer. Follow-up, not this trait.
+* Regeneration, the fist, and the rest of the stat block.
+* An amulet magic item. The spawn override is the link, not item UX.
+* `shield_guardian.json` is not authored.
+
+This section does not author `srd51.monster.shield_guardian`. The row stays deferred until Spell Storing, the Shield reaction, and the stat block are written. Counts stay 201 authored and 9 deferred.
+

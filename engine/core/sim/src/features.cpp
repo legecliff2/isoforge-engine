@@ -1332,6 +1332,27 @@ std::optional<std::string> apply_freeze(Archetype& a, const FeatureDecl& f, uint
     return std::nullopt;
 }
 
+// bound {radius_ft} (CONTENT_CONVENTIONS §50). Fills Combatant::bound.radius_ft. The amulet's wearer is not content:
+// Encounter spawn overrides.bound_wearer (or a test) sets Combatant::bound.wearer. An identical second declaration
+// adds nothing; a different radius is an error. Static radius, not hashed. The wearer id folds under 0xE5 when set.
+std::optional<std::string> apply_bound(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": bound needs a monster@5 file";
+    if (a.schema_type != "monster") return f.id + ": bound: only valid on monsters";
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "radius_ft")
+            return f.id + ": bound: unknown key '" + it.key() + "'";
+    const auto r = f.effect.find("radius_ft");
+    if (r == f.effect.end() || !r->is_number_integer() || r->get<int>() < 5 || r->get<int>() > 120 || r->get<int>() % 5 != 0)
+        return f.id + ": bound: radius_ft must be a multiple of 5 in 5..120";
+    const auto ft = uint16_t(r->get<int>());
+    if (a.base.bound.radius_ft != 0) {
+        if (a.base.bound.radius_ft == ft) return std::nullopt;
+        return f.id + ": bound: a creature has one bound";
+    }
+    a.base.bound.radius_ft = ft;
+    return std::nullopt;
+}
+
 // absorb {by} (CONTENT_CONVENTIONS §43). Fills Combatant::absorb. A listed type is removed from the hit and regained
 // as hit points (the source amount, before immunity, resistance, and vulnerability). An identical second declaration
 // adds nothing; a different one is an error. Static config, not hashed. The regain is the existing Healed event.
@@ -1523,6 +1544,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("keen_senses", {apply_keen_senses});         // monster@5 (CONTENT_CONVENTIONS §30): gated in the hook
     r.add_hook("regen", {apply_regen});                     // monster@5 (CONTENT_CONVENTIONS §31): gated in the hook
     r.add_hook("freeze", {apply_freeze});                   // monster@5 (CONTENT_CONVENTIONS §42): gated in the hook
+    r.add_hook("bound", {apply_bound});                     // monster@5 (CONTENT_CONVENTIONS §50): gated in the hook
     r.add_hook("absorb", {apply_absorb});                   // monster@5 (CONTENT_CONVENTIONS §43): gated in the hook
     r.add_hook("innate_invisibility", {apply_innate_invisibility});   // monster@5 (CONTENT_CONVENTIONS §44): gated in the hook
     r.add_hook("horrific_appearance", {apply_horrific_appearance});   // monster@5 (CONTENT_CONVENTIONS §45): gated in the hook

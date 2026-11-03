@@ -2186,6 +2186,37 @@ void end_recast_bonds(EncounterState& s, const SpellDef& def, CombatantId neu, s
     for (const auto& p : srcs) end_linked_source(s, p.first, p.second, 2, ev);
 }
 thread_local std::vector<CombatantId> g_share_stack;
+// B18 Bound (CONTENT_CONVENTIONS §50). Not share_damage: the link stays past 60 feet, and the half rounded up
+// is removed from the wearer. A creature already on this stack does not take a further transfer (a cycle stops).
+thread_local std::vector<CombatantId> g_bound_stack;
+bool bound_in_range(const EncounterState& s, const Combatant& guardian, const Combatant& wearer) {
+    if (guardian.bound.radius_ft == 0 || !s.hooks.sight_facts) return false;
+    return s.hooks.sight_facts(s, guardian, wearer).distance_ft <= guardian.bound.radius_ft;
+}
+void transfer_bound_damage(EncounterState& s, Combatant& victim, DamageApplied& applied, std::vector<Event>& ev, Ctx* ctx) {
+    if (applied.dealt <= 0) return;
+    if (std::find(g_bound_stack.begin(), g_bound_stack.end(), victim.id) != g_bound_stack.end()) return;
+    bool any = false;
+    for (const auto& g : s.combatants)
+        if (g.bound.radius_ft != 0 && g.bound.wearer == victim.id && g.id != victim.id && !g.dead) any = true;
+    if (!any) return;
+    g_bound_stack.push_back(victim.id);
+    struct Pop { ~Pop() { if (!g_bound_stack.empty()) g_bound_stack.pop_back(); } } pop;
+    const CombatantId wearer_id = victim.id;
+    for (std::size_t i = 0; i < s.combatants.size() && applied.dealt > 0; ++i) {
+        const CombatantId gid = s.combatants[i].id;
+        const Combatant* g = find(s, gid);
+        if (!g || g->dead || g->id == wearer_id || g->bound.radius_ft == 0 || g->bound.wearer != wearer_id) continue;
+        if (std::find(g_bound_stack.begin(), g_bound_stack.end(), gid) != g_bound_stack.end()) continue;
+        Combatant* wearer = find_mut(s, wearer_id);
+        if (!wearer || !bound_in_range(s, *g, *wearer)) continue;
+        const int transfer = (int(applied.dealt) + 1) / 2;
+        applied = reduce_applied(*wearer, applied, transfer);
+        Combatant* guard = find_mut(s, gid);
+        if (!guard || guard->dead) continue;
+        damage_creature(s, *guard, apply_damage_fixed(*guard, int16_t(transfer)), false, ev, nullptr, ctx);
+    }
+}
 void share_ward_damage(EncounterState& s, Combatant& victim, const DamageApplied& applied, std::vector<Event>& ev, Ctx* ctx) {
     if (applied.dealt <= 0 || s.modifiers.empty()) return;
     if (std::find(g_share_stack.begin(), g_share_stack.end(), victim.id) != g_share_stack.end()) return;
@@ -2240,6 +2271,7 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
             }
         }
     }
+    transfer_bound_damage(s, t, applied, ev, ctx);   // B18 Bound: half of damage taken, rounded up, before the drop is committed
     if (!t.triggers.empty() && applied.dropped_to_zero && !applied.instant_death) {   // Undead Fortitude: before the drop applies
         TrigCtx x; x.atk = src ? src->atk : nullptr; x.is_spell = src && src->is_spell; x.crit = critical;
         x.types = applied.types_dealt; x.dmg = applied.dealt;
@@ -2296,7 +2328,7 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         }
         for (const auto& k : ended) end_concentration_if_empty(s, k.second, k.first, ev);
     }
-    share_ward_damage(s, t, applied, ev, ctx);   // 7.2zi Warding Bond: the caster takes applied.dealt, untyped
+    share_ward_damage(s, t, applied, ev, ctx);   // 7.2zi Warding Bond: the caster takes applied.dealt (after Bound, when that transfer ran)
     end_caster_zero_bonds(s, t, ev);             // 7.2zi: the caster (not the warded creature) at 0 HP ends the bond
     if (applied.dealt > 0 && !s.modifiers.empty()) consume_modifiers(s, 3, t.id, 4, ev);   // "until damaged"
     if (applied.dealt > 0 && !s.modifiers.empty()) mark_fought(s, t.id);   // 7.2z ends_early: took damage

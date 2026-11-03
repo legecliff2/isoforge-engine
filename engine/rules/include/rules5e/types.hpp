@@ -232,6 +232,12 @@ struct Regeneration { int16_t amount = 0; uint32_t suppressed_by = 0; };   // su
 // (speed_sub feet, until the end of this creature's next turn) is applied. by == 0 means the trait is absent.
 // Static config. The modifier itself folds under the existing 0xA2. No new SIM_EVENTS tag.
 struct Freeze { uint32_t by = 0; uint8_t speed_sub = 0; uint32_t modifier_id = 0; };
+// SRD Bound (CONTENT_CONVENTIONS §50). On the guardian. radius_ft == 0 means the trait is absent.
+// wearer == 0 means no amulet wearer is linked. While the guardian is within radius_ft of that wearer,
+// half of the damage the wearer takes (rounded up) is transferred to this guardian. The link does not
+// end past that distance or at 0 hit points. radius_ft is static content. wearer is the link (not an
+// item) and folds under Combat::hash 0xE5 only when non-zero. FormStats does not carry it.
+struct Bound { uint16_t radius_ft = 0; CombatantId wearer = 0; };
 // SRD Lightning Absorption (CONTENT_CONVENTIONS §43): Combatant::absorb, a bitmask over DamageType. A listed
 // type is not taken. The creature regains hit points equal to that component's amount (the number passed to
 // apply_damage, before immunity, resistance, and vulnerability). 0 means the trait is absent. Static config.
@@ -795,6 +801,9 @@ struct Combatant {
     // system: no ability scores, no death from old age, no greater restoration. Not hashed. No SIM_EVENTS tag.
     // Replay re-rolls the dice. Saturates at 65535. FormStats does not carry it; the years stay on the creature.
     uint16_t aged_years = 0;
+    // appended (B18 Bound, CONTENT_CONVENTIONS §50). radius_ft is static (not hashed). wearer is the amulet
+    // link and folds under Combat::hash 0xE5 only when non-zero. FormStats does not carry it.
+    Bound bound{};
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 
