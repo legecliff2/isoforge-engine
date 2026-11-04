@@ -2301,6 +2301,18 @@ uint64_t Combat::hash() const {
                 if (c.bound.wearer != 0) { h.u32(c.id); h.u32(c.bound.wearer); h.u16(c.bound.radius_ft); }
         }
     }
+    // 0xE6 (B19 Etherealness, CONTENT_CONVENTIONS §51): plane, only while some combatant is not Material.
+    // Material is the default and is not folded, so a fight that never leaves it hashes as before.
+    {
+        uint32_t shifted = 0;
+        for (const auto& c : state_.combatants) if (c.plane != rules5e::Plane::Material) ++shifted;
+        if (shifted != 0) {
+            h.byte(0xE6);
+            h.u32(shifted);
+            for (const auto& c : state_.combatants)
+                if (c.plane != rules5e::Plane::Material) { h.u32(c.id); h.byte(uint8_t(c.plane)); }
+        }
+    }
     return h.value();
 }
 

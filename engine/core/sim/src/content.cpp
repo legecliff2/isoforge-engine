@@ -728,6 +728,40 @@ std::optional<std::string> compile_teleport_action(const std::string& arch, cons
     return std::nullopt;
 }
 
+// B19 Etherealness (CONTENT_CONVENTIONS §51). An action. No target, no roll. Toggles Combatant::plane
+// between Material and the Border Ethereal. The built-in AI does not pick it.
+std::optional<std::string> compile_etherealness(const std::string& arch, const Json& act, uint32_t declared,
+                                                const std::string& schema_type, rules5e::SpellDef& d,
+                                                Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": etherealness '" + aid + "'";
+    if (schema_type != "monster") return where + ": etherealness: only valid on monsters";
+    if (declared != 0 && declared < 5) return where + ": etherealness needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description")
+            return where + ": etherealness: unknown key '" + k + "'";
+    }
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.kind = rules5e::SpellEffectKind::ApplyCondition;
+    d.is_spell = false;
+    d.magical = false;
+    d.components = 0;
+    d.targets = 1;
+    d.range_ft = 0;
+    d.applies_condition = false;
+    d.ethereal_toggle = true;
+    d.casting_time = rules5e::CastingTime::Action;
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.range_ft = 0;
+    sa.ethereal = true;
+    return std::nullopt;
+}
+
 // B8 Deadly Leap (CONTENT_CONVENTIONS §38). Its own action. Not a multiattack rider.
 // {kind: deadly_leap, jump_ft, save: {ability, dc}, save_alt, damage: [two], push_ft}.
 // One save, the higher of the two abilities (tie: save.ability). Fail: both damages and prone.
@@ -2679,10 +2713,19 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         for (const Json& act : doc.at("actions")) {
             const std::string ak = act.value("kind", "");
             if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect" && ak != "pull" &&
-                ak != "deadly_leap" && ak != "whirlwind" && ak != "whelm") continue;
+                ak != "deadly_leap" && ak != "whirlwind" && ak != "whelm" && ak != "etherealness") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
+            if (ak == "etherealness") {   // B19: toggle Material ↔ Border Ethereal. No target.
+                if (auto e = compile_etherealness(a.id, act, declared, schema_type, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": etherealness ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
             if (ak == "deadly_leap") {   // B8: jump, then land on the creatures in this space
                 if (auto e = compile_deadly_leap(a.id, act, declared, schema_type, d, sa)) return e;
                 for (const auto& prev : synth)

@@ -238,6 +238,9 @@ struct Freeze { uint32_t by = 0; uint8_t speed_sub = 0; uint32_t modifier_id = 0
 // end past that distance or at 0 hit points. radius_ft is static content. wearer is the link (not an
 // item) and folds under Combat::hash 0xE5 only when non-zero. FormStats does not carry it.
 struct Bound { uint16_t radius_ft = 0; CombatantId wearer = 0; };
+// SRD 5.1 Ghost Etherealness (CONTENT_CONVENTIONS §51). Material is every creature's default.
+// BorderEthereal is the Border Ethereal the action enters. Deep Ethereal is not a value.
+enum class Plane : uint8_t { Material = 0, BorderEthereal = 1 };
 // SRD Lightning Absorption (CONTENT_CONVENTIONS §43): Combatant::absorb, a bitmask over DamageType. A listed
 // type is not taken. The creature regains hit points equal to that component's amount (the number passed to
 // apply_damage, before immunity, resistance, and vulnerability). 0 means the trait is absent. Static config.
@@ -804,8 +807,20 @@ struct Combatant {
     // appended (B18 Bound, CONTENT_CONVENTIONS §50). radius_ft is static (not hashed). wearer is the amulet
     // link and folds under Combat::hash 0xE5 only when non-zero. FormStats does not carry it.
     Bound bound{};
+    // appended (B19 Etherealness, CONTENT_CONVENTIONS §51). Material is the default and is not hashed.
+    // Any other plane folds under Combat::hash 0xE6 only while some combatant is not Material.
+    // FormStats does not carry it; the plane stays on the creature. Not a condition and not invisibility.
+    Plane plane = Plane::Material;
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
+
+// SRD Etherealness: a creature cannot affect or be affected by anything on the other plane.
+// The creature itself is always on its own plane. Same plane, including Border Ethereal with
+// Border Ethereal, can. Empty when the action may proceed.
+inline std::string_view plane_affect_refusal(const Combatant& actor, const Combatant& target) {
+    if (actor.id == target.id || actor.plane == target.plane) return {};
+    return "can't affect a creature on the other plane";
+}
 
 void add_condition(Combatant&, Condition);
 void remove_condition(Combatant&, Condition);

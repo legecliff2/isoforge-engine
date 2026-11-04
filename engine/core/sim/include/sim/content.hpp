@@ -75,6 +75,7 @@ struct Archetype {
         bool leap = false;              // B8: Deadly Leap. The built-in AI does not declare a jump or pick a landing.
         bool whirl = false;             // B10: Whirlwind. The built-in AI does not pick a random fling.
         bool whelm = false;             // B11: Whelm. The built-in AI does not use it.
+        bool ethereal = false;          // B19: Etherealness. The built-in AI does not toggle planes.
     };
     std::vector<SaveAction> save_actions;
     // resources[] (row 13): pools Combat::create registers (resolved against the archetype's level / abilities at load).

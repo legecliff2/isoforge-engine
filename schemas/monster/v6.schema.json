@@ -785,7 +785,8 @@
             "pull",
             "deadly_leap",
             "whirlwind",
-            "whelm"
+            "whelm",
+            "etherealness"
           ]
         },
         "to_hit": {
@@ -2048,6 +2049,18 @@
                 { "required": ["grapple"] },
                 { "required": ["crush"] }
               ]
+            }
+          }
+        },
+        {
+          "description": "B19 Etherealness: an action that toggles the user's plane between the Material Plane and the Border Ethereal. No target, no roll. Sight is unchanged. monster@5 only.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "etherealness" } }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description"]
             }
           }
         }

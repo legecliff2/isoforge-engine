@@ -106,7 +106,7 @@ TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), froze
 _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
                                "proficiency_bonus_reason", "emits_light", "passive_perception_reason"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
-MONSTER_AT5_ACTION_KINDS = frozenset({"teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm"})   # teleport: batch 3 blink dog; area_effect: monster area loader; pull: B5 Reel; deadly_leap: B8; whirlwind: B10; whelm: B11
+MONSTER_AT5_ACTION_KINDS = frozenset({"teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm", "etherealness"})   # teleport: batch 3 blink dog; area_effect: monster area loader; pull: B5 Reel; deadly_leap: B8; whirlwind: B10; whelm: B11; etherealness: B19
 MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze", "absorb", "innate_invisibility", "horrific_appearance", "bound"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench), keen_senses (§30), regen (§31), freeze (§42), absorb (§43), innate_invisibility (§44), horrific_appearance (§45), bound (§50)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
@@ -457,6 +457,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     check_deadly_leap_actions(doc, errs)
     check_whirlwind_actions(doc, errs)
     check_whelm_actions(doc, errs)
+    check_etherealness_actions(doc, errs)
     check_untimed_save_condition_riders(doc, errs)
     check_save_max_size(doc, errs)
     check_refused_condition_durations(doc, errs, warns)
@@ -753,6 +754,28 @@ def check_grapple_rider(doc: dict) -> tuple[list[str], list[str]]:
                     warns.append(f"{path}/on_hit/{j}: grapple no_damage: the hit deals no damage, so the attack's other "
                                  "on_hit riders that deal damage do not fire (B5)")
     return errs, warns
+
+
+def check_etherealness_actions(doc: dict, errs: list[str]) -> None:
+    """B19 Etherealness. Loader wording from compile_etherealness."""
+    tag = str(doc.get("$schema") or "")
+    for i, a in enumerate(doc.get("actions") or []):
+        if not isinstance(a, dict) or a.get("kind") != "etherealness":
+            continue
+        path = f"/actions/{i}"
+        where = f"{path}: etherealness '{a.get('id', '')}'"
+        if not tag.startswith("monster"):
+            errs.append(f"{where}: etherealness: only valid on monsters")
+            continue
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{where}: etherealness needs a monster@5 file")
+            continue
+        aid = a.get("id", "")
+        if not isinstance(aid, str) or not aid or "#" in aid:
+            errs.append(f"{where}: id must be non-empty and contain no '#'")
+        for k in a:
+            if k not in ("id", "name", "kind", "description"):
+                errs.append(f"{where}: etherealness: unknown key '{k}'")
 
 
 def check_deadly_leap_actions(doc: dict, errs: list[str]) -> None:
