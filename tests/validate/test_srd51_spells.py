@@ -3,7 +3,8 @@
 
 `data/srd51_spells_5e_database_a6212be.json` holds fields copied from 5e-bits/5e-database commit a6212be
 (src/2014/en/5e-SRD-Spells.json; SRD 5.1, CC-BY-4.0). The hunters-mark entry is removed: Hunter's Mark is PHB-only and
-not in SRD 5.1. The rest of the file matches a6212be. For every spell in the table this asserts level, school, classes, casting time, range,
+not in SRD 5.1. The rest of the file matches a6212be, except suggestion.classes also lists cleric to match the
+7.2zj specimen (a6212be lists bard, sorcerer, warlock, and wizard only). For every spell in the table this asserts level, school, classes, casting time, range,
 components, duration / concentration, damage dice and type at the base level, upcast / cantrip scaling, the save, the
 attack type and the area. The mechanics the loaders read (forced_move push, teleport, timed modifiers) are pinned in
 test_mechanics. docs/SRD_SPELLS_DEFERRED.md lists the authored / deferred split.
@@ -403,6 +404,44 @@ class SpellTable(unittest.TestCase):
                                           "modifier": {"stat": "bonus_dash", "applies_to": "self",
                                                        "duration": {"kind": "rounds", "n": 600}}}])
         self.assertEqual(er["classes"], ["sorcerer", "warlock", "wizard"])
+
+    def test_spell_batch_zj_packs(self):
+        # 7.2zj: Charm Person, Calm Emotions, Suggestion, and Fly in srd51.core equal the specimens
+        # (tests/validate/fixtures/spell_batch_zj). Level 4-5 specimens stay unpackaged.
+        fx = ROOT / "tests/validate/fixtures/spell_batch_zj"
+        keys = ("effects", "casting_time", "range", "duration", "targets", "scaling",
+                "components", "classes", "level", "school")
+        for idx in ("charm-person", "calm-emotions", "suggestion", "fly"):
+            with self.subTest(spell=idx):
+                spec = json.loads((fx / f"{idx.replace('-', '_')}.json").read_text(encoding="utf-8"))
+                d = load(idx)
+                for k in keys:
+                    self.assertEqual(d.get(k), spec.get(k), k)
+                self.assertEqual(d["$schema"], "spell@1")
+                self.assertEqual(d["id"], "srd51.spell." + idx.replace("-", "_"))
+                self.assertEqual(d["source"], {"ref": "SRD 5.1", "license": "CC-BY-4.0"})
+        charm = load("charm-person")
+        self.assertEqual(charm["effects"][0], {"kind": "save", "ability": "wis", "condition": "charmed",
+                                                "hostile_save_advantage": True, "ends_on_ally_harm": True,
+                                                "caster_sees_target": True})
+        self.assertIn("knows you charmed it", charm["description"])
+        calm = load("calm-emotions")
+        self.assertEqual(calm["effects"][0]["suppress_conditions"], ["charmed", "frightened"])
+        self.assertEqual((calm["area"], calm["targets"]["count"]), ({"shape": "sphere", "size_ft": 20}, 255))
+        self.assertIn("Indifference", calm["description"])
+        self.assertIn("voluntary failed save", calm["description"])
+        sug = load("suggestion")
+        self.assertTrue(sug["effects"][0]["charm_immune"])
+        self.assertTrue(sug["effects"][0]["requires_hearing"])
+        self.assertIn("course of action", sug["description"])
+        # a6212be lists bard, sorcerer, warlock, wizard. The specimen (and this pack) also lists cleric.
+        self.assertEqual(sug["classes"], ["bard", "cleric", "sorcerer", "warlock", "wizard"])
+        fly = load("fly")
+        self.assertEqual(fly["effects"], [{"kind": "grant_fly", "fly_ft": 60}])
+        self.assertIn("caster's team", fly["description"])
+        for left_out in ("geas", "cone_of_cold", "ice_storm", "greater_invisibility",
+                         "greater_restoration", "dispel_evil_and_good"):
+            self.assertFalse((PACK / "spells" / f"{left_out}.json").exists(), left_out)
 
     def test_spell_batch_zi(self):
         # Rules 7.2zi: mechanics only. Content packs are T&C; specimens live in tests/validate/fixtures/spell_batch_zi.
