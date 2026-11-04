@@ -223,7 +223,7 @@ class TagTable(unittest.TestCase):
             local = checks_v4.MONSTER_AT5_EFFECT_KINDS if typ == "monster" else frozenset()
             local_act = checks_v4.MONSTER_AT5_ACTION_KINDS if typ == "monster" else frozenset()
             self.assertEqual((r4.action_kinds | local_act, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
-        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze", "absorb", "innate_invisibility", "horrific_appearance"})
+        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze", "absorb", "innate_invisibility", "horrific_appearance", "bound"})
         self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm"})
 
 
@@ -766,6 +766,21 @@ class VisualSchemaV6(unittest.TestCase):
         reg, by_tag = h.registry()
         errs = vp.validate_pack(CORE, reg, by_tag, [])
         self.assertFalse(any(e.startswith("art/") or "/art/" in e for e in errs), [e for e in errs if "art" in e])
+
+
+class BoundSchema(unittest.TestCase):
+    """B18: monster@5 trait bound. common@2 is unchanged. radius_ft is a multiple of 5."""
+
+    def test_radius_closed(self):
+        b = bugbear5()
+        b["traits"].append({"id": "bound", "name": "Bound", "description": "x",
+                            "effect": {"kind": "bound", "radius_ft": 60}})
+        e, w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertEqual(e, [])
+        self.assertFalse(any("unknown effect kind 'bound'" in x for x in w), w)
+        b["traits"][-1]["effect"]["radius_ft"] = 7
+        e, _w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertTrue(any("/traits/" in x for x in e), e)
 
 
 if __name__ == "__main__":

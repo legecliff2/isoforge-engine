@@ -179,6 +179,12 @@ Horrifying Visage is not this kind. It is the monster@5 `save_effect` in §49: a
 
 Example: `{ "kind": "horrific_appearance", "radius_ft": 30, "save": { "ability": "wis", "dc": 11 }, "immunity_hours": 24 }`
 
+### `bound` (static radius, monster@5)
+
+`radius_ft` (required, a multiple of 5 in 5..120). SRD Shield Guardian Bound, the damage sentence only (CONTENT_CONVENTIONS §50). The loader writes `Combatant::bound.radius_ft`. The amulet's wearer is `Combatant::bound.wearer`, set by spawn override `bound_wearer` (a combatant id in the fight). Not an item. While the guardian is within `radius_ft` (`sight_facts.distance_ft`, inclusive), half of `DamageApplied::dealt` on the wearer, rounded up, is removed from that packet and dealt to the guardian as an untyped integer (`apply_damage_fixed`). No sight hook: nothing is transferred, and the link stays. Past the radius the link stays. One bound per creature: an identical second declaration does nothing (the validator warns); a different radius is a load error. Refused below monster@5 and on a character. `Combat::hash` 0xE5 folds the wearer only when one is set. No `SIM_EVENTS` tag. Not `share_damage`. Not the Shield reaction. `shield_guardian.json` is not authored.
+
+Example: `{ "kind": "bound", "radius_ft": 60 }`
+
 ### `aggressive` (static, T&C-G7)
 
 No fields. SRD orc Aggressive (sim #129: rules5e `Combatant::aggressive`): a bonus-action Dash whose extra movement must take the

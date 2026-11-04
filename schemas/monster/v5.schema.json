@@ -334,6 +334,32 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "bound"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/bound_effect"
+                }
+              }
+            }
           }
         ]
       },
@@ -2329,6 +2355,27 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 168
+        }
+      }
+    },
+    "bound_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "radius_ft"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §50; common@2 unchanged): while this guardian is within radius_ft of the amulet's wearer, half of any damage the wearer takes (rounded up) is transferred to the guardian. The wearer is not this object; spawn overrides.bound_wearer names that combatant. SRD Shield Guardian: {kind bound, radius_ft 60}. The link does not end past that distance. Not the Shield reaction. One trait per creature.",
+      "properties": {
+        "kind": {
+          "const": "bound"
+        },
+        "radius_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 120,
+          "multipleOf": 5,
+          "description": "Feet. The guardian must be within this distance (sight_facts.distance_ft, inclusive). Shield Guardian is 60."
         }
       }
     },

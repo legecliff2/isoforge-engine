@@ -133,6 +133,31 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
         rules5e::Combatant k = a->base;
         k.id = sp.stable_id;
         k.team = uint8_t(std::lower_bound(c.team_names_.begin(), c.team_names_.end(), team_name) - c.team_names_.begin());
+        if (!sp.overrides_json.empty()) {   // B18: the amulet wearer. Not an item. Replay reads the same spawn override.
+            const assets::Json ov = assets::Json::parse(sp.overrides_json, nullptr, false);
+            if (ov.is_object()) {
+                if (auto w = ov.find("bound_wearer"); w != ov.end()) {
+                    if (k.bound.radius_ft == 0) {
+                        if (error) *error = "spawn overrides.bound_wearer needs the bound trait";
+                        return std::nullopt;
+                    }
+                    if (!w->is_number_integer()) {
+                        if (error) *error = "spawn overrides.bound_wearer must be a combatant id";
+                        return std::nullopt;
+                    }
+                    const int64_t n = w->get<int64_t>();
+                    if (n < 1 || n > 4294967295LL) {
+                        if (error) *error = "spawn overrides.bound_wearer must be a combatant id";
+                        return std::nullopt;
+                    }
+                    if (rules5e::CombatantId(n) == k.id) {
+                        if (error) *error = "spawn overrides.bound_wearer cannot be the guardian";
+                        return std::nullopt;
+                    }
+                    k.bound.wearer = rules5e::CombatantId(n);
+                }
+            }
+        }
         const ecs::Entity e = reg.create(sp.stable_id);
         reg.emplace(e, Health{k.hp, k.hp_max});
         reg.emplace(e, Team{k.team});
@@ -142,6 +167,15 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
         c.slots_.push_back({k.id, e, a});
         if (!a->equipment.empty()) c.equipment_[k.id] = a->equipment;
         cs.push_back(std::move(k));
+    }
+    for (const auto& one : cs) {
+        if (one.bound.wearer == 0) continue;
+        bool found = false;
+        for (const auto& other : cs) found = found || other.id == one.bound.wearer;
+        if (!found) {
+            if (error) *error = "spawn overrides.bound_wearer is not a combatant in this fight";
+            return std::nullopt;
+        }
     }
     std::vector<rules5e::Event> opening;
     if (!content.spells()->all().empty()) c.spells_ = content.spells();
@@ -2253,6 +2287,18 @@ uint64_t Combat::hash() const {
             h.u32(hp_max_reduced);
             for (const auto& c : state_.combatants)
                 if (c.disease_hp_max_reduction != 0) { h.u32(c.id); h.u16(uint16_t(c.disease_hp_max_reduction)); }
+        }
+    }
+    // 0xE5 (B18 Bound, CONTENT_CONVENTIONS §50): the amulet wearer, only while some guardian has one set.
+    // radius_ft with wearer 0 is static content and is not folded.
+    {
+        uint32_t links = 0;
+        for (const auto& c : state_.combatants) if (c.bound.wearer != 0) ++links;
+        if (links != 0) {
+            h.byte(0xE5);
+            h.u32(links);
+            for (const auto& c : state_.combatants)
+                if (c.bound.wearer != 0) { h.u32(c.id); h.u32(c.bound.wearer); h.u16(c.bound.radius_ft); }
         }
     }
     return h.value();
