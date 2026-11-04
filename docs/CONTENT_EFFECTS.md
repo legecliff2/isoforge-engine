@@ -177,6 +177,8 @@ Death Glare is not this kind. It is the monster@5 `save_effect` in §46 (`drop_t
 
 Horrifying Visage is not this kind. It is the monster@5 `save_effect` in §49: a self-origin sphere, `exclude_creature_types` (undead make no save), `target_must_see_source`, frightened with an end-of-turn repeat, `immune_on_success` plus `immune_on_end` (`same_source`, 0xE1), and `age_on_fail_by` (`1d4` × 10 years on `Combatant::aged_years`). Not magical. No new `SIM_EVENTS` tag. `ghost.json` is not authored. Possession, Etherealness, and Shapechange are not this action.
 
+Etherealness is not this kind. It is the monster@5 action in §51. It toggles `Combatant::plane` between Material and the Border Ethereal. Sight is unchanged. A creature cannot affect or be affected by one on the other plane: a named target is refused before the action is spent, and an area skips with no roll. `Combat::hash` 0xE6 folds the plane only while some combatant is not Material. No new `SIM_EVENTS` tag. `ghost.json` is not authored. The built-in AI does not use it. Possession, Incorporeal Movement, and Shapechange are not this action.
+
 Example: `{ "kind": "horrific_appearance", "radius_ft": 30, "save": { "ability": "wis", "dc": 11 }, "immunity_hours": 24 }`
 
 ### `bound` (static radius, monster@5)

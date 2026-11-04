@@ -636,6 +636,10 @@ struct SpellDef {
     int8_t whelm_max_size = -1;
     DiceExpr whelm_crush{0, 0, 0};
     DamageType whelm_crush_type = DamageType::Bludgeoning;
+    // appended (B19 Ghost Etherealness, CONTENT_CONVENTIONS §51). Static content: not hashed.
+    // The action spends itself and toggles Combatant::plane between Material and BorderEthereal.
+    // No target, no roll. kind is unused: cast_spell_impl returns before resolve_effect.
+    bool ethereal_toggle = false;
 };
 
 // B10 Whirlwind and B11 Whelm name creatures already in the user's space. Rules does not see tiles.

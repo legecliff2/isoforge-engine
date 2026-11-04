@@ -1704,11 +1704,11 @@ Product calls, not decided here:
 Deferred, not this action:
 
 * Possession.
-* Etherealness.
+* Etherealness is §51, not this action.
 * Shapechange. No shape, no forms, no shapechanger effect.
 * `ghost.json` is not authored.
 
-This section does not author `srd51.monster.ghost`. The row stays deferred until T&C writes the stat block. Possession and Etherealness are still the block. Counts stay 201 authored and 9 deferred.
+This section does not author `srd51.monster.ghost`. The row stays deferred until T&C writes the stat block. Possession is still the block. Etherealness is §51. Counts stay 201 authored and 9 deferred.
 
 ## 50. Bound (monster@5 trait `bound`)
 
@@ -1755,4 +1755,56 @@ Deferred, not this trait:
 * `shield_guardian.json` is not authored.
 
 This section does not author `srd51.monster.shield_guardian`. The row stays deferred until Spell Storing, the Shield reaction, and the stat block are written. Counts stay 201 authored and 9 deferred.
+
+## 51. Etherealness (monster@5 action `etherealness`)
+
+SRD 5.1 Ghost Etherealness, the whole action. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `ghost`), the source the in-repo monster table is reduced from. The ghost row is not in that table because the stat block is not authored:
+
+"Etherealness. The ghost enters the Ethereal Plane from the Material Plane, or vice versa. It is visible on the Material Plane while it is in the Border Ethereal, and vice versa, yet it can't affect or be affected by anything on the other plane."
+
+It is an action. It is not Phase Spider Ethereal Jaunt (a bonus action, description only, no plane). It is not the succubus action, whose sentence is only "The fiend magically enters the Ethereal Plane from the Material Plane, or vice versa." That sentence has no Border and no affect rule, and this action does not implement it. It is not the Etherealness spell, Blink, or Forcecage.
+
+```json
+{ "id": "etherealness", "name": "Etherealness", "kind": "etherealness" }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| (none) | id, name, kind, and an optional description. No save, no area, no target, no usage | `etherealness: unknown key '...'` / `etherealness needs a monster@5 file` / `etherealness: only valid on monsters` |
+
+The action spends the action and toggles `Combatant::plane` between `Material` (the default) and `BorderEthereal`. A second use returns to Material. It names no creature. It is not a bonus action (`etherealness: an action`). A request that names another creature is `etherealness: no target`, and the action is not spent. Below monster@5 the loader says `etherealness needs a monster@5 file`. On a character it says `etherealness: only valid on monsters`. The built-in AI does not choose it.
+
+What the sentence fixes:
+
+* **Enters the Ethereal Plane from the Material Plane, or vice versa.** Two planes only. `Plane::Material` and `Plane::BorderEthereal`. The Ethereal Plane in this sentence is the Border Ethereal, because the next sentence is about being visible while in the Border Ethereal. Deep Ethereal is not a value.
+* **Visible on the Material Plane while it is in the Border Ethereal, and vice versa.** Sight is unchanged. The creature does not gain Invisible. It is not hidden. `derive_sight` does not read `plane`. An area's geometry still contains it. It can still be seen.
+* **Can't affect or be affected by anything on the other plane.** One predicate, `plane_affect_refusal`: empty when the two are the same creature or on the same plane. It is the admission check at the places that already decide a creature is affected:
+  * A named attack, familiar attack, spiritual-weapon attack, or special melee attack (grapple or shove) is refused with `can't affect a creature on the other plane` before the action is spent and before any roll. Not a miss. An opportunity attack and a readied attack are not offered.
+  * A cast's named target is refused the same way, before the action is spent. An area (`area != none`) skips a creature on the other plane: it is not in the affected set, so it makes no save and takes no damage from that cast. The cast is not refused. Same plane, including Border Ethereal with Border Ethereal, is a normal target.
+  * An aura does not reach the other plane. `in_aura` is false, and `zone_row` returns before the damage die and the save.
+  * A grapple is not established (`apply_sourced_condition` and `grapple`). The Grapple action is the refusal above, so the contest is not rolled.
+  * A contain is `contain_refused`, so the save or the condition does not start. Ongoing effect damage (`deal_effect_damage`, including contain acid) does not roll while the source and the target are on different planes.
+
+`Combat::hash` tag **0xE6** folds `plane` only while some combatant is not Material: count, then per such combatant in order the id and the plane byte. All Material hashes as before. No new `SIM_EVENTS` tag. The toggle emits the existing `ActionUsed`. Next free is **0xE7**. Replay re-runs the action. `FormStats` does not carry the plane; it stays on the creature. Shapechange is not this action.
+
+Product calls, not decided here:
+
+* **An effect already on a creature stays.** The sentence does not say that conditions, grapples, or contains end when the plane changes. A new one does not start across planes. Ongoing effect damage does not roll while the planes differ. Whether a grapple's restraint should drop is not decided here.
+* **Help, the Heal action, and Stabilize** are not on the admission list above. They are not this slice.
+* **Ethereal Sight** (60 feet into the other plane) is a different trait. This action does not change sight range.
+* **Incorporeal Movement** is not this action. The creature does not move through creatures or objects.
+* **The built-in AI** does not use the action. Whether it should is not decided here.
+
+Deferred, not this action:
+
+* Possession.
+* Ethereal Sight.
+* Incorporeal Movement.
+* Shapechange. No shape, no forms, no shapechanger effect.
+* Phase Spider Ethereal Jaunt.
+* The succubus Etherealness sentence, and `succubus.json`.
+* The Etherealness spell, Blink, and Force Cage.
+* `ghost.json` is not authored.
+
+This section does not author `srd51.monster.ghost`. The row stays deferred until T&C writes the stat block. Possession is still the block. Counts stay 201 authored and 9 deferred.
 

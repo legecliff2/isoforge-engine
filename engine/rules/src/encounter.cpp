@@ -320,6 +320,7 @@ void set_contain(ActiveSpellEffect& e, const SpellDef& def, Combatant& t, std::v
 // 7.2w: `t` can't receive this containing condition from `a`: too large, formless (Net), or `a` already holds a swallowed
 // creature (SRD: one at a time).
 bool contain_refused(const EncounterState& s, const Combatant& a, const Combatant& t, const SpellDef& def) {
+    if (!plane_affect_refusal(a, t).empty()) return true;   // B19: a contain does not cross planes (no save)
     if (def.condition_max_size >= 0 && int(t.size) > int(def.condition_max_size)) return true;
     if (def.excludes_formless && t.formless) return true;
     if (def.contain == 2)
@@ -839,6 +840,7 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
 void deal_effect_damage(EncounterState& s, const ActiveSpellEffect& e, std::vector<Event>& ev) {
     Combatant* t = find_mut(s, e.target);
     if (!t || t->dead) return;
+    if (const Combatant* src = find(s, e.caster); src && !plane_affect_refusal(*src, *t).empty()) return;   // B19: no roll
     const int dmg = std::max(0, roll_dice(s.rng, e.damage));
     damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dmg), e.damage_type, e.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, ev, nullptr, nullptr);
 }
@@ -986,6 +988,7 @@ bool zone_suppressed(const EncounterState& s, const ActiveZone& z, const SpellDe
 // the owner's team only when aura_allies_only.
 bool in_aura(const EncounterState& s, const ActiveZone& z, const SpellDef& def, const Combatant& c) {
     if (c.dead || zone_suppressed(s, z, def)) return false;
+    if (const Combatant* o = find(s, z.owner); o && !plane_affect_refusal(*o, c).empty()) return false;   // B19
     if (def.zone.aura_allies_only) {
         const Combatant* o = find(s, z.owner);
         if (!o || o->team != c.team) return false;
@@ -2894,7 +2897,8 @@ bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, const A
     };
     auto eligible = [&](const Combatant& r) {
         return r.id != mover.id && r.team != mover.team && may_react(s, r, w.trigger) && in_range(s, w, r) &&
-               !options_for(r).empty() && cover_of(s, r.id, mover.id, false, 0) != Cover::Total;   // 7.2t: not offered
+               !options_for(r).empty() && cover_of(s, r.id, mover.id, false, 0) != Cover::Total &&   // 7.2t: not offered
+               plane_affect_refusal(r, mover).empty();   // B19: an opportunity attack does not cross planes
     };
     std::vector<CombatantId> cands;
     for (CombatantId id : initiative_ids(s)) if (eligible(*find_mut(s, id))) cands.push_back(id);
@@ -3033,6 +3037,8 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
     // B15 Horrific Appearance. These return before the once-per-turn mark, so a deferred avert row can still resolve
     // when AppearanceResponse looks. A creature already carrying this owner's effect is not saved again.
     if (row.creature_types != 0 && (row.creature_types & bit(t->creature_type)) == 0) return;
+    if (const Combatant* owner_now = find(s, z.owner); owner_now && !plane_affect_refusal(*owner_now, *t).empty())
+        return;   // B19: an aura does not reach the other plane (no save, no damage roll)
     if (row.must_see_source) {
         const Sight seen = sight(s, who, z.owner);
         if (!seen.can_see || seen.sense != Sense::Sight) return;
@@ -3523,6 +3529,10 @@ void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
             if (!a || !may_react(s, *a, w.trigger) || !may_open(s, w) || !s.hooks.ready_trigger(s, r, e)) { ++k; continue; }
             // 7.2t: a readied attack at a target with total cover is not offered (the readied action is kept)
             if (r.response.kind == ActionKind::Attack && cover_of(s, a->id, r.response.target, false, 0) == Cover::Total) { ++k; continue; }
+            if (r.response.kind == ActionKind::Attack) {   // B19: not offered across planes (the readied action is kept)
+                const Combatant* rt = find(s, r.response.target);
+                if (rt && !plane_affect_refusal(*a, *rt).empty()) { ++k; continue; }
+            }
             ++s.next_window_seq;
             emit(ev, EventKind::ReactionWindowOpened, e.actor, a->id, int32_t(w.trigger), int32_t(w.seq));
             const ReactionOption fire{r.response.attack_index, ReactionOptionKind::FireReady, 0, r.trigger_id};
@@ -3855,6 +3865,7 @@ void apply_one_restore(EncounterState& s, Combatant& t, RestoreOption opt, std::
 std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
                                        const std::vector<Combatant*>& T, bool within_5ft, std::vector<Event>& ev) {
     std::vector<Combatant*> affected;
+    if (def.ethereal_toggle) return affected;   // B19: the toggle returns from cast_spell_impl before this
     switch (def.kind) {
     case SpellEffectKind::SpellAttack: {
         Attack atk{def.content_id, int8_t(spell_attack_bonus(a, def)), scaled_dice(def, lvl, a.caster_level),
@@ -4788,6 +4799,18 @@ std::string_view spell_cast_resource_refusal(const EncounterState& s, const Comb
 
 StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
                            const ActionRequest& req, int meta_cost) {
+    if (def.ethereal_toggle) {   // B19: an action, no target, no roll. Material ↔ Border Ethereal.
+        if (req.as_bonus_action || req.sustain) return fail("etherealness: an action");
+        if ((req.target != 0 && req.target != a.id) || !req.targets.empty()) return fail("etherealness: no target");
+        if (const std::string_view why = spell_cast_resource_refusal(s, a, def, req.innate, req.spell_level); !why.empty())
+            return fail(why);
+        if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
+        s.budget = b;
+        a.plane = a.plane == Plane::Material ? Plane::BorderEthereal : Plane::Material;
+        StepResult out{true, {}, {}};
+        emit(out.events, EventKind::ActionUsed, a.id, a.id, int32_t(def.id), 0, def.usage_kind);
+        return out;
+    }
     if (def.kind == SpellEffectKind::Descriptive) return fail("descriptive spells cannot be cast");
     if (req.zone_move != 0) {   // R-G11: move the actor's zone (Moonbeam); no slot, no SpellCast window
         if (req.sustain) return fail("zone_move: not with sustain");
@@ -4893,6 +4916,12 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     for (CombatantId id : ids) {
         Combatant* t = find_mut(s, id);
         if (!t || (t->dead && def.kind != SpellEffectKind::Revive)) return fail("bad target");
+        // B19: an area skips the other plane (no roll, the cast still happens). A named target is refused
+        // before the action is spent. Not a miss. Same plane, including ethereal with ethereal, is unaffected.
+        if (t != &a && !plane_affect_refusal(a, *t).empty()) {
+            if (def.area != AreaShape::None) continue;
+            return fail(plane_affect_refusal(a, *t));
+        }
         // B17: an area save skips an excluded type (the cast still happens). A single-target save that names one is refused.
         if (!def.is_spell && def.kind == SpellEffectKind::Save && (def.excluded_types & bit(t->creature_type)) != 0) {
             if (def.area != AreaShape::None) continue;
@@ -5768,6 +5797,7 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         t = find_mut(s, req.target);
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
+        if (const auto why = plane_affect_refusal(a, *t); !why.empty()) return fail(why);   // B19: before the contest
         if (charmed_by(s, a.id, t->id)) return fail("a charmed creature cannot attack its charmer");
         if (!req.target_within_5ft) return fail("target must be within 5 ft");
         if (!size_within_one(a.size, t->size)) return fail("target is more than one size larger");
@@ -6329,6 +6359,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         Combatant* t = find_mut(s, req.target);
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
+        if (const auto why = plane_affect_refusal(a, *t); !why.empty()) return fail(why);
         const SpellDef* def = spell_def(s, w->spell_id);
         if (!def) return fail("unknown spell");
         const uint8_t lvl = w->slot_level;
@@ -6461,6 +6492,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             Combatant* t = find_mut(s, req.target);
             if (!t || t == &a || t == f) return fail("bad target");
             if (t->dead) return fail("target is dead");
+            if (const auto why = plane_affect_refusal(*f, *t); !why.empty()) return fail(why);
             if (cover_of(s, f->id, t->id, false, 0) == Cover::Total) return fail("target has total cover");
             if (charmed_by(s, f->id, t->id)) return fail("a charmed creature cannot attack its charmer");
             if (req.attack_index >= f->attacks.size()) return fail("bad attack index");
@@ -6496,6 +6528,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         Combatant* t = find_mut(s, req.target);
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
+        if (const auto why = plane_affect_refusal(a, *t); !why.empty()) return fail(why);
         if (cover_of(s, a.id, t->id, false, 0) == Cover::Total) return fail("target has total cover");
         if (charmed_by(s, a.id, t->id)) return fail("a charmed creature cannot attack its charmer");
         if (is_hidden_from(s, t->id, a.id)) {   // 7.2x: its location is unknown: guess a tile
@@ -6741,9 +6774,15 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
     };
     auto creature_ok = [&](const Combatant& t) {
         if (!valid_target_type(d, t) || (d.excluded_types & bit(t.creature_type))) return false;
+        if (!plane_affect_refusal(a, t).empty()) return false;   // B19: not offered across planes
         if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, d, t)) return false;
         return true;
     };
+    if (d.ethereal_toggle) {   // B19: self. The built-in AI does not pick it.
+        r.target = a.id;
+        out.push_back(r);
+        return;
+    }
     if (d.kind == SpellEffectKind::Teleport || d.kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self; sim adds the destination
         r.target = a.id;
         push_zone_forms(out, r, d);
@@ -6855,6 +6894,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (!familiar && (can_act || b.attacks_remaining > 0)) {
         for (const auto& t : s.combatants) {
             if (t.dead || t.id == a.id || t.team == a.team) continue;
+            if (!plane_affect_refusal(a, t).empty()) continue;   // B19: not a legal attack
             if (const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos); next >= 0) {   // multiattack in progress: only the next declared attack
                 ActionRequest r{a.id, ActionKind::Attack, t.id, uint8_t(next)};
                 r.multiattack = b.sequence;
@@ -7459,6 +7499,7 @@ bool apply_sourced_condition(EncounterState& s, CombatantId source, CombatantId 
     Combatant* t = find_mut(s, target);
     const Combatant* src = find(s, source);
     if (!t || !src || t->dead || t == src || immune_to(s, *t, c) || immune_from(s, *t, c, source)) return false;
+    if (!plane_affect_refusal(*src, *t).empty()) return false;   // B19: a grapple or other sourced condition does not cross planes
     if (c == Condition::Grappled && !size_within_one(src->size, t->size)) return false;
     if (!t->has(c)) {
         add_condition(*t, c);
@@ -7529,6 +7570,8 @@ void prune_sourced(EncounterState& s, std::vector<Event>& ev) {
 }
 
 bool grapple(EncounterState& s, CombatantId grappler, CombatantId target, const GrappleRider& g, uint8_t attack_index, std::vector<Event>& ev) {
+    if (const Combatant* src = find(s, grappler))
+        if (const Combatant* t = find(s, target); t && !plane_affect_refusal(*src, *t).empty()) return false;
     if (g.max_size >= 0) {   // Chuul pincer (Large) / Otyugh tentacle (Medium): a larger creature is not grappled
         const Combatant* t = find(s, target);
         if (!t || int(t->size) > int(g.max_size)) return false;

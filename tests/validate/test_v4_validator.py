@@ -1232,6 +1232,9 @@ class LoaderValidatorStrings(unittest.TestCase):
              "attack_from_feature names unknown feature '",
              "' is not a bonus-attack feature of this document",
              "spell_mod: not valid on monsters",
+             "etherealness needs a monster@5 file",
+             "etherealness: only valid on monsters",
+             "etherealness: unknown key '",
              "' is not one of the document's classes"]
 
     def test_loader_and_validator_share_strings(self):
