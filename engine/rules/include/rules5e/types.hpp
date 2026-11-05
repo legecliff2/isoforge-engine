@@ -177,7 +177,10 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   UseObject,
                                   // appended (B15 Horrific Appearance): turn-start answer. avert_gaze reuses the gaze
                                   // caller bit (log_hash 0xBB when set). It is not GazeResponse and does not set gaze_averted.
-                                  AppearanceResponse };
+                                  AppearanceResponse,
+                                  // appended (visible figure, CONTENT_CONVENTIONS §52): an action to visually inspect
+                                  // another creature's illusory figure. Not a free AbilityCheck. The built-in AI does not use it.
+                                  InspectFigure };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.

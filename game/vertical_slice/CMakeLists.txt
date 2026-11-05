@@ -14,7 +14,7 @@ target_compile_definitions(vertical_slice_view PRIVATE
 _engine_warnings(vertical_slice_view)
 
 if(ENGINE_BUILD_TESTS)
-    add_executable(vertical_slice_tests tests/vertical_slice_tests.cpp tests/event_feed_tests.cpp tests/light_view_tests.cpp tests/equipped_light_tests.cpp tests/overlay_determinism_tests.cpp tests/equip_visuals_tests.cpp tests/debug_equip_tests.cpp tests/faerie_fire_outline_tests.cpp tests/unseen_feedback_tests.cpp tests/cover_debug_tests.cpp tests/footprint_visuals_tests.cpp tests/zone_overlay_tests.cpp tests/standin_view_tests.cpp)
+    add_executable(vertical_slice_tests tests/vertical_slice_tests.cpp tests/event_feed_tests.cpp tests/light_view_tests.cpp tests/equipped_light_tests.cpp tests/overlay_determinism_tests.cpp tests/equip_visuals_tests.cpp tests/visible_figure_view_tests.cpp tests/debug_equip_tests.cpp tests/faerie_fire_outline_tests.cpp tests/unseen_feedback_tests.cpp tests/cover_debug_tests.cpp tests/footprint_visuals_tests.cpp tests/zone_overlay_tests.cpp tests/standin_view_tests.cpp)
     target_link_libraries(vertical_slice_tests PRIVATE vertical_slice_session vertical_slice_view eng::render_null
                           eng::sim eng::world eng::ecs eng::assets
                           doctest::doctest_with_main)

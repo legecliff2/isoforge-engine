@@ -644,6 +644,16 @@ static void equipment_visuals(const sim::Combat& c, sim::CombatantId id, std::ve
     for (const rules5e::HeldItem& h : slung) add(h, AttachSlot::Back);
 }
 
+void apply_visible_figure(const ::rules5e::EncounterState& st, uint32_t viewer, ActorView& actor) {
+    const ::rules5e::VisibleFigureView fig = ::rules5e::visible_figure(st, viewer, actor.id);
+    actor.illusory_figure = fig.active;
+    actor.figure_shape = fig.active ? uint8_t(fig.shape) : uint8_t(0);
+    actor.figure_size = fig.active ? uint8_t(fig.size) : uint8_t(0);
+    actor.covered_armor_def = fig.active ? fig.armor_def : 0;
+    actor.covered_equipment = fig.active ? fig.covered_items : std::vector<uint32_t>{};
+    actor.illusion_discerned = fig.discerned;
+}
+
 void copy_visual(const sim::Archetype* arch, ActorView& a) {
     if (!arch) return;
     a.kit = arch->visual.kit;
@@ -692,6 +702,7 @@ ViewModel Session::view() const {
             a.down = !cb.dead && !rules5e::is_conscious(cb);
             a.invisible = cb.has(rules5e::Condition::Invisible);
             copy_visual(arch, a);
+            apply_visible_figure(c.state(), eye, a);
             if (auto fit = m.feed.facing.find(cb.id); fit != m.feed.facing.end()) a.facing = fit->second;
             // is_outlined is rules-internal; scan modifiers (ModStat::Outlined / Faerie Fire).
             a.outlined = false;

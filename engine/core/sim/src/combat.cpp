@@ -2313,6 +2313,21 @@ uint64_t Combat::hash() const {
                 if (c.plane != rules5e::Plane::Material) { h.u32(c.id); h.byte(uint8_t(c.plane)); }
         }
     }
+    // 0xE7 (visible figure, CONTENT_CONVENTIONS §52): active figures, then discernment pairs.
+    // Folded only while one of those vectors is non-empty. next_figure_instance is not folded.
+    if (!state_.figures.empty() || !state_.figure_discerned.empty()) {
+        h.byte(0xE7);
+        h.u32(uint32_t(state_.figures.size()));
+        for (const auto& f : state_.figures) {
+            h.u32(f.bearer); h.u32(f.instance); h.u32(f.spell_id);
+            h.byte(uint8_t(f.shape)); h.byte(uint8_t(f.size)); h.u16(uint16_t(f.dc));
+            h.u32(f.armor_def);
+            h.u32(uint32_t(f.covered_items.size()));
+            for (uint32_t id : f.covered_items) h.u32(id);
+        }
+        h.u32(uint32_t(state_.figure_discerned.size()));
+        for (const auto& d : state_.figure_discerned) { h.u32(d.observer); h.u32(d.subject); }
+    }
     return h.value();
 }
 

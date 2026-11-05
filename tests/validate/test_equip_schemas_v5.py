@@ -195,11 +195,12 @@ class AppendOnly(unittest.TestCase):
                           "escalates", "escalate_to", "escalate_margin",   # B4 area save petrify
                           "jump_ft", "save_alt", "push_ft",   # B8 Deadly Leap
                           "fling_ft", "impact", "impact_save",   # B10 Whirlwind
-                          "grapple", "crush"})   # B11 Whelm
+                          "grapple", "crush",   # B11 Whelm
+                          "dc"})   # visible figure Investigation DC
         for k, v in c2["action"]["properties"].items():
             if k == "kind":   # monster@5 appends "teleport" (batch 3) then "area_effect"; common@2's enum is a strict prefix
                 m_enum, c_enum = m5["action"]["properties"][k]["enum"], v["enum"]
-                self.assertEqual(m_enum, c_enum + ["teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm", "etherealness"], k)
+                self.assertEqual(m_enum, c_enum + ["teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm", "etherealness", "illusory_appearance"], k)
                 continue
             if k == "damage":   # CONTENT_CONVENTIONS 19: items widened to monster_damage (common@2 damage | {flat, type})
                 self.assertEqual(m5["action"]["properties"][k]["items"], {"$ref": "#/$defs/monster_damage"})
@@ -224,7 +225,7 @@ class TagTable(unittest.TestCase):
             local_act = checks_v4.MONSTER_AT5_ACTION_KINDS if typ == "monster" else frozenset()
             self.assertEqual((r4.action_kinds | local_act, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
         self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "freeze", "absorb", "innate_invisibility", "horrific_appearance", "bound"})
-        self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm", "etherealness"})
+        self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm", "etherealness", "illusory_appearance"})
 
 
 class LightPresetAndVisual(unittest.TestCase):

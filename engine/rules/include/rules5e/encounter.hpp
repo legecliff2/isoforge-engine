@@ -1002,6 +1002,44 @@ struct Disease {
     friend bool operator==(const Disease&, const Disease&) = default;
 };
 
+// Visible figure (CONTENT_CONVENTIONS §52). Not a FormKind. shape is a body plan, not CreatureType.
+enum class FigureShape : uint8_t { None = 0, Humanoid = 1 };
+struct VisibleFigure {
+    uint32_t instance = 0;
+    CombatantId bearer = 0;
+    uint32_t spell_id = 0;
+    FigureShape shape = FigureShape::Humanoid;
+    Size size = Size::Medium;
+    int16_t dc = 0;
+    uint32_t armor_def = 0;
+    std::vector<uint32_t> covered_items;
+};
+// PRODUCT CHOICE: observer + subject, not the figure instance. A later activation does not clear it.
+struct FigureDiscernment {
+    CombatantId observer = 0;
+    CombatantId subject = 0;
+};
+struct VisibleFigureView {
+    bool active = false;
+    uint32_t instance = 0;
+    FigureShape shape = FigureShape::None;
+    Size size = Size::Medium;
+    uint32_t armor_def = 0;
+    std::vector<uint32_t> covered_items;
+    bool discerned = false;
+};
+// True statistics beside the figure. Not observer knowledge. No attack, grapple, or shove writes this.
+struct PhysicalMismatch {
+    bool active = false;
+    FigureShape presented_shape = FigureShape::None;
+    Size presented_size = Size::Medium;
+    Size true_size = Size::Medium;
+    CreatureType true_type = CreatureType::Humanoid;
+    uint8_t true_attack_count = 0;
+    uint32_t armor_def = 0;
+    std::vector<uint32_t> covered_items;
+};
+
 struct EncounterState {
     std::vector<Combatant>       combatants;
     std::vector<InitiativeEntry> order;
@@ -1043,6 +1081,12 @@ struct EncounterState {
     std::vector<AuraImmunity> aura_immunities;  // appended (batch 3 ghast Stench): per-source immunity after a success; 0xDE
     std::vector<ActionImmunity> action_immunities;  // appended (Tier-A §26 Dreadful Glare): 0xE1, folded only when non-empty
     std::vector<Disease> diseases;  // appended (B6 bite disease): 0xE3, folded only when non-empty or a reduction is set
+    // appended (visible figure, CONTENT_CONVENTIONS §52). Combat::hash 0xE7 while either vector is non-empty.
+    // figures: one per bearer, in activation order. figure_discerned: observer+subject, in first-success order.
+    // next_figure_instance is replayed by re-running the action. It is not hashed.
+    std::vector<VisibleFigure> figures{};
+    std::vector<FigureDiscernment> figure_discerned{};
+    uint32_t next_figure_instance = 1;
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
@@ -1208,6 +1252,10 @@ bool has_gaze_state(const EncounterState&);
 // Vision (7.2x). sight(): derive_sight over the hook's facts (the start-of-step state during a step), or Sight{} without a
 // hook / for an unknown id.
 Sight sight(const EncounterState&, CombatantId viewer, CombatantId subject);
+// The figure the viewer is shown, plus whether that viewer has discerned this subject.
+// Discernment does not change the figure. An inactive subject can still be discerned.
+VisibleFigureView visible_figure(const EncounterState&, CombatantId viewer, CombatantId subject);
+PhysicalMismatch physical_mismatch(const EncounterState&, CombatantId subject);
 bool is_hidden_from(const EncounterState&, CombatantId who, CombatantId from);
 bool has_hidden_state(const EncounterState&);   // Combat::hash 0xC5 folds hidden_digest only while true
 uint64_t hidden_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
