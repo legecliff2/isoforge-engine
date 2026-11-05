@@ -203,7 +203,7 @@ Spell batch zj. Each pack's `effects`, casting time, range, duration, `targets`,
 |---|---|---|---|
 | Charm Person | 1 | `save` WIS charmed, humanoid, `hostile_save_advantage`, `ends_on_ally_harm`, `caster_sees_target`; 1 hour; `targets {count 1, max_spread_ft 30}`, `upcast.targets 1`; V S | bard, druid, sorcerer, warlock, wizard. **Deferred (narrative):** the creature knows it was charmed when the spell ends |
 | Calm Emotions | 2 | `save` CHA, sphere 20, humanoid, `suppress_conditions [charmed, frightened]`; `targets.count 255`; concentration 1 minute; V S | bard, cleric. **Deferred:** indifference toward chosen hostiles, and a voluntary failed save |
-| Suggestion | 2 | `save` WIS charmed, `ends_on_ally_harm`, `charm_immune`, `caster_sees_target`, `requires_hearing`; concentration 8 hours; V M (text only) | **Deferred:** the course of action (shared language and whether the suggestion is reasonable stay the same gap, already in the specimen). Classes follow the specimen, which lists cleric; a6212be lists bard, sorcerer, warlock, wizard only |
+| Suggestion | 2 | `save` WIS charmed, `ends_on_ally_harm`, `charm_immune`, `caster_sees_target`, `requires_hearing`; concentration 8 hours; V M (text only) | bard, sorcerer, warlock, wizard (a6212be). **Deferred:** the course of action (shared language and whether the suggestion is reasonable stay the same gap, already in the specimen) |
 | Fly | 3 | `grant_fly` `fly_ft` 60; touch, concentration 10 minutes; `targets.count 1`, `upcast.targets 1`; V S M (wing feather, text) | sorcerer, warlock, wizard. Willing is the caster's team, including the caster |
 
 ## Authored: descriptive cantrips (4)

@@ -3,8 +3,7 @@
 
 `data/srd51_spells_5e_database_a6212be.json` holds fields copied from 5e-bits/5e-database commit a6212be
 (src/2014/en/5e-SRD-Spells.json; SRD 5.1, CC-BY-4.0). The hunters-mark entry is removed: Hunter's Mark is PHB-only and
-not in SRD 5.1. The rest of the file matches a6212be, except suggestion.classes also lists cleric to match the
-7.2zj specimen (a6212be lists bard, sorcerer, warlock, and wizard only). For every spell in the table this asserts level, school, classes, casting time, range,
+not in SRD 5.1. The rest of the file matches a6212be. For every spell in the table this asserts level, school, classes, casting time, range,
 components, duration / concentration, damage dice and type at the base level, upcast / cantrip scaling, the save, the
 attack type and the area. The mechanics the loaders read (forced_move push, teleport, timed modifiers) are pinned in
 test_mechanics. docs/SRD_SPELLS_DEFERRED.md lists the authored / deferred split.
@@ -434,8 +433,7 @@ class SpellTable(unittest.TestCase):
         self.assertTrue(sug["effects"][0]["charm_immune"])
         self.assertTrue(sug["effects"][0]["requires_hearing"])
         self.assertIn("course of action", sug["description"])
-        # a6212be lists bard, sorcerer, warlock, wizard. The specimen (and this pack) also lists cleric.
-        self.assertEqual(sug["classes"], ["bard", "cleric", "sorcerer", "warlock", "wizard"])
+        self.assertEqual(sug["classes"], ["bard", "sorcerer", "warlock", "wizard"])
         fly = load("fly")
         self.assertEqual(fly["effects"], [{"kind": "grant_fly", "fly_ft": 60}])
         self.assertIn("caster's team", fly["description"])
