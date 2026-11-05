@@ -404,6 +404,43 @@ class SpellTable(unittest.TestCase):
                                                        "duration": {"kind": "rounds", "n": 600}}}])
         self.assertEqual(er["classes"], ["sorcerer", "warlock", "wizard"])
 
+    def test_spell_batch_zj_packs(self):
+        # 7.2zj: Charm Person, Calm Emotions, Suggestion, and Fly in srd51.core equal the specimens
+        # (tests/validate/fixtures/spell_batch_zj). Level 4-5 specimens stay unpackaged.
+        fx = ROOT / "tests/validate/fixtures/spell_batch_zj"
+        keys = ("effects", "casting_time", "range", "duration", "targets", "scaling",
+                "components", "classes", "level", "school")
+        for idx in ("charm-person", "calm-emotions", "suggestion", "fly"):
+            with self.subTest(spell=idx):
+                spec = json.loads((fx / f"{idx.replace('-', '_')}.json").read_text(encoding="utf-8"))
+                d = load(idx)
+                for k in keys:
+                    self.assertEqual(d.get(k), spec.get(k), k)
+                self.assertEqual(d["$schema"], "spell@1")
+                self.assertEqual(d["id"], "srd51.spell." + idx.replace("-", "_"))
+                self.assertEqual(d["source"], {"ref": "SRD 5.1", "license": "CC-BY-4.0"})
+        charm = load("charm-person")
+        self.assertEqual(charm["effects"][0], {"kind": "save", "ability": "wis", "condition": "charmed",
+                                                "hostile_save_advantage": True, "ends_on_ally_harm": True,
+                                                "caster_sees_target": True})
+        self.assertIn("knows you charmed it", charm["description"])
+        calm = load("calm-emotions")
+        self.assertEqual(calm["effects"][0]["suppress_conditions"], ["charmed", "frightened"])
+        self.assertEqual((calm["area"], calm["targets"]["count"]), ({"shape": "sphere", "size_ft": 20}, 255))
+        self.assertIn("Indifference", calm["description"])
+        self.assertIn("voluntary failed save", calm["description"])
+        sug = load("suggestion")
+        self.assertTrue(sug["effects"][0]["charm_immune"])
+        self.assertTrue(sug["effects"][0]["requires_hearing"])
+        self.assertIn("course of action", sug["description"])
+        self.assertEqual(sug["classes"], ["bard", "sorcerer", "warlock", "wizard"])
+        fly = load("fly")
+        self.assertEqual(fly["effects"], [{"kind": "grant_fly", "fly_ft": 60}])
+        self.assertIn("caster's team", fly["description"])
+        for left_out in ("geas", "cone_of_cold", "ice_storm", "greater_invisibility",
+                         "greater_restoration", "dispel_evil_and_good"):
+            self.assertFalse((PACK / "spells" / f"{left_out}.json").exists(), left_out)
+
     def test_spell_batch_zi(self):
         # Rules 7.2zi: mechanics only. Content packs are T&C; specimens live in tests/validate/fixtures/spell_batch_zi.
         fx = ROOT / "tests/validate/fixtures/spell_batch_zi"
