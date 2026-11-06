@@ -1,4 +1,4 @@
-// Sim loads monster@5 invisible_passage and replays it. Not green_hag.json.
+// Sim loads monster@5 invisible_passage and replays it. Does not load green_hag.json.
 #include <doctest/doctest.h>
 
 #include <fstream>
@@ -56,8 +56,6 @@ TEST_CASE("invisible passage: loader, concentration end, and replay") {
     doc["actions"] = Json::array();
     doc["actions"].push_back(load_json("content/packs/srd51.core/monsters/goblin.json")["actions"][0]);
     REQUIRE_FALSE(lib.add(doc, "monster", "", 5));
-    std::ifstream hag_file(kRoot + "/content/packs/srd51.core/monsters/green_hag.json");
-    CHECK_FALSE(hag_file.good());
 
     auto ch = arena();
     ecs::Registry reg;

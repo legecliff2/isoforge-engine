@@ -1,4 +1,4 @@
-// Sim forwards EndConcentration off the current turn. Not Invisible Passage. No green_hag.json.
+// Sim forwards EndConcentration off the current turn. Not Invisible Passage. Does not load green_hag.json.
 #include <doctest/doctest.h>
 
 #include <fstream>

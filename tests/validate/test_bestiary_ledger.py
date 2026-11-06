@@ -7,7 +7,7 @@ content_validate_* files; this PR does not register a ctest name):
   python3 tools/validate/run_unittest_file.py tests/validate/test_bestiary_ledger.py
 
 ledger.py and validate_bridge.py must not import Tk. Counts are pinned to the
-ledger after water elemental left Deferred (Water Form, Whelm, and Freeze; the 1-inch gap, suffocation, and the ally pull stay description only): 202 authored, 8 deferred.
+ledger after green hag left Deferred (Illusory Appearance and Invisible Passage; Innate Spellcasting and Mimicry stay description only; the equipment sentence and which magic tracks stay escalated): 203 authored, 7 deferred.
 """
 from __future__ import annotations
 
@@ -28,11 +28,10 @@ EDITOR = ROOT / "tools" / "bestiary_editor"
 PACK = ROOT / "content" / "packs" / "srd51.core"
 VALIDATOR = ROOT / "tools" / "validate" / "validate_packs.py"
 
-# Deferred table ids after water elemental left Deferred (## Deferred (8)).
+# Deferred table ids after green hag left Deferred (## Deferred (7)).
 PARKED_IDS = (
     "srd51.monster.mimic",
     "srd51.monster.doppelganger",
-    "srd51.monster.green_hag",
     "srd51.monster.succubus",
     "srd51.monster.ghost",
     "srd51.monster.unicorn",
@@ -92,12 +91,12 @@ class LedgerTests(unittest.TestCase):
         for name in ("ledger.py", "validate_bridge.py"):
             self.assertEqual(_imports_tk(EDITOR / name), [], name)
 
-    def test_counts_match_headings_202_and_8(self):
+    def test_counts_match_headings_203_and_7(self):
         book = self.book
-        self.assertEqual(book.authored_expected, 202)
-        self.assertEqual(len(book.authored), 202)
-        self.assertEqual(book.parked_expected, 8)
-        self.assertEqual(len(book.parked), 8)
+        self.assertEqual(book.authored_expected, 203)
+        self.assertEqual(len(book.authored), 203)
+        self.assertEqual(book.parked_expected, 7)
+        self.assertEqual(len(book.parked), 7)
         self.assertEqual(book.count_errors(), ())
 
     def test_partial_is_subset_of_authored(self):
@@ -138,6 +137,10 @@ class LedgerTests(unittest.TestCase):
         self.assertTrue(water.partial)
         self.assertEqual(water.name, "Water Elemental")
         self.assertEqual(water.path, ledger.DEFAULT_MONSTERS_DIR / "water_elemental.json")
+        green = by_id["srd51.monster.green_hag"]
+        self.assertTrue(green.partial)
+        self.assertEqual(green.name, "Green Hag")
+        self.assertEqual(green.path, ledger.DEFAULT_MONSTERS_DIR / "green_hag.json")
         self.assertEqual(kobold.path, ledger.DEFAULT_MONSTERS_DIR / "kobold.json")
         will = by_id["srd51.monster.will_o_wisp"]
         self.assertEqual(will.name, "Will-o'-Wisp")
@@ -148,6 +151,7 @@ class LedgerTests(unittest.TestCase):
         self.assertNotIn("srd51.monster.invisible_stalker", parked)
         self.assertNotIn("srd51.monster.sea_hag", parked)
         self.assertNotIn("srd51.monster.water_elemental", parked)
+        self.assertNotIn("srd51.monster.green_hag", parked)
         mimic = parked["srd51.monster.mimic"]
         self.assertEqual(mimic.name, "Mimic")
         self.assertIsNone(mimic.path)

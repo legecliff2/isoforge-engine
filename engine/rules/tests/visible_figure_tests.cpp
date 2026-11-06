@@ -1,4 +1,4 @@
-// Visible figure (CONTENT_CONVENTIONS §52). Not a form. No green_hag.json.
+// Visible figure (CONTENT_CONVENTIONS §52). Not a form. Does not load green_hag.json.
 // PRODUCT CHOICES are marked in the cases that lock them: a second start does not spend the action,
 // and discernment is observer+subject across later activations.
 #include <doctest/doctest.h>

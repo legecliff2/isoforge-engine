@@ -1,4 +1,4 @@
-// Visible figure content (CONTENT_CONVENTIONS §52). No green_hag.json.
+// Visible figure content (CONTENT_CONVENTIONS §52). Does not load green_hag.json.
 // 0xE7 folds while a figure or a discernment pair exists. Replay reproduces the hash.
 #include <doctest/doctest.h>
 
@@ -99,9 +99,6 @@ TEST_CASE("visible figure loader: monster@5 action, refused below monster@5 and 
     const auto range = add(lib, monster_doc("t.range", {figure_action(0)}));
     REQUIRE(range);
     CHECK(range->find("illusory appearance: dc must be 1..30") != std::string::npos);
-
-    std::ifstream hag(kRoot + "/content/packs/srd51.core/monsters/green_hag.json");
-    CHECK_FALSE(hag.good());
 }
 
 TEST_CASE("visible figure: 0xE7 tracks the figure and a discernment that outlives it") {
