@@ -762,6 +762,44 @@ std::optional<std::string> compile_etherealness(const std::string& arch, const J
     return std::nullopt;
 }
 
+// Visible figure (CONTENT_CONVENTIONS §52). An action starts it. A bonus action ends it.
+// fixed_dc is the inspect DC. The built-in AI does not pick it. Not a form.
+std::optional<std::string> compile_illusory_appearance(const std::string& arch, const Json& act, uint32_t declared,
+                                                       const std::string& schema_type, rules5e::SpellDef& d,
+                                                       Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": illusory appearance '" + aid + "'";
+    if (schema_type != "monster") return where + ": illusory appearance: only valid on monsters";
+    if (declared != 0 && declared < 5) return where + ": illusory appearance needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description" && k != "dc")
+            return where + ": illusory appearance: unknown key '" + k + "'";
+    }
+    const bool dc_ok = act.contains("dc") && act["dc"].is_number_integer();
+    const int dc = dc_ok ? act["dc"].get<int>() : 0;
+    if (!dc_ok || dc < 1 || dc > 30) return where + ": illusory appearance: dc must be 1..30";
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.kind = rules5e::SpellEffectKind::ApplyCondition;
+    d.is_spell = false;
+    d.magical = false;
+    d.components = 0;
+    d.targets = 1;
+    d.range_ft = 0;
+    d.applies_condition = false;
+    d.fixed_dc = int8_t(dc);
+    d.illusory_appearance = true;
+    d.casting_time = rules5e::CastingTime::Action;
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.range_ft = 0;
+    sa.illusory = true;
+    return std::nullopt;
+}
+
 // B8 Deadly Leap (CONTENT_CONVENTIONS §38). Its own action. Not a multiattack rider.
 // {kind: deadly_leap, jump_ft, save: {ability, dc}, save_alt, damage: [two], push_ft}.
 // One save, the higher of the two abilities (tie: save.ability). Fail: both damages and prone.
@@ -2713,7 +2751,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         for (const Json& act : doc.at("actions")) {
             const std::string ak = act.value("kind", "");
             if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect" && ak != "pull" &&
-                ak != "deadly_leap" && ak != "whirlwind" && ak != "whelm" && ak != "etherealness") continue;
+                ak != "deadly_leap" && ak != "whirlwind" && ak != "whelm" && ak != "etherealness" &&
+                ak != "illusory_appearance") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
@@ -2721,6 +2760,15 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 if (auto e = compile_etherealness(a.id, act, declared, schema_type, d, sa)) return e;
                 for (const auto& prev : synth)
                     if (prev.id == d.id) return a.id + ": etherealness ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "illusory_appearance") {
+                if (auto e = compile_illusory_appearance(a.id, act, declared, schema_type, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": illusory appearance ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
                 c.spells_known.push_back(d.id);
                 a.save_actions.push_back(sa);
                 synth.push_back(std::move(d));

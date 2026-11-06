@@ -77,6 +77,16 @@ struct ActorView {
     bool        size_short = false;   // authored; M0 does not apply plates or scale
     std::string clip;
     std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)
+    // Visible figure (CONTENT_CONVENTIONS §52). Body art stays the true form: kit / visual_kind /
+    // standin_bin / name are not replaced. covered_equipment lists instance ids the illusion covered
+    // at activation; equip_layers does not draw those true items. illusion_discerned is this camera
+    // viewer's persistent record and does not change the figure.
+    bool illusory_figure = false;
+    uint8_t figure_shape = 0;             // rules5e::FigureShape, 1 = humanoid shape
+    uint8_t figure_size = 0;              // rules5e::Size copied at activation
+    uint32_t covered_armor_def = 0;       // worn armor def at activation; armor has no instance and is not a quad
+    std::vector<uint32_t> covered_equipment;
+    bool illusion_discerned = false;
     // Sight cues for the fog-team camera combatant (presentation only; never written back into sim).
     // Defaults match an empty EncounterHooks::sight_facts: everyone sees everyone, so no cue is drawn.
     // seen_by_viewer false = unseen target (attacking-visible: !can_see, or hidden from the viewer).

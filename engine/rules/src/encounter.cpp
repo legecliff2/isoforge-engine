@@ -1778,7 +1778,15 @@ std::vector<Combatant*> area_save_targets(EncounterState& s, const Combatant& ow
 
 // Death triggers (Death Burst) of creatures that died during this step, after all the step's events: queued so a
 // reaction window cannot nest inside a death. A burst that kills another trigger owner is handled on the next pass.
+void sweep_dead_figures(EncounterState& s) {
+    std::erase_if(s.figures, [&](const VisibleFigure& f) {
+        for (const auto& c : s.combatants) if (c.id == f.bearer) return c.dead;
+        return true;
+    });
+}
+
 void process_deaths(EncounterState& s, std::vector<Event>& ev, Ctx* ctx = nullptr) {
+    sweep_dead_figures(s);   // a figure ends when its bearer dies. Discernment stays.
     for (std::size_t pass = 0; pass < s.combatants.size(); ++pass) {
         bool any = false;
         for (std::size_t i = 0; i < s.combatants.size(); ++i) {
@@ -3865,7 +3873,7 @@ void apply_one_restore(EncounterState& s, Combatant& t, RestoreOption opt, std::
 std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
                                        const std::vector<Combatant*>& T, bool within_5ft, std::vector<Event>& ev) {
     std::vector<Combatant*> affected;
-    if (def.ethereal_toggle) return affected;   // B19: the toggle returns from cast_spell_impl before this
+    if (def.ethereal_toggle || def.illusory_appearance) return affected;   // the action returned before resolve_effect
     switch (def.kind) {
     case SpellEffectKind::SpellAttack: {
         Attack atk{def.content_id, int8_t(spell_attack_bonus(a, def)), scaled_dice(def, lvl, a.caster_level),
@@ -4797,8 +4805,69 @@ std::string_view spell_cast_resource_refusal(const EncounterState& s, const Comb
     return {};
 }
 
+VisibleFigure* find_figure(EncounterState& s, CombatantId bearer) {
+    for (auto& f : s.figures) if (f.bearer == bearer) return &f;
+    return nullptr;
+}
+const VisibleFigure* find_figure(const EncounterState& s, CombatantId bearer) {
+    for (const auto& f : s.figures) if (f.bearer == bearer) return &f;
+    return nullptr;
+}
+void snapshot_covered(const EncounterState& s, CombatantId id, VisibleFigure& fig) {
+    if (!s.hooks.loadout_of) return;
+    const LoadoutView* v = s.hooks.loadout_of(s, id);
+    if (!v) return;
+    fig.armor_def = v->armor_def;
+    auto add = [&](const HeldItem& h) {
+        if (h.instance == 0) return;
+        if (std::find(fig.covered_items.begin(), fig.covered_items.end(), h.instance) == fig.covered_items.end())
+            fig.covered_items.push_back(h.instance);
+    };
+    add(v->main);
+    add(v->off);
+    for (const HeldItem& h : v->carried) add(h);
+    std::sort(fig.covered_items.begin(), fig.covered_items.end());
+}
+bool already_discerned(const EncounterState& s, CombatantId observer, CombatantId subject) {
+    for (const auto& d : s.figure_discerned)
+        if (d.observer == observer && d.subject == subject) return true;
+    return false;
+}
+
 StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
                            const ActionRequest& req, int meta_cost) {
+    if (def.illusory_appearance) {   // visible figure. Not a spell, not a form.
+        if (req.sustain || req.innate) return fail("illusory appearance: an action");
+        if ((req.target != 0 && req.target != a.id) || !req.targets.empty()) return fail("illusory appearance: no target");
+        if (req.as_bonus_action) {   // printed: a bonus action ends it
+            if (!find_figure(s, a.id)) return fail("illusory appearance: no illusion");   // bonus action not spent
+            if (!b.bonus_action) return fail("no bonus action available");
+            b.bonus_action = false;
+            s.budget = b;
+            std::erase_if(s.figures, [&](const VisibleFigure& f) { return f.bearer == a.id; });
+            StepResult out{true, {}, {}};
+            emit(out.events, EventKind::ActionUsed, a.id, a.id, int32_t(def.id), 1, def.usage_kind);
+            return out;
+        }
+        // PRODUCT CHOICE: a second start while a figure is up is refused and does not spend the action.
+        if (find_figure(s, a.id)) return fail("illusory appearance: already disguised");
+        if (const std::string_view why = spell_cast_resource_refusal(s, a, def, false, req.spell_level); !why.empty())
+            return fail(why);
+        if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
+        s.budget = b;
+        VisibleFigure fig;
+        fig.instance = s.next_figure_instance++;
+        fig.bearer = a.id;
+        fig.spell_id = def.id;
+        fig.shape = FigureShape::Humanoid;
+        fig.size = a.size;
+        fig.dc = def.fixed_dc;
+        snapshot_covered(s, a.id, fig);
+        s.figures.push_back(std::move(fig));
+        StepResult out{true, {}, {}};
+        emit(out.events, EventKind::ActionUsed, a.id, a.id, int32_t(def.id), 0, def.usage_kind);
+        return out;
+    }
     if (def.ethereal_toggle) {   // B19: an action, no target, no roll. Material ↔ Border Ethereal.
         if (req.as_bonus_action || req.sustain) return fail("etherealness: an action");
         if ((req.target != 0 && req.target != a.id) || !req.targets.empty()) return fail("etherealness: no target");
@@ -6741,6 +6810,22 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     case ActionKind::OpportunityAttack: case ActionKind::ReactionDecision:
     case ActionKind::Heal: case ActionKind::AbilityCheck: case ActionKind::GazeResponse:
     case ActionKind::AppearanceResponse: break;  // handled above
+    case ActionKind::InspectFigure: {   // spends the action. A free AbilityCheck is not this.
+        Combatant* t = find_mut(s, req.target);
+        if (!t || t->dead) return fail("bad target");
+        if (!find_figure(s, t->id)) return fail("illusory appearance: no illusion");   // action not spent
+        const Sight seen = sight(s, a.id, t->id);
+        if (!seen.can_see || seen.sense != Sense::Sight) return fail("illusory appearance: cannot see the illusion");
+        if (!spend_action(b, a, req.kind, false)) return fail("no action available");
+        s.budget = b;
+        const int dc = find_figure(s, t->id)->dc;
+        const CheckResult rolled = roll_check(s, a, Skill::Investigation, dc, RollMode::Normal, out.events);
+        // A failure does not remove a record. PRODUCT CHOICE: the record is observer+subject, not this instance.
+        if (rolled.success && !already_discerned(s, a.id, t->id))
+            s.figure_discerned.push_back(FigureDiscernment{a.id, t->id});
+        emit(out.events, EventKind::ActionUsed, a.id, t->id, 0, int32_t(rolled.success));
+        return out;
+    }
     }
     return fail("unknown action");
 }
@@ -6781,6 +6866,13 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
     if (d.ethereal_toggle) {   // B19: self. The built-in AI does not pick it.
         r.target = a.id;
         out.push_back(r);
+        return;
+    }
+    if (d.illusory_appearance) {   // start while down; bonus-action end while up. The AI does not pick either.
+        r.target = a.id;
+        if (find_figure(s, a.id)) {
+            if (s.budget.bonus_action) { r.as_bonus_action = true; out.push_back(r); }
+        } else out.push_back(r);
         return;
     }
     if (d.kind == SpellEffectKind::Teleport || d.kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self; sim adds the destination
@@ -7090,6 +7182,12 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             else x.push_back(std::move(r));
         }
         out = std::move(x);
+    }
+    for (const auto& t : s.combatants) {   // visual inspect. Not offered when the viewer cannot see the figure.
+        if (t.dead || !find_figure(s, t.id)) continue;
+        const Sight seen = sight(s, a.id, t.id);
+        if (!seen.can_see || seen.sense != Sense::Sight) continue;
+        out.push_back({a.id, ActionKind::InspectFigure, t.id});
     }
     if (!s.effects.empty())   // 7.2v: drop what a control condition refuses
         std::erase_if(out, [&](const ActionRequest& r) { return control_refuses(s, a, r) != nullptr; });
@@ -7709,6 +7807,38 @@ Sight sight(const EncounterState& s, CombatantId viewer, CombatantId subject) {
         for (const auto& e : s.effects)
             if (e.target == subject && e.smite_brand && e.smite_reveal) { f.subject_invisible = false; break; }
     return derive_sight(*v, f);
+}
+
+VisibleFigureView visible_figure(const EncounterState& s, CombatantId viewer, CombatantId subject) {
+    VisibleFigureView v;
+    for (const auto& d : s.figure_discerned)
+        if (d.observer == viewer && d.subject == subject) v.discerned = true;
+    if (const VisibleFigure* f = find_figure(s, subject)) {
+        v.active = true;
+        v.instance = f->instance;
+        v.shape = f->shape;
+        v.size = f->size;
+        v.armor_def = f->armor_def;
+        v.covered_items = f->covered_items;
+    }
+    return v;
+}
+
+PhysicalMismatch physical_mismatch(const EncounterState& s, CombatantId subject) {
+    PhysicalMismatch m;
+    const Combatant* c = find(s, subject);
+    if (!c) return m;
+    m.true_size = c->size;
+    m.true_type = c->creature_type;
+    m.true_attack_count = uint8_t(std::min<std::size_t>(255, c->attacks.size()));
+    if (const VisibleFigure* f = find_figure(s, subject)) {
+        m.active = true;
+        m.presented_shape = f->shape;
+        m.presented_size = f->size;
+        m.armor_def = f->armor_def;
+        m.covered_items = f->covered_items;
+    }
+    return m;
 }
 
 bool is_hidden_from(const EncounterState& s, CombatantId who, CombatantId from) {

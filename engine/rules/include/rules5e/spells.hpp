@@ -640,6 +640,11 @@ struct SpellDef {
     // The action spends itself and toggles Combatant::plane between Material and BorderEthereal.
     // No target, no roll. kind is unused: cast_spell_impl returns before resolve_effect.
     bool ethereal_toggle = false;
+    // appended (visible figure, CONTENT_CONVENTIONS §52). Static content: not hashed.
+    // An action starts one humanoid-shaped figure at the user's own size. fixed_dc is the
+    // Intelligence (Investigation) DC of a later InspectFigure. A bonus action ends the figure.
+    // kind is unused: cast_spell_impl returns before resolve_effect. Not a form and not a spell.
+    bool illusory_appearance = false;
 };
 
 // B10 Whirlwind and B11 Whelm name creatures already in the user's space. Rules does not see tiles.

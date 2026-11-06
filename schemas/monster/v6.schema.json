@@ -786,8 +786,15 @@
             "deadly_leap",
             "whirlwind",
             "whelm",
-            "etherealness"
+            "etherealness",
+            "illusory_appearance"
           ]
+        },
+        "dc": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "description": "Illusory Appearance only: Intelligence (Investigation) DC to visually inspect the figure."
         },
         "to_hit": {
           "type": "integer",
@@ -2061,6 +2068,19 @@
           "then": {
             "propertyNames": {
               "enum": ["id", "name", "kind", "description"]
+            }
+          }
+        },
+        {
+          "description": "Visible figure: an action covers the user and the equipment she is wearing or carrying. dc is the Investigation DC. A bonus action ends it. monster@5 only. Not a form.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "illusory_appearance" } }
+          },
+          "then": {
+            "required": ["dc"],
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description", "dc"]
             }
           }
         }

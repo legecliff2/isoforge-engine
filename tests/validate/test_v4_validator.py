@@ -1235,6 +1235,10 @@ class LoaderValidatorStrings(unittest.TestCase):
              "etherealness needs a monster@5 file",
              "etherealness: only valid on monsters",
              "etherealness: unknown key '",
+             "illusory appearance needs a monster@5 file",
+             "illusory appearance: only valid on monsters",
+             "illusory appearance: unknown key '",
+             "illusory appearance: dc must be 1..30",
              "' is not one of the document's classes"]
 
     def test_loader_and_validator_share_strings(self):

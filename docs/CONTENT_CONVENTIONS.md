@@ -1496,7 +1496,7 @@ Product calls, not decided here:
 
 Deferred, not this trait:
 
-* Illusory Appearance. `srd51.monster.sea_hag` carries the SRD sentences as a description-only action. It is not `horrific_appearance` and it is not a disguise mechanic. There is no Investigation DC and no sudden-revelation flag.
+* Illusory Appearance. `srd51.monster.sea_hag` carries the SRD sentences as a description-only action. It is not `horrific_appearance` and it is not a disguise mechanic. There is no Investigation DC and no sudden-revelation flag. §52 does not read this trait and does not edit `sea_hag.json`.
 * Death Glare is §46.
 
 `srd51.monster.sea_hag` authors this trait (`{"kind": "horrific_appearance", "radius_ft": 30, "save": {"ability": "wis", "dc": 11}, "immunity_hours": 24}`). Illusory Appearance stays description only. Sudden revelation is not a flag. True form is sight of the creature; the disguise is not modelled. The built-in AI looks and does not avert. Counts are 202 authored and 8 deferred.
@@ -1540,7 +1540,7 @@ Product calls, not decided here:
 
 Deferred, not this action:
 
-* Illusory Appearance. `srd51.monster.sea_hag` carries the SRD sentences as a description-only action. It is not this action and it is not a disguise mechanic. There is no Investigation DC and no sudden-revelation flag.
+* Illusory Appearance. `srd51.monster.sea_hag` carries the SRD sentences as a description-only action. It is not this action and it is not a disguise mechanic. There is no Investigation DC and no sudden-revelation flag. §52 does not edit `sea_hag.json`.
 * Horrific Appearance is §45. This action does not frighten; it requires frightened.
 
 `srd51.monster.sea_hag` authors this action with those keys. A failed Wisdom save drops the target to 0 hit points. Not a damage packet. Illusory Appearance stays description only. Counts are 202 authored and 8 deferred.
@@ -1807,4 +1807,55 @@ Deferred, not this action:
 * `ghost.json` is not authored.
 
 This section does not author `srd51.monster.ghost`. The row stays deferred until T&C writes the stat block. Possession is still the block. Counts stay 202 authored and 8 deferred.
+
+## 52. Visible figure (monster@5 action `illusory_appearance`)
+
+SRD 5.1 Green Hag Illusory Appearance, the whole action. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `green-hag`). The green hag row is not in the in-repo monster table because the stat block is not authored:
+
+"Illusory Appearance. The hag covers herself and anything she is wearing or carrying with a magical illusion that makes her look like another creature of her general size and humanoid shape. The illusion ends if the hag takes a bonus action to end it or if she dies.
+The changes wrought by this effect fail to hold up to physical inspection. For example, the hag could appear to have smooth skin, but someone touching her would feel her rough flesh. Otherwise, a creature must take an action to visually inspect the illusion and succeed on a DC 20 Intelligence (Investigation) check to discern that the hag is disguised."
+
+It is an action. It is not Shapechange, not `FormKind`, and not a change of size, creature type, attacks, kit, or name. "Humanoid shape" is a body plan (`FigureShape::Humanoid`). It is not `CreatureType::Humanoid`. Sea hag's action of the same name is a different sentence (an ugly creature, DC 16) and stays description-only on `sea_hag.json`. Disguise Self, Minor Illusion's "becomes faint," and the Invisibility spell's "as long as it is on the target's person" are not this action.
+
+```json
+{ "id": "illusory_appearance", "name": "Illusory Appearance", "kind": "illusory_appearance", "dc": 20 }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `dc` | integer 1..30. The Intelligence (Investigation) DC of `InspectFigure` | `illusory appearance: dc must be 1..30` |
+| (none other) | id, name, kind, an optional description | `illusory appearance: unknown key '...'` / `illusory appearance needs a monster@5 file` / `illusory appearance: only valid on monsters` |
+
+What the sentences fix:
+
+* **Covers herself.** One figure on the user. `shape` is humanoid. `size` is a copy of her `Size` at the moment the action resolves. `Combatant::size` is not written. The action spends the action. A target is `illusory appearance: no target`, and the action is not spent.
+* **Anything she is wearing or carrying.** At that same moment, `EncounterHooks::loadout_of` supplies `LoadoutView`: `main`, `off`, and `carried` instance ids (each instance once, sorted), and `armor_def`. No loadout hook: the covered set is empty and `armor_def` is 0. The record does not subscribe to `EquipOp`. A later change of the loadout does not edit the record. Pickup and drop are not given a result.
+* **Bonus action to end it.** `CastSpell` of this action with `as_bonus_action` erases the figure. It spends the bonus action. It does not spend the action. Discernment is not erased.
+* **If she dies.** `sweep_dead_figures` erases the figure when the bearer is dead. Hit points 0 with `dead` still false does not. Discernment is not erased.
+* **Physical inspection.** `physical_mismatch(subject)` returns the figure beside the true size, creature type, and attack count, and the covered set. It does not write discernment. A melee hit, a grapple, and a shove do not call it.
+* **Otherwise, an action to visually inspect.** `ActionKind::InspectFigure` spends the action. It is not `AbilityCheck`. The viewer must `sight` the subject with `can_see` and `Sense::Sight`, or the action is refused and not spent (`illusory appearance: cannot see the illusion`). No figure: `illusory appearance: no illusion`, not spent. The roll is Intelligence (Investigation) against the figure's `dc`. `CheckRolled` is the roll. Success adds one `(observer, subject)` row if that pair is absent. Failure does not remove a row. The figure stays up for every viewer, including one who succeeded. There is no foot range.
+
+The built-in AI does not start the figure, end it, or inspect. `legal_actions` lists the start while no figure is up, the bonus-action end while one is up and the bonus action remains, and `InspectFigure` for each living subject the current actor can see.
+
+`Combat::hash` tag **0xE7** folds while any figure or any discernment row exists: figure count, then each figure in vector order (bearer, instance, spell id, shape, size, dc, armor def, covered-item count, items), then discernment count, then each pair in vector order (observer, subject). `next_figure_instance` is not folded. No new `SIM_EVENTS` tag. Replay re-runs the actions. Next free is **0xE8**.
+
+`Session::view` copies the figure onto `ActorView` after `copy_visual`. `kit`, `visual_kind`, `standin_bin`, and `name` stay the true form. `equip_layers` does not draw a covered instance. Worn armor has no quad. `illusion_discerned` is the camera viewer's row and does not change what is drawn.
+
+### Product choices
+
+These are not printed in the SRD sentence. Zach fixed them for this slice:
+
+* **Repeat while disguised.** A start while that bearer already has a figure is `illusory appearance: already disguised`. The action is not spent.
+* **Discernment persists.** The row is `(observer, subject)`, not the figure instance. Ending the figure, the bearer dying, or a later start does not clear it. A failed inspect does not clear it.
+* **What the session may show.** Shape, size, and covered equipment. Body art stays the true form (Art HOLD).
+
+### Not this action
+
+* Invisible Passage. No concentration, no `ends_on`, no Invisible condition, no tracking query.
+* Voluntary concentration end.
+* Passage's "wears or carries" reading. This action's covered set is the loadout at activation only.
+* Shapechange. No shape, no forms, no `shapechanger` effect.
+* Sea hag Illusory Appearance and `sea_hag.json`.
+* `green_hag.json`. Counts stay 202 authored and 8 deferred.
+* Truesight and See Invisibility. The inspect uses the existing `sight` answer. Those calls stay open.
 

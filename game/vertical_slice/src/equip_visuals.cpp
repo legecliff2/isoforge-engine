@@ -21,6 +21,8 @@ std::vector<EquipLayer> equip_layers(const ActorView& a) {
     std::vector<EquipLayer> out;
     out.push_back({EquipPart::Body, kZBody, nullptr, {0, 0}});
     for (const EquipVisual& e : a.equipment) {
+        if (std::find(a.covered_equipment.begin(), a.covered_equipment.end(), e.item) != a.covered_equipment.end())
+            continue;   // the true item is covered by the figure and is not drawn as itself
         EquipLayer l;
         l.item = &e;
         if (e.slot == AttachSlot::Back) {
