@@ -1,4 +1,4 @@
-// B16: Charm (command control) and Draining Kiss (save drain). No succubus.json.
+// B16: Charm (command control) and Draining Kiss (save drain). Does not load succubus.json.
 #include <algorithm>
 #include <doctest/doctest.h>
 

@@ -1190,6 +1190,11 @@ class HorrificAppearance(unittest.TestCase):
         self.assertEqual(checks_v4.check_charm_command(doc, "monster@5"), ([], []))
         self.assertEqual(checks_v4.check_drain_max_hp(doc, "monster@5"), ([], []))
         self.assertEqual(checks_v4.check_batch3_actions(doc, "monster@5"), [])
+        self.assertEqual(checks_v4.check_class_hooks(doc), [])
+        bare_cmd = dict(charm)
+        bare_cmd.pop("charm_command")
+        errs = checks_v4.check_class_hooks({"$schema": "monster@5", "id": "t.fiend", "actions": [bare_cmd]})
+        self.assertTrue(any("control command needs a spell" in e for e in errs), errs)
         bad = dict(charm)
         bad["charm_command"] = False
         errs, _ = checks_v4.check_charm_command({"$schema": "monster@5", "id": "t.fiend", "actions": [bad]}, "monster@5")
