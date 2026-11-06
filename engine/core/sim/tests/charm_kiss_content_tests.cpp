@@ -1,4 +1,4 @@
-// B16 content: Charm and Draining Kiss save_effects. No succubus.json.
+// B16 content: Charm and Draining Kiss save_effects. Does not load succubus.json.
 #include <doctest/doctest.h>
 
 #include <fstream>

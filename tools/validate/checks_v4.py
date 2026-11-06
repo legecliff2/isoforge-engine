@@ -2280,7 +2280,9 @@ def check_class_hooks(doc: dict) -> list[str]:
             for k in ("control_excludes_creature_types", "destroy_undead_max_cr8", "duration"):
                 if k in a:
                     errs.append(f"{path}: {did}: {k} needs control (7.2y)")
-        elif a.get("control") == "command":
+        elif a.get("control") == "command" and a.get("charm_command") is not True:
+            # Charm (CONTENT_CONVENTIONS §47) is the monster save that takes command with no word.
+            # The spell Command still chooses the word at the cast. check_charm_command covers the rest.
             errs.append(f"{path}: {did}: control command needs a spell (the word is a cast choice) (7.2y)")
     for path, _owner, eff in live_effects(doc):
         if "scope" not in eff:
