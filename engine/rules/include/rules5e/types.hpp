@@ -180,8 +180,13 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   AppearanceResponse,
                                   // appended (visible figure, CONTENT_CONVENTIONS §52): an action to visually inspect
                                   // another creature's illusory figure. Not a free AbilityCheck. The built-in AI does not use it.
-                                  InspectFigure };
+                                  InspectFigure,
+                                  // appended (SRD concentration): end the actor's concentration at any time. No action,
+                                  // bonus action, or reaction. Same admission as Heal and AbilityCheck.
+                                  EndConcentration };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
+static_assert(static_cast<uint32_t>(ActionKind::EndConcentration) < 32,
+              "ActionKind::bit shifts a uint32_t; InspectFigure and EndConcentration must stay below 32");
 
 // Reaction windows (encounter.hpp). Append-only.
 // HitRider (row 9c): the attacker is the reactor; opened after a hit for each `choice: ask` trigger (Divine Smite).

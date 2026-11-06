@@ -1632,6 +1632,12 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     SubmitResult r;
     derived_area_ = false;
     const CombatantId actor = rules5e::current_actor(state_);
+    // SRD: concentration may be ended at any time, no action required. Same rules admission as Heal
+    // and AbilityCheck. This is the one sim forward of an off-turn request; Heal stays on the turn gate.
+    if (req.kind == ActionKind::EndConcentration) {
+        step_to_.reset();
+        return finish(rules5e::step(state_, req));
+    }
     if (req.actor != actor) { r.error = "not this combatant's turn"; return r; }
     if (req.kind == ActionKind::Move) { r.error = "use Step commands for movement (sim paths the grid)"; return r; }
     // SRD (feat/size-space): a creature can't willingly end its move in another creature's space. The turn may not end
