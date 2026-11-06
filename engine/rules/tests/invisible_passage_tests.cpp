@@ -1,6 +1,6 @@
 // SRD 5.1 Green Hag Invisible Passage. An action. Invisible until the user attacks or casts a spell,
 // or until concentration ends. No duration. Physical evidence of passage is none while it is up.
-// Magical tracking is unanswered. Not innate_invisibility. Not green_hag.json.
+// Magical tracking is unanswered. Not innate_invisibility. Does not load green_hag.json.
 #include <doctest/doctest.h>
 
 #include <memory>

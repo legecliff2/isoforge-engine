@@ -1,0 +1,109 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.green_hag",
+  "name": "Green Hag",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "fey",
+  "alignment": "neutral evil",
+  "armor_class": {
+    "value": 17,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 16,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 82,
+    "formula": "11d8+33"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 18,
+    "dex": 12,
+    "con": 16,
+    "int": 13,
+    "wis": 14,
+    "cha": 14
+  },
+  "skills": {
+    "arcana": 3,
+    "deception": 4,
+    "perception": 4,
+    "stealth": 3
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 14
+  },
+  "languages": [
+    "Common",
+    "Draconic",
+    "Sylvan"
+  ],
+  "challenge": {
+    "rating": "3",
+    "xp": 700
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "amphibious",
+      "name": "Amphibious",
+      "description": "The hag can breathe air and water."
+    },
+    {
+      "id": "innate_spellcasting",
+      "name": "Innate Spellcasting",
+      "description": "The hag's innate spellcasting ability is Charisma (spell save DC 12). She can innately cast the following spells, requiring no material components:\nAt will: dancing lights, minor illusion, vicious mockery\n(Descriptive only: dancing lights, minor illusion, and vicious mockery are in srd51.core/spells. a6212be prints no caster level. spellcasting.innate requires one, and that level scales vicious mockery. No invented level, no innate block, and no fake slots. Not a spellcasting entry. Not Illusory Appearance.)"
+    },
+    {
+      "id": "mimicry",
+      "name": "Mimicry",
+      "description": "The hag can mimic animal sounds and humanoid voices. A creature that hears the sounds can tell they are imitations with a successful DC 14 Wisdom (Insight) check. (Descriptive only: as raven. The DC 14 Wisdom (Insight) check is not a check.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "claws",
+      "name": "Claws",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d8",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+4",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 13 (2d8 + 4) slashing damage."
+    },
+    {
+      "id": "illusory_appearance",
+      "name": "Illusory Appearance",
+      "kind": "illusory_appearance",
+      "dc": 20,
+      "description": "The hag covers herself and anything she is wearing or carrying with a magical illusion that makes her look like another creature of her general size and humanoid shape. The illusion ends if the hag takes a bonus action to end it or if she dies.\nThe changes wrought by this effect fail to hold up to physical inspection. For example, the hag could appear to have smooth skin, but someone touching her would feel her rough flesh. Otherwise, a creature must take an action to visually inspect the illusion and succeed on a DC 20 Intelligence (Investigation) check to discern that the hag is disguised. (Illusory Appearance, CONTENT_CONVENTIONS §52: kind illusory_appearance, dc 20. One humanoid-shaped figure at her own size, and the loadout covered at that moment. A bonus action or death ends the figure. InspectFigure spends an action and rolls Intelligence (Investigation) against DC 20. physical_mismatch is not a hit, a grapple, or a shove. A start while a figure is up is refused and the action is not spent. Discernment is (observer, subject) and persists. Shape, size, and covered equipment may show; body art stays the true form (Art HOLD; no art assets). The built-in AI does not use it. Hash 0xE7. Not the sea hag's description-only action.)"
+    },
+    {
+      "id": "invisible_passage",
+      "name": "Invisible Passage",
+      "kind": "invisible_passage",
+      "description": "The hag magically turns invisible until she attacks or casts a spell, or until her concentration ends (as if concentrating on a spell). While invisible, she leaves no physical evidence of her passage, so she can be tracked only by magic. Any equipment she wears or carries is invisible with her. (Invisible Passage, CONTENT_CONVENTIONS §53: kind invisible_passage. Invisible and concentrating, no duration, until she attacks or casts a spell, or concentration ends. track_evidence(Physical) is none while that effect is up. Magical tracking stays unanswered. The equipment sentence is not per-item visibility: the Invisible condition is the creature. A second use while it is up spends the action and replaces the concentration. Not innate_invisibility. Not dispellable. The built-in AI does not use it. No new hash tag.)"
+    }
+  ]
+}
