@@ -1441,12 +1441,12 @@ std::vector<CombatantId> initiative_ids(const EncounterState& s) {
 
 // 7.2v control conditions: the reason `req` is refused for actor `a`, or nullptr. Rules restricts the legal actions; sim
 // picks the path (away from the caster, toward it for Approach). Not-turn requests (ReactionDecision, Heal, AbilityCheck,
-// GazeResponse) are never refused.
+// EndConcentration, GazeResponse) are never refused.
 const char* control_refuses(const EncounterState& s, const Combatant& a, const ActionRequest& req) {
     if (s.effects.empty()) return nullptr;
     const ActionKind k = req.kind;
     if (k == ActionKind::ReactionDecision || k == ActionKind::Heal || k == ActionKind::AbilityCheck ||
-        k == ActionKind::GazeResponse || k == ActionKind::EndTurn) return nullptr;
+        k == ActionKind::EndConcentration || k == ActionKind::GazeResponse || k == ActionKind::EndTurn) return nullptr;
     const bool moving = k == ActionKind::Move || k == ActionKind::Dash || k == ActionKind::StandUp;
     for (const auto& e : s.effects) {
         if (e.target != a.id || e.control == 0) continue;
@@ -6071,6 +6071,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     s.landed.clear();          // altitude PR4: the falls of this step only
     const bool own_turn = !s.ended && !s.order.empty() && req.actor == current_actor(s) &&
                           req.kind != ActionKind::Heal && req.kind != ActionKind::AbilityCheck &&
+                          req.kind != ActionKind::EndConcentration &&
                           req.kind != ActionKind::ReactionDecision && req.kind != ActionKind::OpportunityAttack;
     Combatant* a = own_turn ? find_mut(s, req.actor) : nullptr;
     if (req.jump_ft != 0 && req.kind != ActionKind::Move) return fail("jump_ft: Move only");   // B8: never an ignored flag
@@ -6178,6 +6179,15 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
                                  mode == RollMode::Disadvantage || kp.mode == RollMode::Disadvantage);
         }
         roll_check(s, *c, req.skill, req.dc, mode, out.events);
+        return out;
+    }
+    if (req.kind == ActionKind::EndConcentration) {   // any time; no action, bonus action, or reaction (SRD concentration)
+        Combatant* c = find_mut(s, req.actor);
+        if (!c || c->dead) return fail("bad combatant");
+        if (c->concentration_spell == 0) return fail("not concentrating");
+        StepResult out{true, {}, {}};
+        end_concentration(s, c->id, out.events);
+        check_end(s, out.events);
         return out;
     }
     if (req.kind == ActionKind::ReactionDecision) return fail("no pending reaction decision");
@@ -6808,7 +6818,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         return out;
     }
     case ActionKind::OpportunityAttack: case ActionKind::ReactionDecision:
-    case ActionKind::Heal: case ActionKind::AbilityCheck: case ActionKind::GazeResponse:
+    case ActionKind::Heal: case ActionKind::AbilityCheck: case ActionKind::EndConcentration:
+    case ActionKind::GazeResponse:
     case ActionKind::AppearanceResponse: break;  // handled above
     case ActionKind::InspectFigure: {   // spends the action. A free AbilityCheck is not this.
         Combatant* t = find_mut(s, req.target);

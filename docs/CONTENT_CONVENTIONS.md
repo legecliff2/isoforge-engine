@@ -1852,7 +1852,7 @@ These are not printed in the SRD sentence. Zach fixed them for this slice:
 ### Not this action
 
 * Invisible Passage. No concentration, no `ends_on`, no Invisible condition, no tracking query.
-* Voluntary concentration end.
+* Voluntary concentration end. That is `ActionKind::EndConcentration` (the Heal / AbilityCheck admission; SRD "at any time, no action required"). It is not this action.
 * Passage's "wears or carries" reading. This action's covered set is the loadout at activation only.
 * Shapechange. No shape, no forms, no `shapechanger` effect.
 * Sea hag Illusory Appearance and `sea_hag.json`.
