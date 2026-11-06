@@ -179,7 +179,9 @@ Horrifying Visage is not this kind. It is the monster@5 `save_effect` in §49: a
 
 Etherealness is not this kind. It is the monster@5 action in §51. It toggles `Combatant::plane` between Material and the Border Ethereal. Sight is unchanged. A creature cannot affect or be affected by one on the other plane: a named target is refused before the action is spent, and an area skips with no roll. `Combat::hash` 0xE6 folds the plane only while some combatant is not Material. No new `SIM_EVENTS` tag. `ghost.json` is not authored. The built-in AI does not use it. Possession, Incorporeal Movement, and Shapechange are not this action.
 
-Illusory Appearance is not this kind. It is the monster@5 action in §52 (`illusory_appearance`, `dc`). One humanoid-shaped figure at the user's own size, plus the loadout covered at activation. A bonus action or death ends the figure. `InspectFigure` is the visual check. `physical_mismatch` is not a hit. `Combat::hash` 0xE7 folds a figure or a discernment row. `green_hag.json` is not authored. Invisible Passage is not this action.
+Illusory Appearance is not this kind. It is the monster@5 action in §52 (`illusory_appearance`, `dc`). One humanoid-shaped figure at the user's own size, plus the loadout covered at activation. A bonus action or death ends the figure. `InspectFigure` is the visual check. `physical_mismatch` is not a hit. `Combat::hash` 0xE7 folds a figure or a discernment row. `green_hag.json` is not authored.
+
+Invisible Passage is not this kind and not that figure. It is the monster@5 action in §53 (`invisible_passage`). An action applies Invisible and concentration, with `ends_on` attack and cast, and no duration. `track_evidence(Physical)` is none while that effect is up. Magical stays unanswered. No new hash tag. `green_hag.json` is not authored.
 
 Example: `{ "kind": "horrific_appearance", "radius_ft": 30, "save": { "ability": "wis", "dc": 11 }, "immunity_hours": 24 }`
 

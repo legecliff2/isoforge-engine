@@ -1239,6 +1239,9 @@ class LoaderValidatorStrings(unittest.TestCase):
              "illusory appearance: only valid on monsters",
              "illusory appearance: unknown key '",
              "illusory appearance: dc must be 1..30",
+             "invisible passage needs a monster@5 file",
+             "invisible passage: only valid on monsters",
+             "invisible passage: unknown key '",
              "' is not one of the document's classes"]
 
     def test_loader_and_validator_share_strings(self):

@@ -1446,7 +1446,7 @@ Deferred, not this trait:
 
 * Faultless Tracker. `srd51.monster.invisible_stalker` carries the SRD sentences as a description-only trait. It is not `innate_invisibility` and it is not a tracking mechanic.
 * Heard or noticed hiding (coverage: Invisible is attack advantage and disadvantage only).
-* Will-o'-wisp's optional Invisibility action, duergar Invisibility, and green hag Invisible Passage.
+* Will-o'-wisp's optional Invisibility action and duergar Invisibility. Green hag Invisible Passage is §53. It is not this trait.
 
 `FormStats` does not carry `innate_invisible`. A transform does not add the flag or clear it (the regeneration, Freeze, and Lightning Absorption peer).
 
@@ -1851,11 +1851,55 @@ These are not printed in the SRD sentence. Zach fixed them for this slice:
 
 ### Not this action
 
-* Invisible Passage. No concentration, no `ends_on`, no Invisible condition, no tracking query.
+* Invisible Passage. That action is §53. This action does not start it.
 * Voluntary concentration end. That is `ActionKind::EndConcentration` (the Heal / AbilityCheck admission; SRD "at any time, no action required"). It is not this action.
 * Passage's "wears or carries" reading. This action's covered set is the loadout at activation only.
 * Shapechange. No shape, no forms, no `shapechanger` effect.
 * Sea hag Illusory Appearance and `sea_hag.json`.
 * `green_hag.json`. Counts stay 202 authored and 8 deferred.
 * Truesight and See Invisibility. The inspect uses the existing `sight` answer. Those calls stay open.
+
+## 53. Invisible Passage (monster@5 action `invisible_passage`)
+
+SRD 5.1 Green Hag Invisible Passage. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `green-hag`). `green_hag.json` is not authored. Counts stay 202 authored and 8 deferred.
+
+"Invisible Passage. The hag magically turns invisible until she attacks or casts a spell, or until her concentration ends (as if concentrating on a spell). While invisible, she leaves no physical evidence of her passage, so she can be tracked only by magic. Any equipment she wears or carries is invisible with her."
+
+It is an action. It is not `innate_invisibility` (§44: that trait does not end when the creature attacks or casts). It is not the Invisibility spell (touch, up to 1 hour, a spell slot, upcast, "as long as it is on the target's person"). It is not Greater Invisibility. Sprite, duergar, and will-o'-wisp invisibility stay description-only.
+
+```json
+{ "id": "invisible_passage", "name": "Invisible Passage", "kind": "invisible_passage" }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| (none) | id, name, kind, an optional description | `invisible passage: unknown key '...'` / `invisible passage needs a monster@5 file` / `invisible passage: only valid on monsters` |
+
+What the sentences fix:
+
+* **An action.** `CastSpell` of this action spends the action. A target is `invisible passage: no target`, and the action is not spent. A bonus action is `invisible passage: an action`, and nothing is spent. The user is the target. The synthetic `SpellDef` is not a spell (`is_spell` false, not magical). The cast returns before `resolve_effect`, so this action does not count as casting a spell and does not end itself.
+* **Turns invisible.** `Condition::Invisible` on the user, held by one effect of this action. A creature immune to Invisible spends the action and does not gain the effect or the concentration. `innate_invisible` is not set and is not cleared.
+* **Until she attacks or casts a spell.** The effect's `ends_on` is attack and cast. The existing `end_on_own_action` path ends the effect, then concentration when nothing of that concentration remains. A miss is an attack. An opportunity attack is an attack.
+* **Until her concentration ends (as if concentrating on a spell).** The effect is concentration. `concentration_spell` is this action. `ActionKind::EndConcentration` ends it and spends neither the action, the bonus action, nor the reaction. Damage, incapacitation, and death use the existing concentration breaks. No duration and no round timer.
+* **One concentration channel.** Starting this action ends the user's current concentration first, then applies this one. That is the existing "as if concentrating on a spell" channel. A later concentration spell does the same in the other direction.
+* **No physical evidence of her passage.** `track_evidence(subject, Physical)` is `None` while this action's effect is on that subject. It is not Hide, not Survival, and not surprise. When the effect is down, the answer is `Unanswered`. The engine does not say that tracks exist.
+* **Tracked only by magic.** `track_evidence(subject, Magical)` is `Unanswered`. There is no magical-track query and no spell list.
+
+The built-in AI does not use it. `legal_actions` lists the self cast. No new `Combat::hash` tag. The effect row is the existing effect fold. Replay re-runs the action and `EndConcentration`. Next free stays **0xE8**.
+
+Dispel Magic is not in the sentence. The action has no spell level. A level of 0 would make the existing dispel path end it at any slot. That path skips this flag only. Other effects on the same creature are unchanged.
+
+### Escalated
+
+* **Equipment.** "Any equipment she wears or carries is invisible with her" is present tense. There is no per-item visibility consumer. The Invisible condition is the creature. This is not the Invisibility spell's "as long as it is on the target's person," and it does not subscribe to `EquipOp`.
+* **Which magic tracks.** No existing query names a spell that tracks. Magical stays `Unanswered`.
+* **A second use while it is already up.** The sentence does not say. This is not Illusory Appearance's product choice (a start while disguised is refused and the action is not spent). A second use is another start of this concentration: the previous one ends, this one applies, and the action is spent.
+
+### Not this action
+
+* Illusory Appearance (§52), including its three product choices. Body art stays the true form (Art HOLD).
+* `innate_invisibility`, the Invisibility spell, and Greater Invisibility.
+* Shapechange. No form.
+* `green_hag.json`.
+* Hide, Survival, and surprise.
 

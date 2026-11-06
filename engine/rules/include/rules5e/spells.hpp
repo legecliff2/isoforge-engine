@@ -645,6 +645,11 @@ struct SpellDef {
     // Intelligence (Investigation) DC of a later InspectFigure. A bonus action ends the figure.
     // kind is unused: cast_spell_impl returns before resolve_effect. Not a form and not a spell.
     bool illusory_appearance = false;
+    // appended (Invisible Passage, CONTENT_CONVENTIONS §53). Static content: not hashed.
+    // An action. Invisible, concentrating, until the user attacks or casts a spell, or concentration ends.
+    // No duration. Not a spell: cast_spell_impl returns before resolve_effect, so the action does not
+    // end itself. Not innate_invisibility.
+    bool invisible_passage = false;
 };
 
 // B10 Whirlwind and B11 Whelm name creatures already in the user's space. Rules does not see tiles.
