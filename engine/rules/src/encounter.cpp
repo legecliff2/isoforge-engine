@@ -3873,7 +3873,7 @@ void apply_one_restore(EncounterState& s, Combatant& t, RestoreOption opt, std::
 std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
                                        const std::vector<Combatant*>& T, bool within_5ft, std::vector<Event>& ev) {
     std::vector<Combatant*> affected;
-    if (def.ethereal_toggle || def.illusory_appearance) return affected;   // the action returned before resolve_effect
+    if (def.ethereal_toggle || def.illusory_appearance || def.invisible_passage) return affected;   // the action returned before resolve_effect
     switch (def.kind) {
     case SpellEffectKind::SpellAttack: {
         Attack atk{def.content_id, int8_t(spell_attack_bonus(a, def)), scaled_dice(def, lvl, a.caster_level),
@@ -4375,6 +4375,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 for (const auto& o : list) if (o.spell == sp && o.caster == caster) return;
                 const SpellDef* d = spell_def(s, sp);
                 if (!d && slot == 0) return;   // not a spell (a feature's modifier): not dispellable
+                if (d && d->invisible_passage) return;   // §53: no spell level. Not dispellable.
                 list.push_back({sp, caster, slot ? int(slot) : int(d->level)});
             };
             for (const auto& e : s.effects) if (e.target == t->id) note(e.spell_id, e.caster, e.slot_level);
@@ -4866,6 +4867,29 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         s.figures.push_back(std::move(fig));
         StepResult out{true, {}, {}};
         emit(out.events, EventKind::ActionUsed, a.id, a.id, int32_t(def.id), 0, def.usage_kind);
+        return out;
+    }
+    if (def.invisible_passage) {   // §53: an action. Invisible until attack, cast, or concentration ends. Not a spell.
+        if (req.as_bonus_action || req.sustain || req.innate) return fail("invisible passage: an action");
+        if ((req.target != 0 && req.target != a.id) || !req.targets.empty()) return fail("invisible passage: no target");
+        if (const std::string_view why = spell_cast_resource_refusal(s, a, def, req.innate, req.spell_level); !why.empty())
+            return fail(why);
+        if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
+        s.budget = b;
+        StepResult out{true, {}, {}};
+        if (!immune_to(s, a, Condition::Invisible)) {
+            if (a.concentration_spell != 0) end_concentration(s, a.id, out.events);   // one concentration channel
+            if (!a.has(Condition::Invisible)) {
+                add_condition(a, Condition::Invisible);
+                emit(out.events, EventKind::ConditionAdded, a.id, 0, int32_t(Condition::Invisible));
+            }
+            s.effects.push_back(ActiveSpellEffect{def.id, a.id, a.id, Condition::Invisible, Ability::Wis, 0, RepeatSave::None,
+                                                  true, Timed{}, 0, false});
+            s.effects.back().ends_on = uint8_t(kEndsOnAttack | kEndsOnCast);
+            a.concentration_spell = def.id;
+        }
+        emit(out.events, EventKind::ActionUsed, a.id, a.id, int32_t(def.id), 0, def.usage_kind);
+        check_end(s, out.events);
         return out;
     }
     if (def.ethereal_toggle) {   // B19: an action, no target, no roll. Material ↔ Border Ethereal.
@@ -6874,6 +6898,11 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
         if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, d, t)) return false;
         return true;
     };
+    if (d.invisible_passage) {   // §53: self. The built-in AI does not pick it.
+        r.target = a.id;
+        out.push_back(r);
+        return;
+    }
     if (d.ethereal_toggle) {   // B19: self. The built-in AI does not pick it.
         r.target = a.id;
         out.push_back(r);
@@ -7850,6 +7879,16 @@ PhysicalMismatch physical_mismatch(const EncounterState& s, CombatantId subject)
         m.covered_items = f->covered_items;
     }
     return m;
+}
+
+TrackAnswer track_evidence(const EncounterState& s, CombatantId subject, TrackEvidence evidence) {
+    if (evidence != TrackEvidence::Physical) return TrackAnswer::Unanswered;
+    for (const auto& e : s.effects) {
+        if (e.target != subject) continue;
+        const SpellDef* d = spell_def(s, e.spell_id);
+        if (d && d->invisible_passage) return TrackAnswer::None;
+    }
+    return TrackAnswer::Unanswered;
 }
 
 bool is_hidden_from(const EncounterState& s, CombatantId who, CombatantId from) {

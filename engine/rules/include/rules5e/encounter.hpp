@@ -1256,6 +1256,12 @@ Sight sight(const EncounterState&, CombatantId viewer, CombatantId subject);
 // Discernment does not change the figure. An inactive subject can still be discerned.
 VisibleFigureView visible_figure(const EncounterState&, CombatantId viewer, CombatantId subject);
 PhysicalMismatch physical_mismatch(const EncounterState&, CombatantId subject);
+// Invisible Passage (CONTENT_CONVENTIONS §53). Physical is None only while that action's effect is
+// on the subject. Magical is Unanswered: there is no magical-track query. Any other moment is
+// Unanswered. This does not say that tracks exist, and it is not Hide, Survival, or surprise.
+enum class TrackEvidence : uint8_t { Physical = 1, Magical = 2 };
+enum class TrackAnswer : uint8_t { Unanswered = 0, None = 1 };
+TrackAnswer track_evidence(const EncounterState&, CombatantId subject, TrackEvidence);
 bool is_hidden_from(const EncounterState&, CombatantId who, CombatantId from);
 bool has_hidden_state(const EncounterState&);   // Combat::hash 0xC5 folds hidden_digest only while true
 uint64_t hidden_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);

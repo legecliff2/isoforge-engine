@@ -787,7 +787,8 @@
             "whirlwind",
             "whelm",
             "etherealness",
-            "illusory_appearance"
+            "illusory_appearance",
+            "invisible_passage"
           ]
         },
         "dc": {
@@ -2064,6 +2065,18 @@
           "if": {
             "required": ["kind"],
             "properties": { "kind": { "const": "etherealness" } }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description"]
+            }
+          }
+        },
+        {
+          "description": "Invisible Passage: an action. The user is invisible, concentrating, until she attacks or casts a spell, or concentration ends. No duration, no target. monster@5 only. Not a spell.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "invisible_passage" } }
           },
           "then": {
             "propertyNames": {

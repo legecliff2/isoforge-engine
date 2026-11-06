@@ -77,6 +77,7 @@ struct Archetype {
         bool whelm = false;             // B11: Whelm. The built-in AI does not use it.
         bool ethereal = false;          // B19: Etherealness. The built-in AI does not toggle planes.
         bool illusory = false;          // visible figure: the built-in AI does not start or end it.
+        bool passage = false;           // Invisible Passage: the built-in AI does not use it.
     };
     std::vector<SaveAction> save_actions;
     // resources[] (row 13): pools Combat::create registers (resolved against the archetype's level / abilities at load).

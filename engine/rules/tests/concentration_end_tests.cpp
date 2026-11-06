@@ -59,12 +59,14 @@ TEST_CASE("concentration end: no action or bonus action, and the other caster ke
     end_turns_until(s, 2);
     const bool action = s.budget.action;
     const bool bonus = s.budget.bonus_action;
+    const bool reaction = s.budget.reaction;
     REQUIRE(step(s, {1, ActionKind::EndConcentration}).ok);
     CHECK_FALSE(concentrating(s, 1));
     CHECK_FALSE(find(s, 1)->has(Condition::Invisible));
     CHECK(find(s, 2)->concentration_spell == kConc);
     CHECK(s.budget.action == action);
     CHECK(s.budget.bonus_action == bonus);
+    CHECK(s.budget.reaction == reaction);
     CHECK(current_actor(s) == 2);
 }
 
@@ -72,11 +74,13 @@ TEST_CASE("concentration end: not concentrating is refused and spends nothing") 
     auto s = ready();
     CHECK(s.budget.action);
     CHECK(s.budget.bonus_action);
+    CHECK(s.budget.reaction);
     auto r = step(s, {1, ActionKind::EndConcentration});
     CHECK_FALSE(r.ok);
     CHECK(r.error == "not concentrating");
     CHECK(s.budget.action);
     CHECK(s.budget.bonus_action);
+    CHECK(s.budget.reaction);
 }
 
 TEST_CASE("concentration end: gaze, appearance, and surprise do not block it") {

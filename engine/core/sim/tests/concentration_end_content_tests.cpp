@@ -44,7 +44,7 @@ void advance_to(Combat& c, CombatantId who) {
 }
 }  // namespace
 
-TEST_CASE("concentration end: sim accepts it off the current turn and replay matches") {
+TEST_CASE("concentration end: sim accepts it off the current turn") {
     ContentLibrary lib;
     REQUIRE(lib.load(sample_set()).empty());
     Json doc = load_json("content/packs/srd51.core/monsters/goblin.json");

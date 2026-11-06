@@ -800,6 +800,43 @@ std::optional<std::string> compile_illusory_appearance(const std::string& arch, 
     return std::nullopt;
 }
 
+// Invisible Passage (CONTENT_CONVENTIONS §53). An action. Not a spell, not innate_invisibility.
+// No extra keys. The built-in AI does not use it.
+std::optional<std::string> compile_invisible_passage(const std::string& arch, const Json& act, uint32_t declared,
+                                                     const std::string& schema_type, rules5e::SpellDef& d,
+                                                     Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": invisible passage '" + aid + "'";
+    if (schema_type != "monster") return where + ": invisible passage: only valid on monsters";
+    if (declared != 0 && declared < 5) return where + ": invisible passage needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description")
+            return where + ": invisible passage: unknown key '" + k + "'";
+    }
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.kind = rules5e::SpellEffectKind::ApplyCondition;
+    d.is_spell = false;
+    d.magical = false;
+    d.components = 0;
+    d.targets = 1;
+    d.range_ft = 0;
+    d.applies_condition = false;
+    d.concentration = true;
+    d.condition = rules5e::Condition::Invisible;
+    d.ends_on = uint8_t(rules5e::kEndsOnAttack | rules5e::kEndsOnCast);
+    d.invisible_passage = true;
+    d.casting_time = rules5e::CastingTime::Action;
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.range_ft = 0;
+    sa.passage = true;
+    return std::nullopt;
+}
+
 // B8 Deadly Leap (CONTENT_CONVENTIONS §38). Its own action. Not a multiattack rider.
 // {kind: deadly_leap, jump_ft, save: {ability, dc}, save_alt, damage: [two], push_ft}.
 // One save, the higher of the two abilities (tie: save.ability). Fail: both damages and prone.
@@ -2752,7 +2789,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             const std::string ak = act.value("kind", "");
             if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect" && ak != "pull" &&
                 ak != "deadly_leap" && ak != "whirlwind" && ak != "whelm" && ak != "etherealness" &&
-                ak != "illusory_appearance") continue;
+                ak != "illusory_appearance" && ak != "invisible_passage") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
@@ -2769,6 +2806,15 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 if (auto e = compile_illusory_appearance(a.id, act, declared, schema_type, d, sa)) return e;
                 for (const auto& prev : synth)
                     if (prev.id == d.id) return a.id + ": illusory appearance ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "invisible_passage") {
+                if (auto e = compile_invisible_passage(a.id, act, declared, schema_type, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": invisible passage ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
                 c.spells_known.push_back(d.id);
                 a.save_actions.push_back(sa);
                 synth.push_back(std::move(d));
