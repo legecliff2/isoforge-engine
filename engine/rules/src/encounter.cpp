@@ -2092,8 +2092,10 @@ std::vector<ReactionOption> wearer_ac_options(const EncounterState& s, const Com
 }
 
 // Shield Guardian Shield (CONTENT_CONVENTIONS §54). Before the attack roll: "when a creature makes an attack"
-// against the bound wearer, not "when the wearer is hit". Each guardian with WearerAc, whose bound.wearer is `t`,
-// and who is within 5 feet may spend its reaction. The sum is AttackContext::wearer_ac_bonus for this attack only.
+// against the bound wearer, not "when the wearer is hit". The sentence does not exclude the guardian's own attack.
+// Each guardian with WearerAc, whose bound.wearer is `t`, and who is within 5 feet may spend its reaction.
+// Product choice (not the SRD sentence): the first guardian who grants the bonus ends the offer. Later guardians
+// are not asked and do not spend. The one bonus is AttackContext::wearer_ac_bonus for this attack only.
 // No sight hook: the distance is unknown, so nobody is within 5 feet. Not the in_range hook. Not team.
 // A natural 20 still hits; this function does not write reaction_ac_bonus and does not emit AcBonus.
 int wearer_shield_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, bool ranged, std::vector<Event>& ev) {
@@ -2105,7 +2107,9 @@ int wearer_shield_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t
         return s.hooks.sight_facts(s, r, t).distance_ft <= 5;
     };
     auto eligible = [&](const Combatant& r) {
-        return r.id != a.id && r.id != t.id && r.bound.radius_ft != 0 && r.bound.wearer == t.id &&
+        // The wearer is the target, so the reactor is not `t`. The attacker is not excluded: the sentence
+        // is any creature's attack, including the guardian's own, and a reaction can be taken on one's own turn.
+        return r.id != t.id && r.bound.radius_ft != 0 && r.bound.wearer == t.id &&
                may_react(s, r, w.trigger) && within_5(r) && !wearer_ac_options(s, r, a.id, ranged).empty();
     };
     bool any = false;
@@ -2128,7 +2132,8 @@ int wearer_shield_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t
         if (!d.react) continue;
         const ReactionOption o = opts[d.option];
         if (o.uses_reaction) r.reaction_used = true;
-        if (o.kind == ReactionOptionKind::AcBonus) bonus += o.ac_bonus;
+        if (o.kind == ReactionOptionKind::AcBonus) bonus = o.ac_bonus;
+        break;   // product choice: one grant. Later guardians are not offered and do not spend.
     }
     return bonus;
 }

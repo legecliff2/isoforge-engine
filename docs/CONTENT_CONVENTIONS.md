@@ -1926,18 +1926,21 @@ The window kind `ally_attacked` is the existing moment: an attack roll against t
 What the sentence fixes:
 
 * **When a creature makes an attack.** The window opens in `do_attack` after a total-cover refusal and after the duplicate redirect, beside the Protection poll, and before the d20. It does not open for an attack that never reaches the wearer. It follows the existing no-chaining rule (`may_open`).
-* **Against the wearer of the guardian's amulet.** `Combatant::bound.wearer` is the attack's target. That is the §50 link. Spawn override `bound_wearer`. Not an item. Not a team check. An attack against anyone else does not offer it. The guardian does not offer it against its own attack.
+* **Against the wearer of the guardian's amulet.** `Combatant::bound.wearer` is the attack's target. That is the §50 link. Spawn override `bound_wearer`. Not an item. Not a team check. An attack against anyone else does not offer it. The sentence does not exclude the guardian. The guardian's own attack against that wearer offers the reaction, including on the guardian's turn. A reaction can be taken on one's own turn.
 * **Grants a +2 bonus to the wearer's AC.** `ReactionEffectKind::WearerAc` offers one `AcBonus` option, `ac_bonus` 2, `uses_reaction` true. Taking it adds 2 to `AttackContext::wearer_ac_bonus` for this attack only. `evaluate_hit`, the Cutting Words DC, and a later `BeingHit` prompt all read `attack_target_ac`, which includes it. It is not written to `reaction_ac_bonus` and it does not emit `AcBonus`. A natural 20 still hits and is a critical hit. A natural 1 still misses. A total equal to the wearer's AC hits without the bonus and misses with it.
 * **If the guardian is within 5 feet.** `sight_facts(guardian, wearer).distance_ft <= 5`. At 5 feet the reaction is offered. At 6 it is not. The bound radius (60) is not this distance. No sight hook: the distance is unknown, so it is not offered. This is not the `in_range` hook. `source: ally_within_5ft` stays uncompiled.
-* **A reaction.** Optional. `Ask` may decline and keeps the reaction. `Auto` takes option 0 without seeing the roll (the BeingHit "only if it would turn the hit into a miss" rule does not apply). `Never` opens nothing. Taking it sets `reaction_used`. That clears at the start of the guardian's turn. `may_react` still requires the guardian alive, above 0 hit points, able to act, and not surprised. The built-in policy takes `AllyAttacked` option 0, so it spends this reaction. Each other guardian with the reaction and within 5 feet may spend its own. The bonuses add for that one attack.
+* **A reaction.** Optional. `Ask` may decline and keeps the reaction. `Auto` takes option 0 without seeing the roll (the BeingHit "only if it would turn the hit into a miss" rule does not apply). `Never` opens nothing. Taking it sets `reaction_used`. That clears at the start of the guardian's turn. `may_react` still requires the guardian alive, above 0 hit points, able to act, and not surprised. The built-in policy takes `AllyAttacked` option 0, so it spends this reaction. Eligible guardians are polled in the existing poll order until one grants the bonus. That stop is the product choice below, not this sentence.
 
 No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The bonus is not stored. `reaction_used` is the existing spend. Replay re-runs the attack and the Ask decision. Next free stays **0xE8**. `FormStats` does not carry `bound`. Shapechange is not this reaction.
+
+### Product choice
+
+SRD 5.1 does not say what two monsters with this reaction do to one attack. The same-spell stacking rule does not settle it. Zach, via Producer, Nov 7: do not stack Shield bonuses. After one guardian grants +2, later guardians are not offered this reaction for that attack and do not spend it. If that guardian declines, the next eligible guardian is offered. The Shield bonus on one attack is 2 or 0. The only place that applies it is `wearer_shield_window`. This choice is not the SRD sentence.
 
 Product calls, not decided here:
 
 * **The sentence does not say "can".** The entry is the Reactions section, so it spends the reaction and it can be declined. A ruling that the bonus is mandatory whenever the guardian is within 5 feet and still has a reaction is not taken.
 * **The reactor does not see the d20.** The sentence says "makes an attack", not "makes an attack roll" and not "when hit". `AttackRolled` is the later window.
-* **Two guardians.** Each spends its own reaction and the bonuses add. The SRD states one guardian.
 * **No sight hook.** The reaction is not offered.
 
 Deferred, not this reaction:

@@ -147,14 +147,39 @@ TEST_CASE("shield: the offer is before the roll, against the bound wearer only")
     CHECK(ally_windows(other->step.events) == 0);
     CHECK_FALSE(find(other->state, 3)->reaction_used);
 
-    // The guardian does not shield the wearer from its own attack.
+    // The guardian's own attack against the wearer offers Shield, including on the guardian's turn.
     auto g = guardian(3, 2);
     g.attacks = {Attack{"fist", 0, {0, 0, 5}, DamageType::Bludgeoning, 5, false, false}};
     g.team = 0;
-    auto self = attack({striker(1), wearer_of(2), g}, dist, 0, 3, 3, 2);
-    REQUIRE(self);
-    CHECK(ally_windows(self->step.events) == 0);
-    CHECK_FALSE(find(self->state, 3)->reaction_used);
+    EncounterHooks own = hooks_at(dist, 0);
+    own.decide_reaction = nullptr;
+    auto own_state = begin_encounter({striker(1), wearer_of(2), g}, 1, nullptr, own);
+    end_turns_until(own_state, 3);
+    REQUIRE(current_actor(own_state) == 3);
+    auto own_paused = step(own_state, swing(3, 2));
+    REQUIRE(own_paused.status == StepStatus::NeedsDecision);
+    REQUIRE(own_paused.needs);
+    CHECK(own_paused.needs->reactor == 3);
+    CHECK(own_paused.needs->trigger_actor == 3);
+    CHECK(own_paused.needs->target == 2);
+    CHECK(own_paused.needs->attack_total == 0);
+    bool saw_own = false;
+    for (uint64_t seed = 1; seed < 400 && !saw_own; ++seed) {
+        auto took = attack({striker(1), wearer_of(2), g}, dist, 0, seed, 3, 2);
+        if (!took || resolved(took->step.events).natural != 12) continue;
+        saw_own = true;
+        CHECK(ally_windows(took->step.events) == 1);
+        CHECK(find(took->state, 3)->reaction_used);
+        CHECK_FALSE(resolved(took->step.events).hit);   // 12 misses AC 14
+        CHECK(find(took->state, 2)->reaction_ac_bonus == 0);
+        CHECK(find(took->state, 2)->hp == 80);
+        auto declined = attack({striker(1), wearer_of(2), g}, dist, -1, seed, 3, 2);
+        REQUIRE(declined);
+        CHECK(resolved(declined->step.events).natural == 12);
+        CHECK(resolved(declined->step.events).hit);
+        CHECK_FALSE(find(declined->state, 3)->reaction_used);
+    }
+    REQUIRE(saw_own);
 
     // Team is not the gate. A guardian on another team still shields its wearer.
     auto cross = attack({striker(1), wearer_of(2), guardian(3, 2, 9)}, dist, 0, 1);
@@ -319,7 +344,7 @@ TEST_CASE("shield: Never opens nothing; Auto takes it without a decider; 5 feet 
     CHECK(ally_windows(none.events) == 0);
 }
 
-TEST_CASE("shield: two guardians each add 2, and an Ask decision replays") {
+TEST_CASE("shield: one grant ends the offer, and Ask pause and replay follow that") {
     auto dist = std::make_shared<int>(5);
     uint64_t seed = 0;
     for (uint64_t s = 1; s < 400; ++s) {
@@ -357,13 +382,110 @@ TEST_CASE("shield: two guardians each add 2, and an Ask decision replays") {
         auto r = step(st, swing(1, 2));
         if (!r.ok || resolved(r.events).natural != 14) continue;
         stacked = true;
-        CHECK_FALSE(resolved(r.events).hit);   // 14 misses AC 16
-        CHECK(find(st, 3)->reaction_used);
-        CHECK(find(st, 4)->reaction_used);
-        CHECK(find(st, 2)->hp == 80);
+        CHECK(resolved(r.events).hit);   // 14 meets AC 14. +4 would miss.
+        CHECK_FALSE(resolved(r.events).crit);
+        const int spent = int(find(st, 3)->reaction_used) + int(find(st, 4)->reaction_used);
+        CHECK(spent == 1);
         CHECK(find(st, 2)->reaction_ac_bonus == 0);
     }
     REQUIRE(stacked);
+    bool capped = false;
+    for (uint64_t s = 1; s < 400 && !capped; ++s) {
+        auto a = guardian(3, 2);
+        auto b = guardian(4, 2);
+        a.reaction_policy[std::size_t(ReactionTrigger::AllyAttacked)] = ReactionPolicy::Auto;
+        b.reaction_policy[std::size_t(ReactionTrigger::AllyAttacked)] = ReactionPolicy::Auto;
+        auto st = begin_encounter({striker(1), wearer_of(2), a, b}, s, nullptr, bare);
+        end_turns_until(st, 1);
+        auto r = step(st, swing(1, 2));
+        if (!r.ok || resolved(r.events).natural != 12) continue;
+        capped = true;
+        CHECK_FALSE(resolved(r.events).hit);   // 12 misses AC 14, so the one grant is real
+        CHECK(int(find(st, 3)->reaction_used) + int(find(st, 4)->reaction_used) == 1);
+        CHECK(find(st, 2)->hp == 80);
+    }
+    REQUIRE(capped);
+
+    EncounterHooks ask = hooks_at(dist, 0);
+    ask.decide_reaction = nullptr;
+    auto pause_for = [&](uint64_t seed) {
+        return begin_encounter({striker(1), wearer_of(2), guardian(3, 2), guardian(4, 2)}, seed, nullptr, ask);
+    };
+    auto offered = pause_for(1);
+    end_turns_until(offered, 1);
+    auto first = step(offered, swing(1, 2));
+    REQUIRE(first.status == StepStatus::NeedsDecision);
+    REQUIRE(first.needs);
+    CHECK(first.needs->attack_total == 0);
+    CHECK(first.needs->target == 2);
+    const CombatantId lead = first.needs->reactor;
+    const CombatantId next = lead == 3 ? 4 : 3;
+    REQUIRE((lead == 3 || lead == 4));
+    auto granted = step(offered, decision_request(*first.needs, true, 0));
+    REQUIRE(granted.status == StepStatus::Done);
+    CHECK(count(granted.events, EventKind::ReactionTaken) == 1);
+    CHECK(count(granted.events, EventKind::ReactionDeclined) == 0);
+    CHECK(find(offered, lead)->reaction_used);
+    CHECK_FALSE(find(offered, next)->reaction_used);
+    const auto grant_roll = resolved(granted.events);
+    REQUIRE(grant_roll.present);
+    if (grant_roll.natural == 20) CHECK(grant_roll.hit);
+    else if (grant_roll.natural == 1) CHECK_FALSE(grant_roll.hit);
+    else CHECK(grant_roll.hit == (grant_roll.total >= 14));   // +2, not +4 and not +0
+    auto later = step(offered, swing(1, 2));
+    REQUIRE(later.status == StepStatus::NeedsDecision);
+    REQUIRE(later.needs);
+    CHECK(later.needs->reactor == next);
+    CHECK(find(offered, lead)->reaction_used);
+    CHECK_FALSE(find(offered, next)->reaction_used);
+    auto later_done = step(offered, decision_request(*later.needs, false, 0));
+    REQUIRE(later_done.status == StepStatus::Done);
+    CHECK_FALSE(find(offered, next)->reaction_used);
+    REQUIRE(granted.logged);
+    CHECK(granted.logged->reactions.size() == 1);
+    auto replay_grant = pause_for(1);
+    end_turns_until(replay_grant, 1);
+    auto replayed_grant = replay_step(replay_grant, *granted.logged);
+    REQUIRE(replayed_grant.ok);
+    CHECK_FALSE(replayed_grant.desync);
+    CHECK(resolved(replayed_grant.events).hit == grant_roll.hit);
+    CHECK(find(replay_grant, lead)->reaction_used);
+    CHECK_FALSE(find(replay_grant, next)->reaction_used);
+
+    auto declined_first = pause_for(1);
+    end_turns_until(declined_first, 1);
+    auto open_lead = step(declined_first, swing(1, 2));
+    REQUIRE(open_lead.status == StepStatus::NeedsDecision);
+    REQUIRE(open_lead.needs);
+    CHECK(open_lead.needs->reactor == lead);
+    auto open_next = step(declined_first, decision_request(*open_lead.needs, false, 0));
+    REQUIRE(open_next.status == StepStatus::NeedsDecision);
+    REQUIRE(open_next.needs);
+    CHECK(open_next.needs->reactor == next);
+    CHECK(open_next.needs->window_seq == open_lead.needs->window_seq);
+    CHECK(open_next.needs->attack_total == 0);
+    auto follow = step(declined_first, decision_request(*open_next.needs, true, 0));
+    REQUIRE(follow.status == StepStatus::Done);
+    CHECK_FALSE(find(declined_first, lead)->reaction_used);
+    CHECK(find(declined_first, next)->reaction_used);
+    CHECK(count(follow.events, EventKind::ReactionDeclined) == 1);
+    CHECK(count(follow.events, EventKind::ReactionTaken) == 1);
+    const auto follow_roll = resolved(follow.events);
+    REQUIRE(follow_roll.present);
+    if (follow_roll.natural == 20) CHECK(follow_roll.hit);
+    else if (follow_roll.natural == 1) CHECK_FALSE(follow_roll.hit);
+    else CHECK(follow_roll.hit == (follow_roll.total >= 14));
+    REQUIRE(follow.logged);
+    CHECK(follow.logged->reactions.size() == 2);
+    auto replay_follow = pause_for(1);
+    end_turns_until(replay_follow, 1);
+    auto replayed_follow = replay_step(replay_follow, *follow.logged);
+    REQUIRE(replayed_follow.ok);
+    CHECK_FALSE(replayed_follow.desync);
+    CHECK(resolved(replayed_follow.events).hit == follow_roll.hit);
+    CHECK_FALSE(find(replay_follow, lead)->reaction_used);
+    CHECK(find(replay_follow, next)->reaction_used);
+    CHECK(find(replay_follow, 2)->hp == find(declined_first, 2)->hp);
 
     ActionLog log;
     auto live = begin_encounter({striker(1), wearer_of(2), guardian(3, 2)}, seed, nullptr, hooks_at(dist, 0));
