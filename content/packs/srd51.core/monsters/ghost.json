@@ -1,0 +1,176 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.ghost",
+  "name": "Ghost",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "undead",
+  "alignment": "any alignment",
+  "armor_class": {
+    "value": 11
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 45,
+    "formula": "10d8"
+  },
+  "speed": {
+    "walk": 0,
+    "fly": 40,
+    "hover": true
+  },
+  "abilities": {
+    "str": 7,
+    "dex": 13,
+    "con": 10,
+    "int": 10,
+    "wis": 12,
+    "cha": 17
+  },
+  "damage_resistances": [
+    "acid",
+    "fire",
+    "lightning",
+    "thunder"
+  ],
+  "damage_immunities": [
+    "cold",
+    "necrotic",
+    "poison"
+  ],
+  "condition_immunities": [
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 11
+  },
+  "languages": [
+    "any languages it knew in life"
+  ],
+  "challenge": {
+    "rating": "4",
+    "xp": 1100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "damage_resistances_nonmagical",
+      "name": "Damage Resistances",
+      "description": "Resistant to bludgeoning, piercing, and slashing from nonmagical weapons.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "resistances": {
+          "nonmagical": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ethereal_sight",
+      "name": "Ethereal Sight",
+      "description": "The ghost can see 60 ft. into the Ethereal Plane when it is on the Material Plane, and vice versa. (Descriptive only: sight range does not change. Not kind etherealness and not CONTENT_CONVENTIONS §51. No plane. This trait does not implement that contract.)"
+    },
+    {
+      "id": "incorporeal_movement",
+      "name": "Incorporeal Movement",
+      "description": "The ghost can move through other creatures and objects as if they were difficult terrain. It takes 5 (1d10) force damage if it ends its turn inside an object. (Descriptive only: no pass-through and no end-of-turn force damage. Not kind etherealness and not CONTENT_CONVENTIONS §51. No plane.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "withering_touch",
+      "name": "Withering Touch",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "4d6",
+        "ability": "dex"
+      },
+      "ability": "none",
+      "attack_bonus": {
+        "value": 5,
+        "reason": "SRD 5.1 Ghost Withering Touch prints +5. Dex 13 derives +3 and Str 7 derives +0. Cha 17 would derive +5, and natural.ability is str or dex only, so the printed total stands. ability none: a Str or Dex reduction does not recompute it."
+      },
+      "damage_override": {
+        "dice": "4d6+3",
+        "reason": "SRD 5.1 Ghost Withering Touch prints 17 (4d6 + 3). Dex 13 derives 4d6 + 1 and Str 7 derives 4d6 - 2. Cha 17 would derive 4d6 + 3, and natural.ability is str or dex only, so the printed dice stand."
+      },
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "4d6+3",
+          "type": "necrotic"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 17 (4d6 + 3) necrotic damage. (Printed totals. natural.ability is str or dex only: Dex 13 derives +3 / 4d6 + 1, Str 7 derives +0 / 4d6 - 2. Cha 17 would derive +5 / 4d6 + 3. attack_bonus and damage_override carry the print. ability is none, so a Str or Dex reduction does not recompute them. Not a live Charisma term. No hit point maximum reduction.)"
+    },
+    {
+      "id": "etherealness",
+      "name": "Etherealness",
+      "kind": "etherealness",
+      "description": "The ghost enters the Ethereal Plane from the Material Plane, or vice versa. It is visible on the Material Plane while it is in the Border Ethereal, and vice versa, yet it can't affect or be affected by anything on the other plane. (Etherealness, CONTENT_CONVENTIONS §51: kind etherealness toggles Combatant::plane between Material and the Border Ethereal. Sight does not change. It is not Invisible. A named target on the other plane is refused before the action is spent. An area skips that creature with no roll. Same plane, including ethereal with ethereal, can affect. Hash 0xE6 only while some combatant is not Material. No new SIM_EVENTS tag. Deep Ethereal is not a value. The built-in AI does not use it. Not the succubus sentence, which stays kind special. Ethereal Sight and Incorporeal Movement are not this action. No new hash tag.)"
+    },
+    {
+      "id": "horrifying_visage",
+      "name": "Horrifying Visage",
+      "kind": "save_effect",
+      "origin": "self",
+      "area": {
+        "shape": "sphere",
+        "size_ft": 60
+      },
+      "save": {
+        "ability": "wis",
+        "dc": 13
+      },
+      "target_must_see_source": true,
+      "exclude_creature_types": [
+        "undead"
+      ],
+      "immune_on_success": {
+        "hours": 24,
+        "scope": "same_source"
+      },
+      "immune_on_end": true,
+      "age_on_fail_by": {
+        "margin": 5,
+        "dice": "1d4",
+        "years_per": 10
+      },
+      "apply": [
+        {
+          "condition": "frightened",
+          "duration": {
+            "kind": "rounds",
+            "n": 10
+          },
+          "repeat_save": "end_of_turn"
+        }
+      ],
+      "description": "Each non-undead creature within 60 feet of the ghost that can see it must succeed on a DC 13 Wisdom saving throw or be frightened for 1 minute. If the save fails by 5 or more, the target also ages 1d4 × 10 years. A frightened target can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success. If a target's saving throw is successful or the effect ends for it, the target is immune to this ghost's Horrifying Visage for the next 24 hours. The aging effect can be reversed with a greater restoration spell, but only within 24 hours of it occurring. (Horrifying Visage, CONTENT_CONVENTIONS §49: save_effect, self-origin sphere 60, Wisdom DC 13, exclude_creature_types undead, target_must_see_source, frightened 10 rounds, repeat_save end_of_turn, immune_on_success 24 hours same_source, immune_on_end, age_on_fail_by margin 5 dice 1d4 years_per 10. Not magical. Immunity reuses 0xE1. Greater restoration does not reverse the years. No ability-score aging. aged_years is not hashed. No new hash tag.)"
+    },
+    {
+      "id": "possession",
+      "name": "Possession",
+      "kind": "special",
+      "description": "One humanoid that the ghost can see within 5 ft. of it must succeed on a DC 13 Charisma saving throw or be possessed by the ghost; the ghost then disappears, and the target is incapacitated and loses control of its body. The ghost now controls the body but doesn't deprive the target of awareness. The ghost can't be targeted by any attack, spell, or other effect, except ones that turn undead, and it retains its alignment, Intelligence, Wisdom, Charisma, and immunity to being charmed and frightened. It otherwise uses the possessed target's statistics, but doesn't gain access to the target's knowledge, class features, or proficiencies.\nThe possession lasts until the body drops to 0 hit points, the ghost ends it as a bonus action, or the ghost is turned or forced out by an effect like the dispel evil and good spell. When the possession ends, the ghost reappears in an unoccupied space within 5 ft. of the body. The target is immune to this ghost's Possession for 24 hours after succeeding on the saving throw or after the possession ends. (HOLD. Descriptive only: no save, no recharge, no control, and no body. Not succubus charm_command and not ControlKind::Command. Recharge 6 is not wired. This action does not implement Possession.)"
+    }
+  ]
+}

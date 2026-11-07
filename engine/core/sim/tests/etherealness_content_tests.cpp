@@ -1,4 +1,4 @@
-// B19 content: monster@5 action etherealness. No ghost.json.
+// B19 content: monster@5 action etherealness. Specimen stays t.shade and does not load ghost.json.
 // The action toggles Combatant::plane. 0xE6 folds only while some combatant is not Material.
 #include <doctest/doctest.h>
 
@@ -118,9 +118,6 @@ TEST_CASE("etherealness loader: monster@5 action, refused below monster@5 and on
     const auto pc = pcs.add(ch, "character");
     REQUIRE(pc);
     CHECK(pc->find("etherealness: only valid on monsters") != std::string::npos);
-
-    std::ifstream ghost(kRoot + "/content/packs/srd51.core/monsters/ghost.json");
-    CHECK_FALSE(ghost.good());
 }
 
 TEST_CASE("etherealness: toggle changes 0xE6 and returns to the all-Material hash") {
