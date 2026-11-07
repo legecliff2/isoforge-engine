@@ -741,6 +741,7 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         dk_errs, dk_warns = c4.check_drain_max_hp(doc, tag)   # Draining Kiss (CONTENT_CONVENTIONS §48, monster@5 save_effect)
         hv_errs, hv_warns = c4.check_horrifying_visage(doc, tag)   # Horrifying Visage (CONTENT_CONVENTIONS §49, monster@5 save_effect)
         bd_errs, bd_warns = c4.check_bound(doc, tag)   # Bound (CONTENT_CONVENTIONS §50, monster@5 only)
+        sh_errs, sh_warns = c4.check_shield_reaction(doc, tag)   # Shield reaction (CONTENT_CONVENTIONS §54)
         errs += [f"{rel}: {m}" for m in ii_errs]
         warns += [f"{rel}: {m}" for m in ii_warns]
         errs += [f"{rel}: {m}" for m in ha_errs]
@@ -755,6 +756,8 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         warns += [f"{rel}: {m}" for m in hv_warns]
         errs += [f"{rel}: {m}" for m in bd_errs]
         warns += [f"{rel}: {m}" for m in bd_warns]
+        errs += [f"{rel}: {m}" for m in sh_errs]
+        warns += [f"{rel}: {m}" for m in sh_warns]
         au_errs, au_warns = c4.check_aura(doc, tag)   # batch 3 aura (ghast Stench, monster@5 only)
         errs += [f"{rel}: {m}" for m in au_errs]
         warns += [f"{rel}: {m}" for m in au_warns]

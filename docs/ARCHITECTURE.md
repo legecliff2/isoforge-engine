@@ -708,6 +708,7 @@ When an action reaches a trigger point, `rules5e` pauses it and opens a reaction
 - **No chaining:** windows that would open while a reaction resolves are skipped unless `hooks.allow_chain(state, nested_window)` allows them.
 - **Window numbering:** `window_seq` comes from `EncounterState::next_window_seq`, which starts at 0 per encounter and goes up by 1 each time a window actually opens (it has at least one eligible reactor). That includes nested and ReadiedTrigger windows. A trigger point with no eligible reactor uses no number. While a request is paused, the state is the pre-request state, so `next_window_seq` is not yet advanced; the pending window's `window_seq` is the number it will consume.
 - **Determinism:** `Auto`/`Never` follow from state and aren't logged; every `Ask` decision is.
+- **Shield Guardian Shield** (CONTENT_CONVENTIONS §54) reuses `AllyAttacked`'s moment, before the attack roll, not `BeingHit`. The reactor is the guardian, including when the guardian is the attacker. The target is `Combatant::bound.wearer`. Within 5 feet (`sight_facts`, no hook means not in range) one guardian may spend its reaction to add +2 AC for that attack only (`AttackContext::wearer_ac_bonus`). Product choice, not the SRD sentence: the first grant ends the offer, so later guardians are not asked. It does not write `reaction_ac_bonus`. A natural 20 still hits. No new hash tag. Next free stays 0xE8.
 
 #### Spellcasting (`rules5e/spells.hpp`)
 

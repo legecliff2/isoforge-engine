@@ -1533,7 +1533,7 @@ bool evaluate_hit(const D20Roll& roll, const Combatant& t, const AttackContext& 
     crit = false;
     if (roll.natural == 20) { crit = true; return true; }
     if (roll.natural == 1) return false;
-    const bool hit = roll.total >= int(t.ac) + int(ctx.cover_ac_bonus) + int(t.reaction_ac_bonus);
+    const bool hit = roll.total >= attack_target_ac(t, ctx);
     crit = hit && roll.natural >= std::max(2, crit_min);
     return hit;
 }
@@ -2017,6 +2017,8 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
             if (((rx.applies ? rx.applies : kRollAttack) & (w.roll_kind ? w.roll_kind : kRollAttack)) == 0) continue;   // 7.2za
             if (rx.pool != 0 && !can_spend(s, r.id, rx.pool, rx.pool_cost ? rx.pool_cost : uint16_t(1))) continue;
             o.kind = ReactionOptionKind::SubtractRoll; o.dice = rx.dice; break;
+        case ReactionEffectKind::WearerAc:
+            continue;   // §54: wearer_shield_window offers it. The disadvantage poll does not.
         }
         out.push_back(o);
     }
@@ -2072,6 +2074,68 @@ bool ally_attacked_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& 
         if (o.kind == ReactionOptionKind::ImposeDisadvantage) return true;   // disadvantage does not stack
     }
     return false;
+}
+
+// Options the Shield reaction (CONTENT_CONVENTIONS §54) offers. Not the generic AllyAttacked list: that list is
+// disadvantage, and taking it returns before a later reactor. This reaction grants AC instead.
+std::vector<ReactionOption> wearer_ac_options(const EncounterState& s, const Combatant& r, CombatantId attacker, bool ranged) {
+    std::vector<ReactionOption> out;
+    for (const Reaction& rx : r.reactions) {
+        if (rx.kind != ReactionEffectKind::WearerAc || rx.window != ReactionTrigger::AllyAttacked) continue;
+        if ((rx.melee_only && ranged) || (rx.ranged_only && !ranged)) continue;
+        if (rx.requires_sight && (attacker == 0 || !sight(s, r.id, attacker).can_see)) continue;
+        ReactionOption o{};
+        o.kind = ReactionOptionKind::AcBonus; o.ac_bonus = rx.ac_bonus; o.option_id = rx.id; o.uses_reaction = true;
+        out.push_back(o);
+    }
+    return out;
+}
+
+// Shield Guardian Shield (CONTENT_CONVENTIONS §54). Before the attack roll: "when a creature makes an attack"
+// against the bound wearer, not "when the wearer is hit". The sentence does not exclude the guardian's own attack.
+// Each guardian with WearerAc, whose bound.wearer is `t`, and who is within 5 feet may spend its reaction.
+// Product choice (not the SRD sentence): the first guardian who grants the bonus ends the offer. Later guardians
+// are not asked and do not spend. The one bonus is AttackContext::wearer_ac_bonus for this attack only.
+// No sight hook: the distance is unknown, so nobody is within 5 feet. Not the in_range hook. Not team.
+// A natural 20 still hits; this function does not write reaction_ac_bonus and does not emit AcBonus.
+int wearer_shield_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, bool ranged, std::vector<Event>& ev) {
+    ReactionWindow w = new_window(s, ctx, ReactionTrigger::AllyAttacked, a.id);
+    w.target = t.id; w.ranged = ranged;
+    if (!may_open(s, w)) return 0;
+    auto within_5 = [&](const Combatant& r) {
+        if (!s.hooks.sight_facts) return false;
+        return s.hooks.sight_facts(s, r, t).distance_ft <= 5;
+    };
+    auto eligible = [&](const Combatant& r) {
+        // The wearer is the target, so the reactor is not `t`. The attacker is not excluded: the sentence
+        // is any creature's attack, including the guardian's own, and a reaction can be taken on one's own turn.
+        return r.id != t.id && r.bound.radius_ft != 0 && r.bound.wearer == t.id &&
+               may_react(s, r, w.trigger) && within_5(r) && !wearer_ac_options(s, r, a.id, ranged).empty();
+    };
+    bool any = false;
+    for (const auto& c : s.combatants) { if (eligible(c)) { any = true; break; } }
+    if (!any) return 0;
+    std::vector<CombatantId> cands;
+    for (CombatantId id : initiative_ids(s)) if (eligible(*find_mut(s, id))) cands.push_back(id);
+    bool opened = false;
+    int bonus = 0;
+    for (CombatantId rid : poll_order(s, cands)) {
+        Combatant& r = *find_mut(s, rid);
+        if (!eligible(r)) continue;
+        auto opts = wearer_ac_options(s, r, a.id, ranged);
+        if (opts.empty()) continue;
+        if (!opened) {
+            opened = true; ++s.next_window_seq;
+            emit(ev, EventKind::ReactionWindowOpened, a.id, t.id, int32_t(w.trigger), int32_t(w.seq));
+        }
+        auto d = poll(s, ctx, w, r, opts, ev);
+        if (!d.react) continue;
+        const ReactionOption o = opts[d.option];
+        if (o.uses_reaction) r.reaction_used = true;
+        if (o.kind == ReactionOptionKind::AcBonus) bonus = o.ac_bonus;
+        break;   // product choice: one grant. Later guardians are not offered and do not spend.
+    }
+    return bonus;
 }
 
 // AttackRolled (R-G7, widened 7.2za): after a roll (attack: not a natural 1 or 20; save: not an automatic failure) and before
@@ -2665,6 +2729,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     const bool protected_by_ally = ally_attacked_window(s, ctx, a, t, atk.ranged, spell_id, ev);   // Protection-style reactions
+    actx.wearer_ac_bonus = int8_t(std::clamp(wearer_shield_window(s, ctx, a, t, atk.ranged, ev), 0, 127));   // §54, this attack only
     const bool heat_dis = while_held_disadvantage(s, a.id);   // 7.2zh Heat Metal: attack rolls, weapon and spell
     actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis || a.squeezing || unseen_target || heat_dis;   // combined with conditions in one place
     if (!s.modifiers.empty()) {   // timed modifiers (row 12): sources merged into the one advantage/disadvantage resolution
@@ -2722,7 +2787,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     }
     bool crit = false;
     if (roll.natural != 20 && roll.natural != 1) {   // Cutting Words-style subtraction, before hit or miss
-        const int tac = int(t.ac) + int(actx.cover_ac_bonus) + int(t.reaction_ac_bonus);
+        const int tac = attack_target_ac(t, actx);
         if (const int chg = roll_window(s, ctx, a, t.id, kRollAttack, roll.total, tac, atk.ranged, spell_id, ev)) roll.total = int16_t(roll.total + chg);
     }
     const int crit_min = spell_id != 0 ? 20 : int(a.crit_min);   // Improved Critical: weapon attacks only
@@ -2731,7 +2796,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     if (hit) {
         ReactionWindow w = new_window(s, ctx, ReactionTrigger::BeingHit, a.id);
         w.target = t.id; w.attack_total = roll.total; w.attack_natural = roll.natural;
-        w.target_ac = int16_t(int(t.ac) + int(actx.cover_ac_bonus) + int(t.reaction_ac_bonus));
+        w.target_ac = int16_t(attack_target_ac(t, actx));
         w.spell_id = spell_id;
         // Auto only spends the reaction when option 0 would turn the hit into a miss.
         auto would_miss = [&](const ReactionOption& o) {

@@ -1231,6 +1231,42 @@ class BoundTrait(unittest.TestCase):
         self.assertTrue(any("unknown key 'note'" in e for e in errs), errs)
 
 
+class ShieldReaction(unittest.TestCase):
+    """Shield Guardian Shield (CONTENT_CONVENTIONS §54). ally_attacked + ac_bonus 2 needs bound on monster@5."""
+
+    def reaction(self, bonus=2, window="ally_attacked", rid="shield"):
+        return {"id": rid, "name": "Shield", "window": {"kind": window},
+                "effect": {"kind": "ac_bonus", "bonus": bonus}}
+
+    def doc(self, schema="monster@5", bound=True, reactions=None):
+        traits = []
+        if bound:
+            traits.append({"id": "bound", "name": "Bound", "description": "x",
+                           "effect": {"kind": "bound", "radius_ft": 60}})
+        if reactions is None:
+            reactions = [self.reaction()]
+        return {"$schema": schema, "id": "t.guard", "traits": traits, "reactions": reactions}
+
+    def test_ok_and_refusals(self):
+        self.assertEqual(checks_v4.check_shield_reaction(self.doc(), "monster@5"), ([], []))
+        self.assertEqual(checks_v4.check_shield_reaction(self.doc(schema="monster@6"), "monster@6"), ([], []))
+        errs, _ = checks_v4.check_shield_reaction(self.doc(bound=False), "monster@5")
+        self.assertTrue(any("needs the bound trait" in e for e in errs), errs)
+        errs, _ = checks_v4.check_shield_reaction(self.doc(reactions=[self.reaction(bonus=5)]), "monster@5")
+        self.assertTrue(any("bonus must be 2" in e for e in errs), errs)
+        errs, _ = checks_v4.check_shield_reaction(self.doc(schema="monster@4"), "monster@4")
+        self.assertTrue(any("shield reaction needs a monster@5 file" in e for e in errs), errs)
+        errs, _ = checks_v4.check_shield_reaction(self.doc(schema="character@5"), "character@5")
+        self.assertTrue(any("only valid on monsters" in e for e in errs), errs)
+        errs, _ = checks_v4.check_shield_reaction(
+            self.doc(reactions=[self.reaction(), self.reaction(rid="shield_2")]), "monster@5")
+        self.assertTrue(any("a creature has one shield" in e for e in errs), errs)
+        # being_hit ac_bonus is the uncompiled Shield spell / Parry path, not this reaction.
+        self.assertEqual(
+            checks_v4.check_shield_reaction(self.doc(reactions=[self.reaction(window="being_hit")]), "monster@5"),
+            ([], []))
+
+
 class LoaderValidatorStrings(unittest.TestCase):
     """fix/rules-loader-validator-strings: each loader / validator error pair of #214 / #218 carries one identical string."""
     PAIRS = ["pick_one needs choice ask on a hit or crit trigger",

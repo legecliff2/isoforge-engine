@@ -1700,6 +1700,48 @@ def check_bound(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     return errs, warns
 
 
+def check_shield_reaction(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Shield Guardian Shield (CONTENT_CONVENTIONS §54; sim content.cpp compile_reactions). ally_attacked + ac_bonus 2
+    on a monster@5 creature that already has bound. Other ac_bonus reactions stay uncompiled and are not this check.
+    A reaction the sim lists unsupported (usage, source, visible) is not compiled, so it is not checked here."""
+    errs: list[str] = []
+    has_bound = any(eff.get("kind") == "bound" for _path, _owner, eff in live_effects(doc))
+    seen = False
+    for path, r in mechanical_reactions(doc):
+        w = r.get("window") or {}
+        eff = r.get("effect") or {}
+        if not isinstance(w, dict) or not isinstance(eff, dict):
+            continue
+        if w.get("kind") != "ally_attacked" or eff.get("kind") != "ac_bonus":
+            continue
+        if r.get("usage") is not None:
+            continue
+        if w.get("source", "self") != "self" or w.get("visible", True) is not True:
+            continue
+        where = f"{path}: {doc.get('id', '?')}: reaction '{r.get('id', '')}'"
+        if w.get("melee_only") is True and w.get("ranged_only") is True:
+            errs.append(f"{where}: melee_only and ranged_only together")
+            continue
+        if not str(tag).startswith("monster"):
+            errs.append(f"{where}: shield: only valid on monsters")
+            continue
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{where}: shield reaction needs a monster@5 file")
+            continue
+        if not has_bound:
+            errs.append(f"{where}: shield: needs the bound trait")
+            continue
+        bonus = eff.get("bonus")
+        if isinstance(bonus, bool) or not isinstance(bonus, int) or bonus != 2:
+            errs.append(f"{where}: shield: bonus must be 2")
+            continue
+        if seen:
+            errs.append(f"{where}: shield: a creature has one shield")
+        else:
+            seen = True
+    return errs, []
+
+
 def check_death_glare(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     """Death Glare (CONTENT_CONVENTIONS §46; sim content.cpp compile_save_action). The loader's refusals as errors."""
     errs: list[str] = []

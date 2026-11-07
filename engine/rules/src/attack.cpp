@@ -67,7 +67,7 @@ AttackResult resolve_attack(rng::Rng& r, const Combatant& attacker, const Attack
     if (roll.natural == 20) { hit = true; crit = true; }
     else if (roll.natural == 1) { hit = false; }
     else {
-        hit = roll.total >= int(target.ac) + int(ctx.cover_ac_bonus) + int(target.reaction_ac_bonus);
+        hit = roll.total >= attack_target_ac(target, ctx);
         crit = hit && roll.natural >= std::max(2, int(attacker.crit_min));
     }
     if (hit && ctx.target_within_5ft &&

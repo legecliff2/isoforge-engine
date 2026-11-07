@@ -1749,7 +1749,7 @@ Product calls, not decided here:
 Deferred, not this trait:
 
 * Spell Storing.
-* The Shield reaction (+2 AC to the wearer while the guardian is within 5 feet). It is the same amulet, and it is not this damage transfer. Follow-up, not this trait.
+* The Shield reaction is §54. It is the same amulet, and it is not this damage transfer.
 * Regeneration, the fist, and the rest of the stat block.
 * An amulet magic item. The spawn override is the link, not item UX.
 * `shield_guardian.json` is not authored.
@@ -1901,4 +1901,55 @@ Dispel Magic is not in the sentence. The action has no spell level. A level of 0
 * Shapechange. No form.
 * `srd51.monster.green_hag` authors this action. Innate Spellcasting and Mimicry stay description only.
 * Hide, Survival, and surprise.
+
+## 54. Shield (monster@5 reaction, bound wearer)
+
+SRD 5.1 Shield Guardian, the Reactions entry only. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `shield-guardian`). The entry is in `reactions`, not in `special_abilities`. The description:
+
+"When a creature makes an attack against the wearer of the guardian's amulet, the guardian grants a +2 bonus to the wearer's AC if the guardian is within 5 feet of the wearer."
+
+It is a reaction. The trigger is "makes an attack", before the attack roll is compared to AC. It is not "when the wearer is hit". The Shield spell is that later trigger (`BeingHit`), and its bonus is `reaction_ac_bonus` until the start of the caster's next turn. This reaction is not that spell. `being_hit` plus `ac_bonus` stays uncompiled.
+
+```json
+{ "id": "shield", "name": "Shield", "window": { "kind": "ally_attacked" }, "effect": { "kind": "ac_bonus", "bonus": 2 } }
+```
+
+The window kind `ally_attacked` is the existing moment: an attack roll against the target is about to be made (`ReactionTrigger::AllyAttacked`, before `roll_d20`). The reactor is the guardian, not the wearer. The target of the window is the wearer. `attack_total` is 0. The roll has not been made.
+
+| key | rule | loader error |
+|---|---|---|
+| `window.kind` | `ally_attacked`. Any other window with `ac_bonus`, including `being_hit`, stays uncompiled | listed unsupported, as before |
+| `effect.bonus` | 2. The sentence's bonus | `shield: bonus must be 2` |
+| bound trait | the creature has `bound` (`Combatant::bound.radius_ft` non-zero). monster@5 only. Not a character | `shield: needs the bound trait` / `shield reaction needs a monster@5 file` / `shield: only valid on monsters` |
+| one | a second Shield reaction | `shield: a creature has one shield` |
+
+What the sentence fixes:
+
+* **When a creature makes an attack.** The window opens in `do_attack` after a total-cover refusal and after the duplicate redirect, beside the Protection poll, and before the d20. It does not open for an attack that never reaches the wearer. It follows the existing no-chaining rule (`may_open`).
+* **Against the wearer of the guardian's amulet.** `Combatant::bound.wearer` is the attack's target. That is the §50 link. Spawn override `bound_wearer`. Not an item. Not a team check. An attack against anyone else does not offer it. The sentence does not exclude the guardian. The guardian's own attack against that wearer offers the reaction, including on the guardian's turn. A reaction can be taken on one's own turn.
+* **Grants a +2 bonus to the wearer's AC.** `ReactionEffectKind::WearerAc` offers one `AcBonus` option, `ac_bonus` 2, `uses_reaction` true. Taking it adds 2 to `AttackContext::wearer_ac_bonus` for this attack only. `evaluate_hit`, the Cutting Words DC, and a later `BeingHit` prompt all read `attack_target_ac`, which includes it. It is not written to `reaction_ac_bonus` and it does not emit `AcBonus`. A natural 20 still hits and is a critical hit. A natural 1 still misses. A total equal to the wearer's AC hits without the bonus and misses with it.
+* **If the guardian is within 5 feet.** `sight_facts(guardian, wearer).distance_ft <= 5`. At 5 feet the reaction is offered. At 6 it is not. The bound radius (60) is not this distance. No sight hook: the distance is unknown, so it is not offered. This is not the `in_range` hook. `source: ally_within_5ft` stays uncompiled.
+* **A reaction.** Optional. `Ask` may decline and keeps the reaction. `Auto` takes option 0 without seeing the roll (the BeingHit "only if it would turn the hit into a miss" rule does not apply). `Never` opens nothing. Taking it sets `reaction_used`. That clears at the start of the guardian's turn. `may_react` still requires the guardian alive, above 0 hit points, able to act, and not surprised. The built-in policy takes `AllyAttacked` option 0, so it spends this reaction. Eligible guardians are polled in the existing poll order until one grants the bonus. That stop is the product choice below, not this sentence.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The bonus is not stored. `reaction_used` is the existing spend. Replay re-runs the attack and the Ask decision. Next free stays **0xE8**. `FormStats` does not carry `bound`. Shapechange is not this reaction.
+
+### Product choice
+
+SRD 5.1 does not say what two monsters with this reaction do to one attack. The same-spell stacking rule does not settle it. Zach, via Producer, Nov 7: do not stack Shield bonuses. After one guardian grants +2, later guardians are not offered this reaction for that attack and do not spend it. If that guardian declines, the next eligible guardian is offered. The Shield bonus on one attack is 2 or 0. The only place that applies it is `wearer_shield_window`. This choice is not the SRD sentence.
+
+Product calls, not decided here:
+
+* **The sentence does not say "can".** The entry is the Reactions section, so it spends the reaction and it can be declined. A ruling that the bonus is mandatory whenever the guardian is within 5 feet and still has a reaction is not taken.
+* **The reactor does not see the d20.** The sentence says "makes an attack", not "makes an attack roll" and not "when hit". `AttackRolled` is the later window.
+* **No sight hook.** The reaction is not offered.
+
+Deferred, not this reaction:
+
+* Spell Storing.
+* Regeneration.
+* The rest of Bound (the telepathic call, the plane, the distance the guardian knows).
+* An amulet magic item.
+* `shield_guardian.json` is not authored.
+
+This section does not author `srd51.monster.shield_guardian`. The row stays deferred until Spell Storing, Regeneration, and the stat block are written. Counts stay 205 authored and 5 deferred.
 
