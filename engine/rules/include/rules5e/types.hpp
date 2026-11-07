@@ -192,7 +192,9 @@ static_assert(static_cast<uint32_t>(ActionKind::EndConcentration) < 32,
 // HitRider (row 9c): the attacker is the reactor; opened after a hit for each `choice: ask` trigger (Divine Smite).
 // Damaged (row 11): damage to the reactor has been computed (after mitigation) but is not committed yet, so a
 // reduce_damage reaction can act; AllyAttacked: an attack roll against an ally of the reactor is about to be made.
-// AttackRolled (appended, R-G7): an attack roll was made, before hit or miss is decided (Cutting Words).
+// Shield Guardian Shield (CONTENT_CONVENTIONS §54) reuses AllyAttacked's moment (before the roll) for the bound
+// wearer, not for a teammate. AttackRolled (appended, R-G7): an attack roll was made, before hit or miss is decided
+// (Cutting Words).
 enum class ReactionTrigger : uint8_t { LeavingReach, BeingHit, SpellCast, ReadiedTrigger, HitRider, Damaged, AllyAttacked, AttackRolled };
 inline constexpr std::size_t kReactionTriggerCount = 8;
 enum class ReactionPolicy : uint8_t { Ask, Never, Auto };
@@ -371,7 +373,9 @@ struct Trigger {
 };
 
 // A mechanical reaction compiled from content (row 11): offered in the Damaged / AllyAttacked windows of its owner.
-enum class ReactionEffectKind : uint8_t { ReduceDamage, ImposeDisadvantage, Retaliate, Attack, SubtractRoll /* R-G7, AttackRolled */ };
+// WearerAc (appended, CONTENT_CONVENTIONS §54): AllyAttacked, +ac_bonus to the bound wearer for this attack only.
+enum class ReactionEffectKind : uint8_t { ReduceDamage, ImposeDisadvantage, Retaliate, Attack, SubtractRoll /* R-G7, AttackRolled */,
+                                          WearerAc };
 struct Reaction {
     uint32_t id = 0;                         // spell_id_of("<archetype>#<reaction id>")
     ReactionTrigger window = ReactionTrigger::Damaged;   // Damaged or AllyAttacked
@@ -392,6 +396,9 @@ struct Reaction {
     // appended (7.2zb Deflect Missiles): ReduceDamage only for damage from an attack hit of these kinds (kAttackKind* bits);
     // 0 = any damage, as before.
     uint8_t attack_kinds = 0;
+    // appended (CONTENT_CONVENTIONS §54): WearerAc, the bonus added to the wearer's AC for the triggering attack only.
+    // Not reaction_ac_bonus. Static content. Not hashed.
+    int8_t ac_bonus = 0;
 };
 constexpr uint8_t kAttackKindMeleeWeapon = 1, kAttackKindRangedWeapon = 2, kAttackKindMeleeSpell = 4, kAttackKindRangedSpell = 8;
 // appended (7.2zb, T&C Patient Defense / Step of the Wind): a bonus-action grant that costs pool points. Combatant::bonus_action_costs:

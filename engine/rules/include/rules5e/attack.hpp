@@ -10,6 +10,9 @@ struct AttackContext {
     RollMode mode = RollMode::Normal;     // extra caller-supplied source; merged with conditions
     bool target_within_5ft = false;       // Prone / Paralyzed / Unconscious rules
     int8_t cover_ac_bonus = 0;            // +2 half, +5 three-quarters
+    // appended (CONTENT_CONVENTIONS §54): Shield Guardian Shield. Added to AC for this attack only. Not stored
+    // on the combatant. 0 when the guardian did not take the reaction. A natural 20 still hits.
+    int8_t wearer_ac_bonus = 0;
     // appended: independent disadvantage source (ranged: long range / hostile within 5 ft). Kept
     // separate from `mode` so it is combined with every other source at once (any adv + any dis = normal).
     bool extra_disadvantage = false;
@@ -32,8 +35,14 @@ struct AttackResult { D20Roll roll; bool hit, critical; int16_t damage; DamageTy
 // Any advantage + any disadvantage -> Normal.
 RollMode attack_roll_mode(const Combatant& attacker, const Combatant& target, const AttackContext&);
 
+// AC the attack roll is compared to: base AC + cover + a lasting reaction bonus (the Shield spell) + a
+// one-attack wearer bonus (Shield Guardian Shield, CONTENT_CONVENTIONS §54).
+inline int attack_target_ac(const Combatant& target, const AttackContext& ctx) {
+    return int(target.ac) + int(ctx.cover_ac_bonus) + int(target.reaction_ac_bonus) + int(ctx.wearer_ac_bonus);
+}
+
 // Natural 20: always hits and is a critical hit. Natural 1: always misses.
-// Otherwise hits if total >= target AC + cover. A hit on a Paralyzed or Unconscious target from
+// Otherwise hits if total >= attack_target_ac. A hit on a Paralyzed or Unconscious target from
 // within 5 ft is a critical hit. Damage = max(0, roll_dice(damage, critical)); 0 on a miss.
 // Does not apply damage (see apply_damage).
 AttackResult resolve_attack(rng::Rng&, const Combatant& attacker, const Attack&,

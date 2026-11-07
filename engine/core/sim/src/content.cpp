@@ -1795,11 +1795,14 @@ std::optional<std::string> compile_area_action(const std::string& arch_id, const
 // ---- Reactions (row 11 sim side): reactions[] entries -> rules5e::Reaction rows on the base combatant ----
 // Compiled: window damaged / ally_attacked with reduce_damage (fraction half | dice), impose_disadvantage, retaliate
 // (synthetic Save or AutoHit SpellDef) and attack (attack_id -> attack index); window roll_attack (R-G7, AttackRolled) with
-// subtract_roll {dice} and an optional `usage: {kind: pool, pool, cost}` (Cutting Words). Listed in unsupported_features and
-// not compiled: every other window (being_hit / spell_cast / leaving_reach: ac_bonus and the opportunity-attack path stay with
-// the existing hooks and features; a leaving_reach `attack` is never a second OA), effect kinds cast / ac_bonus, any other
-// `usage`, `source: ally_within_5ft` and `visible: false`.
-std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, const RiderCtx& rc, rules5e::Combatant& c) {
+// subtract_roll {dice} and an optional `usage: {kind: pool, pool, cost}` (Cutting Words). Shield Guardian Shield
+// (CONTENT_CONVENTIONS §54): ally_attacked + ac_bonus 2 on a monster@5 creature that has the bound trait, compiled as
+// WearerAc. Listed in unsupported_features and not compiled: every other window (being_hit / spell_cast / leaving_reach:
+// ac_bonus and the opportunity-attack path stay with the existing hooks and features; a leaving_reach `attack` is never a
+// second OA), effect kinds cast / ac_bonus on any window other than that Shield pair, any other `usage`,
+// `source: ally_within_5ft` and `visible: false`.
+std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, const RiderCtx& rc, rules5e::Combatant& c,
+                                            uint32_t declared) {
     auto rs = doc.find("reactions");
     if (rs == doc.end() || !rs->is_array()) return std::nullopt;
     using RE = rules5e::ReactionEffectKind;
@@ -1926,6 +1929,17 @@ std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, cons
             for (std::size_t i = 0; i < rc.attacks.size() && !found; ++i)
                 if (!at.empty() && rc.attacks[i]->value("id", "") == at) { x.attack_index = uint8_t(i); found = true; }
             if (!found) return where + ": attack names unknown attack_id '" + at + "'";
+        } else if (ek == "ac_bonus" && wk == "ally_attacked") {   // §54 Shield: this attack only, bound wearer, 5 feet
+            if (a.schema_type != "monster") return where + ": shield: only valid on monsters";
+            if (declared != 0 && declared < 5) return where + ": shield reaction needs a monster@5 file";
+            if (c.bound.radius_ft == 0) return where + ": shield: needs the bound trait";
+            const auto bonus = ef->find("bonus");
+            if (bonus == ef->end() || !bonus->is_number_integer() || bonus->get<int>() != 2)
+                return where + ": shield: bonus must be 2";
+            for (const auto& prev : c.reactions)
+                if (prev.kind == RE::WearerAc) return where + ": shield: a creature has one shield";
+            x.kind = RE::WearerAc;
+            x.ac_bonus = 2;
         } else { a.unsupported_features.push_back(rid + " (reaction effect " + ek + ")"); continue; }
         x.id = rules5e::spell_id_of(a.id + "#" + rid);
         if (auto [it, fresh] = ids.emplace(x.id, rid); !fresh) return where + ": id collides with reaction '" + it->second + "'";
@@ -2772,7 +2786,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
     // reactions[] (monster@4 / character@4; older files carry them stamped inert)
     if (declared == 0 || declared >= 4)
-        if (auto e = compile_reactions(a, doc, rider_ctx, c)) return *e;
+        if (auto e = compile_reactions(a, doc, rider_ctx, c, declared)) return *e;
     if (declared == 0 || declared >= 4)
         if (auto e = compile_bonus_attacks(a.id, a.features, attack_actions, schema_type == "character", doc, c)) return *e;
     // multiattack options -> rules5e::AttackSequence (ids owned by the library, stable addresses).
