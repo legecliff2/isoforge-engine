@@ -1,6 +1,6 @@
 // B19 Ghost Etherealness (SRD 5.1, CONTENT_CONVENTIONS §51). An action toggles Material ↔ Border Ethereal.
 // The creature stays visible. It cannot affect or be affected across planes: a named target is refused
-// before any roll, and an area skips with no roll. Same plane can. No ghost.json.
+// before any roll, and an area skips with no roll. Same plane can. Specimen does not load ghost.json.
 #include <doctest/doctest.h>
 
 #include <memory>

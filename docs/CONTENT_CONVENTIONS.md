@@ -1582,7 +1582,7 @@ What the key fixes, because the sentence fixes it:
 * **Immunity.** A successful initial save pushes `action_immunities` for `immune_on_success.hours` (0xE1). `same_source` records this fiend. Ending the effect (the repeat save, the day, or a replacement) pushes the same row. An immune creature makes no save. The action is still spent.
 * **One at a time.** Applying the charm ends this fiend's previous charm from this action. That ending grants the previous target the immunity.
 
-No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The word reuses `command_word` (log_hash 0xC4), including 6. The immunity reuses 0xE1. The charmed effect folds under the existing effect rows. Replay re-runs the cast and the save. Next free stays **0xE5**.
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The word reuses `command_word` (log_hash 0xC4), including 6. The immunity reuses 0xE1. The charmed effect folds under the existing effect rows. Replay re-runs the cast and the save. Next free stays **0xE8**.
 
 The built-in AI casts Charm (word 0) at a humanoid it can see. It does not issue a later word. A creature it already charmed is not offered the cast again, so the turn does not stall on a refused order.
 
@@ -1632,7 +1632,7 @@ The damage taken is `DamageApplied::dealt`: after immunity, resistance, and vuln
 
 The built-in AI does not offer the kiss when the current target fails the gate, and it does not set `target_willing`. A willing ally is a caller request. `legal_actions` lists hostile targets, so it does not list that ally.
 
-No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `target_willing` reuses 0xDD. The maximum reduction is the existing `hp_max_reduction` fold. The save is the existing `SavingThrowRolled`. Replay re-runs the cast. Next free stays **0xE5**.
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `target_willing` reuses 0xDD. The maximum reduction is the existing `hp_max_reduction` fold. The save is the existing `SavingThrowRolled`. Replay re-runs the cast. Next free stays **0xE8**.
 
 Product calls, not decided here:
 
@@ -1690,7 +1690,7 @@ What the keys fix, because the sentence fixes it:
 * **Fail by 5 or more.** Ages `1d4 × 10` years, one roll per such creature, in target order, from the encounter RNG. The years are added to `Combatant::aged_years` (uint16, saturates at 65535). The same comparison as `also_on_fail_by`. It still applies when the target is immune to the primary condition, the §26 margin ruling. It is not a second condition, and ending the fright does not remove the years.
 * **Immunity.** A successful initial save pushes `action_immunities` for 24 hours from this ghost (0xE1, `same_source`). Ending the effect pushes the same row. An immune creature makes no save and does not age. A failed save that applies no condition does not grant it. A dead creature is not recorded, the existing `end_effect` gate. Another ghost's action is a different source.
 
-No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The immunity reuses 0xE1. The frightened effect folds under the existing effect rows. The years are not hashed: nothing reads them. Replay re-runs the save and the d4. Next free stays **0xE5**.
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The immunity reuses 0xE1. The frightened effect folds under the existing effect rows. The years are not hashed: nothing reads them. Replay re-runs the save and the d4. Next free stays **0xE8**.
 
 Product calls, not decided here:
 
@@ -1701,14 +1701,14 @@ Product calls, not decided here:
 * **The built-in AI.** It uses the existing area-save policy: it will not catch an ally, and it wants two hostiles, or one when no attack is legal. The sentence does affect allies. Whether the AI should, and whether it should ignore undead when it counts hostiles, is not decided here.
 * **`aged_years` is not hashed.** A fight that differs only in the year counter hashes the same. The d4 still consumes the encounter RNG, which is already hashed.
 
+`srd51.monster.ghost` authors this action with those keys. Greater restoration does not reverse the years. No ability-score aging. `aged_years` is not hashed. Not magical. The built-in AI uses the existing area-save policy. Possession stays description only (HOLD). Ethereal Sight and Incorporeal Movement stay description only. Etherealness is §51. Not full Ghost support. No new hash tag. Counts are 205 authored and 5 deferred.
+
 Deferred, not this action:
 
-* Possession.
+* Possession. `srd51.monster.ghost` carries the SRD sentences as a description-only action. No save, no recharge, and no control. It is not succubus `charm_command`.
 * Etherealness is §51, not this action.
+* Ethereal Sight and Incorporeal Movement stay description only on that row.
 * Shapechange. No shape, no forms, no shapechanger effect.
-* `ghost.json` is not authored.
-
-This section does not author `srd51.monster.ghost`. The row stays deferred until T&C writes the stat block. Possession is still the block. Etherealness is §51. Counts stay 204 authored and 6 deferred.
 
 ## 50. Bound (monster@5 trait `bound`)
 
@@ -1758,7 +1758,7 @@ This section does not author `srd51.monster.shield_guardian`. The row stays defe
 
 ## 51. Etherealness (monster@5 action `etherealness`)
 
-SRD 5.1 Ghost Etherealness, the whole action. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `ghost`), the source the in-repo monster table is reduced from. The ghost row is not in that table because the stat block is not authored:
+SRD 5.1 Ghost Etherealness, the whole action. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `ghost`), the source the in-repo monster table is reduced from. `srd51.monster.ghost` authors this action:
 
 "Etherealness. The ghost enters the Ethereal Plane from the Material Plane, or vice versa. It is visible on the Material Plane while it is in the Border Ethereal, and vice versa, yet it can't affect or be affected by anything on the other plane."
 
@@ -1785,7 +1785,7 @@ What the sentence fixes:
   * A grapple is not established (`apply_sourced_condition` and `grapple`). The Grapple action is the refusal above, so the contest is not rolled.
   * A contain is `contain_refused`, so the save or the condition does not start. Ongoing effect damage (`deal_effect_damage`, including contain acid) does not roll while the source and the target are on different planes.
 
-`Combat::hash` tag **0xE6** folds `plane` only while some combatant is not Material: count, then per such combatant in order the id and the plane byte. All Material hashes as before. No new `SIM_EVENTS` tag. The toggle emits the existing `ActionUsed`. Next free is **0xE7**. Replay re-runs the action. `FormStats` does not carry the plane; it stays on the creature. Shapechange is not this action.
+`Combat::hash` tag **0xE6** folds `plane` only while some combatant is not Material: count, then per such combatant in order the id and the plane byte. All Material hashes as before. No new `SIM_EVENTS` tag. The toggle emits the existing `ActionUsed`. Next free is **0xE8**. Replay re-runs the action. `FormStats` does not carry the plane; it stays on the creature. Shapechange is not this action.
 
 Product calls, not decided here:
 
@@ -1795,18 +1795,17 @@ Product calls, not decided here:
 * **Incorporeal Movement** is not this action. The creature does not move through creatures or objects.
 * **The built-in AI** does not use the action. Whether it should is not decided here.
 
+`srd51.monster.ghost` authors this action (`kind: etherealness`). Deep Ethereal is not a value. The built-in AI does not use it. Possession stays description only (HOLD). Ethereal Sight and Incorporeal Movement stay description only. Not full Ghost support. Hash 0xE6 only while some combatant is not Material. No new hash tag. Counts are 205 authored and 5 deferred.
+
 Deferred, not this action:
 
-* Possession.
-* Ethereal Sight.
-* Incorporeal Movement.
+* Possession. `srd51.monster.ghost` carries the SRD sentences as a description-only action. No save, no recharge, and no control. It is not succubus `charm_command`.
+* Ethereal Sight. `srd51.monster.ghost` carries that sentence as a description-only trait. Sight range does not change.
+* Incorporeal Movement. `srd51.monster.ghost` carries that sentence as a description-only trait. No pass-through and no end-of-turn force damage.
 * Shapechange. No shape, no forms, no shapechanger effect.
 * Phase Spider Ethereal Jaunt.
 * The succubus Etherealness sentence. `srd51.monster.succubus` carries it as a description-only action and does not use this kind.
 * The Etherealness spell, Blink, and Force Cage.
-* `ghost.json` is not authored.
-
-This section does not author `srd51.monster.ghost`. The row stays deferred until T&C writes the stat block. Possession is still the block. Counts stay 204 authored and 6 deferred.
 
 ## 52. Visible figure (monster@5 action `illusory_appearance`)
 

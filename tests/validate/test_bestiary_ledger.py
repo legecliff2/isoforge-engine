@@ -7,7 +7,7 @@ content_validate_* files; this PR does not register a ctest name):
   python3 tools/validate/run_unittest_file.py tests/validate/test_bestiary_ledger.py
 
 ledger.py and validate_bridge.py must not import Tk. Counts are pinned to the
-ledger after succubus left Deferred (Charm and Draining Kiss; Shapechanger, Etherealness, and Telepathic Bond stay description only): 204 authored, 6 deferred.
+ledger after ghost left Deferred (Horrifying Visage and Etherealness; Possession, Ethereal Sight, and Incorporeal Movement stay description only): 205 authored, 5 deferred.
 """
 from __future__ import annotations
 
@@ -28,11 +28,10 @@ EDITOR = ROOT / "tools" / "bestiary_editor"
 PACK = ROOT / "content" / "packs" / "srd51.core"
 VALIDATOR = ROOT / "tools" / "validate" / "validate_packs.py"
 
-# Deferred table ids after succubus left Deferred (## Deferred (6)).
+# Deferred table ids after ghost left Deferred (## Deferred (5)).
 PARKED_IDS = (
     "srd51.monster.mimic",
     "srd51.monster.doppelganger",
-    "srd51.monster.ghost",
     "srd51.monster.unicorn",
     "srd51.monster.mage",
     "srd51.monster.shield_guardian",
@@ -90,12 +89,12 @@ class LedgerTests(unittest.TestCase):
         for name in ("ledger.py", "validate_bridge.py"):
             self.assertEqual(_imports_tk(EDITOR / name), [], name)
 
-    def test_counts_match_headings_204_and_6(self):
+    def test_counts_match_headings_205_and_5(self):
         book = self.book
-        self.assertEqual(book.authored_expected, 204)
-        self.assertEqual(len(book.authored), 204)
-        self.assertEqual(book.parked_expected, 6)
-        self.assertEqual(len(book.parked), 6)
+        self.assertEqual(book.authored_expected, 205)
+        self.assertEqual(len(book.authored), 205)
+        self.assertEqual(book.parked_expected, 5)
+        self.assertEqual(len(book.parked), 5)
         self.assertEqual(book.count_errors(), ())
 
     def test_partial_is_subset_of_authored(self):
@@ -156,6 +155,11 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(succ.name, "Succubus")
         self.assertEqual(succ.path, ledger.DEFAULT_MONSTERS_DIR / "succubus.json")
         self.assertNotIn("srd51.monster.succubus", parked)
+        ghost = by_id["srd51.monster.ghost"]
+        self.assertTrue(ghost.partial)
+        self.assertEqual(ghost.name, "Ghost")
+        self.assertEqual(ghost.path, ledger.DEFAULT_MONSTERS_DIR / "ghost.json")
+        self.assertNotIn("srd51.monster.ghost", parked)
         mimic = parked["srd51.monster.mimic"]
         self.assertEqual(mimic.name, "Mimic")
         self.assertIsNone(mimic.path)

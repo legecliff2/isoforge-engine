@@ -1,6 +1,6 @@
 // B17 Ghost Horrifying Visage (SRD 5.1, CONTENT_CONVENTIONS §49). Area Wisdom save, non-undead, must see the
 // user, frightened for a minute with an end-of-turn repeat, fail-by-5 ages 1d4 x 10 years, and a success or the
-// effect ending grants 24-hour immunity to this user's action. No ghost.json.
+// effect ending grants 24-hour immunity to this user's action. Specimen does not load ghost.json.
 #include <doctest/doctest.h>
 
 #include <algorithm>

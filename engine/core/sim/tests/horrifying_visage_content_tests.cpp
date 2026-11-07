@@ -1,4 +1,4 @@
-// B17 content: Horrifying Visage save_effect. No ghost.json.
+// B17 content: Horrifying Visage save_effect. Specimen does not load ghost.json.
 #include <doctest/doctest.h>
 
 #include <fstream>
