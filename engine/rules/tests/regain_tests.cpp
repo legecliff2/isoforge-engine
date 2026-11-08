@@ -74,6 +74,7 @@ TEST_CASE("regain: 0 hit points is an ordinary death, and a troll still waits") 
     ally.team = 1;
     auto s = begin_encounter({pc(1, 500), guardian(2, 5, 80), ally}, 5);
     end_turns_until(s, 1);
+    mut(s, 2).hp = 5;   // a turn that already started may have healed the opening 5
     mut(s, 1).attacks[0].to_hit = 100;
     mut(s, 1).attacks[0].damage = {0, 0, 5};
     auto hit = step(s, ActionRequest{1, ActionKind::Attack, 2, 0});
