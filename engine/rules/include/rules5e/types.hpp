@@ -639,6 +639,10 @@ struct Combatant {
     // began; down: at 0 HP waiting for its next turn start instead of dying).
     Regeneration regeneration{};
     bool regen_suppressed = false, regen_down = false;
+    // Shield Guardian Regeneration (CONTENT_CONVENTIONS §55). Hit points regained at the start of this
+    // creature's turn while hp >= 1. 0 means the trait is absent. Not troll Regeneration: no suppression
+    // and no regen_down. Death at 0 stays the ordinary path. Static. Not hashed. FormStats does not carry it.
+    int16_t regain = 0;
     std::vector<RollTrait> roll_traits;   // appended: conditional advantage / disadvantage (Pack Tactics, Magic Resistance, ...)
     Size size = Size::Medium;   // appended: Heavy weapons impose disadvantage on Small / Tiny wielders
     // appended (version-bump batch, row 8): innate spellcasting and printed DC / attack overrides.

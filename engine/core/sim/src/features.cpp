@@ -1306,6 +1306,26 @@ std::optional<std::string> apply_regen(Archetype& a, const FeatureDecl& f, uint3
     return std::nullopt;
 }
 
+// regain {amount} (CONTENT_CONVENTIONS §55). Fills Combatant::regain. Start-of-turn healing while hp >= 1.
+// Not regen: no suppression list and no 0 HP keep-alive. One per creature. Static, not hashed.
+std::optional<std::string> apply_regain(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": regain needs a monster@5 file";
+    if (a.schema_type != "monster") return f.id + ": regain: only valid on monsters";
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "amount")
+            return f.id + ": regain: unknown key '" + it.key() + "'";
+    const auto am = f.effect.find("amount");
+    if (am == f.effect.end() || !am->is_number_integer()) return f.id + ": regain: amount must be an integer 1..32767";
+    const int64_t n = am->get<int64_t>();
+    if (n < 1 || n > 32767) return f.id + ": regain: amount must be an integer 1..32767";
+    if (a.base.regain > 0) {
+        if (a.base.regain == int16_t(n)) return std::nullopt;
+        return f.id + ": regain: a creature has one regain";
+    }
+    a.base.regain = int16_t(n);
+    return std::nullopt;
+}
+
 // freeze {by, speed_sub} (CONTENT_CONVENTIONS §42). Fills Combatant::freeze. A listed type in types_dealt applies one
 // Speed modifier (speed_scale 1/1, speed_sub) until the end of this creature's next turn. An identical second
 // declaration adds nothing; a different one is an error. Static config, not hashed. The modifier is the existing 0xA2 row.
@@ -1543,6 +1563,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("save_advantage", {apply_save_advantage});   // monster@5 (batch 3): gated in the hook, like transparent
     r.add_hook("keen_senses", {apply_keen_senses});         // monster@5 (CONTENT_CONVENTIONS §30): gated in the hook
     r.add_hook("regen", {apply_regen});                     // monster@5 (CONTENT_CONVENTIONS §31): gated in the hook
+    r.add_hook("regain", {apply_regain});                   // monster@5 (CONTENT_CONVENTIONS §55): gated in the hook
     r.add_hook("freeze", {apply_freeze});                   // monster@5 (CONTENT_CONVENTIONS §42): gated in the hook
     r.add_hook("bound", {apply_bound});                     // monster@5 (CONTENT_CONVENTIONS §50): gated in the hook
     r.add_hook("absorb", {apply_absorb});                   // monster@5 (CONTENT_CONVENTIONS §43): gated in the hook
