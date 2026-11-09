@@ -8,11 +8,10 @@
 // actor's area spells (spells_known, then innate). The aim tile is the cursor, picked in the view
 // and passed in. Nothing is submitted: aiming does not cast.
 //
-// Tile set: there is no pure membership helper on main. area_targets returns creature ids only,
-// and its geometry is private. fill stays empty (tiles_pending) until Golem's
-// Combat::area_preview(actor, shape, size/width, origin, aim). That swap is the body of
-// fill_area_tiles in aoe_preview.cpp — one call, no second copy of the geometry. Altitude fade
-// is out of scope; the overlay is 2D.
+// Tile set: Combat::area_preview(caster, SpellDef, aim). That call is the body of
+// fill_area_tiles in aoe_preview.cpp — one call, no second copy of the geometry. Origin is the
+// caster's live footprint. Altitude fade is out of scope; the overlay is 2D. Aim rejections
+// stay in `note` from area_targets (the same strings area_preview would report).
 #include <cstdint>
 #include <vector>
 
@@ -22,9 +21,9 @@ namespace eng::sim { class Combat; }
 
 namespace slice {
 
-// Creatures area_targets would catch, one each, plus an empty tile list (tiles_pending).
+// Creatures area_targets would catch, one each, plus the template tiles from area_preview.
 // present=false when `spell_id` is missing or has no area, or `caster` is missing.
-// An illegal aim stays present with the rejection in `note` and no hits.
+// An illegal aim stays present with the rejection in `note`, no hits, and an empty tile list.
 // `frame_ms` is copied onto pulse_ms; it is not read from the sim.
 AreaPreviewView area_probe(const eng::sim::Combat& combat, uint32_t caster, uint32_t spell_id, eng::Vec2i aim,
                            uint32_t frame_ms);

@@ -31,24 +31,13 @@ std::string short_label(const std::string& content_id) {
     return s;
 }
 
-// The one place the tile set is produced. area_targets does not return tiles, and the geometry
-// it uses is not a public helper. Do not reimplement it here.
+// The one place the tile set is produced. area_preview is the template area_targets resolves,
+// as tiles. Do not reimplement that geometry here. Aim rejections already land in v.note from
+// area_targets (the same strings); area_preview's optional error is not a second caption.
 void fill_area_tiles(AreaPreviewView& v, const eng::sim::Combat& combat, uint32_t caster,
                      const rules5e::SpellDef& def, eng::Vec2i aim) {
-    // TODO(golem-area_preview): replace this stub with one call. area_targets itself will call
-    // the same function, so the creature list below stays the hit set. No second copy of the
-    // geometry, and no altitude fade (the overlay stays 2D):
-    //
-    //   v.tiles = combat.area_preview(caster, def.area, def.area_size_ft, def.area_width_ft,
-    //                                 combat.pos(caster), aim);
-    //   v.tiles_pending = false;
-    //
-    (void)combat;
-    (void)caster;
-    (void)def;
-    (void)aim;
-    v.tiles.clear();
-    v.tiles_pending = true;
+    v.tiles = combat.area_preview(caster, def, aim);
+    v.tiles_pending = false;
 }
 
 } // namespace

@@ -114,7 +114,7 @@ public:
     bool actor_is_pc(uint32_t actor) const;
     // Area spells `actor` can cast (spells_known, then innate). Empty without a fight.
     std::vector<uint32_t> area_spell_ids(uint32_t actor) const;
-    // Read-only Combat::area_targets for `spell_id`, plus the pending tile list. Does not cast.
+    // Read-only Combat::area_targets and Combat::area_preview for `spell_id`. Does not cast.
     // frame_ms is stored on the view for the overlay pulse; the sim is not read for time.
     AreaPreviewView query_area(uint32_t caster, uint32_t spell_id, eng::Vec2i aim, uint32_t frame_ms) const;
     // Non-fatal load warnings (e.g. two items styling one light preset differently).

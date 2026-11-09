@@ -117,9 +117,10 @@ struct CoverDebugView {
 };
 
 // Player area-spell aim (presentation). Not a persistent zone and not the cover overlay.
-// present=false and note empty: nothing is drawn. `tiles` is the shape's tile set. It stays
-// empty, with tiles_pending, until Combat::area_preview exists; the draw path already paints
-// whatever list it is given. `hits` is one creature each (a multi-tile body is one entry).
+// present=false and note empty: nothing is drawn. `tiles` is the shape's tile set from
+// Combat::area_preview. `tiles_pending` is a view flag (the API has none); fill clears it.
+// The draw path paints whatever list it is given. `hits` is one creature each (a multi-tile
+// body is one entry).
 // pulse_ms is the frame clock in milliseconds, never a sim step or round.
 enum class AreaPreviewShape : uint8_t { None, Cone, Cube, Cylinder, Line, Sphere };
 enum class AreaHitSide : uint8_t { Ally, Enemy };
@@ -131,7 +132,7 @@ struct AreaHitView {
 
 struct AreaPreviewView {
     bool present = false;
-    bool tiles_pending = false;        // true while the tile set waits on Combat::area_preview
+    bool tiles_pending = false;        // view-only; fill_area_tiles clears it after area_preview
     AreaPreviewShape shape = AreaPreviewShape::None;
     uint32_t caster = 0;
     uint32_t spell_id = 0;

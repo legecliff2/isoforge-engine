@@ -1,5 +1,5 @@
-// Player area-spell preview. Creature hits come from Combat::area_targets (read-only). The tile
-// list stays empty until Combat::area_preview; the draw path is tested with a view-owned list.
+// Player area-spell preview. Creature hits come from Combat::area_targets (read-only). Tiles
+// come from Combat::area_preview. The draw path is also tested with a view-owned list.
 #include <doctest/doctest.h>
 
 #include <algorithm>
@@ -318,7 +318,7 @@ TEST_CASE("area overlay: tinted tiles and one creature ring, off the zone slot")
     CHECK(q1.hash != q0.hash);
 }
 
-TEST_CASE("area probe: hits match area_targets, tiles wait, hashes stay put") {
+TEST_CASE("area probe: hits match area_targets, tiles match area_preview, hashes stay put") {
     Board b({{kFighter, 10, 10}, {kFighter, 13, 11}, {kGoblin, 13, 10}, {kGoblin, 18, 10}});
     const uint32_t caster = b.id(0);
     const Vec2i aim{11, 10};
@@ -333,8 +333,10 @@ TEST_CASE("area probe: hits match area_targets, tiles wait, hashes stay put") {
     CHECK(b.c->log_hash() == lh);
     CHECK(hit.present);
     CHECK(hit.shape == AreaPreviewShape::Cone);
-    CHECK(hit.tiles.empty());
-    CHECK(hit.tiles_pending);
+    const std::vector<Vec2i> cone_tiles = b.c->area_preview(caster, *cone, aim);
+    CHECK(hit.tiles == cone_tiles);
+    CHECK_FALSE(hit.tiles.empty());
+    CHECK_FALSE(hit.tiles_pending);
     CHECK(hit.pulse_ms == 17);
     CHECK(hit.note.empty());
     CHECK(hit.spell_label == "cone");
@@ -369,24 +371,30 @@ TEST_CASE("area probe: hits match area_targets, tiles wait, hashes stay put") {
         const std::vector<uint32_t> ids = b.c->area_targets(caster, *def, aim);
         CHECK(v.present);
         CHECK(v.shape == row.shape);
-        CHECK(v.tiles.empty());
-        CHECK(v.tiles_pending);
+        CHECK(v.tiles == b.c->area_preview(caster, *def, aim));
+        CHECK_FALSE(v.tiles_pending);
         REQUIRE(v.hits.size() == ids.size());
         for (std::size_t i = 0; i < ids.size(); ++i) CHECK(v.hits[i].id == ids[i]);
     }
     CHECK(b.c->hash() == h);
     CHECK(b.c->log_hash() == lh);
 
-    const AreaPreviewView tight = area_probe(*b.c, caster, rules5e::spell_id_of("test.preview.sphere_tight"), aim, 0);
+    const auto tight_id = rules5e::spell_id_of("test.preview.sphere_tight");
+    const rules5e::SpellDef* tight_def = b.c->spell_def(tight_id);
+    REQUIRE(tight_def);
+    const AreaPreviewView tight = area_probe(*b.c, caster, tight_id, aim, 0);
     CHECK(tight.present);
     CHECK(tight.hits.empty());
-    CHECK(tight.note.empty());   // nobody inside is still a preview
-    CHECK(tight.tiles_pending);
+    CHECK(tight.note.empty());   // nobody inside is still a preview, and the template still has tiles
+    CHECK(tight.tiles == b.c->area_preview(caster, *tight_def, aim));
+    CHECK_FALSE(tight.tiles.empty());
+    CHECK_FALSE(tight.tiles_pending);
 
     const AreaPreviewView rejected = area_probe(*b.c, caster, cone_id, b.c->pos(caster), 0);
     CHECK(rejected.present);
     CHECK(rejected.hits.empty());
     CHECK(rejected.tiles.empty());
+    CHECK_FALSE(rejected.tiles_pending);
     CHECK(rejected.note.find("differ") != std::string::npos);
 
     const AreaPreviewView missing = area_probe(*b.c, caster, 1, aim, 0);
@@ -426,8 +434,9 @@ TEST_CASE("area targeting: F5 follows the PC's area spells under the cursor and 
     const AreaPreviewView q = plain->query_area(pc, rules5e::spell_id_of("srd51.spell.burning_hands"), {12, 15}, 9);
     CHECK(q.present);
     CHECK(q.shape == AreaPreviewShape::Cone);
-    CHECK(q.tiles.empty());
-    CHECK(q.tiles_pending);
+    CHECK_FALSE(q.tiles.empty());
+    CHECK_FALSE(q.tiles_pending);
+    CHECK(q.note.empty());
     CHECK(q.pulse_ms == 9);
     CHECK(plain->view().round == round_before);   // the query did not step the fight
 
@@ -474,8 +483,9 @@ TEST_CASE("area targeting: F5 follows the PC's area spells under the cursor and 
         CHECK(vm.area.present);
         CHECK(vm.area.shape == shape);
         CHECK(vm.area.aim == Vec2i{12, 15});
-        CHECK(vm.area.tiles.empty());
-        CHECK(vm.area.tiles_pending);
+        CHECK_FALSE(vm.area.tiles.empty());
+        CHECK_FALSE(vm.area.tiles_pending);
+        CHECK(vm.area.note.empty());
         CHECK(vm.area.caster == mage);
         aim.handle(AreaTargetView::Cmd::NextSpell, *taught);
     }
