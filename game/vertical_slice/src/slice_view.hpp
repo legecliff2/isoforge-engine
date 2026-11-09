@@ -21,6 +21,8 @@ public:
 
     // World px of the centre of tile (x, y) at elevation 0.
     eng::Vec2f tile_center_px(float x, float y) const;
+    // Tile under a viewport pixel. Inverse of tile_center_px for that tile's centre.
+    eng::Vec2i tile_at_screen(eng::Vec2f screen_px, const eng::iso2d::Camera& cam) const;
     // World px centre of the combatants' screen-space bounding box (tile diamonds + sprite
     // height), or of the whole map when there are no actors. Presentation only.
     eng::Vec2f actors_focus_px(const ViewModel&) const;
