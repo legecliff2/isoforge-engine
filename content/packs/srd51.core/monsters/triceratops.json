@@ -1,0 +1,94 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.triceratops",
+  "name": "Triceratops",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "huge",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 13,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 14,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 95,
+    "formula": "10d12+30"
+  },
+  "speed": {
+    "walk": 50
+  },
+  "abilities": {
+    "str": 22,
+    "dex": 9,
+    "con": 17,
+    "int": 2,
+    "wis": 11,
+    "cha": 5
+  },
+  "senses": {
+    "passive_perception": 10
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "5",
+    "xp": 1800
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "trampling_charge",
+      "name": "Trampling Charge",
+      "description": "If the triceratops moves at least 20 ft. straight toward a creature and then hits it with a gore attack on the same turn, that target must succeed on a DC 13 Strength saving throw or be knocked prone. If the target is prone, the triceratops can make one stomp attack against it as a bonus action. Stomp: Melee Weapon Attack: +9 to hit, reach 5 ft., one prone creature. Hit: 22 (3d10 + 6) bludgeoning damage. (Descriptive only: no prone-target gate, so Stomp is not an action. \"Straight toward\" isn't checked. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "gore",
+      "name": "Gore",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "4d8",
+        "ability": "str"
+      },
+      "to_hit": 9,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "4d8+6",
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "str",
+            "dc": 13
+          },
+          "apply": [
+            {
+              "condition": "prone"
+            }
+          ],
+          "when": [
+            {
+              "kind": "moved_at_least_ft",
+              "ft": 20
+            }
+          ]
+        }
+      ],
+      "description": "Melee Weapon Attack: +9 to hit, reach 5 ft., one target. Hit: 24 (4d8 + 6) piercing damage."
+    }
+  ]
+}

@@ -1,0 +1,132 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.werebear",
+  "name": "Werebear",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "human",
+    "shapechanger"
+  ],
+  "alignment": "neutral good",
+  "shapechanger": true,
+  "armor_class": {
+    "value": 10
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.greataxe",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 135,
+    "formula": "18d8+54"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 19,
+    "dex": 10,
+    "con": 17,
+    "int": 11,
+    "wis": 12,
+    "cha": 12
+  },
+  "skills": {
+    "perception": 7
+  },
+  "senses": {
+    "passive_perception": 17
+  },
+  "languages": [
+    "Common"
+  ],
+  "challenge": {
+    "rating": "5",
+    "xp": 1800
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "damage_immunities_nonmagical",
+      "name": "Damage Immunities",
+      "description": "Immune to bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "immunities": {
+          "nonmagical_not_silvered": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shapechanger",
+      "name": "Shapechanger",
+      "description": "The werebear can use its action to polymorph into a Large bear-humanoid hybrid or into a Large bear, or back into its true form, which is humanoid. Its statistics, other than its size and AC, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (Descriptive only: no shapechanger forms. The humanoid form is the authored stat block. Hybrid and bear, including the bear form speed 40, climb 30 and hybrid/bear AC 11, are not separate statistics. shapechanger: true is the Moonbeam fact. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "keen_smell",
+      "name": "Keen Smell",
+      "description": "The werebear has advantage on Wisdom (Perception) checks that rely on smell."
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "In bear form, the werebear makes two claw attacks. In humanoid form, it makes two greataxe attacks. In hybrid form, it can attack like a bear or a humanoid. (Humanoid form, authored: two greataxe attacks. Bite and claw are bear or hybrid form. See docs/SRD_MONSTERS_DEFERRED.md.)",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "greataxe_x2",
+            "attacks": [
+              "greataxe",
+              "greataxe"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "special",
+      "description": "Bite (Bear or Hybrid Form Only). Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 15 (2d10 + 4) piercing damage. If the target is a humanoid, it must succeed on a DC 14 Constitution saving throw or be cursed with werebear lycanthropy. (Descriptive only: not a weapon attack on the authored humanoid form. The lycanthropy curse is not encoded. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "claw",
+      "name": "Claw",
+      "kind": "special",
+      "description": "Claw (Bear or Hybrid Form Only). Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 13 (2d8 + 4) slashing damage. (Descriptive only: not a weapon attack on the authored humanoid form. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "greataxe",
+      "name": "Greataxe",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.greataxe",
+      "use": "two_hands",
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d12+4",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 10 (1d12 + 4) slashing damage."
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.minotaur",
+  "name": "Minotaur",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "monstrosity",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 14,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 14,
+    "dex": true
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.greataxe",
+      "equipped": true
+    }
+  ],
+  "weapon_dice_multiplier": 2,
+  "hands": 2,
+  "hit_points": {
+    "average": 76,
+    "formula": "9d10+27"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 18,
+    "dex": 11,
+    "con": 16,
+    "int": 6,
+    "wis": 16,
+    "cha": 9
+  },
+  "skills": {
+    "perception": 7
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 17
+  },
+  "languages": [
+    "Abyssal"
+  ],
+  "challenge": {
+    "rating": "3",
+    "xp": 700
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "charge",
+      "name": "Charge",
+      "description": "If the minotaur moves at least 10 ft. straight toward a target and then hits it with a gore attack on the same turn, the target takes an extra 9 (2d8) piercing damage. If the target is a creature, it must succeed on a DC 14 Strength saving throw or be pushed up to 10 ft. away and knocked prone."
+    },
+    {
+      "id": "labyrinthine_recall",
+      "name": "Labyrinthine Recall",
+      "description": "The minotaur can perfectly recall any path it has traveled."
+    },
+    {
+      "id": "reckless",
+      "name": "Reckless",
+      "description": "At the start of its turn, the minotaur can gain advantage on all melee weapon attack rolls it makes during that turn, but attack rolls against it have advantage until the start of its next turn.",
+      "effect": {
+        "kind": "reckless_attack"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "greataxe",
+      "name": "Greataxe",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.greataxe",
+      "use": "two_hands",
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d12+4",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 17 (2d12 + 4) slashing damage."
+    },
+    {
+      "id": "gore",
+      "name": "Gore",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d8",
+        "ability": "str"
+      },
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+4",
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "extra_damage",
+          "damage": [
+            {
+              "dice": "2d8",
+              "type": "piercing"
+            }
+          ],
+          "when": [
+            {
+              "kind": "moved_at_least_ft",
+              "ft": 10
+            }
+          ]
+        },
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "str",
+            "dc": 14
+          },
+          "apply": [
+            {
+              "condition": "prone"
+            }
+          ],
+          "when": [
+            {
+              "kind": "moved_at_least_ft",
+              "ft": 10
+            }
+          ]
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 13 (2d8 + 4) piercing damage."
+    }
+  ]
+}

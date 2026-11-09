@@ -1,0 +1,13 @@
+scenario sample.fighter_vs_2wolves
+seed 11
+end_condition teams
+round_cap 20
+outcome team_no_conscious
+round 1
+ended 1
+teams_down party
+pcs fighter:dying
+hp fighter=0 wolf_a=11 wolf_b=11
+surprised -
+digest c194b1ec5bf7fbe6
+commands 5

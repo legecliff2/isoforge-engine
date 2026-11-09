@@ -14,6 +14,9 @@ struct DamageApplied {
     bool instant_death;       // SRD massive damage: damage left over after reaching 0 HP >= HP max
                               // (also when already at 0 HP and the damage >= HP max)
     uint32_t types_dealt = 0; // bitmask over DamageType: components that were above 0 after mitigation (before temp HP)
+    // Lightning Absorption (CONTENT_CONVENTIONS §43): sum of components whose type is in Combatant::absorb.
+    // Those components are not part of dealt or types_dealt. 0 when the creature has no such trait.
+    int16_t absorbed_heal = 0;
 };
 
 // SRD 5.1 order: immunity -> 0; resistance halves (round down; Petrified = resist all);
@@ -28,8 +31,9 @@ struct DamageApplied {
 // (resistance never stacks).
 DamageApplied apply_damage(const Combatant&, int16_t amount, DamageType, uint8_t qualifiers = 0);
 
-// 7.2zi Warding Bond: `amount` hit points, ignoring immunity, resistance and vulnerability. Temporary hit points still
-// absorb. types_dealt stays 0 (the share is not a typed hit). amount < 0 is 0.
+// 7.2zi Warding Bond, and B18 Bound's transferred integer (CONTENT_CONVENTIONS §50): `amount` hit points, ignoring
+// immunity, resistance and vulnerability. Temporary hit points still absorb. types_dealt stays 0 (not a typed hit).
+// amount < 0 is 0. Bound does not use the share_damage modifier; this is only the delivery of a resolved integer.
 DamageApplied apply_damage_fixed(const Combatant&, int16_t amount);
 
 // True if a qualified mask entry is active against a source with these AttackQualifier bits.
@@ -48,7 +52,8 @@ struct DamagePiece { int16_t amount; DamageType type; };
 // Several components from ONE source (a multi-damage attack hit). Immunity/resistance/vulnerability
 // are applied to each component by its own type; the modified amounts are summed and then absorbed
 // by temp HP / HP as a single hit (one dropped_to_zero / instant_death outcome). `dealt` is the
-// sum. A single piece equals apply_damage().
+// sum. A single piece equals apply_damage(). A component whose type is in Combatant::absorb is left
+// out of that sum and added to absorbed_heal instead (CONTENT_CONVENTIONS §43).
 // `d` with `reduction` taken off `dealt` (clamped to 0..dealt) and temporary HP / HP / drop / massive damage
 // recomputed from the creature's current state (row 11: reduce_damage reactions before the damage is committed).
 DamageApplied reduce_applied(const Combatant&, const DamageApplied& d, int reduction);

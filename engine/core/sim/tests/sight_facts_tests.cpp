@@ -222,6 +222,7 @@ TEST_CASE("sight facts: Invisible subject — subject_invisible, can_see false")
     mut(*f.c, gob).conditions |= rules5e::bit(Condition::Invisible);
     const rules5e::SightFacts facts = f.c->sight_facts_of(me, gob);
     CHECK(facts.subject_invisible);
+    CHECK(facts.subject_grounded);   // flat map, alt_ft 0: still in contact
     CHECK(facts.line_of_sight);
     CHECK_FALSE(rules5e::derive_sight(*rules5e::find(f.c->state(), me), facts).can_see);
 }

@@ -8,6 +8,11 @@ With no arguments it validates every pack under content/packs/ and every frozen
 compat pack under tests/compat/fl*/ , then every scenarios/<name>/scenario.json
 (scenario@1) and its golden.txt. Exit code 0 = all valid.
 
+A scenario roster archetype that the Deferred table in
+docs/SRD_MONSTERS_DEFERRED.md parks is a warning (soft-block). It does not
+fail the scenario and does not invent a stat block. Authored rows, including
+partial rows, are not parked.
+
 Each data file declares "$schema": "<type>@<N>", resolved to schemas/<type>/v<N>.schema.json.
 Beyond schema validation it runs cross-checks the schemas can't express. Everything
 here uses integer math only (§4.3), and files/errors are processed in sorted order
@@ -238,7 +243,7 @@ def check_stat_block(doc: dict, errs: list[str], pb_expected: int, rolled_hp: bo
         if v not in (base + pb, base + 2 * pb):
             errs.append(f"skills.{s} = {v}, expected {base + pb} (or {base + 2 * pb} with expertise)")
     perc = doc.get("skills", {}).get("perception", modifier(ab["wis"]))
-    printed_ok = doc.get("$schema") == "monster@5" and doc.get("passive_perception_reason") == "srd_printed"   # Tier-A §25
+    printed_ok = doc.get("$schema") in c4.MONSTER_SINCE_5 and doc.get("passive_perception_reason") == "srd_printed"   # Tier-A §25
     if doc["senses"]["passive_perception"] != 10 + perc and not printed_ok:
         errs.append(f"senses.passive_perception {doc['senses']['passive_perception']} != {10 + perc}")
     hp = doc["hit_points"]
@@ -253,7 +258,7 @@ def check_monster(doc, errs, ctx):
     ch = doc["challenge"]
     if CR_XP[ch["rating"]] != ch["xp"]:
         errs.append(f"challenge.xp {ch['xp']} != {CR_XP[ch['rating']]} for CR {ch['rating']}")
-    check_stat_block(doc, errs, cr_proficiency(ch["rating"]), pb_checked=doc.get("$schema") == "monster@5")
+    check_stat_block(doc, errs, cr_proficiency(ch["rating"]), pb_checked=doc.get("$schema") in c4.MONSTER_SINCE_5)
 
 
 def check_character(doc, errs, ctx):
@@ -404,7 +409,8 @@ REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
 UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "hp_pool", "delayed_damage", "sustained_damage",
                            "summon_weapon", "weapon_smite"),   # 7.2zg Spiritual Weapon; 7.2zh Branding Smite
                   "darts": ("auto_hit",),
-                  "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition", "apply_modifier", "temp_hp")}   # 7.2ze Bless / Bane
+                  "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition", "apply_modifier", "temp_hp",
+                                                             "grant_fly")}   # 7.2ze Bless / Bane; 7.2zj Fly
 
 
 FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage",   # R-G15, spell_loader.cpp
@@ -412,7 +418,8 @@ FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_
                      "weapon_imbue", "duplicates",   # 7.2zf
                      c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"], c4.ZG_KEYS["summon_weapon"], c4.ZG_KEYS["temp_hp"],   # 7.2zg
                      c4.ZH_KEYS["weapon_smite"],   # 7.2zh
-                     c4.ZI_KEYS["stabilize"])   # 7.2zi
+                     c4.ZI_KEYS["stabilize"],   # 7.2zi
+                     c4.ZJ_KEYS["grant_fly"], c4.ZJ_KEYS["restore"])   # 7.2zj
 TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell's duration in rounds
 
 
@@ -434,6 +441,7 @@ def check_spell(doc, errs, ctx):
     errs += c4.check_spell_batch_zg(doc)   # 7.2zg
     errs += c4.check_spell_batch_zh(doc)   # 7.2zh
     errs += c4.check_spell_batch_zi(doc)   # 7.2zi
+    errs += c4.check_spell_batch_zj(doc)   # 7.2zj
     eff = effs[0]   # the first effect carries targeting, scaling and the reaction/duration rules
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
@@ -484,7 +492,8 @@ def check_spell(doc, errs, ctx):
     if (kind == "ac_bonus") != (doc["duration"]["kind"] == "until_start_of_caster_turn"):
         errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
     if "targets" in doc and kind not in ("save", "heal", "apply_condition", "polymorph", "max_hp_bonus",
-                                                 "apply_modifier", c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"]):   # polymorph: its own wording; 7.2zd Aid; 7.2ze Bless / Bane; 7.2zg Slow (6) / Haste (1), as the loader
+                                                 "apply_modifier", c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"],
+                                                 c4.ZJ_KEYS["grant_fly"]):   # polymorph: its own wording; 7.2zd Aid; 7.2ze Bless / Bane; 7.2zg Slow (6) / Haste (1); 7.2zj Fly, as the loader
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
     if kind in TIMED_BY_DURATION and doc["duration"]["kind"] not in ("rounds", "minutes", "hours"):
         errs.append(f"{kind} needs a rounds, minutes or hours duration")
@@ -709,15 +718,58 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         se_errs, se_warns = c4.check_save_effect_riders(doc, tag)   # Tier-A §26 Dreadful Glare (monster@5 only)
         errs += [f"{rel}: {m}" for m in se_errs]
         warns += [f"{rel}: {m}" for m in se_warns]
+        errs += [f"{rel}: {m}" for m in c4.check_save_escalation(doc, tag)]   # B4 area save_effect petrify (gorgon)
         sa_errs, sa_warns = c4.check_save_advantage(doc, tag)   # batch 3 save_advantage (monster@5 only)
         errs += [f"{rel}: {m}" for m in sa_errs]
         warns += [f"{rel}: {m}" for m in sa_warns]
+        ks_errs, ks_warns = c4.check_keen_senses(doc, tag)   # Keen Senses (CONTENT_CONVENTIONS §30, monster@5 only)
+        errs += [f"{rel}: {m}" for m in ks_errs]
+        warns += [f"{rel}: {m}" for m in ks_warns]
+        rg_errs, rg_warns = c4.check_regen(doc, tag)   # Regeneration (CONTENT_CONVENTIONS §31, monster@5 only)
+        errs += [f"{rel}: {m}" for m in rg_errs]
+        warns += [f"{rel}: {m}" for m in rg_warns]
+        ra_errs, ra_warns = c4.check_regain(doc, tag)   # Shield Guardian Regeneration (CONTENT_CONVENTIONS §55)
+        errs += [f"{rel}: {m}" for m in ra_errs]
+        warns += [f"{rel}: {m}" for m in ra_warns]
+        fz_errs, fz_warns = c4.check_freeze(doc, tag)   # Freeze (CONTENT_CONVENTIONS §42, monster@5 only)
+        errs += [f"{rel}: {m}" for m in fz_errs]
+        warns += [f"{rel}: {m}" for m in fz_warns]
+        ab_errs, ab_warns = c4.check_absorb(doc, tag)   # Lightning Absorption (CONTENT_CONVENTIONS §43, monster@5 only)
+        errs += [f"{rel}: {m}" for m in ab_errs]
+        warns += [f"{rel}: {m}" for m in ab_warns]
+        ii_errs, ii_warns = c4.check_innate_invisibility(doc, tag)   # Innate Invisibility (CONTENT_CONVENTIONS §44, monster@5 only)
+        ha_errs, ha_warns = c4.check_horrific_appearance(doc, tag)   # Horrific Appearance (CONTENT_CONVENTIONS §45, monster@5 only)
+        dg_errs, dg_warns = c4.check_death_glare(doc, tag)   # Death Glare (CONTENT_CONVENTIONS §46, monster@5 save_effect)
+        ch_errs, ch_warns = c4.check_charm_command(doc, tag)   # Charm (CONTENT_CONVENTIONS §47, monster@5 save_effect)
+        dk_errs, dk_warns = c4.check_drain_max_hp(doc, tag)   # Draining Kiss (CONTENT_CONVENTIONS §48, monster@5 save_effect)
+        hv_errs, hv_warns = c4.check_horrifying_visage(doc, tag)   # Horrifying Visage (CONTENT_CONVENTIONS §49, monster@5 save_effect)
+        bd_errs, bd_warns = c4.check_bound(doc, tag)   # Bound (CONTENT_CONVENTIONS §50, monster@5 only)
+        sh_errs, sh_warns = c4.check_shield_reaction(doc, tag)   # Shield reaction (CONTENT_CONVENTIONS §54)
+        errs += [f"{rel}: {m}" for m in ii_errs]
+        warns += [f"{rel}: {m}" for m in ii_warns]
+        errs += [f"{rel}: {m}" for m in ha_errs]
+        warns += [f"{rel}: {m}" for m in ha_warns]
+        errs += [f"{rel}: {m}" for m in dg_errs]
+        warns += [f"{rel}: {m}" for m in dg_warns]
+        errs += [f"{rel}: {m}" for m in ch_errs]
+        warns += [f"{rel}: {m}" for m in ch_warns]
+        errs += [f"{rel}: {m}" for m in dk_errs]
+        warns += [f"{rel}: {m}" for m in dk_warns]
+        errs += [f"{rel}: {m}" for m in hv_errs]
+        warns += [f"{rel}: {m}" for m in hv_warns]
+        errs += [f"{rel}: {m}" for m in bd_errs]
+        warns += [f"{rel}: {m}" for m in bd_warns]
+        errs += [f"{rel}: {m}" for m in sh_errs]
+        warns += [f"{rel}: {m}" for m in sh_warns]
         au_errs, au_warns = c4.check_aura(doc, tag)   # batch 3 aura (ghast Stench, monster@5 only)
         errs += [f"{rel}: {m}" for m in au_errs]
         warns += [f"{rel}: {m}" for m in au_warns]
         errs += [f"{rel}: {m}" for m in c4.check_batch3_actions(doc, tag)]   # batch 3 weapon-only action keys
         errs += [f"{rel}: {m}" for m in c4.check_until_cured(doc, tag)]   # batch 3 until_cured (death dog)
+        errs += [f"{rel}: {m}" for m in c4.check_disease(doc, tag)]   # B6 bite disease HP-max schedule
         errs += [f"{rel}: {m}" for m in c4.check_multiattack_count(doc, tag)]   # batch 3 count_dice (violet fungus)
+        errs += [f"{rel}: {m}" for m in c4.check_free_rider(doc, tag)]   # B3b chuul tentacles free rider
+        errs += [f"{rel}: {m}" for m in c4.check_engulf_both_hits(doc, tag)]   # B7 shambling mound engulf
         errs += [f"{rel}: {m}" for m in c4.check_teleport_actions(doc, tag)]   # batch 3 teleport action (blink dog)
         if "extra_attack" in row.effect_kinds:   # EC #179 extra_attack (@4): loader refusals, highest-wins warning
             x_errs, x_warns = c4.check_extra_attack(doc, tag.split("@")[0])
@@ -831,14 +883,14 @@ def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict
             e4, w4 = c4.check_item(doc, ctx)
         else:
             e4, w4 = c4.check_stat_block_v4(typ, doc, ctx)
-            if tag in ("monster@5", "character@5"):
+            if tag in c4.MONSTER_SINCE_5 | c4.CHARACTER_SINCE_5:
                 e5, w5 = c4.check_equipment_v5(typ, doc, ctx)
                 e4, w4 = e4 + e5, w4 + w5
-            if tag == "character@5":   # PR C: SRD proficiencies and the derived-vs-printed check
+            if tag in c4.CHARACTER_SINCE_5:   # PR C: SRD proficiencies and the derived-vs-printed check
                 for fn in (c4.check_character_proficiencies, c4.check_character_derive):
                     e7, w7 = fn(doc, ctx)
                     e4, w4 = e4 + e7, w4 + w7
-            if tag == "monster@5":   # EQUIPMENT 5.6 derived-vs-printed (rules5e::derive_monster mirror)
+            if tag in c4.MONSTER_SINCE_5:   # EQUIPMENT 5.6 derived-vs-printed (rules5e::derive_monster mirror)
                 e6, w6 = c4.check_monster_derive(doc, ctx)
                 e4, w4 = e4 + e6, w4 + w6
         errs += e4
@@ -862,6 +914,10 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
     docs = {}
     for f in files:
         rel = f.relative_to(pack).as_posix()
+        # Kit JSON (art/clips.json and any sibling) is not a content document. Engine Core loads it
+        # separately. It is not listed in manifest contents and has no $schema tag.
+        if rel == "art" or rel.startswith("art/"):
+            continue
         try:
             docs[rel] = json.loads(f.read_text(encoding="utf-8"))
         except ValueError as e:
@@ -1061,15 +1117,49 @@ def _walkable_cell(doc: dict, x: int, y: int) -> bool:
     return True
 
 
+def monster_ledger():
+    """The bestiary ledger parser (tools/bestiary_editor/ledger.py). No Tk."""
+    editor = ROOT / "tools" / "bestiary_editor"
+    if str(editor) not in sys.path:
+        sys.path.insert(0, str(editor))
+    import ledger as monster_ledger_mod
+    return monster_ledger_mod
+
+
+def scenario_soft_block_warnings(doc: dict, book) -> list[str]:
+    """Warning lines for Parked ids on a playable scenario roster. Not errors."""
+    return [block.line() for block in monster_ledger().soft_blocks_for_scenario(doc, book)]
+
+
+def scenario_failed(errs: list[str], warnings: list[str]) -> bool:
+    """Hard ref errors fail a scenario. Parked soft-block warnings do not."""
+    del warnings
+    return bool(errs)
+
+
 def validate_scenarios(registry: Registry, by_tag: dict) -> int:
     """scenarios/<name>/scenario.json (scenario@1) plus a non-empty golden.txt.
 
     Cross-checks the schema cannot express: the pack resolves, party members are characters and
     monsters are monsters in that pack or its depends, roster ids are unique, tiles are in-bounds
     and walkable, surprise names a roster id, and a chunk path stays inside the scenario's pack.
+
+    Parked monsters (docs/SRD_MONSTERS_DEFERRED.md Deferred table, parsed by the bestiary ledger)
+    are soft-blocked: a roster archetype in that table prints ``warning`` and does not fail the
+    scenario. The check does not approximate the blocking mechanic and does not add a stat block.
     """
+    try:
+        book = monster_ledger().load_ledger()
+    except OSError as exc:
+        print(f"FAIL scenarios: monster ledger unreadable ({exc})")
+        return 1
     root = ROOT / "scenarios"
     paths = sorted(root.glob("*/scenario.json")) if root.is_dir() else []
+    for mismatch in book.count_errors():
+        print(
+            "warning scenarios: monster ledger count mismatch "
+            f"({mismatch}); soft-block uses the parsed Deferred rows"
+        )
     if not paths:
         print("ok   scenarios (none)")
         return 0
@@ -1110,7 +1200,10 @@ def validate_scenarios(registry: Registry, by_tag: dict) -> int:
                 errs += _scenario_refs(doc, pset)
         elif doc is not None:
             errs.append("document must be an object")
-        if errs:
+        parked_warns = scenario_soft_block_warnings(doc, book) if isinstance(doc, dict) else []
+        for warning in parked_warns:
+            print(f"warning {rel}: {warning}")
+        if scenario_failed(errs, parked_warns):
             failed += 1
             print(f"FAIL {rel}")
             for e in errs:

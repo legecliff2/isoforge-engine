@@ -1,0 +1,152 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.wereboar",
+  "name": "Wereboar",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "human",
+    "shapechanger"
+  ],
+  "alignment": "neutral evil",
+  "shapechanger": true,
+  "armor_class": {
+    "value": 10
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.maul",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 78,
+    "formula": "12d8+24"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 17,
+    "dex": 10,
+    "con": 15,
+    "int": 10,
+    "wis": 11,
+    "cha": 8
+  },
+  "skills": {
+    "perception": 2
+  },
+  "senses": {
+    "passive_perception": 12
+  },
+  "languages": [
+    "Common (can't speak in boar form)"
+  ],
+  "challenge": {
+    "rating": "4",
+    "xp": 1100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "damage_immunities_nonmagical",
+      "name": "Damage Immunities",
+      "description": "Immune to bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "immunities": {
+          "nonmagical_not_silvered": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shapechanger",
+      "name": "Shapechanger",
+      "description": "The wereboar can use its action to polymorph into a boar-humanoid hybrid or into a boar, or back into its true form, which is humanoid. Its statistics, other than its AC, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (Descriptive only: no shapechanger forms. The humanoid form is the authored stat block. Hybrid and boar, including the boar form speed 40 and hybrid/boar AC 11, are not separate statistics. shapechanger: true is the Moonbeam fact. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "charge",
+      "name": "Charge (Boar or Hybrid Form Only)",
+      "description": "If the wereboar moves at least 15 feet straight toward a target and then hits it with its tusks on the same turn, the target takes an extra 7 (2d6) slashing damage. If the target is a creature, it must succeed on a DC 13 Strength saving throw or be knocked prone. (Descriptive only: tusks are not a weapon attack on the authored humanoid form, so Charge is not an on_event. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "relentless",
+      "name": "Relentless (Recharges after a Short or Long Rest)",
+      "description": "If the wereboar takes 14 damage or less that would reduce it to 0 hit points, it is reduced to 1 hit point instead.",
+      "effect": {
+        "kind": "on_event",
+        "on": "drop_to_zero",
+        "when": [
+          {
+            "kind": "damage_at_most",
+            "amount": 14
+          }
+        ],
+        "usage": {
+          "kind": "per_rest",
+          "uses": 1,
+          "rest": "short"
+        },
+        "effects": [
+          {
+            "kind": "set_hp",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The wereboar makes two attacks, only one of which can be with its tusks. (Humanoid form, authored: two maul attacks. Tusks are boar or hybrid form. See docs/SRD_MONSTERS_DEFERRED.md.)",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "maul_x2",
+            "attacks": [
+              "maul",
+              "maul"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "maul",
+      "name": "Maul",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.maul",
+      "use": "two_hands",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+3",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 10 (2d6 + 3) bludgeoning damage."
+    },
+    {
+      "id": "tusks",
+      "name": "Tusks",
+      "kind": "special",
+      "description": "Tusks (Boar or Hybrid Form Only). Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 10 (2d6 + 3) slashing damage. If the target is a humanoid, it must succeed on a DC 12 Constitution saving throw or be cursed with wereboar lycanthropy. (Descriptive only: not a weapon attack on the authored humanoid form. The lycanthropy curse is not encoded. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

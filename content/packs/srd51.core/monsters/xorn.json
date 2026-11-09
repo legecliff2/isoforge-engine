@@ -1,0 +1,147 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.xorn",
+  "name": "Xorn",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "elemental",
+  "alignment": "neutral",
+  "armor_class": {
+    "value": 19,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 19,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 73,
+    "formula": "7d8+42"
+  },
+  "speed": {
+    "walk": 20,
+    "burrow": 20
+  },
+  "abilities": {
+    "str": 17,
+    "dex": 10,
+    "con": 22,
+    "int": 11,
+    "wis": 10,
+    "cha": 11
+  },
+  "skills": {
+    "perception": 6,
+    "stealth": 3
+  },
+  "senses": {
+    "darkvision": 60,
+    "tremorsense": 60,
+    "passive_perception": 16
+  },
+  "languages": [
+    "Terran"
+  ],
+  "challenge": {
+    "rating": "5",
+    "xp": 1800
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "damage_resistances_nonmagical",
+      "name": "Damage Resistances",
+      "description": "Resistant to piercing and slashing from nonmagical weapons that aren't adamantine.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "resistances": {
+          "nonmagical_not_adamantine": [
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "earth_glide",
+      "name": "Earth Glide",
+      "description": "The xorn can burrow through nonmagical, unworked earth and stone. While doing so, the xorn doesn't disturb the material it moves through."
+    },
+    {
+      "id": "stone_camouflage",
+      "name": "Stone Camouflage",
+      "description": "The xorn has advantage on Dexterity (Stealth) checks made to hide in rocky terrain."
+    },
+    {
+      "id": "treasure_sense",
+      "name": "Treasure Sense",
+      "description": "The xorn can pinpoint, by scent, the location of precious metals and stones, such as coins and gems, within 60 ft. of it."
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The xorn makes three claw attacks and one bite attack.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "claw_x3_bite",
+            "attacks": [
+              "claw",
+              "claw",
+              "claw",
+              "bite"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "claw",
+      "name": "Claw",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d6",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 6 (1d6 + 3) slashing damage."
+    },
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "3d6",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "3d6+3",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 13 (3d6 + 3) piercing damage."
+    }
+  ]
+}

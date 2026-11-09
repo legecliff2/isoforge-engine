@@ -55,8 +55,10 @@ SDL3 is fetched and pinned (`release-3.4.8`) by `cmake/Dependencies.cmake`. Conf
 dev packages listed in `.github/actions/cmake-ci/action.yml` (and in `docs/CI.md`), plus
 `libstdc++-14-dev` so Clang can link the GCC 14 libstdc++ it selects.
 
-Before pushing, run `tools/ci_local.sh` directly. It runs the same Linux CI jobs locally (GCC Debug +
-Clang Release: configure, depcheck/include_lint, build, ctest) and exits non-zero on failure. Never
+`tools/ci_local.sh` is optional. It runs the same Linux CI jobs locally (GCC Debug +
+Clang Release: configure, depcheck/include_lint, build, ctest) and exits non-zero on failure.
+Running it is recommended for catching Linux failures early and saving CI minutes, but it is not
+required before pushing or before marking a PR ready. Hosted CI is the gate. Run it directly. Never
 wrap that command in `flock` on the same lock path (`flock /tmp/ci_local.lock tools/ci_local.sh`
 deadlocks). On a shared machine it sets `-j` from `MemAvailable` (default 1536 MB per job,
 `CI_LOCAL_MB_PER_JOB`; override with `CI_LOCAL_JOBS` or `-j`) and queues build/test on an exclusive

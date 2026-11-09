@@ -16,9 +16,15 @@ void push(FeedState& st, std::string s) {
 }
 } // namespace
 
+void note_aim_facing(FeedState& st, uint32_t actor, eng::Vec2i from, eng::Vec2i to) {
+    if (auto f = facing_from_delta(to.x - from.x, to.y - from.y)) st.facing[actor] = *f;
+}
+
 void apply_events(std::span<const SimEvent> events, FeedState& st, const NameFn& name) {
     for (const SimEvent& e : events) {
         if (e.kind == SimEvent::Kind::TileMoved) {
+            auto prev = st.tiles.find(e.actor);
+            if (prev != st.tiles.end()) note_aim_facing(st, e.actor, prev->second, e.tile);
             st.tiles[e.actor] = e.tile;   // any actor, any turn (readied moves), anywhere in the block
             ++st.tile_moves;
             continue;

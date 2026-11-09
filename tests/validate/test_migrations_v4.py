@@ -352,7 +352,7 @@ class V4SchemaShapes(unittest.TestCase):
         self.assertEqual(set(checks_v4.TAG_TABLE["character@4"].top_level_keys) - set(checks_v4.TAG_TABLE["character@3"].top_level_keys),
                          {"resources", "forward_compat", "inert_mechanics", "no_breath", "shapechanger", "evil"})
         self.assertEqual(sorted(t for t, r in checks_v4.TAG_TABLE.items() if r.needs_api_level > 1),
-                         ["character@4", "character@5", "item@1", "item@2", "monster@4", "monster@5"])   # @5 / item@2: EQUIPMENT 7.1
+                         ["character@4", "character@5", "character@6", "item@1", "item@2", "monster@4", "monster@5", "monster@6"])   # @5 / item@2: EQUIPMENT 7.1; @6: visual
 
     def test_every_v3_property_is_carried_by_v4(self):
         _reg, by_tag = h.registry()

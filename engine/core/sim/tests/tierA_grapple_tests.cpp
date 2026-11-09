@@ -197,3 +197,118 @@ TEST_CASE("Tier-A §27: grapple_instead is refused on every non-Attack request a
     for (const auto& q : rules5e::legal_actions(x.c->state()))
         if (q.grapple_instead) CHECK(q.kind == ActionKind::Attack);
 }
+
+TEST_CASE("B5 Reel: a damageless restraining hit, then a pull that stays inside the tendril's reach") {
+    Json m = load_json("content/packs/srd51.core/monsters/goblin.json");
+    m["$schema"] = "monster@5";
+    m["id"] = "t.reel";
+    m["hit_points"]["average"] = 400;
+    Json tendril = m["actions"][0];
+    tendril["id"] = "tendril";
+    tendril["name"] = "Tendril";
+    tendril["to_hit"] = 40;
+    tendril["reach"] = 50;
+    tendril.erase("damage");
+    tendril["on_hit"] = Json::array({{{"kind", "grapple"}, {"escape_dc", 15}, {"restrains", true}, {"no_damage", true}}});
+    Json reel = {{"id", "reel"}, {"name", "Reel"}, {"kind", "pull"}, {"feet", 25}, {"targets", 2},
+                 {"target_requires_any", Json::array({"grappled_by_self"})}};
+    m["actions"] = Json::array({tendril, reel});
+    m.erase("traits");
+    ContentLibrary lib;
+    REQUIRE(lib.load(sample_set()).empty());
+    Json tank = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");
+    tank["hit_points"]["average"] = 2000;
+    tank["id"] = "t.fighter";
+    REQUIRE_FALSE(lib.add(tank, "character"));
+    Json by = tank;
+    by["id"] = "t.bystander";
+    REQUIRE_FALSE(lib.add(by, "character"));
+    const auto added = lib.add(m, "monster");
+    REQUIRE_MESSAGE(!added, added.value_or(""));
+    const auto* arch = lib.find("t.reel");
+    REQUIRE(arch);
+    CHECK(arch->base.attacks.at(0).grapple_no_damage);
+    CHECK_FALSE(arch->base.attacks.at(0).grapple_instead_ok);
+    CHECK(arch->base.attacks.at(0).reach_or_range_ft == 50);
+    CHECK(arch->base.attacks.at(0).damage.count == 0);
+    REQUIRE(arch->grapple_on_hit.count(0));
+    CHECK(arch->grapple_on_hit.at(0).no_damage);
+    CHECK(arch->grapple_on_hit.at(0).restrains);
+    const uint32_t sid = rules5e::spell_id_of("t.reel#reel");
+    const auto* def = lib.spells()->find(sid);
+    REQUIRE(def);
+    CHECK(def->kind == rules5e::SpellEffectKind::ForcedMove);
+    CHECK(def->forced.mode == 2);
+    CHECK(def->forced.feet == 25);
+    CHECK(def->forced.up_to);
+    CHECK(def->targets == 2);
+    CHECK(def->target_requires_any == rules5e::kTargetGateGrappledBySelf);
+
+    Json listed = m;
+    listed["id"] = "t.listed";
+    listed["actions"][0]["damage"] = Json::array({{{"dice", "1d4"}, {"type", "piercing"}}});
+    ContentLibrary badlib;
+    REQUIRE(badlib.load(sample_set()).empty());
+    const auto listed_err = badlib.add(listed, "monster");
+    REQUIRE(listed_err);
+    CHECK(listed_err->find("can't list damage") != std::string::npos);
+    Json choice = m;
+    choice["id"] = "t.choice";
+    choice["actions"][0]["on_hit"][0].erase("restrains");
+    choice["actions"][0]["on_hit"][0]["instead_of_damage"] = true;
+    const auto choice_err = badlib.add(choice, "monster");
+    REQUIRE(choice_err);
+    CHECK(choice_err->find("can't be combined with instead_of_damage") != std::string::npos);
+
+    world::Chunk ch{};
+    ch.coord = {5, 5, 0};
+    ch.origin = world::Chunk::Origin::Handcrafted;
+    ch.palette = {"", "floor"};
+    for (auto& cell : ch.layers[0]) cell.tile = 1;
+    ch.spawns.push_back({"t.reel", Vec2i{2, 5}, world::spawn_stable_id(ch.coord, 0), ""});
+    ch.spawns.push_back({"t.fighter", Vec2i{12, 5}, world::spawn_stable_id(ch.coord, 1), ""});
+    ch.spawns.push_back({"t.bystander", Vec2i{3, 5}, world::spawn_stable_id(ch.coord, 2), ""});
+    ch.content_hash = world::compute_content_hash(ch);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId roper = ch.spawns[0].stable_id, held = ch.spawns[1].stable_id, other = ch.spawns[2].stable_id;
+    for (int i = 0; i < 12 && rules5e::current_actor(c->state()) != roper; ++i) {
+        Command e; e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn};
+        REQUIRE(c->submit(e).ok);
+    }
+    REQUIRE(rules5e::current_actor(c->state()) == roper);
+    const int hp0 = rules5e::find(c->state(), held)->hp;
+    Command atk; atk.request = {roper, ActionKind::Attack, held, 0};
+    auto hit = c->submit(atk);
+    REQUIRE_MESSAGE(hit.ok, hit.error);
+    CHECK(rules5e::find(c->state(), held)->hp == hp0);
+    CHECK(rules5e::condition_source(c->state(), held, Condition::Grappled) == roper);
+    CHECK((rules5e::find(c->state(), held)->conditions & rules5e::bit(Condition::Restrained)) != 0);
+    Command done; done.request = {roper, ActionKind::EndTurn};
+    REQUIRE(c->submit(done).ok);
+    for (int i = 0; i < 12 && rules5e::current_actor(c->state()) != roper; ++i) {
+        Command e; e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn};
+        REQUIRE(c->submit(e).ok);
+    }
+    REQUIRE(rules5e::current_actor(c->state()) == roper);
+    CHECK(c->state().budget.action);
+    Command mixed; mixed.request = {roper, ActionKind::CastSpell, held};
+    mixed.request.spell_id = sid;
+    mixed.request.targets = {held, other};
+    auto refused = c->submit(mixed);
+    CHECK_FALSE(refused.ok);
+    CHECK(std::string(refused.error).find("grappled by the user") != std::string::npos);
+    CHECK(c->state().budget.action);
+    const uint64_t before = c->log_hash();
+    Command pull; pull.request = {roper, ActionKind::CastSpell, held};
+    pull.request.spell_id = sid;
+    pull.request.forced_feet = 25;
+    auto moved = c->submit(pull);
+    REQUIRE_MESSAGE(moved.ok, moved.error);
+    CHECK(c->pos(held) == Vec2i{7, 5});   // 50 ft away, pulled 25 ft, still short of the roper
+    CHECK(c->distance_tiles(roper, held) == 5);
+    CHECK(rules5e::condition_source(c->state(), held, Condition::Grappled) == roper);
+    CHECK((rules5e::find(c->state(), held)->conditions & rules5e::bit(Condition::Restrained)) != 0);
+    CHECK(c->log_hash() != before);   // forced_feet is the existing 0xB4 fold
+}

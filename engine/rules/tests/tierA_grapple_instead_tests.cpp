@@ -114,3 +114,35 @@ TEST_CASE("grapple_instead: a miss is a miss either way") {
     }
     FAIL("no missing seed found");
 }
+
+TEST_CASE("B5 no_damage: a hit deals no damage and does not set the grapple_instead bit") {
+    Attack tend{"tendril", 40, {0, 0, 0}, DamageType::Bludgeoning, 50, false, false};
+    tend.grapple_no_damage = true;
+    Combatant a = monster(1);
+    a.attacks = {tend};
+    a.team = 1;
+    Combatant b = pc(2, 80);
+    b.team = 0;
+    for (uint64_t seed = 1; seed < 40; ++seed) {
+        auto s = begin_encounter({a, b}, seed);
+        end_turns_until(s, 1);
+        ActionRequest q{1, ActionKind::Attack, 2, 0};
+        q.target_within_5ft = true;
+        const int hp0 = mut(s, 2).hp;
+        auto out = step(s, q);
+        const Event* e = nullptr;
+        for (const auto& ev : out.events) if (ev.kind == EventKind::AttackResolved) e = &ev;
+        if (!out.ok || !e || !(e->c & 1)) continue;
+        CHECK_FALSE((e->c & 8) != 0);
+        CHECK(count(out.events, EventKind::DamageDealt) == 0);
+        CHECK(mut(s, 2).hp == hp0);
+        auto s2 = begin_encounter({a, b}, seed);
+        end_turns_until(s2, 1);
+        q.grapple_instead = true;
+        auto refused = step(s2, q);
+        CHECK_FALSE(refused.ok);
+        CHECK(std::string(refused.error).find("instead_of_damage") != std::string::npos);
+        return;
+    }
+    FAIL("no hitting seed");
+}

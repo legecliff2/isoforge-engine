@@ -12,6 +12,7 @@
 #include "view_model.hpp"
 
 namespace eng::sim { class ContentLibrary; struct EquipmentLight; struct LightSource; }
+namespace rules5e { struct EncounterState; }
 
 namespace slice {
 
@@ -132,5 +133,9 @@ eng::sim::LightSource equipment_source(const eng::sim::EquipmentLight& e, eng::V
 
 // Palette asset id -> placeholder tile kind ("tiles.dungeon.wall_01" -> Wall).
 TileKind classify_tile(const std::string& asset_id);
+
+// Copies the visible figure onto one actor for `viewer`. Does not change kit, visual_kind,
+// standin_bin, or name. Session::view calls this after copy_visual.
+void apply_visible_figure(const ::rules5e::EncounterState& st, uint32_t viewer, ActorView& actor);
 
 } // namespace slice

@@ -1,0 +1,104 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.black_pudding",
+  "name": "Black Pudding",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "ooze",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 7
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 85,
+    "formula": "10d10+30"
+  },
+  "speed": {
+    "walk": 20,
+    "climb": 20
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 5,
+    "con": 16,
+    "int": 1,
+    "wis": 6,
+    "cha": 1
+  },
+  "damage_immunities": [
+    "acid",
+    "cold",
+    "lightning",
+    "slashing"
+  ],
+  "condition_immunities": [
+    "blinded",
+    "charmed",
+    "deafened",
+    "exhaustion",
+    "frightened",
+    "prone"
+  ],
+  "senses": {
+    "blindsight": 60,
+    "passive_perception": 8
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "4",
+    "xp": 1100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "amorphous",
+      "name": "Amorphous",
+      "description": "The pudding can move through a space as narrow as 1 inch wide without squeezing."
+    },
+    {
+      "id": "corrosive_form",
+      "name": "Corrosive Form",
+      "description": "A creature that touches the pudding or hits it with a melee attack while within 5 feet of it takes 4 (1d8) acid damage. Any nonmagical weapon made of metal or wood that hits the pudding corrodes. After dealing damage, the weapon takes a permanent and cumulative -1 penalty to damage rolls. If its penalty drops to -5, the weapon is destroyed. Nonmagical ammunition made of metal or wood that hits the pudding is destroyed after dealing damage. The pudding can eat through 2-inch-thick, nonmagical wood or metal in 1 round. (Descriptive only: the 1d8 contact acid has no passive on-hit-by construct, and the weapon, ammunition, and material corrosion are the same item-degradation gap as Rust Metal. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "spider_climb",
+      "name": "Spider Climb",
+      "description": "The pudding can climb difficult surfaces, including upside down on ceilings, without needing to make an ability check."
+    },
+    {
+      "id": "split",
+      "name": "Split",
+      "description": "When a pudding that is Medium or larger is subjected to lightning or slashing damage, it splits into two new puddings if it has at least 10 hit points. Each new pudding has hit points equal to half the original pudding's, rounded down. New puddings are one size smaller than the original pudding. (Descriptive only: no creature-spawn construct. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "pseudopod",
+      "name": "Pseudopod",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d6",
+        "ability": "str"
+      },
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "bludgeoning"
+        },
+        {
+          "dice": "4d8",
+          "type": "acid"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 6 (1d6 + 3) bludgeoning damage plus 18 (4d8) acid damage. In addition, nonmagical armor worn by the target is partly dissolved and takes a permanent and cumulative -1 penalty to the AC it offers. The armor is destroyed if the penalty reduces its AC to 10. (The armor penalty is descriptive only: no item-degradation rider. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

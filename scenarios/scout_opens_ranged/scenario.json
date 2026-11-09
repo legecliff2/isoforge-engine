@@ -1,0 +1,18 @@
+{
+  "$schema": "scenario@1",
+  "id": "sample.scout_opens_ranged",
+  "seed": 5,
+  "pack": "sample.vertical_slice",
+  "board": {
+    "map": {}
+  },
+  "party": [
+    {"id": "fighter", "archetype": "srd51.character.fighter_1", "tile": {"x": 8, "y": 8}}
+  ],
+  "monsters": [
+    {"id": "scout", "archetype": "srd51.monster.scout", "tile": {"x": 14, "y": 8}}
+  ],
+  "surprise": [],
+  "end_condition": "teams",
+  "round_cap": 20
+}

@@ -23,7 +23,8 @@ int effective_speed(const Combatant& c) {
 
 int effective_hp_max(const Combatant& c) {
     const int base = c.exhaustion_level >= 4 ? c.hp_max / 2 : c.hp_max;
-    return std::max(0, base - int(c.hp_max_reduction));   // Life Drain
+    // Life Drain (cleared by a long rest) and bite-disease reductions (cleared only when that disease is cured).
+    return std::max(0, base - int(c.hp_max_reduction) - int(c.disease_hp_max_reduction));
 }
 
 bool auto_fails_save(const Combatant& c, Ability a) {

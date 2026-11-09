@@ -308,6 +308,8 @@ count toward the 32-trigger limit. Other riders in the same `on_hit[]` keep thei
 
 Druid gap G (monster@5) carries the clauses this section used to leave in `description`: `restrains` ("until this grapple ends, the target is restrained"), `exclusive` ("can't bite another target"), and `max_grapples` ("each claw can grapple only one target"). Giant Crab's Claw is `max_grapples: 2` with `escape_dc` 11 and no `restrains` (the SRD grapples only). Restrained with an escape on a non-grapple attack (giant spider Web) stays an `attack_effect` apply, not this rider.
 
+`max_size` (`tiny` .. `gargantuan`, monster@5 only) is the largest creature the hit grapples. A larger target takes the attack's damage and is not grappled. Omit it for no cap beyond the existing one-size-larger rule. Chuul's pincer is `large`; an otyugh's tentacle is `medium`. It is not an extended rider field: a size-only grapple leaves `via_attack` unset, so `Combat::hash` is unchanged. A bad string is `on_hit: bad grapple max_size`. Below monster@5 the loader says `grapple max_size needs a monster@5 file`. The one-size-larger rule still applies on top of this cap.
+
 Versioning: an additive kind with a new closed arm in `common@2 $defs/rider` and one new base property (`escape_dc`). No tag change,
 no migration, no api_level gate: the old schema rejected kind `grapple`, so no existing file can carry it (`tests/compat` and the
 shipped packs validate unchanged). Fixture: `tests/validate/fixtures/v4/extra/giant_crab_grappler.json`; cases: `test_v4_validator.py`
@@ -620,6 +622,8 @@ The validator ties the race string to Darkvision (character@2+, errors):
 
 Other race strings are not checked. The level-1 hit point check adds SRD Dwarven Toughness (+1 per level) for `hill_dwarf`. Sample PCs: `srd51.character.sample_hill_dwarf_cleric_1`, `sample_high_elf_wizard_1`, `sample_tiefling_warlock_1` (`characters/sample_*.json`).
 
+Elf Keen Senses is proficiency in Perception, already carried by `skills.perception`. It is not the monster trait in §30.
+
 
 ## 13. Light gear (item@2 category `gear`, docs/proposals/EQUIPMENT.md 6.2)
 
@@ -851,6 +855,8 @@ Both sides use `sim::NearestEnemyPolicy`. The same seed and pack contents print 
 
 Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-empty. Explicit pack arguments to the validator skip this check, so the pack summary line is unchanged.
 
+Parked monsters are soft-blocked from these playable encounters. A roster `archetype` on `party` or `monsters` whose id is a Deferred row in `docs/SRD_MONSTERS_DEFERRED.md` prints `warning <scenario>: <slot>: archetype '<id>' is Parked ... and is soft-blocked from this playable encounter`. The warning does not fail the scenario. Authored rows, including **partial** rows, are not parked. `srd51.monster.goblin` is not in that ledger. The check reads the ledger; it does not add a stat block and does not approximate the blocking mechanic. `encounter_runner` still loads whatever the pack contains. A Deferred id with no monster file fails the existing archetype lookup, and the soft-block warning is printed as well.
+
 ## 25. Printed passive Perception (monster@5 `passive_perception_reason`, Tier-A)
 
 - `senses.passive_perception` must equal 10 + Perception (the `skills.perception` value, else the Wis modifier). On a
@@ -860,8 +866,9 @@ Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-emp
 - The sim stores the printed value in `Combatant::passive_perception_override` (static content, never hashed) and
   `rules5e::passive_perception` uses it instead of 10 + Perception (Hide, hidden-from, surprise). It shifts by the same
   effective-Wis modifier delta as the derived value (a Wis reduction moves both), and caller bonuses (dim light -5) still apply.
-- Printed SRD passives never include Keen Senses (wolf, hell hound: 10 + Perception exactly). The keen hook is deferred
-  (SRD_COMBAT_COVERAGE); it will add situationally, never into the printed number.
+- Printed SRD passives never include Keen Senses (wolf, hell hound: 10 + Perception exactly). The keen hook (§30) adds
+  +5 only on a Wisdom (Perception) check that relies on a listed sense, and on the Hide / surprise passives described there.
+  It never changes `passive_perception` or the printed number.
 - SRD 5.1 data blocks whose printed passive differs from 10 + Perception (5e-database copy): black bear, blink dog,
   half-red dragon veteran, spider, swarm of ravens. Blink dog carries the reason (`srd_printed`, Perception +3, passive 10); the others are not authored.
 
@@ -878,7 +885,10 @@ Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-emp
   hashed under 0xE1 only when non-empty (separate from the ghast aura 0xDE). An immune target makes no roll.
 - `target_must_see_source: true`: a target that cannot see the user (blinded, or the sight hook) makes no roll and gains no
   immunity; FeatureTriggered (actor user, target, a = spell_id, c = 3).
-- Exemptions (undead, elves) are authored only where the SRD text says so; Dreadful Glare has none.
+- An area save may carry `immune_on_success` and `target_must_see_source` (B17, §49). `also_on_fail_by` still takes no
+  area (`also_on_fail_by takes no area`).
+- Exemptions (undead, elves) are authored only where the SRD text says so; Dreadful Glare has none. Horrifying Visage's
+  non-undead gate is `exclude_creature_types` (§49), not this section's margin condition.
 - Mummy Multiattack (glare + fist) is deferred: the glare is its own action (SRD_COMBAT_COVERAGE).
 
 ## 27. Grapple instead of damage (monster@5 grapple rider `instead_of_damage`, Tier-A)
@@ -907,3 +917,1068 @@ The spell loads and stays on a creature's spell list. `legal_actions` never offe
 | `effects` empty or absent | schema error (`[] should be non-empty`, or `'effects' is a required property`). The loader's string for an empty list is `effects missing` |
 
 **No version bump.** `docs/CONTENT_COMPAT.md` §1 bumps a schema when a field that used to be descriptive becomes mechanical, or an existing field changes meaning. `descriptive` is a new effect-kind value. The previous `spell@1` kind enum did not include it, and the arm is closed, so no existing file can carry it. No tag change, no migration, no `api_level` gate. The decision is recorded in `docs/proposals/VERSION_BUMP_BATCH.md`.
+
+## 29. Monster area action (`area_effect`, monster@5)
+
+A monster area ability is an action of kind `area_effect`. The loader (`compile_area_action`) builds one synthetic `SpellDef` (`is_spell` false, kind `Save`, fixed `save.dc`) and a `SaveAction` row, the same path a `save_effect` with an `area` already uses. Targets come from `Combat::area_targets`. No new recharge roll and no `SIM_EVENTS` tag.
+
+- **Shapes.** `area.shape` is `cone`, `line`, `cube`, `sphere`, or `cylinder`. `size_ft` is the cone or line length, the cube side, or the sphere or cylinder radius, a multiple of 5. A line needs `width_ft`. A cylinder needs `height_ft`; that height is stored on the spell and still ignored by membership (the cylinder-height gap). Other shapes must not carry the other shape's extra field.
+- **Origin.** `self` (the default) starts at the caster. `range_ft` is forbidden then. `point` needs `range_ft` and centres a cube or a sphere on the aim tile.
+- **Save and damage.** `save` `{ability, dc}` is required. `damage[]` needs `on_success` `half` (`OnSave::Half`, integer division) or `none` (`OnSave::None`). A breath that deals no damage (blinding, sleep, slow) uses `apply[]` and no `on_success`.
+- **Uses.** `usage` is the existing object: `recharge` with `min` 2..6 (`ActionUse`, the turn-start d6), or `per_day` / `per_rest` (`FeatureUses`). One action is one use. Two shapes that share a recharge (young brass, young copper) are not two `area_effect` actions; that choice is not this key.
+- **Not this kind.** `save_effect` is unchanged, including breaths already authored that way. Whirlwind is its own action (§40), not an area template. Whelm and ghast Stench stay on the zones work. Cover on area saves, the square sphere, and cylinder height are not changed here.
+
+monster@4 and character files cannot carry `area_effect`. No schema version bump: the kind is a new monster@5 enum value, and no existing file uses it.
+
+## 30. Keen Senses (monster@5 trait `keen_senses`)
+
+SRD 5.1 wolf: "The wolf has advantage on Wisdom (Perception) checks that rely on hearing or smell." The same sentence, with a different sense list, is Keen Sight, Keen Smell, Keen Hearing, Keen Hearing and Sight, Keen Sight and Smell, and the pseudodragon's Keen Senses (sight, hearing, or smell). The list is the mechanic. The trait name is not.
+
+This is not the elf racial trait of the same name (§12: proficiency in Perception). Death dog Two-Headed is advantage on every Wisdom (Perception) check, not on a named sense; that blanket advantage stays deferred (the save half is already `save_advantage`).
+
+Author it on a monster@5 trait:
+
+```json
+"effect": { "kind": "keen_senses", "senses": ["hearing", "smell"] }
+```
+
+`senses` is a non-empty set of `sight`, `hearing`, and `smell` (unique). Several traits on one creature union the bits. A second trait that adds no new sense does nothing (validator warning). The loader refuses the kind on a character and on a file below monster@5. Wolf is stamped (`hearing`, `smell`). Other stat blocks that still carry the sentence as description only do not gain the bonus until an author adds the effect. Hell hound and winter wolf are in the pack with that sentence and no effect (the monster tests pin it); their printed passives, like the wolf's, are 10 + Perception and stay that.
+
+The loader stores `Combatant::keen_senses` (bits `kKeenSight` 1, `kKeenHearing` 2, `kKeenSmell` 4). Static content, not hashed. No `SIM_EVENTS` tag. `perception_senses` on an ability check is not folded into `log_hash` (same as `skill`, `dc`, and `check_mode`). Replay stores the request. A fight that never sets the mask hashes as before. When the mask changes who is hidden, that is the existing 0xC5 fold.
+
+`rules5e::passive_perception` is unchanged: 10 + Perception, or the §25 printed override, shifted by a Wisdom reduction. Keen Senses never adds 5 to that number. SRD passive checks add 5 only for a check that has advantage, and only on the paths below. Two listed senses on one check are still one advantage (+5), never +10.
+
+**Named sense.** Advantage applies only when the Wisdom (Perception) check relies on a sense the creature has. A smell-only check does not gain Keen Hearing. A sight-only check does not gain Keen Smell.
+
+**Sight, and the vision hook.** Dim light, other light obscurement, and Sunlight Sensitivity still impose the existing −5 (`passive_sight_penalty`); those two sources do not stack. Keen Sight's advantage applies only when the viewer perceives the subject with sight (`Sight::sense == Sight`). On that same sight check, advantage and the −5 cancel (passive +0, a normal roll). While the subject is unseen, Keen Sight does not raise the opposing passive: the viewer is not seeing them. The engine still does not auto-fail a sight check for the blinded condition, or a hearing check for the deafened condition. Deafened only removes the hearing path (no Keen Hearing, and Hide will not treat the subject as heard).
+
+**Hide / unseen.** The creature is still hidden only from a hostile that cannot see it. The Stealth total is compared with the better of:
+
+- the sight passive: `passive_perception` plus the existing sight penalty (0 or −5). Keen Sight does not add +5 on this unseen path;
+- the keen non-sight passive: `passive_perception` + 5, when a listed non-sight sense can be used.
+
+Hearing can be used when the subject is audible and the viewer is not Deafened. On this path the viewer cannot see the subject, so `Sight::perceives` is that fact. Smell can be used on this opposing check whenever the creature has Keen Smell. SRD Keen Smell states no range, and the vision model has no smell fact, so range, wind, and cover for smell are deferred rather than invented. The two passives are never summed. A creature with no keen senses is unchanged (the sight passive only, including the −5).
+
+**Surprise.** `surprised_by_stealth` has no per-pair light or audible fact. Keen Hearing (unless Deafened) and Keen Smell add +5 to the passive it compares, still not stacked, and still not written into the printed passive. Keen Sight does not: there is no light fact, and dim light might have cancelled it. Audible gating is the Hide hook only.
+
+**Active Perception.** `ActionKind::AbilityCheck` with `skill` Perception and `perception_senses` naming the senses that check relies on (the same bits). Zero means the check names no sense, and Keen Senses does not apply; the caller may still pass `check_mode`. With a target, light, sunlight, and whether sight works come from `sight(actor, target)` (no sight hook: everyone sees everyone, as today). With no target there is no light penalty, and a named sight check is treated as sight working. The field is refused on any other action or skill, and if any other bit is set. Active Search as its own action stays unmodelled; this is the roll.
+
+**Forms.** Wild Shape and Polymorph copy the beast's `keen_senses` through `FormStats` and restore the creature's own on revert. A druid in wolf form uses the wolf's hearing and smell. The druid's Wisdom is still the one Wild Shape keeps.
+
+**Not this.** Magic Resistance, elf Perception proficiency, death dog's blanket Perception advantage, revealing a hidden creature by noise, and a smell range.
+
+## 31. Regeneration (monster@5 trait `regen`)
+
+SRD 5.1 troll: "The troll regains 10 hit points at the start of its turn. If the troll takes acid or fire damage, this trait doesn't function at the start of the troll's next turn. The troll dies only if it starts its turn with 0 hit points and doesn't regenerate."
+
+That sentence is the mechanic. The trait name is not. Author it on a monster@5 trait:
+
+```json
+"effect": { "kind": "regen", "amount": 10, "suppressed_by": ["acid", "fire"] }
+```
+
+`amount` is an integer 1..32767, the hit points regained, capped at the creature's hit point maximum. `suppressed_by` is a non-empty unique list of damage types (the common@1 enum). The loader stores one `Combatant::regeneration`: `amount`, and `suppressed_by` as a bitmask over `DamageType` in that enum's order. A second trait with the same amount and the same set adds nothing (validator warning). A second trait that differs is a load error (`a creature has one regeneration`). The loader refuses the kind on a character and on a file below monster@5.
+
+At the start of the creature's turn, a listed damage type taken since its previous turn started suppresses the heal. Any other damage does not. A resistance or immunity that reduces the hit points dealt to 0 leaves that type out of `DamageApplied::types_dealt`, so it does not suppress. Otherwise the creature regains `amount`. Dropping to 0 hit points does not kill it. It stays in the fight until a later turn of its own starts. Suppressed at that start, it dies. Clear at that start, it regenerates and stands. Massive damage still kills at once. A creature with no `regen` effect dies at 0 hit points as usual. The rules tests are `engine/rules/tests/regeneration_tests.cpp`. The content path is `engine/core/sim/tests/regeneration_content_tests.cpp` (`features.cpp` `apply_regen`, dispatched from `content.cpp`).
+
+`amount` and `suppressed_by` are static content, copied onto the combatant at spawn. They are not hashed. `regen_suppressed` and `regen_down` are the existing rules flags for "took a suppressing type since its last turn started" and "at 0 hit points, waiting for its turn." This kind does not fold them and does not claim a `SIM_EVENTS` tag. The next free hash tag stays **0xE3**. A fight whose creatures have no regeneration hashes as before. A completed heal or a death is already in hit points and `dead`. Replay of a loaded regenerator reproduces the heal from a logged hit. The 0 HP death is the same rules path; the sim test sets hit points for that case the way the rules tests do, because a content file sets only the starting hit points, so it cannot start a creature at 0.
+
+**Not this kind.** Oni and the shield guardian regain hit points only while they already have at least 1, with no damage-type list and with an ordinary death at 0. Loading `regen` on them would keep them up at 0. The shield guardian sentence is §55 (`regain`), not this trait. Radiant damage does suppress vampire spawn. The spawn still stays off `regen`: it heals only while it has at least 1 hit point, sunlight and running water also stop it, and it dies at 0. Rejuvenation (lich, ghost) is a different trait. Wild Shape and Polymorph do not copy `regeneration`: `FormStats` does not carry it, and `build_form` does not write it. The stat block is `content/packs/srd51.core/monsters/troll.json` (`srd51.monster.troll`): this effect, amount 10, `suppressed_by` acid and fire, and Keen Smell as `keen_senses` with `smell` (§30). The deferred troll row is unparked. Oni, the shield guardian, and vampire spawn still do not carry `regen`.
+
+## 32. Presentation visual and clip registry (character@6 / monster@6, Engine Core M0)
+
+`visual` is optional on `character@6` and `monster@6`. Migration 5 -> 6 is identity: older files do not gain a `visual` key. The loader still resolves a presentation for every stat block it accepts.
+
+| Authored | Resolved |
+|---|---|
+| `visual` absent, `type` `humanoid` | `kind` paperdoll, `kit` `paperdoll`, empty `standin_bin` |
+| `visual` absent, any other type, size tiny / small / medium / large | `kind` standin, `standin_bin` from size, `kit` `standin.<standin_bin>` |
+| `visual` absent, size huge or gargantuan | `kind` unbinned, empty `kit` (no M0 art bin) |
+| `visual.kind` / `visual.standin_bin` | override the default. `standin_bin` is `tiny`, `small`, `medium`, or `large` |
+| `visual.kit` | kit id. Wins over `presentation.sprite` |
+| `presentation.sprite` | kit id when `visual.kit` is absent |
+| `visual.art_root` | pack-relative directory under `art/`. When `ContentLibrary::add` is given the pack directory, the directory must exist. `..` is refused |
+| `visual.size_short` | stored on `CreatureVisual`. `kSizeShortRuntime` is false, so M0 does not swap `_short` plates and does not scale |
+
+`CreatureVisual` sits on `Archetype`. `ActorView` copies `visual_kind` (`"paperdoll"` / `"standin"` / `"unbinned"`), `kit`, `standin_bin`, `art_root`, and `size_short`. `ActorView::clip` is the clip-clock request (Render & Platform). There is no `hard_land` field; that name is only a registry alias. None of these fields are written back into sim, and none are folded into `Combat::hash` or `log_hash`. No new `SIM_EVENTS` tag. A humanoid with no visual block, including the sample goblin, resolves to paperdoll, not `standin.<size>`.
+
+The clip registry is `content/packs/srd51.core/art/clips.json` (not a manifest content document; `validate_packs` skips `art/`). `ContentLibrary::load` reads `<pack>/art/clips.json` when the file is present. Every alias target must be a clip id in that kit. `ClipRegistry::resolve` maps `-` to `_` and is the only alias path. The paperdoll kit resolves `hard_land` / `hard-land` to `prone_idle`, `dodge` to `guard`, `knockback` to `react`, and swim / fly idle and move to `idle` / `walk`. The stand-in kits (`standin.tiny` through `standin.large`) resolve `climb` and `crawl` to `walk`, `hide` to `idle`, `melee` / `melee_near` / `melee_far` to `attack`, `hard_land` / `hard-land` to `fall_impact` (not `prone_idle`), and an unknown name to `idle`.
+
+Facing stays the four iso values `SouthEast`, `SouthWest`, `NorthEast`, `NorthWest`. Art still authors eight. A committed `TileMoved` or a later aim / attack sets `ActorView::facing` from the tile step (`+x` SouthEast, `+y` SouthWest). That state lives on the presentation feed, not on the combatant. `SouthWest` and `NorthWest` are the west mirror. Huge and gargantuan bins, `size_short` runtime, and an 8-value facing enum are not M0.
+
+## 33. Save grappled by the user, and grapple `max_size` (monster@5)
+
+Chuul Tentacles and Otyugh Tentacle Slam name creatures the monster has grappled. A monster@5 `save_effect` may set `target_requires_any: ["grappled_by_self"]` and nothing else from that enum. Each creature the cast names must be grappled by the user (`condition_source` of Grappled is the user). Any other target refuses the cast before the action is spent (`target must be grappled by the user`). `legal_actions` does not list those targets. The built-in AI skips the save when its current target fails the gate, and uses it when that target passes.
+
+`targets` on that save is an integer 1..8 (default 1): how many creatures one cast may name. Tentacle Slam sets it high enough to name each creature the tentacles are holding. The engine does not add a grappled creature the caller left out, and one creature outside the gate refuses the whole cast. Other `target_requires_any` values stay weapon-attack-only. An area save cannot carry the key (`target_requires_any takes no area`). Below monster@5 the loader says `target_requires_any on a save_effect needs a monster@5 file`. The bit is `SpellDef::target_requires_any` (`kTargetGateGrappledBySelf`). Static content, not hashed. No new `SIM_EVENTS` tag.
+
+Grapple `max_size` is §5. Chuul's pincer is Large or smaller; an otyugh's tentacle is Medium or smaller.
+
+**Not this key.** A negative gate ("one target not grappled by the user", giant crocodile tail, ankheg Acid Spray) is not `grappled_by_self`. `attack_effect` still has no such gate (giant toad / giant frog Swallow). Otyugh Tentacle Slam is that standalone save on `srd51.monster.otyugh` (`targets` 2, `range_ft` 10, half damage, stunned until the end of the otyugh's next turn). It is not a free rider.
+
+**Multiattack free rider (B3b, chuul Tentacles).** A monster@5 multiattack option may set `free_rider` to the id of a `rider_only: true` save_effect on the same creature. The option is still two (or more) attack indices. When those attacks finish, `TurnBudget::free_rider` is that save's spell id until it is used or another action is spent. The cast does not spend an action. The save's `grappled_by_self` gate is checked at that moment, so a pincer in this same Multiattack that just established the grapple counts, and so does a grapple already held. One use; one named target (`targets` stays 1 for chuul). It is not listed in `legal_actions` and the built-in AI does not cast it as its own action. Outside that window the cast is refused (`only a multiattack rider`) and the action is not spent. A refused target does not consume the use. `count_dice` cannot be combined with `free_rider`. A `rider_only` save that no option names, or a `free_rider` that does not name one, is a load error. Below monster@5 the loader says `multiattack free_rider needs a monster@5 file` or `rider_only needs a monster@5 file`. Not hashed: the cast is an ordinary `CastSpell` in the log, and replay re-arms the window. No new `SIM_EVENTS` tag.
+
+**Paralyzed while poisoned.** The first `apply[]` entry of that save may set `while` to a different condition (`poisoned`, `while: paralyzed`). The primary condition's effect holds both. A successful repeat save, or the timer (1 minute is 10 rounds), ends both. Immunity to the primary condition applies neither (unlike `also_on_fail_by`). `while` needs a tracked primary condition, takes no area, and takes no `also_on_fail_by` or `control`. On a later `apply[]` entry the loader says `while goes on the first apply[] entry`.
+
+Chuul is authored (`srd51.monster.chuul`): pincer `max_size: large` and `max_grapples: 2`, Multiattack `pincer` ×2 with `free_rider: tentacles`. Amphibious and Sense Magic stay descriptive.
+
+Otyugh is authored (`srd51.monster.otyugh`): tentacle `max_size: medium`, `max_grapples: 2`, and `restrains` (escape DC 13). Tentacle Slam is its own action. `range_ft` 10 is the tentacle reach; the slam text names no separate distance, and the cast does not add a grappled creature the caller left out. Limited Telepathy stays descriptive.
+
+## 34. Area-save petrify escalation (`escalates` on `save_effect`, monster@5)
+
+SRD 5.1 Gorgon Petrifying Breath is the basilisk sentence on a cone, not a gaze. A failed save restrains. The restrained target repeats the save at the end of its next turn. Success ends the effect. Failure replaces restrained with petrified. That is `SpellDef::escalates` / `escalate_to` / `escalate_margin`, which the save resolver already applies. The keys now compile on a monster@5 `save_effect`, including one with an `area`. Gaze (§11) is unchanged.
+
+```json
+"kind": "save_effect", "save": { "ability": "con", "dc": 13 }, "origin": "self",
+"area": { "shape": "cone", "size_ft": 30 },
+"apply": [ { "condition": "restrained", "repeat_save": "end_of_turn" } ],
+"escalates": true, "escalate_to": "petrified", "escalate_margin": 0,
+"usage": { "kind": "recharge", "min": 5 }
+}
+```
+
+| key | rule | loader error (`<id>: save_effect '<aid>': ...`) |
+|---|---|---|
+| `escalates` | boolean, required true to turn the path on | `escalates must be a boolean`; `escalate_to / escalate_margin need escalates` |
+| `escalate_to` | common@1 condition; omitted means `petrified` | `bad escalate_to`; `escalate_to must differ from the primary condition` |
+| `escalate_margin` | integer 0..30; omitted means 0 | `bad escalate_margin`. Above 0, failing the first save by that much applies `escalate_to` at once (medusa). Gorgon is 0 |
+
+The primary `apply[]` entry must be a tracked condition with a repeat save (`end_of_turn`, `start_of_turn`, `on_damage`, or `until_save`). Further `apply[]` entries, `while`, `control`, and `also_on_fail_by` are refused. A `save_condition` rider is refused (`escalates is a save_effect action, not a rider`). Below monster@5: `escalates / escalate_to / escalate_margin need a monster@5 file`. `area_effect` does not gain the keys; breaths that already use `save_effect` with an `area` do.
+
+No new hash and no new `SIM_EVENTS` tag. `ActiveSpellEffect::escalates` is already folded under 0xAA while the repeat is pending, and cleared when the effect petrifies or ends.
+
+`srd51.monster.gorgon` authors the breath (cone 30 ft, Con DC 13, recharge 5–6, margin 0). "Until freed by the greater restoration spell" stays description only, as basilisk. Trampling Charge is the gore's `on_hit` (`moved_at_least_ft` 20, Str DC 16, prone untimed; elk / boar, so it does not also fire on hooves). The bonus-action hooves against the prone target stays a partial, the same gap as lion and tiger Pounce's bonus bite. "Straight toward" is not checked.
+
+## 35. Damageless restraining grapple, and pull (monster@5, B5)
+
+SRD 5.1 roper Tendril: "Hit: The target is grappled (escape DC 15). Until the grapple ends, the target is restrained". The hit never deals damage. That is not §27. §27 is a choice (`instead_of_damage`, `ActionRequest::grapple_instead`, log_hash 0xE2), and the loader still refuses that choice together with `restrains`.
+
+Author the tendril as a weapon attack with no `damage` array and an `on_hit` grapple rider `"no_damage": true` (a bool). A hit grapples and deals no damage: no damage roll, no concentration save from this attack. It is not a request bit. `no_damage` may combine with `restrains`, `exclusive`, `max_grapples`, and `max_size`. It cannot combine with `instead_of_damage`. Listing `damage` or `half_hp_damage` on that attack is a load error (`grapple no_damage can't list damage`). Below monster@5 the loader says `grapple no_damage needs a monster@5 file`. A bad bool is `bad grapple no_damage`.
+
+`no_damage` is an extended rider, so the grapple records `via_attack`. The lasting state folds under the existing 0xDB when `via_attack` is set. There is no new flag bit and no new `SIM_EVENTS` tag. The grapple ends when the two creatures are farther apart than that attack's reach (a plain Grapple action, `via_attack` 0xFF, stays 5 feet). A 50-foot tendril still holds a creature a 25-foot pull left at 25 feet.
+
+**Pull.** SRD Reel: "The roper pulls each creature grappled by it up to 25 feet straight toward it." A monster@5 action:
+
+```json
+{ "id": "reel", "name": "Reel", "kind": "pull", "feet": 25, "targets": 6,
+  "target_requires_any": ["grappled_by_self"] }
+```
+
+`feet` is 5..60, a multiple of 5. `targets` is 1..8 (default 1): how many creatures one use may name. `target_requires_any` is `["grappled_by_self"]` and nothing else. Each named creature must be grappled by the user. One that is not refuses the use before the action is spent (`target must be grappled by the user`). The engine does not add a grappled creature the caller left out. There is no save and no damage. The pull is toward the user (`ForcedMoveSpec` mode 2) and `up_to`. Omitting `ActionRequest::forced_feet` pulls the full distance. A multiple of 5 up to `feet` pulls that far and folds under the existing 0xB4. There is no second range and no sight check: being grappled is the constraint. Below monster@5 the loader says `pull needs a monster@5 file`.
+
+This is not a `free_rider`. A free rider runs after every attack in the option, and only for a `rider_only` save. Reel inside the roper's Multiattack sits between the tendril attacks and the bite. That order is not this action. The pull stays its own action.
+
+monster@5's action schema (and the same arm on monster@6) requires `damage` on a weapon attack unless `on_hit` contains a grapple with `no_damage` true. That attack must omit `damage`. Listing it is a schema error and the loader's `grapple no_damage can't list damage`.
+
+`srd51.monster.roper` authors the tendril (`no_damage`, `restrains`, escape DC 15, `max_grapples` 6, reach 50, no damage array) and Reel (`pull`, `feet` 25, `targets` 6). Multiattack is tendril ×4 then bite. Reel is not between them. Grasping Tendrils as attackable objects, and disadvantage on Strength checks and Strength saving throws, stay description only. The built-in AI does not use Reel (`SaveAction::range_ft` is 0, so the save-action loop skips it). False Appearance and Spider Climb stay descriptive. Counts are 204 authored and 6 deferred.
+
+Not hashed beyond 0xB4 and 0xDB. No new tag. B5 left **0xE3** free; B6 claims it (§36). Next free is **0xE4**.
+
+## 36. Bite disease, 24-hour hit point maximum (monster@5 `save_condition` `disease`)
+
+SRD 5.1 otyugh Bite (the death dog is the same schedule at DC 12): "it must succeed on a DC 15 Constitution saving throw against disease or become poisoned until the disease is cured. Every 24 hours that elapse, the target must repeat the saving throw, reducing its hit point maximum by 5 (1d10) on a failure. The disease is cured on a success. The target dies if the disease reduces its hit point maximum to 0. This reduction to the target's hit point maximum lasts until the disease is cured." The 5 is the average. The roll is 1d10.
+
+Author it on the bite's `on_hit` `save_condition`, not as a second save:
+
+```json
+"on_hit": [{
+  "kind": "save_condition",
+  "save": {"ability": "con", "dc": 15},
+  "apply": [{"condition": "poisoned", "duration": {"kind": "until_cured"}}],
+  "disease": {"every_hours": 24, "hp_max": "1d10"}
+}]
+```
+
+`every_hours` is 24. `hp_max` is dice (`1d10` for both printed bites). The save is Constitution. `apply` is exactly one `until_cured` poisoned entry. The rider lists no `damage`. It is an `on_hit` rider, not an `on_event` and not a `save_effect`. Below monster@5 the loader says `disease needs a monster@5 file`.
+
+A failed save applies poisoned (the existing untracked `until_cured` bit) and contracts one disease for that rider's spell id. A second failed save from the same rider does not add another row and does not reset the clock. A successful bite save does not cure a disease already contracted. Immunity to poisoned skips the condition and still contracts the schedule: the hit point maximum loss is the disease, not the condition.
+
+The clock is the encounter round. 24 hours is 14400 rounds (`hours × 600`, the same hour as ghast Stench and Dreadful Glare). On the diseased creature's turn, once `round` has reached `next_round`, it repeats that Constitution save. Failure rolls `hp_max`, adds it to that disease's reduction, and schedules another 24 hours. Current hit points above the new maximum are lost. A maximum of 0 kills. Success removes that disease's reduction and, when no other disease and no tracked effect still applies poisoned, removes poisoned. Current hit points do not rise when the maximum does.
+
+`effective_hp_max` subtracts Life Drain and this reduction. A long rest clears Life Drain only. This reduction stays until that disease is cured.
+
+`Combat::hash` tag **0xE3** folds the rows, then any `disease_hp_max_reduction`, only while one of them exists. Empty state hashes as before. Next free is **0xE4**.
+
+Not this key. Mummy rot lowers the maximum by 3d6 every 24 hours with no repeat save and no cure-on-success; `curse` is still only `no_regain_hp`. Lesser Restoration ends the poisoned condition and does not cure this disease. Lay on Hands' disease spend and Divine Health are not wired. Greater Restoration's hit point maximum option clears Life Drain only. Two `until_cured` poisons without a disease row share one condition bit; curing a disease clears that bit unless another disease row or a tracked effect still applies it. `srd51.monster.otyugh` authors the bite with this object (Con DC 15). Death dog stays on its poisoned-only rider until T&C adds `disease`.
+
+## 37. Both-hits Engulf (monster@5 multiattack `engulf_both_hits`)
+
+SRD 5.1 Shambling Mound Multiattack: "The shambling mound makes two slam attacks. If both attacks hit a Medium or smaller target, the target is grappled (escape DC 14), and the shambling mound uses its Engulf on it." Engulf: "The shambling mound engulfs a Medium or smaller creature grappled by it. The engulfed target is blinded, restrained, and unable to breathe, and it must succeed on a DC 14 Constitution saving throw at the start of each of the mound's turns or take 13 (2d8 + 4) bludgeoning damage. If the mound moves, the engulfed target moves with it. The mound can have only one creature engulfed at a time."
+
+A monster@5 multiattack option may set `engulf_both_hits`. The option lists at least two attacks. When every attack in that option hits the same creature, the engine applies a gelatinous-cube contain (kind `engulf`) to that creature. No save is rolled to avoid it. It is not a `free_rider` and not an action. One attack missing, or the attacks hitting different creatures, does not engulf. A target larger than `max_size` takes the hits' damage and is not engulfed. Ending the turn before the last attack forfeits it.
+
+```json
+"options": [{
+  "id": "slams",
+  "attacks": ["slam", "slam"],
+  "engulf_both_hits": {
+    "max_size": "medium",
+    "escape_dc": 14,
+    "while": "blinded",
+    "damage": {"dice": "2d8+4", "type": "bludgeoning"}
+  }
+}]
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `max_size` | `tiny` .. `gargantuan` | `bad engulf_both_hits max_size` |
+| `escape_dc` | integer 1..30. A Strength check, the cube's escape (special 4) | `bad engulf_both_hits escape_dc` |
+| `while` | `blinded` only | `engulf_both_hits while must be blinded` |
+| `damage` | `{dice, type}` dealt at the start of each of the user's turns | `engulf_both_hits needs damage {dice, type}` / `bad engulf_both_hits damage` |
+
+The condition is restrained. Blinded lasts as long as that effect (`while`, the B3b one-entry rule). Immunity to restrained applies neither. Immunity to blinded still restrains and contains. `contain_one` refuses a second engulf while this user already holds any contained creature. The first one stays. Escape (special 4, Strength vs `escape_dc`) ends restrained, blinded, and the contain. The user's death frees the creature and does not knock it prone (that is swallow).
+
+`count_dice` and `free_rider` cannot combine with this key. Below monster@5 the loader says `multiattack engulf_both_hits needs a monster@5 file`. The synthetic spell id is `<archetype>#<option>#engulf`. It is not in `spells_known` and it is not a `save_action`.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The contain effect's turn-start damage is `damage_when` 3 under the existing 0xAC. Blinded is the effect's `while`, derived from the SpellDef. The both-hits window is `TurnBudget` and is not hashed; replay re-runs the attacks. Next free stays **0xE4**.
+
+Product calls, not a second contain model:
+
+* The printed "grappled (escape DC 14)" is the Strength escape check on the contain. A sourced Grappled condition is not added. Two escapes would be a second action the stat block does not print. Drag-by-grapple is not this sentence.
+* Turn-start damage is automatic, the gelatinous cube's contain damage. The printed "DC 14 Constitution saving throw or take 13 (2d8 + 4)" is not rolled. The dice are the printed `2d8+4`.
+* "Unable to breathe" is the existing suffocation gap (coverage row 11). Not modelled.
+* "If the mound moves, the engulfed target moves with it" is the existing contain carry. `container_of` is set. Sim movement of contained creatures stays pending.
+* Lightning Absorption is §43. It is not this key.
+
+`srd51.monster.shambling_mound` authors this option on Multiattack (`slams`: slam ×2) and Lightning Absorption (§43). Slam is natural 2d8 Str (+7 / 2d8 + 4 bludgeoning, reach 5). The printed Constitution save is not rolled. There is no sourced Grappled condition. Unable to breathe, and the engulfed creature moving with the mound, stay the contain gaps. Counts are 204 authored and 6 deferred.
+
+## 38. Deadly Leap (monster@5 action `deadly_leap`)
+
+SRD 5.1 Bulette Deadly Leap (5e-database `a6212be`): "If the bulette jumps at least 15 feet as part of its movement, it can then use this action to land on its feet in a space that contains one or more other creatures. Each of those creatures must succeed on a DC 16 Strength or Dexterity saving throw (target's choice) or be knocked prone and take 14 (3d6 + 4) bludgeoning damage plus 14 (3d6 + 4) slashing damage. On a successful save, the creature takes only half the damage, isn't knocked prone, and is pushed 5 feet out of the bulette's space into an unoccupied space of the creature's choice. If no unoccupied space is within range, the creature instead falls prone in the bulette's space."
+
+It is its own action. It is not a Multiattack rider and not a `free_rider`. A monster@5 action:
+
+```json
+{
+  "id": "deadly_leap",
+  "name": "Deadly Leap",
+  "kind": "deadly_leap",
+  "jump_ft": 15,
+  "save": { "ability": "str", "dc": 16 },
+  "save_alt": "dex",
+  "damage": [
+    { "dice": "3d6+4", "type": "bludgeoning" },
+    { "dice": "3d6+4", "type": "slashing" }
+  ],
+  "push_ft": 5
+}
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `jump_ft` | 5..60, a multiple of 5. The turn's `jumped_ft` must already be at least this | `deadly_leap: jump_ft must be 5..60, a multiple of 5` |
+| `save` | `{ability, dc}`. `dc` is 1..30. This ability is used on a tie | `deadly_leap: missing save` / `deadly_leap: bad save` |
+| `save_alt` | the other ability. Must differ from `save.ability` | `deadly_leap: save_alt must be a different ability` |
+| `damage` | exactly two `{dice, type}` packets. One save covers both | `deadly_leap: damage needs two components` / `deadly_leap: bad damage` |
+| `push_ft` | 5..30, a multiple of 5. The success push | `deadly_leap: push_ft must be 5..30, a multiple of 5` |
+
+`on_success`, `apply`, and `usage` are not keys. Half damage, prone, and at-will are the sentence. Below monster@5 the loader says `deadly_leap needs a monster@5 file`. The synthetic spell id is `<archetype>#<action id>`. It is a `save_action` and it is in `spells_known`. The cast is `ActionKind::CastSpell` of that id. It spends the action. A cast that has not jumped far enough, or that names the user, is refused with the action unspent.
+
+The two packets are one roll each, shared by every target (`also_damage`, the Ice Storm peer: one save, not two). Half is integer division. A creature killed by the first packet does not take the second. Resistance, immunity, and vulnerability are the existing per-type mitigation. The damage is not magical. Prone on a failure is untracked, the Shove peer. Immunity to prone skips the condition. The damage still applies.
+
+`log_hash` tag **0xE4** folds `ActionRequest::jump_ft` on a Move, only when it is non-zero. `TurnBudget::jumped_ft` is not hashed. Replay re-runs the moves. Next free is **0xE5**.
+
+Product calls:
+
+* **Jump distance.** A completed own-turn Move may set `jump_ft`: a multiple of 5, at most `5 * move_tiles` (the distance of the step, not its terrain cost). Those feet add to `jumped_ft`. They are not a second movement spend (`move_ft` is the cost). An interrupted move does not add them, the same place `moved_ft` is added. A prone creature cannot jump. A walk with `jump_ft` 0 does not qualify, including a walk of 15 feet or more. This is not the Charge / Pounce `moved_ft` proxy. Strength, a 10-foot running start, and high jump are not checked. The built-in pathing does not set `jump_ft`. A caller does.
+* **Landing.** A Step with `jump_ft` greater than 0 may enter and end in another creature's space, including a hostile fewer than two sizes away. The occupied tile still costs as difficult terrain (the existing through-creature cost). The action does not move the token. Sim requires every named target's footprint to overlap the leaper's current footprint (`target is not in the landing space`). Rules does not see tiles: the named targets are the creatures in the space. The engine does not add a creature the caller left out. At most 8, the existing multi-target save cap. There is no size gate. Overlap is the space, so a Large leaper's footprint is the space. An ally may be named. `legal_actions` lists hostiles only, the existing save-action list, and only once `jumped_ft` meets the gate.
+* **Str or Dex.** At the roll, each target uses whichever of the two abilities has the higher `save_modifier` (ability modifier, plus proficiency when proficient in that save). A tie uses `save.ability` (Strength for the printed leap). The choice is not a request field and is not hashed. Cover's bonus and Evasion apply only when Dexterity is the one rolled (the existing Dexterity save rules). Legendary Resistance can turn a failure into a success (the existing rule). A caller cannot pick the lower bonus.
+* **Push.** A success queues the existing push (mode 1): straight away from the leaper's centre, coincident centres break toward +x, exactly `push_ft`, not "up to". That walk is the creature's choice of unoccupied space. There is no per-creature destination. If the hook moves 0 feet, the creature falls prone in the space unless it is immune to prone, and it still has the half damage. With no hook the push is reported as the full distance (the existing no-hook rule), so the blocked case is the sim.
+* **End of turn.** The existing refusal to end a turn in another creature's space still applies to the leaper. A failed save, or a push that cannot move, leaves that creature in the space, so EndTurn is refused while a step out exists. The leap does not grant a lasting exception. A creature that already has Air Form or Water Form (§39) may keep a hostile's space. The leap's push still needs an unoccupied tile, and that form does not make its own tile unoccupied.
+* **AI.** The built-in AI does not declare a jump and does not use this action.
+
+`srd51.monster.bulette` authors this action with those packets. Standing Leap's 30-foot long jump and 15-foot high jump, with or without a running start, stay description only. Burrow is the speed entry, not this key. The built-in AI does not leap. Counts are 204 authored and 6 deferred.
+
+## 39. Air Form / Water Form (monster trait ids `air_form`, `water_form`)
+
+SRD 5.1 Air Form, as the deferred ledger states it: the elemental can enter a hostile creature's space and stop there. It can move through a space as narrow as 1 inch wide without squeezing. SRD 5.1 Water Form is the same two sentences. Whelm is §41 and Freeze is §42. The movement sentence is the Air Form sentence.
+
+A descriptive trait is enough. No effect object. The Flyby peer (`traits[].id`), not a new effect kind.
+
+```json
+{ "id": "air_form", "name": "Air Form", "description": "The elemental can enter a hostile creature's space and stop there. It can move through a space as narrow as 1 inch wide without squeezing." }
+```
+
+`water_form` is the same object with that id and the name Water Form. Either id sets `Combatant::enter_hostile_space`. Both on one creature are still one flag. Any other id, including the authored `fire_form`, does not.
+
+The flag is static content. It is not hashed. No `SIM_EVENTS` tag. Next free stays **0xE5**. Replay reloads the trait with the archetype.
+
+Product calls:
+
+* **Who may overlap whom.** Only the mover with the flag. It may enter a hostile creature's space at any size difference, including fewer than two sizes apart, and it may stop there. It may end its turn there. The other creature does not gain the exception: a same-size hostile still cannot enter the elemental's space, and a creature two or more sizes apart may pass through and still may not stop. A swarm is unchanged (both ways, `occupied_except`).
+* **Hostile only.** `hostile` is a different team, the existing test. A nonhostile space is the existing rule: the elemental may move through an ally, and it may not willingly stop there. A footprint that overlaps a hostile and a nonhostile may not stop. Two allied elementals therefore may not both stop in one hostile's space, because each would also be stopping in its ally's space. Two elementals that are hostile to each other may both stop in the same hostile's space.
+* **Difficult terrain.** The occupied tile still costs as difficult terrain (the existing through-creature cost, 10 ft on open ground). The form does not waive it. An airborne or burrowed mover still ignores that cost (the existing altitude rule). A vertical span that does not overlap is not in the way.
+* **Deadly Leap.** A jump step (`jump_ft` > 0) may still end in any creature's space, and EndTurn still refuses that overlap for a leaper that lacks this flag while a step out exists (§38). The form is not granted by the leap. A success push still walks to an unoccupied tile (`occupied_except`). The form does not make the elemental's tile unoccupied, and it does not let the push end inside another creature. A push that moves 0 feet still knocks the target prone in the space.
+* **Pathing.** `occupied_except` still lists the other creature's tiles. The built-in pathing, readied moves, teleports, summons, and forced movement do not route through them. That is the size-space audit's existing deferral of AI movement through spaces. A caller Steps. The built-in AI does not seek the overlap.
+* **Forms.** The flag is not a `FormStats` field, the Flyby peer. A transform does not add it or clear it.
+* **1 inch.** Deferred. The grid has no sub-tile openings (the swarm Tiny-openings peer, and the authored ooze / shadow / Fire Form sentences that only describe the gap). Squeezing stays the existing Large+ opt-in. This flag is not squeezing and does not open a 1-inch gap.
+
+`fire_form` on the authored fire elemental includes the enter-and-stop clause and also the 1d10 contact fire. This flag does not apply that damage, so `fire_form` is not this id. The fire row stays partial. Whirlwind is §40. Whelm is §41. Freeze is §42.
+
+`srd51.monster.air_elemental` authors Air Form with this id. `srd51.monster.water_elemental` authors Water Form with `water_form`. The 1-inch gap stays description only on both. Counts are 204 authored and 6 deferred.
+
+## 40. Whirlwind (monster@5 action `whirlwind`)
+
+SRD 5.1 Air Elemental Whirlwind, as dnd5eapi states the action: "Whirlwind (Recharge 4–6). Each creature in the elemental's space must make a DC 13 Strength saving throw. On a failure, a target takes 15 (3d8 + 2) bludgeoning damage and is flung up 20 feet away from the elemental in a random direction and knocked prone. If a thrown target strikes an object, such as a wall or floor, the target takes 3 (1d6) bludgeoning damage for every 10 feet it was thrown. If the target is thrown at another creature, that creature must succeed on a DC 13 Dexterity saving throw or take the same damage and be knocked prone. If the saving throw is successful, the target takes half the bludgeoning damage and isn't flung away or knocked prone."
+
+The success sentence is the Strength save. The Dexterity clause stays "or take the same damage and be knocked prone."
+
+It is its own action. It is not a Multiattack rider, not an `area_effect`, and not Whelm.
+
+```json
+{
+  "id": "whirlwind",
+  "name": "Whirlwind",
+  "kind": "whirlwind",
+  "save": { "ability": "str", "dc": 13 },
+  "damage": [ { "dice": "3d8+2", "type": "bludgeoning" } ],
+  "fling_ft": 20,
+  "impact": { "dice": "1d6", "per_ft": 10, "type": "bludgeoning" },
+  "impact_save": { "ability": "dex", "dc": 13 },
+  "usage": { "kind": "recharge", "min": 4 }
+}
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `save` | `{ability, dc}`. `dc` is 1..30. The Strength save | `whirlwind: missing save` / `whirlwind: bad save` |
+| `damage` | one `{dice, type}` or `{flat, type}` packet | `whirlwind: damage needs one component` / `whirlwind: bad damage` |
+| `fling_ft` | 5..60, a multiple of 5. Up to this far | `whirlwind: fling_ft must be 5..60, a multiple of 5` |
+| `impact` | `{dice` or `flat`, `per_ft`, `type}`. `per_ft` is 5..30, a multiple of 5 | `whirlwind: missing impact` / `whirlwind: bad impact` |
+| `impact_save` | `{ability, dc}` for the creature thrown into | `whirlwind: missing impact_save` / `whirlwind: bad impact_save` |
+| `usage` | `recharge` with `min` 2..6. At-will and pool are refused | `whirlwind: recharge is the sentence` |
+
+`on_success` and `apply` are not keys. Half on the Strength success, prone, and the fling are the sentence. Below monster@5 the loader says `whirlwind needs a monster@5 file`. The synthetic spell id is `<archetype>#<action id>`. It is a `save_action` and it is in `spells_known`. The cast is `ActionKind::CastSpell` of that id. It spends the action and the recharge. A cast that names the user, or a creature that is not in the space, is refused with the action unspent.
+
+One `3d8+2` roll is shared by every named target (the existing save). A success takes half of that roll, integer division (`OnSave::Half`). A failure takes the full roll. A creature killed by that packet is not flung (a dead creature is not moved). Resistance, immunity, and vulnerability are the existing per-type mitigation, applied after the half. The damage is not magical. Prone on a failure is untracked, the Shove peer. Immunity to prone skips the condition. The damage and the fling still apply on a failure. The Dexterity impact save is not this half.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The direction is an RNG draw, not a request field. Replay re-runs the save, the d8, and the walk. Next free stays **0xE5**.
+
+Product calls:
+
+* **Strength success.** "If the saving throw is successful, the target takes half the bludgeoning damage and isn't flung away or knocked prone." Half is integer division of the shared roll. `on_save` is `Half`. No fling and no prone. The Dexterity impact save is a different sentence and stays failure-only.
+* **In the space.** Footprint overlap, the Deadly Leap landing test (§38). B9 `enter_hostile_space` is how a same-size hostile comes to be there. The action does not require `air_form`. The caller names the creatures. The engine does not add one the caller left out. At most 8. An ally may be named. `legal_actions` lists overlapping hostiles only. Nobody overlapping: one cast with no target. The action and the recharge are spent, and no save and no dice are rolled. A named creature that does not overlap is refused (`target is not in the elemental's space`). The user is not a target.
+* **Random direction.** One d8 per creature that fails, in named-target order, from the encounter RNG, after that save and only then. Face 1 is +x and the faces go clockwise: E, SE, S, SW, W, NW, N, NE. That replaces the push's away-from-centre direction. "Away" is the fling along that ray, up to `fling_ft`. A ray that first crosses the elemental's own tiles still counts. Those tiles are not an object and not a creature. The caller cannot choose a shorter fling (`forced_feet` is not this action).
+* **Object.** The next step's footprint is not walkable (a wall, or off the map). The thrown creature takes `impact` once per `per_ft` of feet it actually moved before the stop (`feet_moved / per_ft`, integer, one roll of that many dice, or a flat bonus times that count and no roll). Under `per_ft` feet: the strike happens and the dice are 0. A clear path of the full distance strikes nothing.
+* **Creature.** The next step holds another creature, not the elemental. The lowest id wins if several share the step. The thrown creature does not take the object packet. That creature makes `impact_save`. A failure takes the same impact packet (the feet the first creature moved, not the `3d8+2`) and is knocked prone. A success takes no damage and is not prone. Not half. Evasion does not apply (it is not a half-on-success Dexterity effect). Cover is not added. Legendary Resistance can turn the failure into a success (the existing save). An object and a creature on the same step: the object wins, and there is no Dexterity save.
+* **Floor.** A fling that walks onto a ledge uses the existing fall (1d6 bludgeoning per 10 feet fallen, prone when that damage lands). Whirlwind does not add a second packet for the horizontal feet. A flat landing is not a floor strike.
+* **No grid.** With no forced-move hook the fling is reported as the full distance and strikes nothing (the existing no-hook rule). Impact is what the hook reports.
+* **Recharge.** Available at the start of combat, the breath-weapon peer. The built-in AI does not use the action.
+* **Not this action.** Whelm (§41), Freeze (§42), and the 1-inch gap. `srd51.monster.air_elemental` authors this action. The 1-inch gap stays description only. The built-in AI does not use it. `srd51.monster.water_elemental` authors Whelm (§41) and Freeze (§42). Counts are 204 authored and 6 deferred.
+
+## 41. Whelm (monster@5 action `whelm`)
+
+SRD 5.1 Water Elemental Whelm. dnd5eapi records `success_type` `none` and this action text. The API `desc` drops the word "check" ("a DC 14 Strength and succeeding"). The complete sentence is the SRD's. Quote it in full, because a truncated success sentence is what set Whirlwind's `on_save` wrong (§40):
+
+"Whelm (Recharge 4–6). Each creature in the elemental's space must make a DC 15 Strength saving throw. On a failure, a target takes 13 (2d8 + 4) bludgeoning damage. If it is Large or smaller, it is also grappled (escape DC 14). Until this grapple ends, the target is restrained and unable to breathe unless it can breathe water. If the saving throw is successful, the target is pushed out of the elemental's space.
+
+The elemental can grapple one Large creature or up to two Medium or smaller creatures at one time. At the start of each of the elemental's turns, each target grappled by it takes 13 (2d8 + 4) bludgeoning damage. A creature within 5 feet of the elemental can pull a creature or object out of it by taking an action to make a DC 14 Strength check and succeeding."
+
+The success sentence is the push. It is not half damage. `on_save` is `None`.
+
+It is its own action. It is not a Multiattack rider, not an `area_effect`, not a contain, and not Whirlwind.
+
+```json
+{
+  "id": "whelm",
+  "name": "Whelm",
+  "kind": "whelm",
+  "save": { "ability": "str", "dc": 15 },
+  "damage": [ { "dice": "2d8+4", "type": "bludgeoning" } ],
+  "grapple": { "escape_dc": 14, "max_size": "large" },
+  "crush": { "dice": "2d8+4", "type": "bludgeoning" },
+  "usage": { "kind": "recharge", "min": 4 }
+}
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `save` | `{ability, dc}`. `dc` is 1..30. The Strength save | `whelm: missing save` / `whelm: bad save` |
+| `damage` | one `{dice, type}` or `{flat, type}` packet. The failed save | `whelm: damage needs one component` / `whelm: bad damage` |
+| `grapple.escape_dc` | integer 1..30. The grapple's escape DC | `whelm: missing grapple` / `whelm: bad grapple` |
+| `grapple.max_size` | `tiny` .. `gargantuan`. A larger target is not grappled | `whelm: bad grapple` |
+| `crush` | one `{dice, type}` or `{flat, type}` packet. Later turns | `whelm: missing crush` / `whelm: bad crush` |
+| `usage` | `recharge` with `min` 2..6. At-will and pool are refused | `whelm: recharge is the sentence` |
+
+`on_success`, `apply`, and `restrains` are not keys. No damage on a success, the push, and restrained-until-the-grapple-ends are the sentence. Below monster@5 the loader says `whelm needs a monster@5 file`. The synthetic spell id is `<archetype>#<action id>`. It is a `save_action` and it is in `spells_known`. The cast is `ActionKind::CastSpell` of that id. It spends the action and the recharge. A cast that names the user, or a creature that is not in the space, is refused with the action unspent.
+
+One roll of `damage` is shared by every named target (the existing save). A failure takes that roll. A success takes none of it. Not half. A creature killed by that packet is not grappled and is not pushed. Resistance, immunity, and vulnerability are the existing per-type mitigation. The damage is not magical.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The grapple records `via_attack` **0xFE** (not an attack index, and not 0xFF, which 0xDB skips). Restrained rides the existing 0xDB fold. The crush is an effect with `damage_when` 3 and `contain` 0, so it folds under the existing 0xAC. The push direction is not a request field. Replay re-runs the save and the walk. Next free stays **0xE5**.
+
+Product calls:
+
+* **Success.** "If the saving throw is successful, the target is pushed out of the elemental's space." No damage. `on_save` is `None`. Whirlwind's success is half (§40). This one is not.
+* **In the space.** Footprint overlap, the Whirlwind test (§40). The action does not require `water_form`. The caller names the creatures. The engine does not add one the caller left out. At most 8. An ally may be named. `legal_actions` lists overlapping hostiles only. Nobody overlapping: one cast with no target. The action and the recharge are spent, and no save and no dice are rolled. A named creature that does not overlap is refused (`target is not in the elemental's space`). The user is not a target.
+* **Grapple.** A failure, and the target is not dead, and its size is at most `max_size`, and the cap has room: `grapple()` with `restrains` and `escape_dc`. That is the Roper restraining grapple (§35), called from the save instead of from a hit. The general one-size rule still applies (`size_within_one`). A Large user can hold a Large target. A Small user cannot hold a Large target, even when `max_size` is Large. Immunity to grappled skips the grapple and the crush. The damage still applies. Immunity to restrained still grapples. Restrained is not added, and this grapple does not own it.
+* **Cap.** One creature of size Large or bigger fills the action. Up to two of Medium or smaller, and only while no Large or bigger is held. A Large does not combine with anything. Counts only grapples this action made (`via_attack` 0xFE). Named-target order. A creature already held by this action is refreshed, not a new slot, and does not gain a second crush row. A target the cap refuses still takes the failure damage.
+* **Escape.** The grappled creature uses the existing grapple escape (special 4): the better of Strength (Athletics) and Dexterity (Acrobatics) against `escape_dc`. That is the parenthetical "grappled (escape DC 14)". It ends the grapple, restrained when this grapple added it, and the crush. It does not move the creature. Reach is 5 feet (0xFE is not an attack). Out of that reach, the user's death, or the user incapacitated ends it the same way.
+* **Crush.** At the start of each of the user's later turns, each creature this grapple still holds takes `crush`. One roll each. Automatic. The gelatinous cube's turn-start damage (`damage_when` 3), not a contain: the creature is not engulfed, not blinded, and does not move with the user as a swallowed creature. The turn the grapple begins has already started, so the first crush is the next turn. A grapple that ended before that turn deals nothing, and the effect is removed.
+* **Push.** Away from the user's centre. Coincident centres break toward +x (the existing push). The user's tiles do not block the walk. Another creature, or a tile that is not walkable, stops it. The walk stops on the first step whose footprint does not overlap the user's. The cap is 60 feet. The sentence names no distance, so 60 is not a content key. A walk that stops short may still overlap. The creature is not knocked prone. With no forced-move hook the move is reported as the full 60 feet (the existing no-hook rule). The push does not itself end a grapple. A creature pushed one tile off a Large footprint is still within 5 feet, so a grapple this action already held stays held until the reach check says otherwise. A success of this cast does not create a grapple.
+* **Recharge.** Available at the start of combat, the breath-weapon peer. The built-in AI does not use the action.
+
+Deferred, not approximated:
+
+* **"Unable to breathe unless it can breathe water."** Suffocation inside an encounter is the coverage row 11 gap. `no_breath` is a zone-save fact, not a lasting condition. Not modelled.
+* **Ally assist.** "A creature within 5 feet of the elemental can pull a creature or object out of it by taking an action to make a DC 14 Strength check and succeeding." That Strength check is not the grapple escape. Roper Reel pulls the roper's own victims toward the roper (§35). The gelatinous cube's "pull a creature out" is the deferred Ooze Cube sentence. Objects are not combatants. Not this action.
+* **Freeze** is §42. The 1-inch gap (§39) is not this action.
+
+`srd51.monster.water_elemental` authors this action. Strength save DC 15. Failure: 13 (2d8 + 4) bludgeoning, and if Large or smaller and the cap has room (one Large, or up to two Medium or smaller), grappled (escape DC 14) and restrained until that grapple ends. Success: no damage and a push out of the space. Crush is 13 (2d8 + 4) bludgeoning at the start of each later turn. Recharge 4–6. Unable to breathe unless it can breathe water stays unmodelled. An ally's DC 14 Strength check to pull a creature or object out stays unmodelled. The built-in AI does not use it. The 1-inch gap is §39. Freeze is §42. Counts are 204 authored and 6 deferred.
+
+## 42. Freeze (monster@5 trait `freeze`)
+
+SRD 5.1 Water Elemental Freeze, the whole trait:
+
+"Freeze. If the water elemental takes cold damage, it partially freezes; its speed is reduced by 20 feet until the end of its next turn."
+
+"Partially freezes" is that speed reduction. It is not a condition. The elemental is not restrained, grappled, or prone because of it.
+
+It is a trait, not an action. It is not Whelm (§41) and not Water Form (§39).
+
+```json
+"effect": { "kind": "freeze", "by": ["cold"], "speed_sub": 20 }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `by` | non-empty unique damage types (the common@1 enum). A listed type in `DamageApplied::types_dealt` applies the slow | `freeze: bad by` |
+| `speed_sub` | integer 1..255. Feet subtracted | `freeze: speed_sub must be an integer 1..255` |
+
+Any other key is `freeze: unknown key '...'`. Below monster@5 the loader says `freeze needs a monster@5 file`. On a character it says `freeze: only valid on monsters`. One freeze per creature: an identical second declaration (same `speed_sub`, same set) adds nothing (validator warning). A different second declaration is `freeze: a creature has one freeze`. The modifier id is `spell_id_of("<archetype>#<trait id>#freeze")` of the first declaration.
+
+The effect is the existing Speed modifier (§1): `speed_scale` `{"num":1,"den":1}` and `speed_sub`. `stack` is false, so a later hit replaces that same id. Duration is `Expiry::EndOfTargetNextTurn`. It is not a content key. The sentence fixes it. Applied while that creature is the current actor, the current turn does not count (`rounds_left` 2). Otherwise `rounds_left` is 1. The row ends at the end of its next turn.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The Speed row folds under the existing 0xA2 only while it is on the creature. `by`, `speed_sub`, and the modifier id are static content, copied onto the combatant at spawn, and are not hashed. Replay re-runs the cold hit. Next free stays **0xE5**.
+
+Product calls:
+
+* **Takes cold damage.** `types_dealt`, the regeneration signal (§31). A component above 0 after immunity, resistance, and vulnerability. Temporary hit points still count: the mask is taken before they absorb. A `reduce_damage` reaction that zeroes the hit clears the mask (`reduce_applied`). A mixed hit keeps every surviving type when any damage remains (the existing mask). Untyped damage (`types_dealt` 0), including a Warding Bond share, does not count. A hit that kills the creature does not apply the row.
+* **Twenty feet, once.** The sentence is one reduction of 20, not 20 more each time. A second cold hit replaces the row and starts "until the end of its next turn" again. Walk 30 and swim 90 become 10 and 70. `speed_sub` runs on every mode (`modified_speed` / `mode_speed`), the Ray of Frost peer. A speed already at 0 stays 0. Two different Speed rows (this, and a Ray of Frost) both subtract.
+* **Banked movement.** `TurnBudget::movement_ft` is written at turn start from `modified_speed`. A cold hit during the creature's own turn does not rewrite feet already banked. Dash, standing up, and a readied move read `modified_speed` after the hit, so a Dash on that turn adds the reduced speed. The next turn's budget is the reduced speed, and the row ends at the end of that turn.
+* **AI.** No new branch. The built-in AI spends `movement_ft`, so the slowed turn uses the reduced speed.
+* **Forms.** `FormStats` does not carry `freeze`. A transform does not add it or clear it (the regeneration peer).
+
+Deferred, not this trait:
+
+* The 1-inch gap (§39).
+* Whelm's "unable to breathe unless it can breathe water," and an ally's DC 14 Strength check to pull a creature or object out (§41).
+
+`srd51.monster.water_elemental` authors this trait (`by: ["cold"]`, `speed_sub` 20). The 1-inch gap (§39), unable to breathe, and the ally's pull (§41) stay unmodelled. Counts are 204 authored and 6 deferred.
+
+## 43. Lightning Absorption (monster@5 trait `absorb`)
+
+SRD 5.1 Shambling Mound Lightning Absorption, the whole trait:
+
+"Lightning Absorption. Whenever the shambling mound is subjected to lightning damage, it takes no damage and regains a number of hit points equal to the lightning damage dealt."
+
+The same stat block lists lightning under Damage Immunities. The trait is the specific rule. Immunity is the general rule that would make the hit points dealt 0. Reading "the lightning damage dealt" as that 0 would make the trait do nothing on the printed block.
+
+It is a trait, not an action. It is not Engulf (§37) and not Freeze (§42).
+
+```json
+"effect": { "kind": "absorb", "by": ["lightning"] }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `by` | non-empty unique damage types (the common@1 enum). A listed component is not taken. The creature regains hit points equal to that component's amount | `absorb: bad by` |
+
+Any other key is `absorb: unknown key '...'`. Below monster@5 the loader says `absorb needs a monster@5 file`. On a character it says `absorb: only valid on monsters`. One absorb per creature: an identical second declaration (the same set) adds nothing (validator warning). A different second declaration is `absorb: a creature has one absorb`.
+
+The amount is the component passed to `apply_damage` / `apply_damage_parts`. That is the number after the source's own critical hit and after `OnSave::Half`, and before this creature's immunity, resistance, and vulnerability. Those three do not change it. The creature takes none of that type, so a modifier of damage taken does not apply. The mound is immune to lightning, not resistant or vulnerable to it.
+
+The component is left out of `dealt` and out of `types_dealt` (a type reduced to 0, the regeneration signal, §31). Temporary hit points are not spent by it. A `reduce_damage` reaction does not reduce the regain. Other types in the same hit are one ordinary hit. The regain is applied after that hit is committed, and only when the creature is not dead.
+
+The regain is the existing heal path: `heal_hp`, `commit_healing`, `EventKind::Healed`. It is capped at the hit point maximum. `NoHealing` and `no_regain_hp` block the regain. The lightning is still not taken. A creature healed from 0 hit points follows that path (death saves reset, Unconscious ends, Prone stays). A monster killed by another type in the same hit is not brought back.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `by` is static content, copied onto the combatant at spawn, and is not hashed. The regain is hit points and `Healed`, which a fight already records. Replay re-runs the lightning hit. Next free stays **0xE5**.
+
+Product calls:
+
+* **Subjected to lightning.** The source's lightning number, not the post-immunity total. A successful save that already halved the packet heals the half. A critical hit heals the doubled dice, because that doubling happens before `apply_damage`. A component of 0 heals nothing.
+* **Takes no damage.** No concentration check when the hit's `dealt` is 0. Sleep and "until damaged" do not end on a pure lightning hit. A Warding Bond share copies `dealt` and is untyped, so it is not this trait. Temporary hit points stay.
+* **Mixed hit.** The other types resolve first. If they leave the creature alive, the regain follows. If they kill it, there is no regain.
+* **Not Freeze and not regeneration.** Freeze and regeneration read `types_dealt`. An absorbed type is not in that mask, so it does not slow and does not suppress regeneration.
+* **Forms.** `FormStats` does not carry `absorb`. A transform does not add it or clear it (the regeneration and Freeze peer).
+
+Deferred, not this trait:
+
+* Engulf's printed Constitution save, "unable to breathe," and moving the engulfed creature (§37).
+
+`srd51.monster.shambling_mound` authors this trait (`by: ["lightning"]`) with the printed lightning immunity. Multiattack is §37. The Constitution save, suffocation, and contain-carry stay unmodelled on that row. Counts are 204 authored and 6 deferred.
+
+## 44. Innate Invisibility (monster@5 trait `innate_invisibility`)
+
+SRD 5.1 Invisible Stalker Invisibility, the whole trait:
+
+"Invisibility. The stalker is invisible."
+
+That is the Invisible condition (SRD Appendix A). It is not the Invisibility spell. The spell ends when the target attacks or casts a spell, and it is concentration. This trait does not.
+
+```json
+"effect": { "kind": "innate_invisibility" }
+```
+
+The object has no other key. The sentence has no number, no duration, and no save.
+
+| key | rule | loader error |
+|---|---|---|
+| (none) | the creature has `Condition::Invisible` | — |
+
+Any other key is `innate_invisibility: unknown key '...'`. Below monster@5 the loader says `innate_invisibility needs a monster@5 file`. On a character it says `innate_invisibility: only valid on monsters`. A second declaration adds nothing (validator warning). There is no second shape.
+
+The loader sets `Combatant::innate_invisible` and calls `add_condition` for Invisible. A condition immunity still refuses the bit (`add_condition`). The flag stays set. The trait does not bypass immunity.
+
+There is no `ActiveSpellEffect`, so there is no timer and no concentration. `end_effect` treats the flag as a holder of Invisible: a spell effect that applied Invisible still ends, and that caster's concentration still ends once nothing of the spell remains, and the condition bit stays. A creature without the flag is unchanged. Spell `ends_on` is not edited.
+
+Attack rolls use the existing Invisible condition (`attack_roll_mode`: the attacker's rolls have advantage, rolls against it have disadvantage, unless outlined). Sight uses the existing fact: sim sets `SightFacts::subject_invisible` from the condition, and `derive_sight` reads that fact. `Combat::gaze_seen` already skips a gazer who has the condition. Petrifying Gaze's turn-start save already requires the actor to see the gazer with `sight`.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `innate_invisible` is static content, copied onto the combatant at spawn, and is not hashed. The condition bit is the existing Invisible bit. It is not a new fold. Replay copies the archetype again. Next free stays **0xE5**.
+
+Product calls, not decided in this trait:
+
+* **See Invisibility, Faerie Fire outlined, and Branding Smite `reveal_invisible`.** This trait does not add an exemption and does not re-apply the condition after those paths. See Invisibility is out of encounter scope and is not wired. Faerie Fire's existing outlined state still clears `subject_invisible` and suppresses Invisible's attack modes for any creature who has the condition. Branding Smite's existing `reveal_branded` still removes `Condition::Invisible` after it ends Invisible effects, including a bit this trait set. Whether a permanent-trait holder should be revealed by any of those is not decided here.
+* **Built-in AI targeting.** No new branch. `NearestEnemyPolicy` does not skip Invisible creatures. The Wild Shape proximity check already ignores a hostile who has the condition. Whether the AI should treat a permanent-trait holder differently is not decided here.
+* **A hash tag.** Not claimed. Whether the starting Invisible bit needs one, because `Combat::hash` does not fold the condition mask, is not decided here.
+
+Deferred, not this trait:
+
+* Faultless Tracker. `srd51.monster.invisible_stalker` carries the SRD sentences as a description-only trait. It is not `innate_invisibility` and it is not a tracking mechanic.
+* Heard or noticed hiding (coverage: Invisible is attack advantage and disadvantage only).
+* Will-o'-wisp's optional Invisibility action and duergar Invisibility. Green hag Invisible Passage is §53. It is not this trait.
+
+`FormStats` does not carry `innate_invisible`. A transform does not add the flag or clear it (the regeneration, Freeze, and Lightning Absorption peer).
+
+`srd51.monster.invisible_stalker` authors this trait (`{"kind": "innate_invisibility"}`). Faultless Tracker stays description only. See Invisibility, Faerie Fire outlined, and Branding Smite `reveal_invisible` versus a permanent holder stay open. Built-in AI targeting stays unchanged. Whether Invisible needs a `Combat::hash` tag stays open. Counts are 204 authored and 6 deferred.
+
+## 45. Horrific Appearance (monster@5 trait `horrific_appearance`)
+
+SRD 5.1 Sea Hag Horrific Appearance, the whole trait except the two clauses called out under product calls:
+
+"Horrific Appearance. Any humanoid that starts its turn within 30 feet of the hag and can see the hag's true form must make a DC 11 Wisdom saving throw. On a failed save, the creature is frightened for 1 minute. A creature can repeat the saving throw at the end of each of its turns, with disadvantage if the hag is within line of sight, ending the effect on itself on a success. If a creature's saving throw is successful or the effect ends for it, the creature is immune to the hag's Horrific Appearance for the next 24 hours. Unless the target is surprised or the revelation of the hag's true form is sudden, the target can avert its eyes and avoid making the initial saving throw. Until the start of its next turn, a creature that averts its eyes has disadvantage on attack rolls against the hag."
+
+It is a trait, not an action. It is not ghast Stench (§4 / `aura`) and not Petrifying Gaze (§11). Illusory Appearance is not this trait.
+
+```json
+"effect": { "kind": "horrific_appearance", "radius_ft": 30, "save": { "ability": "wis", "dc": 11 }, "immunity_hours": 24 }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `radius_ft` | multiple of 5 in 5..120. The feature aura's radius | `horrific_appearance: radius_ft must be a multiple of 5 in 5..120` |
+| `save` | `{ability, dc}`. `dc` is 1..30. The initial save and the repeat save | `horrific_appearance: save {ability, dc} required` / `horrific_appearance: bad save.ability` / `horrific_appearance: save.dc must be 1..30` / `horrific_appearance: unknown save key '...'` |
+| `immunity_hours` | integer 1..168. Per this owner, in `EncounterState::aura_immunities` | `horrific_appearance: immunity_hours must be 1..168` |
+
+Any other key is `horrific_appearance: unknown key '...'`. Below monster@5 the loader says `horrific_appearance needs a monster@5 file`. On a character it says `horrific_appearance: only valid on monsters`. One trait per creature: an identical second declaration (same radius, same save, same hours) adds nothing (validator warning). A different second declaration is `horrific_appearance: a creature has one horrific appearance`.
+
+The loader compiles one synthetic Zone `SpellDef` (`is_spell` false, `magical` false, anchor Creature, sphere `radius_ft`) and `add_feature_aura` attaches it, the Stench peer. It works while the owner is alive, including unconscious, and ends when the owner dies. The row does not resolve during `start_turn`. `TurnBudget::appearance_pending` is set when a row would apply. The actor answers with `ActionKind::AppearanceResponse` before any other action, after a pending Petrifying Gaze. `appearance_pending` is not hashed.
+
+What the kind fixes, because the sentence fixes it:
+
+* **Humanoid.** Other creature types are not offered the answer and make no save.
+* **Can see.** `sight` must be `can_see` and `Sense::Sight` (the Petrifying Gaze peer). No sight hook: `Sight{}` is that (everyone sees everyone). Blinded, or a viewer who perceives the owner only by blindsight or truesight, makes no save.
+* **Within the radius.** Feature-aura membership (`zone_contains`). The owner is not affected by its own aura.
+* **Frightened for 1 minute.** 10 rounds (`Expiry::Rounds`). The existing Frightened condition, with `note_source` so the owner is the source. Not magical, so Magic Resistance does not apply.
+* **Repeat save.** At the end of each of the frightened creature's turns. Disadvantage when `SightFacts::line_of_sight` to the owner is true. No sight hook: within line of sight (Fear's no-hook = seen). A success ends the effect.
+* **Already carrying this owner's effect.** No new initial save. The repeat save is the one that ends it.
+* **Immunity.** A successful initial save, or the effect ending (a successful repeat save, or the minute), pushes `aura_immunities` for `immunity_hours` from this owner (0xDE). An immune creature makes no save. A failed save that applies no condition, because the creature is immune to frightened, does not grant it.
+* **Avert.** Unless `surprised`, `AppearanceResponse` with `avert_gaze` (log_hash 0xBB, the same bit as GazeResponse) skips the initial save. It does not set `gaze_averted`. It applies one AttackRoll disadvantage modifier (`mark_scope`, mark = the owner) until the start of the averter's next turn (`Expiry::StartOfTargetNextTurn`, the existing 0xA2 row). Attack rolls against anyone else are not affected. A surprised creature is offered only the look, and averting is refused (`surprised: cannot avert the eyes`).
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The aura zone folds under the existing 0xAB. The modifier folds under 0xA2. The immunity folds under 0xDE. The frightened effect folds under the existing effect rows. Replay re-runs the turn start and the save. Next free stays **0xE5**.
+
+Product calls, not decided here:
+
+* **Sudden revelation.** The sentence also refuses the avert when "the revelation of the hag's true form is sudden." That clause belongs to Illusory Appearance, which is not this trait. There is no sudden flag. Avert is refused only while surprised.
+* **True form.** Without Illusory Appearance, the creature the viewer sees is the owner. A disguise that hides the true form is not modelled.
+* **Truesight and See Invisibility.** The initial save requires `Sense::Sight`, the gaze peer. A viewer who sees the owner only through truesight does not make it. See Invisibility is not wired. Whether either should count as seeing the true form is not decided here.
+* **Built-in AI.** It looks and does not avert, the Petrifying Gaze default. A different policy is not decided here.
+
+Deferred, not this trait:
+
+* Illusory Appearance. `srd51.monster.sea_hag` carries the SRD sentences as a description-only action. It is not `horrific_appearance` and it is not a disguise mechanic. There is no Investigation DC and no sudden-revelation flag. §52 does not read this trait and does not edit `sea_hag.json`.
+* Death Glare is §46.
+
+`srd51.monster.sea_hag` authors this trait (`{"kind": "horrific_appearance", "radius_ft": 30, "save": {"ability": "wis", "dc": 11}, "immunity_hours": 24}`). Illusory Appearance stays description only. Sudden revelation is not a flag. True form is sight of the creature; the disguise is not modelled. The built-in AI looks and does not avert. Counts are 204 authored and 6 deferred.
+
+## 46. Death Glare (monster@5 `save_effect` keys)
+
+SRD 5.1 Sea Hag Death Glare, the whole action:
+
+"Death Glare. The hag targets one frightened creature she can see within 30 feet of her. If the target can see the hag, it must succeed on a DC 11 Wisdom saving throw against this magic or drop to 0 hit points."
+
+It is an action, not the trait in §45. It is not mummy Dreadful Glare (§26), which frightens. This action does not apply a condition.
+
+```json
+{ "id": "death_glare", "name": "Death Glare", "kind": "save_effect", "range_ft": 30,
+  "save": { "ability": "wis", "dc": 11 }, "magical": true,
+  "target_must_see_source": true, "caster_sees_target": true,
+  "target_has_condition": "frightened", "drop_to_zero": true }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `drop_to_zero` | `true`. A failed save sets the target's hit points to 0. No `damage`, `apply`, or `control`. No area | `drop_to_zero must be true` / `drop_to_zero takes no damage, apply or control` |
+| `target_has_condition` | `"frightened"` only. The named target must already have it, or the cast is refused and the action is not spent (`target is not frightened`) | `target_has_condition must be frightened` |
+| `caster_sees_target` | `true`. The existing cast gate: the user must be able to see the target (`caster cannot see the target`). No sight hook: the cast is allowed | `caster_sees_target must be true` |
+| `target_must_see_source` | the §26 key. A target that cannot see the user makes no save and is not dropped (FeatureTriggered c = 3). The action is still spent | (the §26 strings) |
+| `magical` | `true`. The save is magic (`SaveSource::magical`), so Magic Resistance applies | (existing) |
+| `range_ft` / `save` | the existing save_effect fields. 30 feet, Wisdom DC 11 for the sea hag | (existing) |
+
+Below monster@5, or on an action that is not `save_effect`, or with an area, the loader says `drop_to_zero / target_has_condition / caster_sees_target need a monster@5 file`, `... are save_effect only` is the validator's kind check, and `... take no area`.
+
+`drop_to_zero` is not damage. There is no `DamageDealt`, no damage type, and no resistance or immunity. `DropToZero` triggers do not run (Undead Fortitude is damage). Temporary hit points are cleared: the creature is in the existing downed state (hit points 0, temporary hit points 0). They are not spent as a buffer in front of a damage packet. A monster without death saves dies (`CombatantDied`). A creature with death saves is downed (`CombatantDowned`, unconscious, prone) on the existing path. A regenerator is `regen_down` instead of dead, the troll peer. A Polymorph or Wild Shape form reverts with overflow 0 (there is no damage to carry onto the true form). Concentration ends when hit points are 0, the existing path.
+
+The action is not offered for a creature that is not frightened, or that the user cannot see. The built-in AI skips those targets the way it skips a `grappled_by_self` save the current target fails.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The save is the existing `SavingThrowRolled`. The drop is hit points and the existing downed or dead events. Replay re-runs the cast. Next free stays **0xE5**.
+
+Product calls, not decided here:
+
+* **Temporary hit points remaining.** This reading clears them so a downed creature matches every other drop to 0 in this engine. A ruling that they should stay, because the sentence is not damage, is not taken.
+* **The true form under Polymorph.** Overflow is 0. The true form keeps the hit points `revert_form` restores. A ruling that the creature itself should be at 0 hit points is not taken.
+
+Deferred, not this action:
+
+* Illusory Appearance. `srd51.monster.sea_hag` carries the SRD sentences as a description-only action. It is not this action and it is not a disguise mechanic. There is no Investigation DC and no sudden-revelation flag. §52 does not edit `sea_hag.json`.
+* Horrific Appearance is §45. This action does not frighten; it requires frightened.
+
+`srd51.monster.sea_hag` authors this action with those keys. A failed Wisdom save drops the target to 0 hit points. Not a damage packet. Illusory Appearance stays description only. Counts are 204 authored and 6 deferred.
+
+## 47. Charm (monster@5 `save_effect` key `charm_command`)
+
+SRD 5.1 Succubus/Incubus Charm, the whole action except the clauses called out under product calls:
+
+"Charm. One humanoid the fiend can see within 30 feet of it must succeed on a DC 15 Wisdom saving throw or be magically charmed for 1 day. The charmed target obeys the fiend's verbal or telepathic commands. If the target suffers any harm or receives a suicidal command, it can repeat the saving throw, ending the effect on a success. If the target successfully saves against the effect, or if the effect on it ends, the target is immune to this fiend's Charm for the next 24 hours. The fiend can have only one target charmed at a time. If it charms another, the effect on the previous target ends."
+
+It is an action. It is not Charm Person (`ends_on_ally_harm` ends with no save, and only when the caster's team deals the damage). It is not the Command spell (the word is chosen at that cast, and the effect is one round). This action uses both: the charmed condition, and `ControlKind::Command` with no word until the fiend gives one.
+
+```json
+{ "id": "charm", "name": "Charm", "kind": "save_effect", "range_ft": 30,
+  "save": { "ability": "wis", "dc": 15 }, "magical": true, "caster_sees_target": true,
+  "target_creature_types": ["humanoid"], "control": "command", "charm_command": true,
+  "immune_on_success": { "hours": 24, "scope": "same_source" },
+  "apply": [{ "condition": "charmed", "duration": { "kind": "rounds", "n": 14400 }, "repeat_save": "on_damage" }] }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `charm_command` | `true`. Allows `control: command` on a monster save. The cast takes no word | `charm_command must be true` / `charm_command needs control command` / `control command needs a spell (the word is a cast choice)` when the key is absent |
+| `control` | `"command"` | `charm_command needs control command` |
+| `magical` | `true`. The save is magic, so Magic Resistance applies | `charm_command needs magical: true` |
+| `caster_sees_target` | `true`. The fiend must be able to see the target (`caster cannot see the target`). No sight hook: the cast is allowed | `charm_command needs caster_sees_target` |
+| `target_creature_types` | `["humanoid"]` for this action. Another type is `invalid creature type for this spell`, and the action is not spent | `charm_command needs target_creature_types` |
+| `apply` | one tracked `charmed`, `repeat_save: on_damage`, `duration` rounds. 1 day is 14400 rounds (24 × 600) | `charm_command needs a tracked charmed apply` / `charm_command needs repeat_save on_damage` / `charm_command needs a rounds duration` |
+| `immune_on_success` | `{hours, scope}`. `same_source` is this fiend only (`action_immunities`, 0xE1) | `charm_command needs immune_on_success` |
+
+Any area is `charm_command takes no area`. Below monster@5 the loader says `charm_command needs a monster@5 file`. `drop_to_zero` is `charm_command takes no drop_to_zero`.
+
+What the key fixes, because the sentence fixes it:
+
+* **Charmed for 1 day.** The existing Charmed condition, sourced to the fiend (`note_source`), so a later kiss can tell this fiend's charm from someone else's. `ControlKind::Command` is on the same effect, with `command_word` 0. Ending the effect ends both.
+* **Obeys commands.** On the fiend's later turn, `CastSpell` of this same action at the charmed creature with `command_word` 1..5 (Approach, Drop, Flee, Grovel, Halt) sets the word. It does not roll a save and it does not spend the action. The existing Command restrictions then apply on the charmed creature's turns until the word changes. Word 0 leaves the charmed restriction only: it cannot attack its charmer.
+* **Suicidal command.** `command_word` 6 (`CommandWord::Suicidal`) is not stored and is not obeyed. The target repeats the Wisdom save immediately. A success ends the effect. A failure leaves the charm and the previous word.
+* **Any harm.** `repeat_save: on_damage` is the existing repeat save, from any creature's damage, not only the fiend's team. A success ends the effect.
+* **Immunity.** A successful initial save pushes `action_immunities` for `immune_on_success.hours` (0xE1). `same_source` records this fiend. Ending the effect (the repeat save, the day, or a replacement) pushes the same row. An immune creature makes no save. The action is still spent.
+* **One at a time.** Applying the charm ends this fiend's previous charm from this action. That ending grants the previous target the immunity.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The word reuses `command_word` (log_hash 0xC4), including 6. The immunity reuses 0xE1. The charmed effect folds under the existing effect rows. Replay re-runs the cast and the save. Next free stays **0xE8**.
+
+The built-in AI casts Charm (word 0) at a humanoid it can see. It does not issue a later word. A creature it already charmed is not offered the cast again, so the turn does not stall on a refused order.
+
+Product calls, not decided here:
+
+* **A command costs nothing and is given on the fiend's turn.** The sentence does not spend an action. Language and a telepathy channel are not modelled, the same gap as the Command spell.
+* **The five Command words, plus suicidal as 6.** A command other than those words is not expressible. On a failed suicidal save the command is not carried out.
+* **Sight on a later command.** The order uses the spell's `caster_sees_target` gate. A command given while the fiend cannot see the target is refused.
+* **Replacement grants immunity.** The previous target's effect ended, so the sentence's immunity applies. A ruling that replacement should not immunize is not taken.
+* **The fiend's death.** The charm is not concentration. The fiend dying does not end it.
+* **The Command spell's "the target must see or hear you" gate does not apply.** The commands are telepathic. `charm_command` does not use that gate.
+
+Deferred, not this action:
+
+* Etherealness. `srd51.monster.succubus` carries that sentence as a description-only action. It is not §51.
+* Shapechanger. No shape, no forms, no shapechanger effect. The authored trait does not set `shapechanger`.
+* Draining Kiss is §48.
+* Telepathic Bond stays description only on that row.
+
+`srd51.monster.succubus` authors this action with those keys. A command other than words 1..5, or suicidal 6, is not expressible. Etherealness and Shapechanger stay description only. Counts are 204 authored and 6 deferred.
+
+## 48. Draining Kiss (monster@5 `save_effect` keys `drain_max_hp` and `charmed_by_self`)
+
+SRD 5.1 Succubus/Incubus Draining Kiss, the whole action except the willing-enemy clause called out under product calls:
+
+"Draining Kiss. The fiend kisses a creature charmed by it or a willing creature. The target must make a DC 15 Constitution saving throw against this magic, taking 32 (5d10 + 5) psychic damage on a failed save, or half as much damage on a successful one. The target's hit point maximum is reduced by an amount equal to the damage taken. This reduction lasts until the target finishes a long rest. The target dies if this effect reduces its hit point maximum to 0."
+
+It is an action. It is not weapon-attack Life Drain. That `drain` object deals its damage on a hit and may roll a second Constitution save to avoid the reduction. This action has one save. The reduction equals the damage taken on a failure and on a success.
+
+```json
+{ "id": "draining_kiss", "name": "Draining Kiss", "kind": "save_effect", "range_ft": 5,
+  "save": { "ability": "con", "dc": 15 }, "magical": true, "on_success": "half",
+  "damage": [{ "dice": "5d10+5", "type": "psychic" }], "drain_max_hp": true,
+  "target_requires_any": ["charmed_by_self", "willing"] }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `drain_max_hp` | `true`. After the save's damage, `life_drain` with DC 0 reduces the maximum by the damage taken. A maximum of 0 kills. A long rest clears `hp_max_reduction` | `drain_max_hp must be true` / `drain_max_hp needs damage` / `drain_max_hp takes no charm_command or drop_to_zero` |
+| `damage` / `on_success` | the existing save damage. `half` is this kiss | (existing) |
+| `magical` | `true`. Psychic damage is magic, and the save is magic | (existing) |
+| `target_requires_any` | `charmed_by_self`, `willing`, or `grappled_by_self`, any non-empty set of those three. `charmed_by_self` is Charmed sourced to the user. `willing` is the existing `ActionRequest::target_willing` (0xDD) and only an ally | `target_requires_any on a save_effect is grappled_by_self, charmed_by_self, or willing` |
+
+`incapacitated` and `restrained` stay weapon-attack gates. No area. Below monster@5 the loader says `drain_max_hp needs a monster@5 file` or `target_requires_any on a save_effect needs a monster@5 file`. A target that meets neither gate is refused before the action is spent (`target must be charmed by the user or willing` when both bits are set).
+
+The damage taken is `DamageApplied::dealt`: after immunity, resistance, and vulnerability, before temporary hit points. Half on a success is halved before that mitigation (the existing `OnSave::Half` path). Overkill counts. A creature immune to psychic takes 0 and the maximum does not drop. A creature already dead from the damage is not reduced again. A creature with death saves that is only downed still takes the reduction, and a maximum of 0 uses the existing `kill` path.
+
+The built-in AI does not offer the kiss when the current target fails the gate, and it does not set `target_willing`. A willing ally is a caller request. `legal_actions` lists hostile targets, so it does not list that ally.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `target_willing` reuses 0xDD. The maximum reduction is the existing `hp_max_reduction` fold. The save is the existing `SavingThrowRolled`. Replay re-runs the cast. Next free stays **0xE8**.
+
+Product calls, not decided here:
+
+* **A hostile creature with `target_willing` set is not willing.** The existing gate requires the same team. A willing enemy is not this gate.
+* **A reaction that reduces the damage does not reduce the maximum-HP loss.** The reduction is the mitigated packet computed before that reaction.
+* **Temporary hit points do not shrink the reduction.** They absorb current hit points only.
+* **Range.** The sentence says the fiend kisses. `range_ft` 5 is the touch the stat block will author. This key does not force 5.
+
+Deferred, not this action:
+
+* Etherealness. `srd51.monster.succubus` carries that sentence as a description-only action. It is not §51.
+* Shapechanger. No shape, no forms, no shapechanger effect. The authored trait does not set `shapechanger`.
+* Charm is §47.
+* Telepathic Bond stays description only on that row.
+
+`srd51.monster.succubus` authors this action with those keys. `willing` is an ally with `target_willing`. A hostile willing creature is not this gate. Etherealness and Shapechanger stay description only. Counts are 204 authored and 6 deferred.
+
+## 49. Horrifying Visage (monster@5 `save_effect` keys)
+
+SRD 5.1 Ghost Horrifying Visage, the whole action except the aging-reversal sentence called out under product calls:
+
+"Horrifying Visage. Each non-undead creature within 60 feet of the ghost that can see it must succeed on a DC 13 Wisdom saving throw or be frightened for 1 minute. If the save fails by 5 or more, the target also ages 1d4 × 10 years. A frightened target can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success. If a target's saving throw is successful or the effect ends for it, the target is immune to this ghost's Horrifying Visage for the next 24 hours."
+
+It is an action. It is not mummy Dreadful Glare (§26), which is one creature, frightens until the end of the mummy's next turn, and paralyzes on a fail by 5. It is not Sea Hag Horrific Appearance (§45), which is a trait that fires at the start of a humanoid's turn. The sentence does not say "against this magic."
+
+```json
+{ "id": "horrifying_visage", "name": "Horrifying Visage", "kind": "save_effect", "origin": "self",
+  "area": { "shape": "sphere", "size_ft": 60 },
+  "save": { "ability": "wis", "dc": 13 }, "target_must_see_source": true,
+  "exclude_creature_types": ["undead"],
+  "immune_on_success": { "hours": 24, "scope": "same_source" }, "immune_on_end": true,
+  "age_on_fail_by": { "margin": 5, "dice": "1d4", "years_per": 10 },
+  "apply": [{ "condition": "frightened", "duration": { "kind": "rounds", "n": 10 }, "repeat_save": "end_of_turn" }] }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `area` | a sphere. `origin` self (the default), so `range_ft` is 0. 60 feet is the ghost's radius. Membership is the existing self-origin sphere, Chebyshev tiles, including the boundary | `age_on_fail_by needs a sphere area` / `age_on_fail_by needs origin self` |
+| `exclude_creature_types` | a non-empty list of creature types. An area save skips them: no roll, no immunity, no aging, and the cast is not refused. A single-target save that names one is refused (`invalid creature type for this spell`) and the action is not spent | `bad exclude_creature_types` |
+| `target_must_see_source` | the §26 key. A target that cannot see the user makes no save, gains no immunity, and does not age (FeatureTriggered c = 3) | `age_on_fail_by needs target_must_see_source` |
+| `apply` | one tracked condition, `repeat_save: end_of_turn`, `duration` rounds. 1 minute is 10 rounds. The ghost uses frightened | `age_on_fail_by needs a tracked primary condition with an end-of-turn repeat` / `age_on_fail_by needs a rounds duration` |
+| `immune_on_success` | `{hours, scope}`. `same_source` is this ghost only (`action_immunities`, 0xE1). A success pushes it. 24 hours is 14400 rounds | `age_on_fail_by needs immune_on_success` |
+| `immune_on_end` | `true`. Ending the applied condition (a successful repeat save, or the minute) pushes the same immunity. Needs `immune_on_success` and a tracked primary condition. The repeat save uses this action's magical flag | `immune_on_end must be true` / `immune_on_end needs immune_on_success` / `immune_on_end needs a tracked primary condition` / `age_on_fail_by needs immune_on_end` |
+| `age_on_fail_by` | `{margin, dice, years_per}`. `margin` is 1..30. `dice` is `NdS[+/-B]` with at least one die. `years_per` is 1..255. Failing by `margin` or more (the §26 comparison, total <= dc - margin) adds the dice roll times `years_per` to `Combatant::aged_years`. The ghost is margin 5, `1d4`, 10 | `bad age_on_fail_by` / `bad age_on_fail_by margin (1..30)` / `bad age_on_fail_by dice` / `bad age_on_fail_by years_per (1..255)` |
+
+Any of the three keys below monster@5 is `age_on_fail_by / immune_on_end / exclude_creature_types need a monster@5 file`. On an action that is not `save_effect`, the validator says `age_on_fail_by / immune_on_end / exclude_creature_types are save_effect only`. `also_on_fail_by` with an area is still `also_on_fail_by takes no area`. `age_on_fail_by` takes no `also_on_fail_by`, `control`, `escalates`, `while`, `drop_to_zero`, `charm_command`, or `drain_max_hp`.
+
+What the keys fix, because the sentence fixes it:
+
+* **Each creature within 60 feet.** A self-origin sphere. The caster is not in `area_targets`. Allies are. The built-in AI uses the existing area-save policy.
+* **Non-undead.** `exclude_creature_types: ["undead"]`. Other types save.
+* **That can see it.** `target_must_see_source`. No sight hook: only blinded blocks the save, the §26 peer.
+* **Wisdom save or frightened for 1 minute.** The existing Frightened condition, sourced to the ghost (`note_source`). 10 rounds. Not magical, so Magic Resistance does not apply to the initial save or to this action's repeat save.
+* **Repeat save.** At the end of each of the frightened creature's turns. A success ends the effect. No disadvantage while the ghost is in sight (the sentence does not say that; Horrific Appearance does).
+* **Fail by 5 or more.** Ages `1d4 × 10` years, one roll per such creature, in target order, from the encounter RNG. The years are added to `Combatant::aged_years` (uint16, saturates at 65535). The same comparison as `also_on_fail_by`. It still applies when the target is immune to the primary condition, the §26 margin ruling. It is not a second condition, and ending the fright does not remove the years.
+* **Immunity.** A successful initial save pushes `action_immunities` for 24 hours from this ghost (0xE1, `same_source`). Ending the effect pushes the same row. An immune creature makes no save and does not age. A failed save that applies no condition does not grant it. A dead creature is not recorded, the existing `end_effect` gate. Another ghost's action is a different source.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The immunity reuses 0xE1. The frightened effect folds under the existing effect rows. The years are not hashed: nothing reads them. Replay re-runs the save and the d4. Next free stays **0xE8**.
+
+Product calls, not decided here:
+
+* **Greater restoration.** The SRD sentence continues: "The aging effect can be reversed with a greater restoration spell, but only within 24 hours of it occurring." There is no aging subsystem and no peer for reversing a year counter. This key does not wire that reversal, and it does not start a 24-hour clock on the years.
+* **Ability scores.** The sentence ages the target. It does not reduce ability scores. This key does not.
+* **Not magical.** The sentence does not say "against this magic." The action leaves `magical` off. A ruling that Magic Resistance should apply is not taken.
+* **Immune to frightened.** A fail by 5 or more still ages, and does not grant the 24-hour immunity, because the save failed and no effect started. A ruling that immunity to frightened skips the aging is not taken.
+* **The built-in AI.** It uses the existing area-save policy: it will not catch an ally, and it wants two hostiles, or one when no attack is legal. The sentence does affect allies. Whether the AI should, and whether it should ignore undead when it counts hostiles, is not decided here.
+* **`aged_years` is not hashed.** A fight that differs only in the year counter hashes the same. The d4 still consumes the encounter RNG, which is already hashed.
+
+`srd51.monster.ghost` authors this action with those keys. Greater restoration does not reverse the years. No ability-score aging. `aged_years` is not hashed. Not magical. The built-in AI uses the existing area-save policy. Possession stays description only (HOLD). Ethereal Sight and Incorporeal Movement stay description only. Etherealness is §51. Not full Ghost support. No new hash tag. Counts are 205 authored and 5 deferred.
+
+Deferred, not this action:
+
+* Possession. `srd51.monster.ghost` carries the SRD sentences as a description-only action. No save, no recharge, and no control. It is not succubus `charm_command`.
+* Etherealness is §51, not this action.
+* Ethereal Sight and Incorporeal Movement stay description only on that row.
+* Shapechange. No shape, no forms, no shapechanger effect.
+
+## 50. Bound (monster@5 trait `bound`)
+
+SRD 5.1 Shield Guardian Bound, the damage sentence only:
+
+"If the guardian is within 60 feet of the amulet's wearer, half of any damage the wearer takes (rounded up) is transferred to the guardian."
+
+The rest of the trait (same plane, the telepathic call, the guardian knowing the distance and direction to the amulet) is not modelled. This is not Warding Bond. That spell's `share_damage` modifier copies `DamageApplied.dealt` 1:1 onto the caster, and `end_beyond_ft` ends the spell when the two are farther than 60 feet (`end_at_zero: caster` ends it when the caster drops to 0). Bound does not grant AC, saves, or resistance. The half rounded up is removed from the wearer. The link does not end past 60 feet, and it does not end when the guardian drops to 0 hit points. The roles are the guardian and the amulet's wearer, not a spell's caster and target. `share_damage` cannot say that, so this is a trait, not a reuse of that modifier.
+
+```json
+{ "id": "bound", "name": "Bound", "kind": "bound", "radius_ft": 60 }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `radius_ft` | a multiple of 5 in 5..120. The shield guardian is 60. The transfer happens only when `EncounterHooks::sight_facts` reports `distance_ft` less than or equal to this, from the guardian to the wearer. No sight hook: the distance is unknown, so nothing is transferred (rules have no positions). The link stays | `bound: radius_ft must be a multiple of 5 in 5..120` |
+
+The wearer is not a content field. The trait fills `Combatant::bound.radius_ft` on the guardian. `Combatant::bound.wearer` is the link: a spawn override `bound_wearer` (that combatant's id), or a caller writing the field. It is not an amulet item. A wearer of 0 does nothing. The override is refused when the spawn has no `bound` trait (`spawn overrides.bound_wearer needs the bound trait`), when it names the guardian (`spawn overrides.bound_wearer cannot be the guardian`), when it is not an id (`spawn overrides.bound_wearer must be a combatant id`), or when that id is not in the fight (`spawn overrides.bound_wearer is not a combatant in this fight`). One trait per creature: an identical second declaration adds nothing; a different radius is `bound: a creature has one bound`. Below monster@5, or on a character, the loader says `bound needs a monster@5 file` or `bound: only valid on monsters`.
+
+What the sentence fixes, read against the damage pipeline:
+
+* **Damage the wearer takes** is `DamageApplied::dealt` after the wearer's immunity, resistance, and vulnerability (`apply_damage`: immunity to 0, resistance halves rounding down, then vulnerability doubles) and after a Damaged `reduce_damage` reaction, and before temporary hit points. `dealt` is that integer (`damage.hpp`: after mitigation, before temp HP). Warding Bond already treats it as the damage taken. A halving reaction leaves `dealt / 2` (the reduction is the larger half, so the remainder rounds down). Bound then runs, before the drop is committed, before Undead Fortitude, and before concentration.
+* **Half, rounded up**, is `(dealt + 1) / 2`. That many hit points are removed from the wearer's packet (`reduce_applied`). The wearer keeps the rest (`dealt / 2`). 11 becomes 6 transferred and 5 kept. 1 becomes 1 transferred and 0 kept. 0 transfers nothing.
+* **Transferred** means those hit points are not kept. The guardian is damaged for that integer through `apply_damage_fixed` (the same delivery Warding Bond uses for a resolved number, not the `share_damage` modifier). SRD 5.1 does not name a type for the transferred half, and `dealt` is already one sum: `apply_damage_parts` has added the mitigated components. Immunity, resistance, and vulnerability on the guardian do not apply again. Temporary hit points on the guardian still absorb it. `types_dealt` on that packet stays 0. The source is null, so the guardian does not retaliate and the hit is not an attack by the original damager.
+* **Within 60 feet** is the gate for that hit. At 60 feet the transfer happens. At 65 it does not, and `bound.wearer` is unchanged, so a later hit inside the radius transfers again. Warding Bond's `end_beyond_ft` would have ended the bond instead.
+* **Concentration** uses the post-transfer `applied.dealt` (`max(10, dealt / 2)`). A transfer of the whole point leaves 0, so no concentration save is rolled. Warding Bond's share, if the wearer also has one, copies that same post-transfer `dealt`.
+* **Temporary hit points on the wearer** absorb only the remainder. They are not part of `dealt`.
+* **A cycle** (each is the other's wearer) stops when the creature is already on the transfer stack. A second guardian of the same wearer, in combatant order, transfers half of what still remains, rounded up, so the parts still add up to the original `dealt`. The SRD states one guardian.
+
+`Combat::hash` tag **0xE5** folds the link only while some `bound.wearer` is non-zero: count, then per such combatant in order the guardian id, the wearer id, and `radius_ft`. A radius with no wearer is static and is not hashed. No new `SIM_EVENTS` tag. Next free is **0xE6**. Replay reads `bound_wearer` from the spawn override. `FormStats` does not carry the trait; the fields stay on the creature. Shapechange is not this trait.
+
+Product calls, not decided here:
+
+* **The guardian's resistances.** SRD 5.1 does not say they apply, and it does not say they do not. The 2024 sentence "damage transferred in this way can't be reduced" is not imported. The pipeline only has the summed integer, so the transfer uses `apply_damage_fixed`.
+* **Two guardians, one wearer.** Sequential half-up of the remainder is what keeps "transferred" from handing out more hit points than the wearer took. A ruling that only the first guardian receives the half is not taken.
+* **No sight hook.** Nothing is transferred. A ruling that missing positions count as within 60 feet is not taken.
+
+`srd51.monster.shield_guardian` authors this trait (`radius_ft` 60) with the printed construct stat block. The damage sentence is the trait. Same plane, the telepathic call, and the distance and direction stay descriptive. There is no amulet item. Spell Storing stays description only (HOLD). The Shield reaction is §54. Regeneration is §55 (`regain`). Multiattack is two fist attacks. Not full Shield Guardian support. No new hash tag. Counts are 206 authored and 4 deferred.
+
+Deferred, not this trait:
+
+* Spell Storing. `srd51.monster.shield_guardian` carries the SRD sentences as a description-only trait. No stored spell and no cast.
+* The Shield reaction is §54. It is the same amulet, and it is not this damage transfer. `srd51.monster.shield_guardian` authors that reaction.
+* Regeneration is §55 (`regain`), not this trait. `srd51.monster.shield_guardian` authors that trait. The fist and the rest of the stat block are not this trait.
+* An amulet magic item. The spawn override is the link, not item UX.
+* Same plane, the telepathic call, and the distance and direction the guardian knows. Those sentences stay in the Bound description. They are not this damage transfer.
+
+## 51. Etherealness (monster@5 action `etherealness`)
+
+SRD 5.1 Ghost Etherealness, the whole action. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `ghost`), the source the in-repo monster table is reduced from. `srd51.monster.ghost` authors this action:
+
+"Etherealness. The ghost enters the Ethereal Plane from the Material Plane, or vice versa. It is visible on the Material Plane while it is in the Border Ethereal, and vice versa, yet it can't affect or be affected by anything on the other plane."
+
+It is an action. It is not Phase Spider Ethereal Jaunt (a bonus action, description only, no plane). It is not the succubus action, whose sentence is only "The fiend magically enters the Ethereal Plane from the Material Plane, or vice versa." That sentence has no Border and no affect rule, and this action does not implement it. It is not the Etherealness spell, Blink, or Forcecage.
+
+```json
+{ "id": "etherealness", "name": "Etherealness", "kind": "etherealness" }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| (none) | id, name, kind, and an optional description. No save, no area, no target, no usage | `etherealness: unknown key '...'` / `etherealness needs a monster@5 file` / `etherealness: only valid on monsters` |
+
+The action spends the action and toggles `Combatant::plane` between `Material` (the default) and `BorderEthereal`. A second use returns to Material. It names no creature. It is not a bonus action (`etherealness: an action`). A request that names another creature is `etherealness: no target`, and the action is not spent. Below monster@5 the loader says `etherealness needs a monster@5 file`. On a character it says `etherealness: only valid on monsters`. The built-in AI does not choose it.
+
+What the sentence fixes:
+
+* **Enters the Ethereal Plane from the Material Plane, or vice versa.** Two planes only. `Plane::Material` and `Plane::BorderEthereal`. The Ethereal Plane in this sentence is the Border Ethereal, because the next sentence is about being visible while in the Border Ethereal. Deep Ethereal is not a value.
+* **Visible on the Material Plane while it is in the Border Ethereal, and vice versa.** Sight is unchanged. The creature does not gain Invisible. It is not hidden. `derive_sight` does not read `plane`. An area's geometry still contains it. It can still be seen.
+* **Can't affect or be affected by anything on the other plane.** One predicate, `plane_affect_refusal`: empty when the two are the same creature or on the same plane. It is the admission check at the places that already decide a creature is affected:
+  * A named attack, familiar attack, spiritual-weapon attack, or special melee attack (grapple or shove) is refused with `can't affect a creature on the other plane` before the action is spent and before any roll. Not a miss. An opportunity attack and a readied attack are not offered.
+  * A cast's named target is refused the same way, before the action is spent. An area (`area != none`) skips a creature on the other plane: it is not in the affected set, so it makes no save and takes no damage from that cast. The cast is not refused. Same plane, including Border Ethereal with Border Ethereal, is a normal target.
+  * An aura does not reach the other plane. `in_aura` is false, and `zone_row` returns before the damage die and the save.
+  * A grapple is not established (`apply_sourced_condition` and `grapple`). The Grapple action is the refusal above, so the contest is not rolled.
+  * A contain is `contain_refused`, so the save or the condition does not start. Ongoing effect damage (`deal_effect_damage`, including contain acid) does not roll while the source and the target are on different planes.
+
+`Combat::hash` tag **0xE6** folds `plane` only while some combatant is not Material: count, then per such combatant in order the id and the plane byte. All Material hashes as before. No new `SIM_EVENTS` tag. The toggle emits the existing `ActionUsed`. Next free is **0xE8**. Replay re-runs the action. `FormStats` does not carry the plane; it stays on the creature. Shapechange is not this action.
+
+Product calls, not decided here:
+
+* **An effect already on a creature stays.** The sentence does not say that conditions, grapples, or contains end when the plane changes. A new one does not start across planes. Ongoing effect damage does not roll while the planes differ. Whether a grapple's restraint should drop is not decided here.
+* **Help, the Heal action, and Stabilize** are not on the admission list above. They are not this slice.
+* **Ethereal Sight** (60 feet into the other plane) is a different trait. This action does not change sight range.
+* **Incorporeal Movement** is not this action. The creature does not move through creatures or objects.
+* **The built-in AI** does not use the action. Whether it should is not decided here.
+
+`srd51.monster.ghost` authors this action (`kind: etherealness`). Deep Ethereal is not a value. The built-in AI does not use it. Possession stays description only (HOLD). Ethereal Sight and Incorporeal Movement stay description only. Not full Ghost support. Hash 0xE6 only while some combatant is not Material. No new hash tag. Counts are 205 authored and 5 deferred.
+
+Deferred, not this action:
+
+* Possession. `srd51.monster.ghost` carries the SRD sentences as a description-only action. No save, no recharge, and no control. It is not succubus `charm_command`.
+* Ethereal Sight. `srd51.monster.ghost` carries that sentence as a description-only trait. Sight range does not change.
+* Incorporeal Movement. `srd51.monster.ghost` carries that sentence as a description-only trait. No pass-through and no end-of-turn force damage.
+* Shapechange. No shape, no forms, no shapechanger effect.
+* Phase Spider Ethereal Jaunt.
+* The succubus Etherealness sentence. `srd51.monster.succubus` carries it as a description-only action and does not use this kind.
+* The Etherealness spell, Blink, and Force Cage.
+
+## 52. Visible figure (monster@5 action `illusory_appearance`)
+
+SRD 5.1 Green Hag Illusory Appearance, the whole action. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `green-hag`). `srd51.monster.green_hag` authors this action. The a6212be sentence:
+
+"Illusory Appearance. The hag covers herself and anything she is wearing or carrying with a magical illusion that makes her look like another creature of her general size and humanoid shape. The illusion ends if the hag takes a bonus action to end it or if she dies.
+The changes wrought by this effect fail to hold up to physical inspection. For example, the hag could appear to have smooth skin, but someone touching her would feel her rough flesh. Otherwise, a creature must take an action to visually inspect the illusion and succeed on a DC 20 Intelligence (Investigation) check to discern that the hag is disguised."
+
+It is an action. It is not Shapechange, not `FormKind`, and not a change of size, creature type, attacks, kit, or name. "Humanoid shape" is a body plan (`FigureShape::Humanoid`). It is not `CreatureType::Humanoid`. Sea hag's action of the same name is a different sentence (an ugly creature, DC 16) and stays description-only on `sea_hag.json`. Disguise Self, Minor Illusion's "becomes faint," and the Invisibility spell's "as long as it is on the target's person" are not this action.
+
+```json
+{ "id": "illusory_appearance", "name": "Illusory Appearance", "kind": "illusory_appearance", "dc": 20 }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `dc` | integer 1..30. The Intelligence (Investigation) DC of `InspectFigure` | `illusory appearance: dc must be 1..30` |
+| (none other) | id, name, kind, an optional description | `illusory appearance: unknown key '...'` / `illusory appearance needs a monster@5 file` / `illusory appearance: only valid on monsters` |
+
+What the sentences fix:
+
+* **Covers herself.** One figure on the user. `shape` is humanoid. `size` is a copy of her `Size` at the moment the action resolves. `Combatant::size` is not written. The action spends the action. A target is `illusory appearance: no target`, and the action is not spent.
+* **Anything she is wearing or carrying.** At that same moment, `EncounterHooks::loadout_of` supplies `LoadoutView`: `main`, `off`, and `carried` instance ids (each instance once, sorted), and `armor_def`. No loadout hook: the covered set is empty and `armor_def` is 0. The record does not subscribe to `EquipOp`. A later change of the loadout does not edit the record. Pickup and drop are not given a result.
+* **Bonus action to end it.** `CastSpell` of this action with `as_bonus_action` erases the figure. It spends the bonus action. It does not spend the action. Discernment is not erased.
+* **If she dies.** `sweep_dead_figures` erases the figure when the bearer is dead. Hit points 0 with `dead` still false does not. Discernment is not erased.
+* **Physical inspection.** `physical_mismatch(subject)` returns the figure beside the true size, creature type, and attack count, and the covered set. It does not write discernment. A melee hit, a grapple, and a shove do not call it.
+* **Otherwise, an action to visually inspect.** `ActionKind::InspectFigure` spends the action. It is not `AbilityCheck`. The viewer must `sight` the subject with `can_see` and `Sense::Sight`, or the action is refused and not spent (`illusory appearance: cannot see the illusion`). No figure: `illusory appearance: no illusion`, not spent. The roll is Intelligence (Investigation) against the figure's `dc`. `CheckRolled` is the roll. Success adds one `(observer, subject)` row if that pair is absent. Failure does not remove a row. The figure stays up for every viewer, including one who succeeded. There is no foot range.
+
+The built-in AI does not start the figure, end it, or inspect. `legal_actions` lists the start while no figure is up, the bonus-action end while one is up and the bonus action remains, and `InspectFigure` for each living subject the current actor can see.
+
+`Combat::hash` tag **0xE7** folds while any figure or any discernment row exists: figure count, then each figure in vector order (bearer, instance, spell id, shape, size, dc, armor def, covered-item count, items), then discernment count, then each pair in vector order (observer, subject). `next_figure_instance` is not folded. No new `SIM_EVENTS` tag. Replay re-runs the actions. Next free is **0xE8**.
+
+`Session::view` copies the figure onto `ActorView` after `copy_visual`. `kit`, `visual_kind`, `standin_bin`, and `name` stay the true form. `equip_layers` does not draw a covered instance. Worn armor has no quad. `illusion_discerned` is the camera viewer's row and does not change what is drawn.
+
+### Product choices
+
+These are not printed in the SRD sentence. Zach fixed them for this slice:
+
+* **Repeat while disguised.** A start while that bearer already has a figure is `illusory appearance: already disguised`. The action is not spent.
+* **Discernment persists.** The row is `(observer, subject)`, not the figure instance. Ending the figure, the bearer dying, or a later start does not clear it. A failed inspect does not clear it.
+* **What the session may show.** Shape, size, and covered equipment. Body art stays the true form (Art HOLD).
+
+### Not this action
+
+* Invisible Passage. That action is §53. This action does not start it.
+* Voluntary concentration end. That is `ActionKind::EndConcentration` (the Heal / AbilityCheck admission; SRD "at any time, no action required"). It is not this action.
+* Passage's "wears or carries" reading. This action's covered set is the loadout at activation only.
+* Shapechange. No shape, no forms, no `shapechanger` effect.
+* Sea hag Illusory Appearance and `sea_hag.json`.
+* `srd51.monster.green_hag` authors this action (`dc` 20). A start while a figure is up is refused and the action is not spent. Discernment persists. Body art stays the true form (Art HOLD; no art assets). Innate Spellcasting and Mimicry stay description only on that row. Counts are 204 authored and 6 deferred.
+* Truesight and See Invisibility. The inspect uses the existing `sight` answer. Those calls stay open.
+
+## 53. Invisible Passage (monster@5 action `invisible_passage`)
+
+SRD 5.1 Green Hag Invisible Passage. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `green-hag`). `srd51.monster.green_hag` authors this action. The equipment sentence and which magic tracks stay escalated on that row. Counts are 204 authored and 6 deferred.
+
+"Invisible Passage. The hag magically turns invisible until she attacks or casts a spell, or until her concentration ends (as if concentrating on a spell). While invisible, she leaves no physical evidence of her passage, so she can be tracked only by magic. Any equipment she wears or carries is invisible with her."
+
+It is an action. It is not `innate_invisibility` (§44: that trait does not end when the creature attacks or casts). It is not the Invisibility spell (touch, up to 1 hour, a spell slot, upcast, "as long as it is on the target's person"). It is not Greater Invisibility. Sprite, duergar, and will-o'-wisp invisibility stay description-only.
+
+```json
+{ "id": "invisible_passage", "name": "Invisible Passage", "kind": "invisible_passage" }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| (none) | id, name, kind, an optional description | `invisible passage: unknown key '...'` / `invisible passage needs a monster@5 file` / `invisible passage: only valid on monsters` |
+
+What the sentences fix:
+
+* **An action.** `CastSpell` of this action spends the action. A target is `invisible passage: no target`, and the action is not spent. A bonus action is `invisible passage: an action`, and nothing is spent. The user is the target. The synthetic `SpellDef` is not a spell (`is_spell` false, not magical). The cast returns before `resolve_effect`, so this action does not count as casting a spell and does not end itself.
+* **Turns invisible.** `Condition::Invisible` on the user, held by one effect of this action. A creature immune to Invisible spends the action and does not gain the effect or the concentration. `innate_invisible` is not set and is not cleared.
+* **Until she attacks or casts a spell.** The effect's `ends_on` is attack and cast. The existing `end_on_own_action` path ends the effect, then concentration when nothing of that concentration remains. A miss is an attack. An opportunity attack is an attack.
+* **Until her concentration ends (as if concentrating on a spell).** The effect is concentration. `concentration_spell` is this action. `ActionKind::EndConcentration` ends it and spends neither the action, the bonus action, nor the reaction. Damage, incapacitation, and death use the existing concentration breaks. No duration and no round timer.
+* **One concentration channel.** Starting this action ends the user's current concentration first, then applies this one. That is the existing "as if concentrating on a spell" channel. A later concentration spell does the same in the other direction.
+* **No physical evidence of her passage.** `track_evidence(subject, Physical)` is `None` while this action's effect is on that subject. It is not Hide, not Survival, and not surprise. When the effect is down, the answer is `Unanswered`. The engine does not say that tracks exist.
+* **Tracked only by magic.** `track_evidence(subject, Magical)` is `Unanswered`. There is no magical-track query and no spell list.
+
+The built-in AI does not use it. `legal_actions` lists the self cast. No new `Combat::hash` tag. The effect row is the existing effect fold. Replay re-runs the action and `EndConcentration`. Next free stays **0xE8**.
+
+Dispel Magic is not in the sentence. The action has no spell level. A level of 0 would make the existing dispel path end it at any slot. That path skips this flag only. Other effects on the same creature are unchanged.
+
+### Escalated
+
+* **Equipment.** "Any equipment she wears or carries is invisible with her" is present tense. There is no per-item visibility consumer. The Invisible condition is the creature. This is not the Invisibility spell's "as long as it is on the target's person," and it does not subscribe to `EquipOp`.
+* **Which magic tracks.** No existing query names a spell that tracks. Magical stays `Unanswered`.
+* **A second use while it is already up.** The sentence does not say. This is not Illusory Appearance's product choice (a start while disguised is refused and the action is not spent). A second use is another start of this concentration: the previous one ends, this one applies, and the action is spent.
+
+### Not this action
+
+* Illusory Appearance (§52), including its three product choices. Body art stays the true form (Art HOLD).
+* `innate_invisibility`, the Invisibility spell, and Greater Invisibility.
+* Shapechange. No form.
+* `srd51.monster.green_hag` authors this action. Innate Spellcasting and Mimicry stay description only.
+* Hide, Survival, and surprise.
+
+## 54. Shield (monster@5 reaction, bound wearer)
+
+SRD 5.1 Shield Guardian, the Reactions entry only. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `shield-guardian`). The entry is in `reactions`, not in `special_abilities`. The description:
+
+"When a creature makes an attack against the wearer of the guardian's amulet, the guardian grants a +2 bonus to the wearer's AC if the guardian is within 5 feet of the wearer."
+
+It is a reaction. The trigger is "makes an attack", before the attack roll is compared to AC. It is not "when the wearer is hit". The Shield spell is that later trigger (`BeingHit`), and its bonus is `reaction_ac_bonus` until the start of the caster's next turn. This reaction is not that spell. `being_hit` plus `ac_bonus` stays uncompiled.
+
+```json
+{ "id": "shield", "name": "Shield", "window": { "kind": "ally_attacked" }, "effect": { "kind": "ac_bonus", "bonus": 2 } }
+```
+
+The window kind `ally_attacked` is the existing moment: an attack roll against the target is about to be made (`ReactionTrigger::AllyAttacked`, before `roll_d20`). The reactor is the guardian, not the wearer. The target of the window is the wearer. `attack_total` is 0. The roll has not been made.
+
+| key | rule | loader error |
+|---|---|---|
+| `window.kind` | `ally_attacked`. Any other window with `ac_bonus`, including `being_hit`, stays uncompiled | listed unsupported, as before |
+| `effect.bonus` | 2. The sentence's bonus | `shield: bonus must be 2` |
+| bound trait | the creature has `bound` (`Combatant::bound.radius_ft` non-zero). monster@5 only. Not a character | `shield: needs the bound trait` / `shield reaction needs a monster@5 file` / `shield: only valid on monsters` |
+| one | a second Shield reaction | `shield: a creature has one shield` |
+
+What the sentence fixes:
+
+* **When a creature makes an attack.** The window opens in `do_attack` after a total-cover refusal and after the duplicate redirect, beside the Protection poll, and before the d20. It does not open for an attack that never reaches the wearer. It follows the existing no-chaining rule (`may_open`).
+* **Against the wearer of the guardian's amulet.** `Combatant::bound.wearer` is the attack's target. That is the §50 link. Spawn override `bound_wearer`. Not an item. Not a team check. An attack against anyone else does not offer it. The sentence does not exclude the guardian. The guardian's own attack against that wearer offers the reaction, including on the guardian's turn. A reaction can be taken on one's own turn.
+* **Grants a +2 bonus to the wearer's AC.** `ReactionEffectKind::WearerAc` offers one `AcBonus` option, `ac_bonus` 2, `uses_reaction` true. Taking it adds 2 to `AttackContext::wearer_ac_bonus` for this attack only. The value is bounded to 2. A larger `ac_bonus` on the reaction row does not raise it. `evaluate_hit`, the Cutting Words DC, and a later `BeingHit` prompt all read `attack_target_ac`, which includes it. It is not written to `reaction_ac_bonus` and it does not emit `AcBonus`. A natural 20 still hits and is a critical hit. A natural 1 still misses. A total equal to the wearer's AC hits without the bonus and misses with it.
+* **If the guardian is within 5 feet.** `sight_facts(guardian, wearer).distance_ft <= 5`. At 5 feet the reaction is offered. At 6 it is not. The bound radius (60) is not this distance. No sight hook: the distance is unknown, so it is not offered. This is not the `in_range` hook. `source: ally_within_5ft` stays uncompiled.
+* **A reaction.** Optional. `Ask` may decline and keeps the reaction. `Auto` takes option 0 without seeing the roll (the BeingHit "only if it would turn the hit into a miss" rule does not apply). `Never` opens nothing. Taking it sets `reaction_used`. That clears at the start of the guardian's turn. `may_react` still requires the guardian alive, above 0 hit points, able to act, and not surprised. The built-in policy takes `AllyAttacked` option 0, so it spends this reaction. Eligible guardians are polled in the existing poll order until one grants the bonus. That stop is the product choice below, not this sentence.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The bonus is not stored. `reaction_used` is the existing spend. Replay re-runs the attack and the Ask decision. Next free stays **0xE8**. `FormStats` does not carry `bound`. Shapechange is not this reaction.
+
+### Product choice
+
+SRD 5.1 does not say what two monsters with this reaction do to one attack. The same-spell stacking rule does not settle it. Zach, via Producer, Nov 7: do not stack Shield bonuses. After one guardian grants +2, later guardians are not offered this reaction for that attack and do not spend it. If that guardian declines, the next eligible guardian is offered. The Shield bonus on one attack is 2 or 0. The only place that applies it is `wearer_shield_window`. This choice is not the SRD sentence.
+
+Product calls, not decided here:
+
+* **The sentence does not say "can".** The entry is the Reactions section, so it spends the reaction and it can be declined. A ruling that the bonus is mandatory whenever the guardian is within 5 feet and still has a reaction is not taken.
+* **The reactor does not see the d20.** The sentence says "makes an attack", not "makes an attack roll" and not "when hit". `AttackRolled` is the later window.
+* **No sight hook.** The reaction is not offered.
+
+`srd51.monster.shield_guardian` authors this reaction (`ally_attacked`, `ac_bonus` 2) with the `bound` trait. The bonus is for the triggering attack only. A natural 20 still hits. Product choice, separate from the SRD sentence: after one guardian grants +2, later guardians are not offered and do not spend for that attack. A decline offers the next. The bonus is 2 or 0. The wearer is spawn override `bound_wearer`, not an amulet item. Spell Storing stays description only (HOLD). Same plane, the telepathic call, and the distance and direction stay descriptive on Bound. Regeneration is §55. Not full Shield Guardian support. No new hash tag. Counts are 206 authored and 4 deferred.
+
+Deferred, not this reaction:
+
+* Spell Storing. `srd51.monster.shield_guardian` carries the SRD sentences as a description-only trait. No stored spell and no cast.
+* Regeneration is §55 (`regain`). It is not this reaction. `srd51.monster.shield_guardian` authors that trait.
+* The rest of Bound (the telepathic call, the plane, the distance the guardian knows). Those sentences stay descriptive on the Bound trait.
+* An amulet magic item. The spawn override is the link, not item UX.
+
+## 55. Regain (monster@5 trait `regain`)
+
+SRD 5.1 Shield Guardian Regeneration. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `shield-guardian`, `special_abilities` name Regeneration). The mirror prints:
+
+"The shield guardian regains 10 hit points at the start of its turn if it has at least 1 hit. point."
+
+The period in "hit. point" is a mirror typo. The sentence is "at least 1 hit point." It is not troll Regeneration (§31). There is no damage-type list and no "dies only if it starts its turn with 0 hit points and doesn't regenerate."
+
+```json
+{ "id": "regeneration", "name": "Regeneration", "effect": { "kind": "regain", "amount": 10 } }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `amount` | integer 1..32767. The shield guardian is 10. Regained at the start of this creature's turn, capped at `effective_hp_max` | `regain: amount must be an integer 1..32767` |
+| (none other) | id, name, kind, amount, an optional description. Not `regen` | `regain: unknown key '...'` / `regain needs a monster@5 file` / `regain: only valid on monsters` |
+
+One trait per creature. An identical second declaration adds nothing. A different amount is `regain: a creature has one regain`. Below monster@5, or on a character, the loader says `regain needs a monster@5 file` or `regain: only valid on monsters`.
+
+What the sentence fixes:
+
+* **At the start of its turn.** `start_turn` of this creature only. Another creature's turn does not heal it.
+* **10 hit points.** `heal_hp` of `amount`, then `commit_healing`. A `Healed` event is emitted when the regain is above 0. At the effective maximum there is no event and the hit points stay.
+* **At least 1 hit point.** `hp >= 1`. Temporary hit points are not hit points. A creature at 1 regains. A creature at 0 does not.
+* **Ordinary death at 0.** This trait does not set `regeneration` and does not set `regen_down`. A monster with no death saves that drops to 0 dies on the existing path. A dead creature stays dead. A troll with `regen` still waits at 0 and stands on a clear turn.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `regain` is static. Hit points and `Healed` are already hashed. Next free stays **0xE8**. Replay re-runs the turn. `FormStats` does not carry it. Shapechange is not this trait.
+
+`srd51.monster.shield_guardian` authors this trait (`amount` 10). The a6212be mirror prints "1 hit. point."; that period is a mirror typo. The authored sentence is "at least 1 hit point." Oni prints the same one-sentence shape and is not authored here. Vampire spawn is not this sentence. Spell Storing is not this trait. It stays description only (HOLD) on the shield guardian row. Not full Shield Guardian support. No new hash tag. Counts are 206 authored and 4 deferred.
+

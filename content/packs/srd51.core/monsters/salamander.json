@@ -1,0 +1,228 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.salamander",
+  "name": "Salamander",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "elemental",
+  "alignment": "neutral evil",
+  "armor_class": {
+    "value": 15,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 13,
+    "dex": true
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.spear",
+      "equipped": true
+    }
+  ],
+  "weapon_dice_multiplier": 2,
+  "hands": 2,
+  "hit_points": {
+    "average": 90,
+    "formula": "12d10+24"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 18,
+    "dex": 14,
+    "con": 15,
+    "int": 11,
+    "wis": 10,
+    "cha": 12
+  },
+  "damage_vulnerabilities": [
+    "cold"
+  ],
+  "damage_immunities": [
+    "fire"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [
+    "Ignan"
+  ],
+  "challenge": {
+    "rating": "5",
+    "xp": 1800
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "damage_resistances_nonmagical",
+      "name": "Damage Resistances",
+      "description": "Resistant to bludgeoning, piercing, and slashing from nonmagical weapons.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "resistances": {
+          "nonmagical": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "heated_body",
+      "name": "Heated Body",
+      "description": "A creature that touches the salamander or hits it with a melee attack while within 5 feet of it takes 7 (2d6) fire damage. (Descriptive only: the 2d6 contact fire has no passive on-hit-by construct, as Black Pudding Corrosive Form. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "heated_weapons",
+      "name": "Heated Weapons",
+      "description": "Any metal melee weapon the salamander wields deals an extra 3 (1d6) fire damage on a hit (included in the attack)."
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The salamander makes two attacks: one with its spear and one with its tail.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "spear_tail",
+            "attacks": [
+              "spear",
+              "tail"
+            ]
+          },
+          {
+            "id": "spear_two_handed_tail",
+            "attacks": [
+              "spear_two_handed",
+              "tail"
+            ]
+          },
+          {
+            "id": "spear_thrown_tail",
+            "attacks": [
+              "spear_thrown",
+              "tail"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "spear",
+      "name": "Spear",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.spear",
+      "ability": "str",
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "piercing"
+        },
+        {
+          "dice": "1d6",
+          "type": "fire"
+        }
+      ],
+      "description": "Melee or Ranged Weapon Attack: +7 to hit, reach 5 ft. or range 20/60 ft., one target. Hit: 11 (2d6 + 4) piercing damage, or 13 (2d8 + 4) piercing damage if used with two hands to make a melee attack, plus 3 (1d6) fire damage."
+    },
+    {
+      "id": "spear_two_handed",
+      "name": "Spear (two hands)",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.spear",
+      "use": "two_hands",
+      "ability": "str",
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "2d8+4",
+          "type": "piercing"
+        },
+        {
+          "dice": "1d6",
+          "type": "fire"
+        }
+      ],
+      "description": "Melee or Ranged Weapon Attack: +7 to hit, reach 5 ft. or range 20/60 ft., one target. Hit: 11 (2d6 + 4) piercing damage, or 13 (2d8 + 4) piercing damage if used with two hands to make a melee attack, plus 3 (1d6) fire damage."
+    },
+    {
+      "id": "spear_thrown",
+      "name": "Spear (thrown)",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.spear",
+      "use": "thrown",
+      "ability": "str",
+      "to_hit": 7,
+      "range": [
+        20,
+        60
+      ],
+      "targets": 1,
+      "properties": [
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "piercing"
+        },
+        {
+          "dice": "1d6",
+          "type": "fire"
+        }
+      ],
+      "description": "Melee or Ranged Weapon Attack: +7 to hit, reach 5 ft. or range 20/60 ft., one target. Hit: 11 (2d6 + 4) piercing damage, or 13 (2d8 + 4) piercing damage if used with two hands to make a melee attack, plus 3 (1d6) fire damage."
+    },
+    {
+      "id": "tail",
+      "name": "Tail",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 7,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "bludgeoning"
+        },
+        {
+          "dice": "2d6",
+          "type": "fire"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "grapple",
+          "escape_dc": 14,
+          "restrains": true,
+          "exclusive": true
+        }
+      ],
+      "description": "Melee Weapon Attack: +7 to hit, reach 10 ft., one target. Hit: 11 (2d6 + 4) bludgeoning damage plus 7 (2d6) fire damage, and the target is grappled (escape DC 14). Until this grapple ends, the target is restrained, the salamander can automatically hit the target with its tail, and the salamander can't make tail attacks against other targets. (The automatic hit while grappled is descriptive only: no auto-hit construct. Grapple, restrained, and the exclusive lock are the on_hit. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

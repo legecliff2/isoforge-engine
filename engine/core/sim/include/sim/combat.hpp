@@ -214,8 +214,13 @@ public:
     // (combat.cpp; what the two-argument overload passes) = any height.
     CombatantId occupant_at(Vec2i t, CombatantId except, int mover_abs_ft) const;
     bool overlaps_other(CombatantId id, Vec2i anchor, int n) const;
+    // B9: the footprint at `anchor` overlaps a living creature this mover may not stop inside. Air/Water Form may stop in a
+    // hostile. A swarm mover, and a swarm's tiles, do not count (the same exclusion as occupied_except).
+    bool forbids_stop(CombatantId id, Vec2i anchor, int n) const;
     struct StepPlan { int n = 1; int cost = 5; uint8_t squeeze = 0; bool ends_in_other = false; };
-    std::optional<std::string> plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze = false) const;
+    // allow_occupied: a jump step (B8) may enter another creature's space even when may_pass is false.
+    std::optional<std::string> plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze = false,
+                                         bool allow_occupied = false) const;
     MoveCaps caps_of(CombatantId id) const;   // feat/move-modes: fly / swim / climb speeds present
     // feat/move-modes: the speed a step from `from` to `to` costing `cost` ft uses (0 walk, 1 fly, 2 swim, 3 climb);
     // 0xFF: no fitting speed has enough left; 0xFE: only flight fits and the mover is prone.
@@ -357,8 +362,27 @@ public:
     // (see docs/SIM_EVENTS.md "Area templates"): range 0 is a self origin (cone / line / cube start at the caster and
     // point toward `aim`; sphere / cylinder are centred on the caster), range > 0 a point origin at `aim` (must be within
     // range and in line of sight of the caster). Creatures need line of sight from the origin to a tile of their footprint.
+    // area_preview is that same template as a tile list (one geometry path).
     std::vector<CombatantId> area_targets(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
                                           std::string* error = nullptr) const;
+    // Tiles of the template area_targets uses, so a preview cannot drift from resolution. Row-scan (y, then x) of the
+    // in-bounds tiles that are inside the shape and seen from its origin (the same line of sight area_targets uses).
+    // Read-only: no events and no hash change. *error, when non-null, is set only for the aim rejections area_targets
+    // uses ("spell has no area", "bad caster", "aim tile out of bounds", "aim beyond range", "aim not in line of sight",
+    // "aim must differ from the caster's tile") and is left unchanged on success. A valid template with nobody in it still
+    // returns its tiles; it does not report "no creature in the area". Empty, and no error, means the template covers no
+    // in-bounds tile.
+    // Feet stay on the SpellDef and are converted with area_targets' integer division (5 ft per tile). A line whose
+    // width_ft is 0 is one tile wide, because that is what area_targets does. Cylinder height is ignored (the template is
+    // 2D), the same as area_targets; this does not stand in for a 3D cylinder. There is no altitude filter. The caster's
+    // own tiles are included when they fall inside (a self sphere covers its footprint); area_targets still never returns
+    // the caster.
+    // Contract gap vs a hook of the form area_preview(actor, shape, size_ft, width_ft, origin, aim): range_ft chooses a
+    // self origin (0) or a point origin and is not in that argument list, so the hook cannot name a point-origin sphere or
+    // cube. The origin is this caster's live footprint, not the anchor from pos(caster) (a larger footprint's centre is
+    // not that tile). Pass the SpellDef area_targets already takes. There is no pending flag; that belongs to the view.
+    std::vector<Vec2i> area_preview(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
+                                    std::string* error = nullptr) const;
     const rules5e::SpellDef* spell_def(uint32_t id) const;
     // R-G9 teleport (FORCED_MOVEMENT.md §3, Q8): the anchors `actor` may teleport to with `def` (a Teleport spell), row-major
     // (y, then x): footprint walkable and free, not its own tile, at most max_feet away (anchor-to-anchor Chebyshev x 5 ft), in
@@ -483,9 +507,24 @@ private:
     std::vector<rules5e::ZoneChange> zone_changes_for(CombatantId mover, Spot from, Spot to, uint32_t moved_zone = 0,
                                                       const Vec2i* anchor_to = nullptr) const;
     std::vector<std::pair<CombatantId, Vec2i>> forced_placed_;   // hook commits of the step being resolved, in order
+    // Altitude a forced move keeps (a flyer held aloft). Applied in complete(), after placement, so fall_check still
+    // sees the pre-move alt_ft. Cleared with forced_placed_.
+    struct ForcedAlt { CombatantId id = 0; int16_t alt_ft = 0; };
+    std::vector<ForcedAlt> forced_alt_;
+    void clear_forced();
+    bool space_free(CombatantId id, Vec2i t) const;
+    struct LedgeAdj { uint16_t fell_ft = 0; bool set_alt = false; int16_t alt_ft = 0; };
+    LedgeAdj ledge_adjust(CombatantId id, Vec2i from, Vec2i to) const;
+    // Some footprint tile is climbable and none is walkable. A walkable climbable floor is not a wall.
+    // Shared by subject_grounded, alt_to's climb branch and climb-down clamp, step_mode's wall branch,
+    // step_altitude, step_cost, and ledge_adjust. A ground rise of more than 5 ft still selects climb mode
+    // without this predicate. Callers that mean "already climbing" still require alt_ft > 0 and not airborne;
+    // alt_to uses the predicate on the tile being climbed.
+    bool on_climb_wall(Vec2i anchor, int fp) const;
+    void note_ledge(CombatantId id, Vec2i from, Vec2i to, rules5e::ForcedMoveResult& res);
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
-    SubmitResult do_step(Vec2i to, bool allow_squeeze = false, int16_t alt_to = 0);
+    SubmitResult do_step(Vec2i to, bool allow_squeeze = false, int16_t alt_to = 0, uint16_t jump_ft = 0);
     // altitude PR2: the altitude consequences of a committed Move step (Moved handler; replay runs the same code).
     void step_altitude(const rules5e::ActionRequest& q, int from_ground_ft, int from_abs_ft, bool was_airborne);
     std::vector<Fall> falls_;

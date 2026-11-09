@@ -11,6 +11,7 @@
 #include "spell_keys_zg.hpp"
 #include "spell_keys_zh.hpp"
 #include "spell_keys_zi.hpp"
+#include "spell_keys_zj.hpp"
 
 namespace rules5e_content {
 
@@ -858,7 +859,58 @@ SpellLoad spell_from_json(const Json& j) {
             } else if (e.contains("control_excludes_creature_types") || e.contains("control_min_int") || e.contains("destroy_undead_max_cr8")) {
                 return ("effect control_* needs control ('control' is a dependency)");
             }
-            if (!e.contains("damage") && !s.applies_condition && s.control == ControlKind::None)
+            if (e.contains(zj::kAlsoDamage)) {   // 7.2zj Ice Storm: a second packet, not scaled by upcast
+                if (!e.contains("damage")) return ("effect also_damage needs damage");
+                SpellDef scratch;
+                if (!read_damage(e[zj::kAlsoDamage], scratch)) return ("effect also_damage invalid");
+                s.has_also_damage = true;
+                s.also_dice = scratch.dice;
+                s.also_damage_type = scratch.damage_type;
+            }
+            if (e.contains(zj::kDifficultTerrain)) {
+                const Json& dt = e[zj::kDifficultTerrain];
+                if (!dt.is_object() || dt.size() != 1 || !dt.contains("until") || dt["until"] != Json(zj::kUntilEndOfCasterNextTurn))
+                    return ("effect difficult_terrain must be {until: until_end_of_caster_next_turn}");
+                s.difficult_until = 1;
+            }
+            if (e.contains(zj::kSuppressConditions)) {
+                if (s.applies_condition) return ("effect suppress_conditions and condition together");
+                const Json& list = e[zj::kSuppressConditions];
+                if (!list.is_array() || list.empty())
+                    return ("effect suppress_conditions must be a non-empty list of charmed or frightened");
+                for (const Json& c : list) {
+                    Condition cd;
+                    if (!lookup(kCondition, c, cd) || (cd != Condition::Charmed && cd != Condition::Frightened))
+                        return ("effect suppress_conditions must be a non-empty list of charmed or frightened");
+                    if (s.suppress_conditions & bit(cd)) return ("effect suppress_conditions items must be unique");
+                    s.suppress_conditions |= bit(cd);
+                }
+            }
+            auto zj_true = [&](const char* key, const char* msg) -> std::string {
+                if (!e.contains(key)) return "";
+                if (!e[key].is_boolean() || !e[key].get<bool>()) return msg;
+                return "";
+            };
+            if (auto m = zj_true(zj::kHostileSaveAdvantage, "effect hostile_save_advantage must be true"); !m.empty()) return m;
+            if (e.contains(zj::kHostileSaveAdvantage)) s.hostile_save_advantage = true;
+            if (auto m = zj_true(zj::kEndsOnAllyHarm, "effect ends_on_ally_harm must be true"); !m.empty()) return m;
+            if (e.contains(zj::kEndsOnAllyHarm)) s.ends_on_ally_harm = true;
+            if (auto m = zj_true(zj::kCasterSeesTarget, "effect caster_sees_target must be true"); !m.empty()) return m;
+            if (e.contains(zj::kCasterSeesTarget)) s.caster_sees_target = true;
+            if (auto m = zj_true(zj::kRequiresHearing, "effect requires_hearing must be true"); !m.empty()) return m;
+            if (e.contains(zj::kRequiresHearing)) s.requires_hearing = true;
+            if (e.contains(zj::kCharmImmune)) {
+                if (!e[zj::kCharmImmune].is_boolean() || !e[zj::kCharmImmune].get<bool>()) return ("effect charm_immune must be true");
+                if (!s.applies_condition || s.condition != Condition::Charmed) return ("effect charm_immune needs condition charmed");
+                s.charm_immune = true;
+            }
+            if (e.contains(zj::kEndsOnRestoration)) {
+                if (!e[zj::kEndsOnRestoration].is_boolean() || !e[zj::kEndsOnRestoration].get<bool>())
+                    return ("effect ends_on_restoration must be true");
+                if (!s.applies_condition || s.condition != Condition::Charmed) return ("effect ends_on_restoration needs condition charmed");
+                s.ends_on_restoration = true;
+            }
+            if (!e.contains("damage") && !s.applies_condition && s.control == ControlKind::None && s.suppress_conditions == 0)
                 return ("save effect needs damage, condition or control");
         } else if (kind == "heal") {
             s.kind = SpellEffectKind::Heal;
@@ -1361,6 +1413,31 @@ SpellLoad spell_from_json(const Json& j) {
             s.kind = SpellEffectKind::Descriptive;
             std::string bad;
             if (!only_keys(e, {"kind"}, bad)) return ("descriptive effect: unknown key '" + bad + "'");
+        } else if (kind == zj::kGrantFly) {   // 7.2zj Fly
+            s.kind = SpellEffectKind::GrantFly;
+            int ft = 0;
+            if (!e.contains(zj::kFlyFt) || !small_int(e[zj::kFlyFt], 5, 255, ft) || ft % 5 != 0)
+                return ("effect fly_ft must be a positive multiple of 5");
+            s.fly_ft = uint8_t(ft);
+        } else if (kind == zj::kRestore) {   // 7.2zj Greater Restoration
+            s.kind = SpellEffectKind::Restore;
+            if (!e.contains(zj::kOptions) || !e[zj::kOptions].is_array() || e[zj::kOptions].empty())
+                return ("effect options must be a non-empty list of restoration options");
+            static const std::map<std::string, RestoreOption> kOpt{
+                {"exhaustion", RestoreOption::Exhaustion}, {"charmed", RestoreOption::Charmed},
+                {"petrified", RestoreOption::Petrified}, {"ability_str", RestoreOption::AbilityStr},
+                {"ability_dex", RestoreOption::AbilityDex}, {"ability_con", RestoreOption::AbilityCon},
+                {"ability_int", RestoreOption::AbilityInt}, {"ability_wis", RestoreOption::AbilityWis},
+                {"ability_cha", RestoreOption::AbilityCha}, {"hit_point_maximum", RestoreOption::HitPointMaximum}};
+            uint16_t seen = 0;
+            for (const Json& o : e[zj::kOptions]) {
+                RestoreOption opt;
+                if (!lookup(kOpt, o, opt)) return ("effect options invalid");
+                const uint16_t bitv = uint16_t(1u << int(opt));
+                if (seen & bitv) return ("effect options items must be unique");
+                seen = uint16_t(seen | bitv);
+                s.restore_options.push_back(opt);
+            }
         } else return ("effect kind invalid");
         return "";
     };
@@ -1382,7 +1459,8 @@ SpellLoad spell_from_json(const Json& j) {
             return err("zone must be the primary effect (effects[" + std::to_string(i) + "] is a zone)");
         if (xe.is_object() && (xe.value("kind", "") == zg::kHaste || xe.value("kind", "") == zg::kSlow ||
                                xe.value("kind", "") == zg::kSummonWeapon || xe.value("kind", "") == zg::kTempHp ||
-                               xe.value("kind", "") == zh::kWeaponSmite || xe.value("kind", "") == zi::kStabilize))   // 7.2zg, 7.2zh, 7.2zi
+                               xe.value("kind", "") == zh::kWeaponSmite || xe.value("kind", "") == zi::kStabilize ||
+                               xe.value("kind", "") == zj::kGrantFly || xe.value("kind", "") == zj::kRestore))   // 7.2zg, 7.2zh, 7.2zi, 7.2zj
             return err("effects[" + std::to_string(i) + "]: " + xe.value("kind", "") + " is only allowed as the first effect");
         SpellDef x;
         std::string xk;
@@ -1400,6 +1478,10 @@ SpellLoad spell_from_json(const Json& j) {
         if (!x.damage_choices.empty())
             return err("effects[" + std::to_string(i) + "]: damage_type_choices is only allowed on the first effect");   // 7.2zg
         if (x.miss_half) return err("effects[" + std::to_string(i) + "]: on_miss is only allowed on the first effect");   // 7.2zg
+        if (x.hostile_save_advantage || x.ends_on_ally_harm || x.suppress_conditions != 0 || x.has_also_damage ||
+            x.difficult_until != 0 || x.ends_on_restoration || x.charm_immune || x.caster_sees_target || x.requires_hearing ||
+            x.fly_ft != 0 || !x.restore_options.empty())
+            return err("effects[" + std::to_string(i) + "]: monster-combat keys are only allowed on the first effect");
         if (x.has_modifier_save) return err("effects[" + std::to_string(i) + "]: an apply_modifier save is only allowed on the first effect");
         SpellEffect fx;
         fx.kind = x.kind; fx.melee = x.melee; fx.beams = x.beams; fx.dice = x.dice; fx.damage_type = x.damage_type;
@@ -1435,6 +1517,32 @@ SpellLoad spell_from_json(const Json& j) {
         const bool lasting = s.concentration || s.duration == SpellDuration::Rounds || s.duration == SpellDuration::Minutes ||
                              s.duration == SpellDuration::Hours;
         if (ends && !lasting) return err("effect ends_on needs concentration or a rounds, minutes or hours duration");
+        const bool zj_last = s.ends_on_ally_harm || s.suppress_conditions != 0 || s.kind == SpellEffectKind::GrantFly ||
+                             s.ends_on_restoration;
+        if (zj_last && !lasting) {
+            if (s.kind == SpellEffectKind::GrantFly)
+                return err("effect grant_fly needs concentration or a rounds, minutes or hours duration");
+            if (s.suppress_conditions != 0)
+                return err("effect suppress_conditions needs concentration or a rounds, minutes or hours duration");
+            if (s.ends_on_restoration)
+                return err("effect ends_on_restoration needs concentration or a rounds, minutes or hours duration");
+            return err("effect ends_on_ally_harm needs concentration or a rounds, minutes or hours duration");
+        }
+        if (zj_last) {   // only these spells: a global duration cap would move every concentration spell's digest
+            int rounds = 0;
+            if (s.duration == SpellDuration::Rounds) rounds = int(s.duration_amount);
+            else if (s.duration == SpellDuration::Minutes) rounds = int(s.duration_amount) * 10;
+            else if (s.duration == SpellDuration::Hours) rounds = int(s.duration_amount) * 600;
+            if (rounds >= 1 && rounds <= 32767) { s.expiry = 1; s.duration_rounds = uint16_t(rounds); }
+        }
+        if (s.difficult_until == 1) {   // 7.2zj Ice Storm: sim reads SpellDef::zone.flags, not ActiveZone
+            if (s.area == AreaShape::None) return err("effect difficult_terrain needs an area");
+            s.zone.flags = uint8_t(s.zone.flags | kZoneDifficult);
+            s.zone.shape = s.area;
+            s.zone.size_ft = s.area_size_ft;
+            s.zone.height_ft = s.area_height_ft;
+            s.zone.anchor = ZoneAnchor::Point;
+        }
         bool ward = s.has_ward, immunity = s.kind == SpellEffectKind::ConditionImmunityFrom, hp_bonus = s.kind == SpellEffectKind::MaxHpBonus;
         for (const SpellEffect& x : s.extra_effects) {   // 7.2zd: these last with the spell too
             ward = ward || x.has_ward;
@@ -1486,7 +1594,8 @@ SpellLoad spell_from_json(const Json& j) {
         if (!s.concentration) return err("polymorph: needs concentration");
     }
     if (has_targets && s.kind != SpellEffectKind::Save && s.kind != SpellEffectKind::Polymorph && s.kind != SpellEffectKind::Heal && s.kind != SpellEffectKind::ApplyCondition &&
-        s.kind != SpellEffectKind::MaxHpBonus && s.kind != SpellEffectKind::ApplyModifier)   // 7.2zd Aid; 7.2ze Bless / Bane
+        s.kind != SpellEffectKind::MaxHpBonus && s.kind != SpellEffectKind::ApplyModifier &&
+        s.kind != SpellEffectKind::GrantFly)   // 7.2zd Aid; 7.2ze Bless / Bane; 7.2zj Fly
         return err("targets not allowed on a " + kind + " effect (one target, per dart/beam, or self)");
     // R-G15: an HP pool's condition and a sustained effect last the spell's duration (Sleep 1 minute = 10 rounds; Color Spray
     // 1 round, the proposal's approximation of "until the end of your next turn"; Heat Metal 1 minute, and also ends with
@@ -1547,7 +1656,8 @@ SpellLoad spell_from_json(const Json& j) {
             if (k == "darts") return s.kind == SpellEffectKind::AutoHit;
             if (k == "beams") return s.kind == SpellEffectKind::SpellAttack;
             return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::ApplyCondition ||
-                   s.kind == SpellEffectKind::ApplyModifier || s.kind == SpellEffectKind::TempHp;   // targets (7.2ze; 7.2zg Heroism)
+                   s.kind == SpellEffectKind::ApplyModifier || s.kind == SpellEffectKind::TempHp ||
+                   s.kind == SpellEffectKind::GrantFly;   // targets (7.2ze; 7.2zg Heroism; 7.2zj Fly)
         };
         for (const char* key : {"beams", "darts", "dice", "targets"}) {   // sorted, like the validator
             if (!u.contains(key)) continue;

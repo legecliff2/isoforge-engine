@@ -1,0 +1,30 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.ice_storm",
+  "name": "Ice Storm",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "description": "A cylinder of radius 20 feet and height 40 feet. Each creature makes a Dexterity save, taking 2d8 bludgeoning and 4d6 cold on a failure, or half of each on a success. The cold does not increase when upcast; the bludgeoning gains 1d8 per slot level above 4th. The area is difficult terrain until the end of the caster's next turn, even if every save succeeds. Not concentration.",
+  "level": 4,
+  "school": "evocation",
+  "classes": ["druid", "sorcerer", "wizard"],
+  "casting_time": { "kind": "action" },
+  "range": { "kind": "ranged", "feet": 300 },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": { "text": "a pinch of dust and a few drops of water" }
+  },
+  "duration": { "kind": "instantaneous" },
+  "area": { "shape": "cylinder", "size_ft": 20, "height_ft": 40 },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "dex",
+      "damage": { "dice": "2d8", "type": "bludgeoning" },
+      "on_success": "half",
+      "also_damage": { "dice": "4d6", "type": "cold" },
+      "difficult_terrain": { "until": "until_end_of_caster_next_turn" }
+    }
+  ],
+  "scaling": { "upcast": { "dice": 1 } }
+}

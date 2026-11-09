@@ -1,0 +1,124 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.shambling_mound",
+  "name": "Shambling Mound",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "plant",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 15,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 16,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 136,
+    "formula": "16d10+48"
+  },
+  "speed": {
+    "walk": 20,
+    "swim": 20
+  },
+  "abilities": {
+    "str": 18,
+    "dex": 8,
+    "con": 16,
+    "int": 5,
+    "wis": 10,
+    "cha": 5
+  },
+  "skills": {
+    "stealth": 2
+  },
+  "damage_resistances": [
+    "cold",
+    "fire"
+  ],
+  "damage_immunities": [
+    "lightning"
+  ],
+  "condition_immunities": [
+    "blinded",
+    "deafened",
+    "exhaustion"
+  ],
+  "senses": {
+    "blindsight": 60,
+    "passive_perception": 10
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "5",
+    "xp": 1800
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "lightning_absorption",
+      "name": "Lightning Absorption",
+      "description": "Whenever the shambling mound is subjected to lightning damage, it takes no damage and regains a number of hit points equal to the lightning damage dealt. (The printed lightning immunity does not zero the regain. The amount is the lightning component before immunity, resistance, and vulnerability. See docs/CONTENT_CONVENTIONS.md §43.)",
+      "effect": {
+        "kind": "absorb",
+        "by": [
+          "lightning"
+        ]
+      }
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The shambling mound makes two slam attacks. If both attacks hit a Medium or smaller target, the target is grappled (escape DC 14), and the shambling mound uses its Engulf on it. Engulf: The shambling mound engulfs a Medium or smaller creature grappled by it. The engulfed target is blinded, restrained, and unable to breathe, and it must succeed on a DC 14 Constitution saving throw at the start of each of the mound's turns or take 13 (2d8 + 4) bludgeoning damage. If the mound moves, the engulfed target moves with it. The mound can have only one creature engulfed at a time. (Both slams hitting the same Medium or smaller creature apply gelatinous-cube contain: restrained, blinded while that lasts, a Strength escape at DC 14, and automatic 2d8+4 bludgeoning at the start of each of the mound's turns. One at a time. The printed Constitution save is not rolled. There is no sourced Grappled condition. Unable to breathe, and the engulfed creature moving with the mound, are not modelled. See docs/CONTENT_CONVENTIONS.md §37.)",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "slams",
+            "attacks": [
+              "slam",
+              "slam"
+            ],
+            "engulf_both_hits": {
+              "max_size": "medium",
+              "escape_dc": 14,
+              "while": "blinded",
+              "damage": {
+                "dice": "2d8+4",
+                "type": "bludgeoning"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "slam",
+      "name": "Slam",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d8",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+4",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 13 (2d8 + 4) bludgeoning damage."
+    }
+  ]
+}

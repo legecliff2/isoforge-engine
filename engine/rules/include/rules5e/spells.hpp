@@ -73,6 +73,18 @@ enum class SpellEffectKind : uint8_t {
     // appended (text-only): the spell loads and stays on a creature's spell list, and has no combat mechanic.
     // It is never a legal cast. The effect object carries no other fields, and it is the spell's only effect.
     Descriptive,
+    // appended (7.2zj Fly): a willing creature gains a fly speed of `fly_ft` for the spell (grant_fly / revoke_fly).
+    // First effect only. Willing is the caster's team, including the caster.
+    GrantFly,
+    // appended (7.2zj Greater Restoration): one option from `restore_options`, chosen by ActionRequest::condition_choice
+    // (1 + index, JSON order). First effect only. Touch. Instantaneous.
+    Restore,
+};
+// 7.2zj Greater Restoration options, in the order content lists them (ActionRequest::condition_choice is 1 + index).
+enum class RestoreOption : uint8_t {
+    Exhaustion, Charmed, Petrified,
+    AbilityStr, AbilityDex, AbilityCon, AbilityInt, AbilityWis, AbilityCha,
+    HitPointMaximum,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -102,8 +114,10 @@ enum class RepeatSave : uint8_t { None, EndOfTurn, StartOfTurn, OnDamage,
 //   Fear: while frightened by it, Move, Dash, Dodge, StandUp (sim moves it away from the caster).
 //   Laughter (Hideous Laughter): prone and incapacitated; can't stand up.
 //   Command: on the target's next turn, by ActionRequest::command_word (CommandWord).
+//   Charm (CONTENT_CONVENTIONS §47): the same Command control, with no word at the cast. A later command_word
+//   sets the order. Suicidal is not stored: it offers the repeat save.
 enum class ControlKind : uint8_t { None, Turned, Fear, Laughter, Command };
-enum class CommandWord : uint8_t { None, Approach, Drop, Flee, Grovel, Halt };   // ActionRequest::command_word (log_hash 0xC4)
+enum class CommandWord : uint8_t { None, Approach, Drop, Flee, Grovel, Halt, Suicidal };   // ActionRequest::command_word (log_hash 0xC4)
 
 // One further effect of a multi-effect spell (SpellDef::extra_effects; effects 2..n of spell@1 `effects`).
 // Mirrors the per-effect fields of SpellDef. Extra effects resolve in order over the same targets as the
@@ -246,6 +260,19 @@ struct ZoneTriggerRow {
     // hours (EncounterState::aura_immunities, per source): later rows of the aura skip it (no FeatureTriggered, no roll).
     uint8_t condition_until = 0;
     uint16_t success_immunity_hours = 0;
+    // ---- appended (B15 Horrific Appearance). Zero defaults leave ghast Stench unchanged. Not hashed (spell content). ----
+    // creature_types: 0 = any. Otherwise the creature's type must be in the mask or the row does nothing.
+    // must_see_source: the creature must see the owner with sight (can_see and Sense::Sight), the gaze peer.
+    // condition_rounds > 0: the failed-save condition lasts that many rounds and uses effect.repeat_save.
+    // repeat_los_disadvantage: that repeat save is at disadvantage while the owner is within line of sight.
+    // immunity_on_end: ending the condition effect grants success_immunity_hours (aura_immunities), not only a success.
+    // avert_eyes: a StartTurn row does not resolve during start_turn. AppearanceResponse looks or averts.
+    uint32_t creature_types = 0;
+    bool must_see_source = false;
+    uint16_t condition_rounds = 0;
+    bool repeat_los_disadvantage = false;
+    bool immunity_on_end = false;
+    bool avert_eyes = false;
 };
 // R-G12 rules PR 2 (SUMMONS_TRANSFORMS.md §2.2 A): how summoned creatures act. initiative: Own = each rolls (Find Familiar),
 // Group = one roll for the cast, consecutive turns ordered by id (conjure family, Animate Dead: D2). control: None = acts on
@@ -392,9 +419,9 @@ struct SpellDef {
     bool evocation = false;
     std::vector<DamageType> damage_choices;
     std::vector<Condition> condition_choices;
-    // appended (Petrifying Gaze, primary Save with a condition): a failed save applies `condition` (Restrained) with the
-    // repeat save; failing that repeat save turns it into `escalate_to` (Petrified) for good. escalate_margin > 0: failing the
-    // first save by that much or more applies `escalate_to` at once (medusa: 5).
+    // appended (Petrifying Gaze, and a monster@5 save_effect including an area breath): a failed save applies `condition`
+    // (Restrained) with the repeat save; failing that repeat save turns it into `escalate_to` (Petrified) for good.
+    // escalate_margin > 0: failing the first save by that much or more applies `escalate_to` at once (medusa: 5).
     bool escalates = false; Condition escalate_to = Condition::Petrified; uint8_t escalate_margin = 0;
     // appended (R-G9): primary-effect forced movement / teleport (extra effects carry their own).
     ForcedMoveSpec forced{};
@@ -505,7 +532,128 @@ struct SpellDef {
     uint8_t also_margin = 0; Condition also_condition = Condition::Paralyzed;
     uint16_t success_immunity_hours = 0; uint8_t success_immunity_scope = 0;
     bool target_sees_source = false;
+    // appended (7.2zj). Zero-default; old spells hash as before. hostile_save_advantage: an opposite-team target saves
+    // at advantage (Charm Person: "you or your companions are fighting it"; same team is the stand-in for not fighting).
+    // ends_on_ally_harm: the effect on a creature ends when a creature of the caster's team deals it damage.
+    // suppress_conditions: a failed save suppresses those conditions for the spell (Calm Emotions; charmed and frightened
+    // only) and they resume when it ends if their source is still there. also_damage: a second damage packet on the same
+    // save, not scaled by upcast_dice (Ice Storm's cold). difficult_until 1: the spell's area is difficult terrain until
+    // the end of the caster's next turn (an ActiveZone, not concentration). fly_ft / restore_options: GrantFly / Restore.
+    // ends_on_restoration: Greater Restoration ends the effect whatever option was chosen (Geas). charm_immune: a creature
+    // immune to charmed is unaffected and makes no save (Suggestion). caster_sees_target / requires_hearing: cast gates.
+    bool hostile_save_advantage = false;
+    bool ends_on_ally_harm = false;
+    uint32_t suppress_conditions = 0;
+    bool has_also_damage = false;
+    DiceExpr also_dice{0, 0, 0};
+    DamageType also_damage_type = DamageType::Cold;
+    uint8_t difficult_until = 0;
+    uint8_t fly_ft = 0;
+    std::vector<RestoreOption> restore_options{};
+    bool ends_on_restoration = false;
+    bool charm_immune = false;
+    bool caster_sees_target = false;
+    bool requires_hearing = false;
+    // appended (B15 Death Glare). Static content: not hashed.
+    // drop_to_zero: a failed save sets hit points to 0 (the existing downed / dead path). Not a damage packet.
+    // has_target_condition: each named target must already have target_condition or the cast is refused, action unspent.
+    bool drop_to_zero = false;
+    bool has_target_condition = false;
+    Condition target_condition = Condition::Frightened;
+    // appended (B16 Charm, CONTENT_CONVENTIONS §47). Static content: not hashed.
+    // charm_command: control is Command, but the cast takes no word. The failed save applies charmed and that
+    // control with command_word 0. A later cast at the same target with command_word 1..5 sets the order and
+    // does not spend the action. command_word 6 (Suicidal) offers the Wisdom save again and is not obeyed.
+    // This caster's this action charms one creature: applying it ends the previous effect. Ending the effect
+    // grants the same action immunity as a successful save (immune_on_success hours and scope).
+    bool charm_command = false;
+    // appended (B16 Draining Kiss, CONTENT_CONVENTIONS §48). Static content: not hashed.
+    // save_drain_max_hp: after the save's damage (half on a success when on_save is Half), the target's hit
+    // point maximum drops by the damage taken. No second save. life_drain with dc 0. A maximum of 0 kills.
+    bool save_drain_max_hp = false;
+    // appended (B17 Horrifying Visage, CONTENT_CONVENTIONS §49). Static content: not hashed.
+    // age_margin > 0: failing the save by that much or more (total <= dc - margin, the also_on_fail_by
+    // comparison) adds (the age_dice roll) times age_years_per to Combatant::aged_years. Not a condition.
+    // It still applies when the target is immune to the primary condition. No ability scores and no reversal.
+    // immune_on_effect_end: ending the applied condition grants the immune_on_success immunity (hours and scope).
+    // The repeat save then uses this action's magical flag. A non-spell Save's excluded_types is
+    // exclude_creature_types: those creatures make no save.
+    uint8_t age_margin = 0;
+    DiceExpr age_dice{0, 0, 0};
+    uint8_t age_years_per = 0;
+    bool immune_on_effect_end = false;
+    // appended (Chuul Tentacles / Otyugh Tentacle Slam; B16 Draining Kiss): kTargetGate* bits on a non-spell Save.
+    // Non-zero = each named target must meet at least one (the cast is refused, action unspent, when any does not).
+    // A save may set grappled_by_self, charmed_by_self, and willing. 0 = any target. Static content: not hashed.
+    // `targets` is how many creatures one cast may name. willing is ActionRequest::target_willing (0xDD), an ally only.
+    uint8_t target_requires_any = 0;
+    // appended (B3b chuul Tentacles): the primary condition's effect also holds while_condition for as long as that
+    // effect lasts ("paralyzed while poisoned"). Applied only when the primary condition is applied, so immunity to
+    // the primary applies neither. Ending the effect (repeat save or the timer) ends both. Distinct from also_margin,
+    // which can apply when the target is immune to the primary. Static content: not hashed.
+    bool has_while = false;
+    Condition while_condition = Condition::Paralyzed;
+    // appended (B3b): not a standalone action. Cast only while TurnBudget::free_rider equals this spell id, and that
+    // cast does not spend an action. A cast outside the window is refused with the action unspent. Static content: not hashed.
+    bool rider_only = false;
+    // appended (B6, CONTENT_CONVENTIONS §36): a failed save contracts a disease (EncounterState::diseases, 0xE3). The
+    // condition on this save is the poisoned-until-cured half. disease_hours is 24; disease_dice is the hit point maximum
+    // lost on each failed repeat. Static content: not hashed. Both stay 0 / false for every other spell.
+    bool disease = false;
+    uint16_t disease_hours = 0;
+    DiceExpr disease_dice{0, 0, 0};
+    // appended (B7, Shambling Mound Engulf): this contain refuses a second creature while the user already holds one
+    // (any contain kind). Swallow's one-at-a-time stays contain == 2. Static content: not hashed.
+    bool contain_one = false;
+    // appended (B8, Bulette Deadly Leap, CONTENT_CONVENTIONS §38). Static content: not hashed.
+    // requires_jumped_ft > 0: the cast is refused, action unspent, unless TurnBudget::jumped_ft is at least this.
+    // has_save_choice: each target saves with the higher save_modifier of save_ability and save_alt (tie: save_ability).
+    // leap_push_ft > 0: a successful save pushes that many feet (mode 1). Zero feet moved knocks the creature prone.
+    uint16_t requires_jumped_ft = 0;
+    bool has_save_choice = false;
+    Ability save_alt = Ability::Dex;
+    uint16_t leap_push_ft = 0;
+    // appended (B10, Air Elemental Whirlwind, CONTENT_CONVENTIONS §40). Static content: not hashed.
+    // whirl_ft > 0: this save is Whirlwind. on_save is Half: a success takes half the damage and is not
+    // flung or knocked prone. On a failure the target takes the full damage, is knocked prone, and is flung up
+    // to whirl_ft in a random direction. A strike deals impact_die once per impact_per_ft of feet actually moved.
+    // A creature in the way saves with impact_save against impact_dc: a failure takes that same impact and is
+    // knocked prone. That Dexterity success takes nothing (not half).
+    uint16_t whirl_ft = 0;
+    uint8_t impact_per_ft = 0;
+    DiceExpr impact_die{1, 6, 0};
+    DamageType impact_type = DamageType::Bludgeoning;
+    Ability impact_save = Ability::Dex;
+    int8_t impact_dc = 0;
+    // appended (B11, Water Elemental Whelm, CONTENT_CONVENTIONS §41). Static content: not hashed.
+    // whelm: this save is Whelm. on_save is None. dnd5eapi success_type is none: a success takes no
+    // damage and is pushed out of the user's space. A failure takes the full damage. A target of
+    // whelm_max_size or smaller is grappled (escape DC whelm_escape_dc) and restrained until that
+    // grapple ends, when the user has room for it. whelm_crush is dealt at the start of each of the
+    // user's later turns while that grapple lasts. Not half on a success.
+    bool whelm = false;
+    int16_t whelm_escape_dc = 0;
+    int8_t whelm_max_size = -1;
+    DiceExpr whelm_crush{0, 0, 0};
+    DamageType whelm_crush_type = DamageType::Bludgeoning;
+    // appended (B19 Ghost Etherealness, CONTENT_CONVENTIONS §51). Static content: not hashed.
+    // The action spends itself and toggles Combatant::plane between Material and BorderEthereal.
+    // No target, no roll. kind is unused: cast_spell_impl returns before resolve_effect.
+    bool ethereal_toggle = false;
+    // appended (visible figure, CONTENT_CONVENTIONS §52). Static content: not hashed.
+    // An action starts one humanoid-shaped figure at the user's own size. fixed_dc is the
+    // Intelligence (Investigation) DC of a later InspectFigure. A bonus action ends the figure.
+    // kind is unused: cast_spell_impl returns before resolve_effect. Not a form and not a spell.
+    bool illusory_appearance = false;
+    // appended (Invisible Passage, CONTENT_CONVENTIONS §53). Static content: not hashed.
+    // An action. Invisible, concentrating, until the user attacks or casts a spell, or concentration ends.
+    // No duration. Not a spell: cast_spell_impl returns before resolve_effect, so the action does not
+    // end itself. Not innate_invisibility.
+    bool invisible_passage = false;
 };
+
+// B10 Whirlwind and B11 Whelm name creatures already in the user's space. Rules does not see tiles.
+inline bool is_space_save(const SpellDef& d) { return d.whirl_ft > 0 || d.whelm; }
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
 // may be combined with another (SRD 5.1). Costs in sorcery points: metamagic_cost.

@@ -47,6 +47,12 @@ constexpr uint32_t bit(DamageType t) { return uint32_t(1) << uint32_t(t); }
 constexpr uint32_t bit(Ability a) { return uint32_t(1) << uint32_t(a); }
 constexpr uint32_t bit(Skill k) { return uint32_t(1) << uint32_t(k); }
 
+// Keen Senses (CONTENT_CONVENTIONS §30). The same bits are Combatant::keen_senses and the senses a Wisdom (Perception)
+// check relies on (ActionRequest::perception_senses).
+constexpr uint8_t kKeenSight = 1;
+constexpr uint8_t kKeenHearing = 2;
+constexpr uint8_t kKeenSmell = 4;
+
 struct DiceExpr {                                  // "2d6+3"; count == 0 means a flat value
     uint8_t count; uint8_t sides; int16_t bonus;
     friend constexpr bool operator==(const DiceExpr&, const DiceExpr&) = default;
@@ -133,11 +139,14 @@ struct Attack {
     // carries an on_hit grapple rider with instead_of_damage, so ActionRequest::grapple_instead is legal with it. Set by the sim
     // loader. Content-derived: not hashed.
     bool grapple_instead_ok = false;
+    // B5: on_hit grapple no_damage. A hit deals no damage and the grapple applies. Not a request choice, so it is not
+    // ActionRequest::grapple_instead and not log_hash 0xE2. Content-derived: not hashed.
+    bool grapple_no_damage = false;
 };
 inline constexpr int8_t kAttackAbilityFinesse = 6;
 inline constexpr int8_t kAttackAbilityNone = 7;
 inline constexpr uint8_t kTargetGateWilling = 1, kTargetGateGrappledBySelf = 2, kTargetGateIncapacitated = 4,
-                         kTargetGateRestrained = 8;
+                         kTargetGateRestrained = 8, kTargetGateCharmedBySelf = 16;
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
 // Range facts for a ranged attack at `dist_ft`: out of reach entirely, or beyond normal range (disadvantage).
@@ -165,14 +174,27 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   // appended (7.2y Fast Hands): Use an Object, a Dexterity (Sleight of Hand) check, or thieves' tools
                                   // (disarm a trap / open a lock): ActionRequest::object_use 1 / 2 / 3, with `dc` for 2 and 3. An
                                   // action, or the bonus action when bonus_action_grants has it (Fast Hands).
-                                  UseObject };
+                                  UseObject,
+                                  // appended (B15 Horrific Appearance): turn-start answer. avert_gaze reuses the gaze
+                                  // caller bit (log_hash 0xBB when set). It is not GazeResponse and does not set gaze_averted.
+                                  AppearanceResponse,
+                                  // appended (visible figure, CONTENT_CONVENTIONS §52): an action to visually inspect
+                                  // another creature's illusory figure. Not a free AbilityCheck. The built-in AI does not use it.
+                                  InspectFigure,
+                                  // appended (SRD concentration): end the actor's concentration at any time. No action,
+                                  // bonus action, or reaction. Same admission as Heal and AbilityCheck.
+                                  EndConcentration };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
+static_assert(static_cast<uint32_t>(ActionKind::EndConcentration) < 32,
+              "ActionKind::bit shifts a uint32_t; InspectFigure and EndConcentration must stay below 32");
 
 // Reaction windows (encounter.hpp). Append-only.
 // HitRider (row 9c): the attacker is the reactor; opened after a hit for each `choice: ask` trigger (Divine Smite).
 // Damaged (row 11): damage to the reactor has been computed (after mitigation) but is not committed yet, so a
 // reduce_damage reaction can act; AllyAttacked: an attack roll against an ally of the reactor is about to be made.
-// AttackRolled (appended, R-G7): an attack roll was made, before hit or miss is decided (Cutting Words).
+// Shield Guardian Shield (CONTENT_CONVENTIONS §54) reuses AllyAttacked's moment (before the roll) for the bound
+// wearer, not for a teammate. AttackRolled (appended, R-G7): an attack roll was made, before hit or miss is decided
+// (Cutting Words).
 enum class ReactionTrigger : uint8_t { LeavingReach, BeingHit, SpellCast, ReadiedTrigger, HitRider, Damaged, AllyAttacked, AttackRolled };
 inline constexpr std::size_t kReactionTriggerCount = 8;
 enum class ReactionPolicy : uint8_t { Ask, Never, Auto };
@@ -193,6 +215,13 @@ struct AttackSequence {
     // sequence is not a Multiattack option; it is armed (sequence_pos 0) when the creature uses the non-spell action with this
     // SpellDef id, so its attack(s) follow that action without spending another (teleport-then-bite; "before" is deferred).
     uint32_t after_action = 0;
+    // Appended (B3b, chuul Tentacles): spell id of one optional save used once after this option's attacks, without spending
+    // another action. 0 = none. Armed on TurnBudget::free_rider when the attacks finish, so a pincer in this same sequence
+    // that just established the grapple counts. The save's own target gate still applies. One use; not a standalone action.
+    uint32_t free_rider = 0;
+    // Appended (B7, Shambling Mound Engulf): spell id of an ApplyCondition contain applied when every attack in this option
+    // hits the same creature. 0 = none. Not a cast and not a free_rider. The both-hits window is TurnBudget (not hashed).
+    uint32_t engulf_both = 0;
 };
 // The attack index the multiattack in progress requires next, or -1 (none in progress / sequence done).
 inline int multiattack_next(const std::vector<AttackSequence>& ms, uint8_t sequence, uint8_t pos) {
@@ -209,6 +238,23 @@ inline int multiattack_next(const std::vector<AttackSequence>& ms, uint8_t seque
 // amount > 0 that is reduced to 0 HP is not dead until its next turn starts without regenerating (SRD troll:
 // "dies only if it starts its turn with 0 hit points and doesn't regenerate").
 struct Regeneration { int16_t amount = 0; uint32_t suppressed_by = 0; };   // suppressed_by: bitmask over DamageType
+// SRD Freeze (CONTENT_CONVENTIONS §42): when a listed type is in DamageApplied::types_dealt, one Speed modifier
+// (speed_sub feet, until the end of this creature's next turn) is applied. by == 0 means the trait is absent.
+// Static config. The modifier itself folds under the existing 0xA2. No new SIM_EVENTS tag.
+struct Freeze { uint32_t by = 0; uint8_t speed_sub = 0; uint32_t modifier_id = 0; };
+// SRD Bound (CONTENT_CONVENTIONS §50). On the guardian. radius_ft == 0 means the trait is absent.
+// wearer == 0 means no amulet wearer is linked. While the guardian is within radius_ft of that wearer,
+// half of the damage the wearer takes (rounded up) is transferred to this guardian. The link does not
+// end past that distance or at 0 hit points. radius_ft is static content. wearer is the link (not an
+// item) and folds under Combat::hash 0xE5 only when non-zero. FormStats does not carry it.
+struct Bound { uint16_t radius_ft = 0; CombatantId wearer = 0; };
+// SRD 5.1 Ghost Etherealness (CONTENT_CONVENTIONS §51). Material is every creature's default.
+// BorderEthereal is the Border Ethereal the action enters. Deep Ethereal is not a value.
+enum class Plane : uint8_t { Material = 0, BorderEthereal = 1 };
+// SRD Lightning Absorption (CONTENT_CONVENTIONS §43): Combatant::absorb, a bitmask over DamageType. A listed
+// type is not taken. The creature regains hit points equal to that component's amount (the number passed to
+// apply_damage, before immunity, resistance, and vulnerability). 0 means the trait is absent. Static config.
+// The regain is EventKind::Healed. No new SIM_EVENTS tag.
 // Conditional advantage/disadvantage trait (T&C-G7); semantics and examples in traits.hpp.
 enum class TraitRoll : uint8_t {
     Attack,       // this creature's own attack rolls
@@ -327,7 +373,9 @@ struct Trigger {
 };
 
 // A mechanical reaction compiled from content (row 11): offered in the Damaged / AllyAttacked windows of its owner.
-enum class ReactionEffectKind : uint8_t { ReduceDamage, ImposeDisadvantage, Retaliate, Attack, SubtractRoll /* R-G7, AttackRolled */ };
+// WearerAc (appended, CONTENT_CONVENTIONS §54): AllyAttacked, +ac_bonus to the bound wearer for this attack only.
+enum class ReactionEffectKind : uint8_t { ReduceDamage, ImposeDisadvantage, Retaliate, Attack, SubtractRoll /* R-G7, AttackRolled */,
+                                          WearerAc };
 struct Reaction {
     uint32_t id = 0;                         // spell_id_of("<archetype>#<reaction id>")
     ReactionTrigger window = ReactionTrigger::Damaged;   // Damaged or AllyAttacked
@@ -348,6 +396,9 @@ struct Reaction {
     // appended (7.2zb Deflect Missiles): ReduceDamage only for damage from an attack hit of these kinds (kAttackKind* bits);
     // 0 = any damage, as before.
     uint8_t attack_kinds = 0;
+    // appended (CONTENT_CONVENTIONS §54): WearerAc, the bonus added to the wearer's AC for the triggering attack only.
+    // Not reaction_ac_bonus. Static content. Not hashed.
+    int8_t ac_bonus = 0;
 };
 constexpr uint8_t kAttackKindMeleeWeapon = 1, kAttackKindRangedWeapon = 2, kAttackKindMeleeSpell = 4, kAttackKindRangedSpell = 8;
 // appended (7.2zb, T&C Patient Defense / Step of the Wind): a bonus-action grant that costs pool points. Combatant::bonus_action_costs:
@@ -527,6 +578,9 @@ struct FormStats {
     // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
     // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
     std::vector<uint32_t> blocked_features{};
+    // appended (Keen Senses, CONTENT_CONVENTIONS §30): the form's keen_senses. Wild Shape / Polymorph take the beast's;
+    // revert restores the creature's own. 0 = none. Static, not hashed.
+    uint8_t keen_senses = 0;
 };
 
 // 7.2z Danger Sense: advantage on `ability` saves against effects the creature can see (source_seen: the effect's creature is
@@ -585,6 +639,10 @@ struct Combatant {
     // began; down: at 0 HP waiting for its next turn start instead of dying).
     Regeneration regeneration{};
     bool regen_suppressed = false, regen_down = false;
+    // Shield Guardian Regeneration (CONTENT_CONVENTIONS §55). Hit points regained at the start of this
+    // creature's turn while hp >= 1. 0 means the trait is absent. Not troll Regeneration: no suppression
+    // and no regen_down. Death at 0 stays the ordinary path. Static. Not hashed. FormStats does not carry it.
+    int16_t regain = 0;
     std::vector<RollTrait> roll_traits;   // appended: conditional advantage / disadvantage (Pack Tactics, Magic Resistance, ...)
     Size size = Size::Medium;   // appended: Heavy weapons impose disadvantage on Small / Tiny wielders
     // appended (version-bump batch, row 8): innate spellcasting and printed DC / attack overrides.
@@ -739,8 +797,49 @@ struct Combatant {
     // an effect (rules5e::grant_fly / revoke_fly), 0 = none. The creature's fly speed is max(fly_ft, granted_fly_ft).
     uint8_t granted_fly_ft = 0;
     uint32_t granted_fly_src = 0;   // the grant's source (folded with it); revoke_fly(source) only removes a matching grant
+    // appended (Keen Senses, CONTENT_CONVENTIONS §30; static content, never hashed): kKeenSight / kKeenHearing / kKeenSmell.
+    // Advantage on a Wisdom (Perception) check that relies on a listed sense. Not part of passive_perception().
+    uint8_t keen_senses = 0;
+    // appended (B6 bite disease, CONTENT_CONVENTIONS §36): hit point maximum lost to diseases. Not Life Drain: a long rest
+    // does not clear it. Each Disease row on the encounter holds its own share; this is the sum. effective_hp_max subtracts
+    // it. 0xE3 folds the rows (and this field when non-zero).
+    int16_t disease_hp_max_reduction = 0;
+    // appended (B9 Air Form / Water Form, CONTENT_CONVENTIONS §39; static content, never hashed): this creature may enter a
+    // hostile creature's space and stop there. Trait ids "air_form" and "water_form" (sim content.cpp, the Flyby peer). Not a
+    // swarm: other creatures do not gain it, and a nonhostile space is still forbidden. No SIM_EVENTS tag.
+    bool enter_hostile_space = false;
+    // appended (B12 Freeze, CONTENT_CONVENTIONS §42; static content, never hashed): cold (or the listed types) in
+    // types_dealt applies one Speed modifier. FormStats does not carry it. No SIM_EVENTS tag (the row is 0xA2).
+    Freeze freeze{};
+    // appended (B13 Lightning Absorption, CONTENT_CONVENTIONS §43; static content, never hashed): bitmask over
+    // DamageType. A listed component is removed from the hit and regained as hit points. FormStats does not
+    // carry it. No SIM_EVENTS tag (the regain is Healed, and hit points are already in the state).
+    uint32_t absorb = 0;
+    // appended (B14 Innate Invisibility, CONTENT_CONVENTIONS §44; static content, never hashed): the creature
+    // has Condition::Invisible with no duration and no concentration. end_effect treats this as a holder, so a
+    // spell's ends_on does not clear the bit. FormStats does not carry it. No SIM_EVENTS tag.
+    bool innate_invisible = false;
+    // appended (B17 Horrifying Visage, CONTENT_CONVENTIONS §49). Years added by age_on_fail_by. Not an aging
+    // system: no ability scores, no death from old age, no greater restoration. Not hashed. No SIM_EVENTS tag.
+    // Replay re-rolls the dice. Saturates at 65535. FormStats does not carry it; the years stay on the creature.
+    uint16_t aged_years = 0;
+    // appended (B18 Bound, CONTENT_CONVENTIONS §50). radius_ft is static (not hashed). wearer is the amulet
+    // link and folds under Combat::hash 0xE5 only when non-zero. FormStats does not carry it.
+    Bound bound{};
+    // appended (B19 Etherealness, CONTENT_CONVENTIONS §51). Material is the default and is not hashed.
+    // Any other plane folds under Combat::hash 0xE6 only while some combatant is not Material.
+    // FormStats does not carry it; the plane stays on the creature. Not a condition and not invisibility.
+    Plane plane = Plane::Material;
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
+
+// SRD Etherealness: a creature cannot affect or be affected by anything on the other plane.
+// The creature itself is always on its own plane. Same plane, including Border Ethereal with
+// Border Ethereal, can. Empty when the action may proceed.
+inline std::string_view plane_affect_refusal(const Combatant& actor, const Combatant& target) {
+    if (actor.id == target.id || actor.plane == target.plane) return {};
+    return "can't affect a creature on the other plane";
+}
 
 void add_condition(Combatant&, Condition);
 void remove_condition(Combatant&, Condition);

@@ -4,6 +4,7 @@
 
 #include <fstream>
 #include <string>
+#include <tuple>
 
 #include "sample_set.hpp"
 #include "rules5e/healing.hpp"
@@ -128,12 +129,85 @@ TEST_CASE("drain combat: failed save reduces the maximum by the damage taken; a 
 
 namespace {
 // Death dog Bite rider (SRD 5.1): "must succeed on a DC 12 Constitution saving throw against disease or become poisoned
-// until the disease is cured." The 24-hour hit point maximum reduction is deferred (no day clock in combat).
+// until the disease is cured." The 24-hour hit point maximum reduction is the B6 `disease` key; this fixture is the
+// poisoned half only, which is what death_dog.json still authors.
 Json until_cured_rider(const std::string& cond, int dc) {
     return Json::array({{{"kind", "save_condition"}, {"save", {{"ability", "con"}, {"dc", dc}}},
                          {"apply", Json::array({{{"condition", cond}, {"duration", {{"kind", "until_cured"}}}}})}}});
 }
 }  // namespace
+
+Json disease_rider(int dc, const std::string& hp = "1d10") {
+    Json r = until_cured_rider("poisoned", dc);
+    r[0]["disease"] = {{"every_hours", 24}, {"hp_max", hp}};
+    return r;
+}
+
+TEST_CASE("bite disease loader: 24h schedule on an on_hit save_condition; refusals") {
+    Json m = creature("t.otyugh");
+    m["actions"][0]["on_hit"] = disease_rider(15);
+    auto lib = lib_with({m});
+    const auto* def = lib.spells()->find(rules5e::spell_id_of("t.otyugh#save_condition.0"));
+    REQUIRE(def);
+    CHECK(def->disease);
+    CHECK(def->disease_hours == 24);
+    CHECK(def->disease_dice == rules5e::DiceExpr{1, 10, 0});
+    CHECK(def->condition == rules5e::Condition::Poisoned);
+    CHECK(def->condition_untracked);
+    CHECK(def->fixed_dc == 15);
+
+    auto bad = [&](auto edit, const char* msg) {
+        Json b = creature("t.bad");
+        b["actions"][0]["on_hit"] = disease_rider(15);
+        edit(b);
+        CHECK(load_error(b).find(msg) != std::string::npos);
+    };
+    bad([](Json& b) { b["$schema"] = "monster@4"; }, "disease needs a monster@5 file");
+    bad([](Json& b) { b["actions"][0]["on_hit"][0]["save"]["ability"] = "str"; }, "disease needs a Constitution save");
+    bad([](Json& b) { b["actions"][0]["on_hit"][0]["disease"]["every_hours"] = 12; }, "disease.every_hours must be 24");
+    bad([](Json& b) { b["actions"][0]["on_hit"][0]["disease"]["hp_max"] = "nope"; }, "disease.hp_max must be dice");
+    bad([](Json& b) { b["actions"][0]["on_hit"][0]["disease"]["dust"] = true; }, "disease: unknown key 'dust'");
+    bad([](Json& b) { b["actions"][0]["on_hit"][0]["apply"][0]["condition"] = "blinded"; },
+        "disease needs exactly one until_cured poisoned apply");
+    bad([](Json& b) { b["actions"][0]["on_hit"][0]["damage"] = Json::array({{{"dice", "1d10"}, {"type", "poison"}}});
+                      b["actions"][0]["on_hit"][0]["on_success"] = "none"; },
+        "disease takes no damage");
+    Json trait = creature("t.trait");
+    trait["traits"] = Json::array({{{"id", "bite"}, {"name", "Bite"}, {"description", "x"},
+        {"effect", {{"kind", "on_event"}, {"on", "hit"}, {"effects", disease_rider(15)}}}}});
+    CHECK(load_error(trait).find("disease is an on_hit save_condition") != std::string::npos);
+}
+
+TEST_CASE("bite disease: a hit that fails the save contracts it; a hit that saves does not") {
+    auto run = [](int dc) {
+        Json m = creature("t.otyugh");
+        m["actions"][0]["on_hit"] = disease_rider(dc);
+        auto lib = lib_with({m});
+        auto ch = arena({{"t.otyugh", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, 11);
+        REQUIRE(c);
+        const CombatantId a = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+        to_actor(*c, a);
+        Command cmd;
+        cmd.request = {a, ActionKind::Attack, f, 0};
+        REQUIRE(c->submit(cmd).ok);
+        return std::tuple<bool, int, uint32_t, uint32_t>{
+            who(*c, f).has(rules5e::Condition::Poisoned),
+            int(c->state().diseases.size()),
+            c->state().diseases.empty() ? 0u : c->state().diseases[0].next_round,
+            uint32_t(c->state().round)};
+    };
+    const auto [poisoned, n, due, round] = run(30);
+    CHECK(poisoned);
+    CHECK(n == 1);
+    CHECK(due == round + 24u * 600u);
+    const auto [clean, none, unused, round2] = run(1);
+    CHECK_FALSE(clean);
+    CHECK(none == 0);
+    CHECK(unused == 0u);
+    CHECK(round2 >= 1u);
+}
 
 TEST_CASE("until_cured duration (death dog): poisoned, untracked, no timer; refusals") {
     Json d = creature("t.death_dog");

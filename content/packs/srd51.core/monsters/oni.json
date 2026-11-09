@@ -1,0 +1,159 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.oni",
+  "name": "Oni",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "giant",
+  "alignment": "lawful evil",
+  "armor_class": {
+    "value": 16,
+    "note": "chain mail"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.chain_mail",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.glaive",
+      "equipped": true
+    }
+  ],
+  "weapon_dice_multiplier": 2,
+  "hands": 2,
+  "hit_points": {
+    "average": 110,
+    "formula": "13d10+39"
+  },
+  "speed": {
+    "walk": 30,
+    "fly": 30
+  },
+  "abilities": {
+    "str": 19,
+    "dex": 11,
+    "con": 16,
+    "int": 14,
+    "wis": 12,
+    "cha": 15
+  },
+  "saving_throws": {
+    "dex": 3,
+    "con": 6,
+    "wis": 4,
+    "cha": 5
+  },
+  "skills": {
+    "arcana": 5,
+    "deception": 8,
+    "perception": 4
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 14
+  },
+  "languages": [
+    "Common",
+    "Giant"
+  ],
+  "challenge": {
+    "rating": "7",
+    "xp": 2900
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "innate_spellcasting",
+      "name": "Innate Spellcasting",
+      "description": "The oni's innate spellcasting ability is Charisma (spell save DC 13). The oni can innately cast the following spells, requiring no material components:\nAt will: darkness, invisibility\n1/day each: charm person, cone of cold, gaseous form, sleep\n(Descriptive only: monster spellcasting is slot-based, so this innate list is not a spellcasting entry; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "magic_weapons",
+      "name": "Magic Weapons",
+      "description": "The oni's weapon attacks are magical.",
+      "effect": {
+        "kind": "magic_weapons"
+      }
+    },
+    {
+      "id": "regeneration",
+      "name": "Regeneration",
+      "description": "The oni regains 10 hit points at the start of its turn if it has at least 1 hit point. (Descriptive only: no regeneration effect. No acid or fire suppress and no special death, so this is not the troll park. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The oni makes two attacks, either with its claws or its glaive. (Exactly two options: claw x2 or glaive x2. a6212be action_options also lists a mixed glaive and claw; the SRD line is either/or, so that mix is not an option. See docs/SRD_MONSTERS_DEFERRED.md.)",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "claw_x2",
+            "attacks": [
+              "claw",
+              "claw"
+            ]
+          },
+          {
+            "id": "glaive_x2",
+            "attacks": [
+              "glaive",
+              "glaive"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "claw",
+      "name": "Claw (Oni Form Only)",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d8",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+4",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 8 (1d8 + 4) slashing damage. (Oni Form Only is descriptive: Change Shape is not live, so this is the authored true form's claw. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "glaive",
+      "name": "Glaive",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.glaive",
+      "use": "two_hands",
+      "ability": "str",
+      "to_hit": 7,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d10+4",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +7 to hit, reach 10 ft., one target. Hit: 15 (2d10 + 4) slashing damage, or 9 (1d10 + 4) slashing damage in Small or Medium form. (The Small or Medium form line is descriptive only: Change Shape is not live, and the a6212be damage array is 2d10+4 only. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "change_shape",
+      "name": "Change Shape",
+      "kind": "special",
+      "description": "The oni magically polymorphs into a Small or Medium humanoid, into a Large giant, or back into its true form. Other than its size, its statistics are the same in each form. The only equipment that is transformed is its glaive, which shrinks so that it can be wielded in humanoid form. If the oni dies, it reverts to its true form, and its glaive reverts to its normal size. (Descriptive only: no shapechanger forms, and shapechanger is not set. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

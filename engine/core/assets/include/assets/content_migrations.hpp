@@ -24,6 +24,9 @@
 //  item@2 / monster@5 / character@5 (docs/proposals/EQUIPMENT.md section 7, #245): migrations item 1 -> 2,
 //  monster 4 -> 5 and character 4 -> 5 are identity (only $schema changes; `derive` absent = false), so every
 //  older file loads to the same data and every hash is unchanged. The new fields' schemas and validator are T&C's.
+//  monster@6 / character@6 (Engine Core M0): optional presentation `visual`. Migrations 5 -> 6 are identity
+//  (only $schema changes; visual stays absent). The loader fills a presentation default when visual is absent
+//  and never folds visual or presentation.sprite into Combat::hash, log_hash, or content hashes.
 //  character@3: feature effects (features[]/traits[] "effect") become mechanically active.
 //  Before @3 they were descriptive only and content baked their numbers into stat blocks (fl1's
 //  longsword 1d8+5 includes Dueling). Migration 2 -> 3 marks every pre-@3 effect
@@ -36,8 +39,8 @@
 
 namespace eng::assets {
 
-inline constexpr uint32_t kMonsterSchemaVersion = 5;
-inline constexpr uint32_t kCharacterSchemaVersion = 5;
+inline constexpr uint32_t kMonsterSchemaVersion = 6;
+inline constexpr uint32_t kCharacterSchemaVersion = 6;
 // spell@1: SRD spell (schemas/spell/v1.schema.json); mapped to rules5e::SpellDef by rules5e_content.
 inline constexpr uint32_t kSpellSchemaVersion = 1;
 // item@1: weapons, armor and shields (schemas/item/v1.schema.json). The engine registers the type so item

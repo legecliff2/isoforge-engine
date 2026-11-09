@@ -1,0 +1,177 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.succubus",
+  "name": "Succubus/Incubus",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "fiend",
+  "alignment": "neutral evil",
+  "armor_class": {
+    "value": 15,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 12,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 66,
+    "formula": "12d8+12"
+  },
+  "speed": {
+    "walk": 30,
+    "fly": 60
+  },
+  "abilities": {
+    "str": 8,
+    "dex": 17,
+    "con": 13,
+    "int": 15,
+    "wis": 12,
+    "cha": 20
+  },
+  "skills": {
+    "deception": 9,
+    "insight": 5,
+    "perception": 5,
+    "persuasion": 9,
+    "stealth": 7
+  },
+  "damage_resistances": [
+    "cold",
+    "fire",
+    "lightning",
+    "poison"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 15
+  },
+  "languages": [
+    "Abyssal",
+    "Common",
+    "Infernal",
+    "telepathy 60 ft."
+  ],
+  "challenge": {
+    "rating": "4",
+    "xp": 1100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "damage_resistances_nonmagical",
+      "name": "Damage Resistances",
+      "description": "Resistant to bludgeoning, piercing, and slashing from nonmagical weapons.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "resistances": {
+          "nonmagical": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "telepathic_bond",
+      "name": "Telepathic Bond",
+      "description": "The fiend ignores the range restriction on its telepathy when communicating with a creature it has charmed. The two don't even need to be on the same plane of existence. (Descriptive only: no telepathy channel and no cross-plane link. Not Charm. Not a plane.)"
+    },
+    {
+      "id": "shapechanger",
+      "name": "Shapechanger",
+      "description": "The fiend can use its action to polymorph into a Small or Medium humanoid, or back into its true form. Without wings, the fiend loses its flying speed. Other than its size and speed, its statistics are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (Descriptive only: no shape, no forms, no shapechanger effect. shapechanger is not set. The a6212be subtype is shapechanger. Not a shapechanger trait.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "claw",
+      "name": "Claw (Fiend Form Only)",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d6",
+        "ability": "dex"
+      },
+      "ability": "dex",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 6 (1d6 + 3) slashing damage. (Fiend Form Only is descriptive: Shapechanger is not live, so this is the authored true form's claw. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "charm",
+      "name": "Charm",
+      "kind": "save_effect",
+      "range_ft": 30,
+      "save": {
+        "ability": "wis",
+        "dc": 15
+      },
+      "magical": true,
+      "caster_sees_target": true,
+      "target_creature_types": [
+        "humanoid"
+      ],
+      "control": "command",
+      "charm_command": true,
+      "immune_on_success": {
+        "hours": 24,
+        "scope": "same_source"
+      },
+      "apply": [
+        {
+          "condition": "charmed",
+          "duration": {
+            "kind": "rounds",
+            "n": 14400
+          },
+          "repeat_save": "on_damage"
+        }
+      ],
+      "description": "One humanoid the fiend can see within 30 feet of it must succeed on a DC 15 Wisdom saving throw or be magically charmed for 1 day. The charmed target obeys the fiend's verbal or telepathic commands. If the target suffers any harm or receives a suicidal command, it can repeat the saving throw, ending the effect on a success. If the target successfully saves against the effect, or if the effect on it ends, the target is immune to this fiend's Charm for the next 24 hours.\nThe fiend can have only one target charmed at a time. If it charms another, the effect on the previous target ends. (Charm, CONTENT_CONVENTIONS §47: save_effect charm_command, control command, magical, caster_sees_target, target_creature_types humanoid, Wisdom DC 15, charmed 14400 rounds, repeat_save on_damage, immune_on_success 24 hours same_source. A later command_word 1..5 orders that creature and does not spend the action. 6 is a suicidal command. A command other than those words is not expressible. Charming another ends the previous charm. No new hash tag.)"
+    },
+    {
+      "id": "draining_kiss",
+      "name": "Draining Kiss",
+      "kind": "save_effect",
+      "range_ft": 5,
+      "save": {
+        "ability": "con",
+        "dc": 15
+      },
+      "magical": true,
+      "on_success": "half",
+      "damage": [
+        {
+          "dice": "5d10+5",
+          "type": "psychic"
+        }
+      ],
+      "drain_max_hp": true,
+      "target_requires_any": [
+        "charmed_by_self",
+        "willing"
+      ],
+      "description": "The fiend kisses a creature charmed by it or a willing creature. The target must make a DC 15 Constitution saving throw against this magic, taking 32 (5d10 + 5) psychic damage on a failed save, or half as much damage on a successful one. The target's hit point maximum is reduced by an amount equal to the damage taken. This reduction lasts until the target finishes a long rest. The target dies if this effect reduces its hit point maximum to 0. (Draining Kiss, CONTENT_CONVENTIONS §48: save_effect drain_max_hp, on_success half, magical, Constitution DC 15, 5d10+5 psychic, range 5, target_requires_any charmed_by_self and willing. willing is an ally with target_willing. A hostile willing creature is not this gate. The hit point maximum drops by the damage taken until a long rest. A maximum of 0 kills. The built-in AI does not set target_willing. No new hash tag.)"
+    },
+    {
+      "id": "etherealness",
+      "name": "Etherealness",
+      "kind": "special",
+      "description": "The fiend magically enters the Ethereal Plane from the Material Plane, or vice versa. (Descriptive only: not kind etherealness and not the ghost Border Ethereal action, CONTENT_CONVENTIONS §51. The sentence has no Border and no affect rule. No plane. This action does not implement that contract.)"
+    }
+  ]
+}

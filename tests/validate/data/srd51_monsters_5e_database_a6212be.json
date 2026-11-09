@@ -1,5 +1,5 @@
 {
- "_source": "5e-bits/5e-database commit a6212be, src/2014/en/5e-SRD-Monsters.json (fields copied verbatim; see tests/validate/test_srd51_monsters.py for the two documented deviations)",
+ "_source": "5e-bits/5e-database commit a6212be, src/2014/en/5e-SRD-Monsters.json (fields copied verbatim; see tests/validate/test_srd51_monsters.py for the two documented deviations). The invisible-stalker row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index invisible-stalker (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Slam attack_bonus plus damage dice and type. Those fields match that object. The sea-hag row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index sea-hag (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claws attack_bonus plus damage dice and type. Death Glare and Illusory Appearance are not attack rows. Those fields match that object. The water-elemental row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index water-elemental (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Slam attack_bonus plus damage dice and type. Whelm is not an attack row. Those fields match that object. The green-hag row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index green-hag (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claws attack_bonus plus damage dice and type. Illusory Appearance and Invisible Passage are not attack rows. Those fields match that object. The succubus row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index succubus-incubus (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claw (Fiend Form Only) attack_bonus plus damage dice and type. Charm, Draining Kiss, and Etherealness are not attack rows. Those fields match that object. The ghost row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index ghost (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Withering Touch attack_bonus plus damage dice and type. Etherealness, Horrifying Visage, and Possession are not attack rows. Those fields match that object. The shield-guardian row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index shield-guardian (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Fist attack_bonus plus damage dice and type. Multiattack is not an attack row. Shield is a reaction, not an attack row. Those fields match that object.",
  "monsters": {
   "commoner": {
    "name": "Commoner",
@@ -7805,6 +7805,2546 @@
        [
         "1d6",
         "acid"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-scorpion": {
+   "name": "Giant Scorpion",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    15
+   ],
+   "hp": 52,
+   "hp_roll": "7d10+14",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    15,
+    13,
+    15,
+    1,
+    9,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claw",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Sting",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d10+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "minotaur": {
+   "name": "Minotaur",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    14
+   ],
+   "hp": 76,
+   "hp_roll": "9d10+27",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    18,
+    11,
+    16,
+    6,
+    16,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Greataxe",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d12+4",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Gore",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d8+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "gorgon": {
+   "name": "Gorgon",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    19
+   ],
+   "hp": 114,
+   "hp_roll": "12d10+48",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    20,
+    11,
+    18,
+    2,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "petrified"
+   ],
+   "attacks": [
+    {
+     "name": "Gore",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "2d12+5",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Hooves",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "2d10+5",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "hell-hound": {
+   "name": "Hell Hound",
+   "size": "Medium",
+   "type": "fiend",
+   "ac": [
+    15
+   ],
+   "hp": 45,
+   "hp_roll": "7d8+14",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    17,
+    12,
+    14,
+    6,
+    13,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "fire"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "piercing"
+       ],
+       [
+        "2d6",
+        "fire"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "winter-wolf": {
+   "name": "Winter Wolf",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    13
+   ],
+   "hp": 75,
+   "hp_roll": "10d10+20",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    18,
+    13,
+    14,
+    7,
+    12,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "cold"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "manticore": {
+   "name": "Manticore",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    14
+   ],
+   "hp": 68,
+   "hp_roll": "8d10+24",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "50 ft."
+   },
+   "abilities": [
+    17,
+    16,
+    17,
+    7,
+    12,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tail Spike",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "werewolf": {
+   "name": "Werewolf",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    11
+   ],
+   "hp": 58,
+   "hp_roll": "9d8+18",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    15,
+    13,
+    14,
+    10,
+    11,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Spear",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ],
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "phase-spider": {
+   "name": "Phase Spider",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    13
+   ],
+   "hp": 32,
+   "hp_roll": "5d10+5",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "30 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    15,
+    15,
+    12,
+    6,
+    10,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d10+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "black-pudding": {
+   "name": "Black Pudding",
+   "size": "Large",
+   "type": "ooze",
+   "ac": [
+    7
+   ],
+   "hp": 85,
+   "hp_roll": "10d10+30",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "20 ft.",
+    "climb": "20 ft."
+   },
+   "abilities": [
+    16,
+    5,
+    16,
+    1,
+    6,
+    1
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "acid",
+    "cold",
+    "lightning",
+    "slashing"
+   ],
+   "condition_immunities": [
+    "blinded",
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "prone"
+   ],
+   "attacks": [
+    {
+     "name": "Pseudopod",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "bludgeoning"
+       ],
+       [
+        "4d8",
+        "acid"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "elephant": {
+   "name": "Elephant",
+   "size": "Huge",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 76,
+   "hp_roll": "8d12+24",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    22,
+    9,
+    17,
+    3,
+    11,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Gore",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "3d8+6",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Stomp",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "3d10+6",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "ettin": {
+   "name": "Ettin",
+   "size": "Large",
+   "type": "giant",
+   "ac": [
+    12
+   ],
+   "hp": 85,
+   "hp_roll": "10d10+30",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    21,
+    8,
+    17,
+    6,
+    10,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Battleaxe",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d8+5",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Morningstar",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d8+5",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "wereboar": {
+   "name": "Wereboar",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    10
+   ],
+   "hp": 78,
+   "hp_roll": "12d8+24",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    17,
+    10,
+    15,
+    10,
+    11,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Maul",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "weretiger": {
+   "name": "Weretiger",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    12
+   ],
+   "hp": 120,
+   "hp_roll": "16d8+48",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    17,
+    15,
+    16,
+    10,
+    13,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Scimitar",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Longbow",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "lamia": {
+   "name": "Lamia",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    13
+   ],
+   "hp": 97,
+   "hp_roll": "13d10+26",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    13,
+    15,
+    14,
+    15,
+    16
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d10+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Dagger",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d4+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "couatl": {
+   "name": "Couatl",
+   "size": "Medium",
+   "type": "celestial",
+   "ac": [
+    19
+   ],
+   "hp": 97,
+   "hp_roll": "13d8+39",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "90 ft."
+   },
+   "abilities": [
+    16,
+    20,
+    17,
+    18,
+    20,
+    18
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "radiant"
+   ],
+   "damage_immunities": [
+    "psychic",
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "1d6+5",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Constrict",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "triceratops": {
+   "name": "Triceratops",
+   "size": "Huge",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 95,
+   "hp_roll": "10d12+30",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    22,
+    9,
+    17,
+    2,
+    11,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Gore",
+     "attack_bonus": 9,
+     "damage_options": [
+      [
+       [
+        "4d8+6",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Stomp",
+     "attack_bonus": 9,
+     "damage_options": [
+      [
+       [
+        "3d10+6",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-crocodile": {
+   "name": "Giant Crocodile",
+   "size": "Huge",
+   "type": "beast",
+   "ac": [
+    14
+   ],
+   "hp": 85,
+   "hp_roll": "9d12+27",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "50 ft."
+   },
+   "abilities": [
+    21,
+    9,
+    17,
+    2,
+    10,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "3d10+5",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tail",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "2d8+5",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-shark": {
+   "name": "Giant Shark",
+   "size": "Huge",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 126,
+   "hp_roll": "11d12+55",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "swim": "50 ft."
+   },
+   "abilities": [
+    23,
+    11,
+    21,
+    1,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 9,
+     "damage_options": [
+      [
+       [
+        "3d10+6",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "bulette": {
+   "name": "Bulette",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    17
+   ],
+   "hp": 94,
+   "hp_roll": "9d10+45",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "40 ft.",
+    "burrow": "40 ft."
+   },
+   "abilities": [
+    19,
+    11,
+    21,
+    2,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "4d12+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "air-elemental": {
+   "name": "Air Elemental",
+   "size": "Large",
+   "type": "elemental",
+   "ac": [
+    15
+   ],
+   "hp": 90,
+   "hp_roll": "12d10+24",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "fly": "90 ft.",
+    "hover": true
+   },
+   "abilities": [
+    14,
+    20,
+    14,
+    6,
+    10,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "lightning",
+    "thunder",
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "unconscious"
+   ],
+   "attacks": [
+    {
+     "name": "Slam",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "2d8+5",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "earth-elemental": {
+   "name": "Earth Elemental",
+   "size": "Large",
+   "type": "elemental",
+   "ac": [
+    17
+   ],
+   "hp": 126,
+   "hp_roll": "12d10+60",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "30 ft.",
+    "burrow": "30 ft."
+   },
+   "abilities": [
+    20,
+    8,
+    20,
+    5,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [
+    "thunder"
+   ],
+   "damage_resistances": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "exhaustion",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "unconscious"
+   ],
+   "attacks": [
+    {
+     "name": "Slam",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "2d8+5",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "fire-elemental": {
+   "name": "Fire Elemental",
+   "size": "Large",
+   "type": "elemental",
+   "ac": [
+    13
+   ],
+   "hp": 102,
+   "hp_roll": "12d10+36",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    10,
+    17,
+    16,
+    6,
+    10,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "fire",
+    "poison"
+   ],
+   "condition_immunities": [
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "unconscious"
+   ],
+   "attacks": [
+    {
+     "name": "Touch",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "fire"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "salamander": {
+   "name": "Salamander",
+   "size": "Large",
+   "type": "elemental",
+   "ac": [
+    15
+   ],
+   "hp": 90,
+   "hp_roll": "12d10+24",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    18,
+    14,
+    15,
+    11,
+    10,
+    12
+   ],
+   "damage_vulnerabilities": [
+    "cold"
+   ],
+   "damage_resistances": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "fire"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Spear",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ],
+       [
+        "1d6",
+        "fire"
+       ]
+      ],
+      [
+       [
+        "2d8+4",
+        "piercing"
+       ],
+       [
+        "1d6",
+        "fire"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tail",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "bludgeoning"
+       ],
+       [
+        "2d6",
+        "fire"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "xorn": {
+   "name": "Xorn",
+   "size": "Medium",
+   "type": "elemental",
+   "ac": [
+    19
+   ],
+   "hp": 73,
+   "hp_roll": "7d8+42",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "20 ft.",
+    "burrow": "20 ft."
+   },
+   "abilities": [
+    17,
+    10,
+    22,
+    11,
+    10,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "piercing and slashing from nonmagical weapons that aren't adamantine"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claw",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "3d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "werebear": {
+   "name": "Werebear",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    10
+   ],
+   "hp": 135,
+   "hp_roll": "18d8+54",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    19,
+    10,
+    17,
+    11,
+    12,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Greataxe",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "1d12+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "wraith": {
+   "name": "Wraith",
+   "size": "Medium",
+   "type": "undead",
+   "ac": [
+    13
+   ],
+   "hp": 67,
+   "hp_roll": "9d8+27",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "0 ft.",
+    "fly": "60 ft.",
+    "hover": true
+   },
+   "abilities": [
+    6,
+    16,
+    16,
+    12,
+    14,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered"
+   ],
+   "damage_immunities": [
+    "necrotic",
+    "poison"
+   ],
+   "condition_immunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+   ],
+   "attacks": [
+    {
+     "name": "Life Drain",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "4d8+3",
+        "necrotic"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "young-white-dragon": {
+   "name": "Young White Dragon",
+   "size": "Large",
+   "type": "dragon",
+   "ac": [
+    17
+   ],
+   "hp": 133,
+   "hp_roll": "14d10+56",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "40 ft.",
+    "burrow": "20 ft.",
+    "fly": "80 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    18,
+    10,
+    18,
+    6,
+    11,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "cold"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d10+4",
+        "piercing"
+       ],
+       [
+        "1d8",
+        "cold"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "young-brass-dragon": {
+   "name": "Young Brass Dragon",
+   "size": "Large",
+   "type": "dragon",
+   "ac": [
+    17
+   ],
+   "hp": 110,
+   "hp_roll": "13d10+39",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "40 ft.",
+    "burrow": "20 ft.",
+    "fly": "80 ft."
+   },
+   "abilities": [
+    19,
+    10,
+    17,
+    12,
+    11,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "fire"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d10+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "chimera": {
+   "name": "Chimera",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    14
+   ],
+   "hp": 114,
+   "hp_roll": "12d10+48",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    19,
+    11,
+    19,
+    3,
+    14,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Horns",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "1d12+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "wyvern": {
+   "name": "Wyvern",
+   "size": "Large",
+   "type": "dragon",
+   "ac": [
+    13
+   ],
+   "hp": 110,
+   "hp_roll": "13d10+39",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "20 ft.",
+    "fly": "80 ft."
+   },
+   "abilities": [
+    19,
+    10,
+    16,
+    5,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d8+4",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Stinger",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "mammoth": {
+   "name": "Mammoth",
+   "size": "Huge",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 126,
+   "hp_roll": "11d12+55",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    24,
+    9,
+    21,
+    3,
+    11,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Gore",
+     "attack_bonus": 10,
+     "damage_options": [
+      [
+       [
+        "4d8+7",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Stomp",
+     "attack_bonus": 10,
+     "damage_options": [
+      [
+       [
+        "4d10+7",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "drider": {
+   "name": "Drider",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    19
+   ],
+   "hp": 123,
+   "hp_roll": "13d10+52",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "30 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    16,
+    16,
+    18,
+    13,
+    14,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d4",
+        "piercing"
+       ],
+       [
+        "2d8",
+        "poison"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Longsword",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "slashing"
+       ]
+      ],
+      [
+       [
+        "1d10+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Longbow",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "piercing"
+       ],
+       [
+        "1d8",
+        "poison"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "young-black-dragon": {
+   "name": "Young Black Dragon",
+   "size": "Large",
+   "type": "dragon",
+   "ac": [
+    18
+   ],
+   "hp": 127,
+   "hp_roll": "15d10+45",
+   "cr": 7,
+   "xp": 2900,
+   "speed": {
+    "walk": "40 ft.",
+    "fly": "80 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    19,
+    14,
+    17,
+    12,
+    11,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "acid"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d10+4",
+        "piercing"
+       ],
+       [
+        "1d8",
+        "acid"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "young-copper-dragon": {
+   "name": "Young Copper Dragon",
+   "size": "Large",
+   "type": "dragon",
+   "ac": [
+    17
+   ],
+   "hp": 119,
+   "hp_roll": "14d10+42",
+   "cr": 7,
+   "xp": 2900,
+   "speed": {
+    "walk": "40 ft.",
+    "climb": "40 ft.",
+    "fly": "80 ft."
+   },
+   "abilities": [
+    19,
+    12,
+    17,
+    16,
+    13,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "acid"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d10+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "oni": {
+   "name": "Oni",
+   "size": "Large",
+   "type": "giant",
+   "ac": [
+    16
+   ],
+   "hp": 110,
+   "hp_roll": "13d10+39",
+   "cr": 7,
+   "xp": 2900,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    19,
+    11,
+    16,
+    14,
+    12,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claw (Oni Form Only)",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "1d8+4",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Glaive",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d10+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "troll": {
+   "name": "Troll",
+   "size": "Large",
+   "type": "giant",
+   "ac": [
+    15
+   ],
+   "hp": 84,
+   "hp_roll": "8d10+40",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    18,
+    13,
+    20,
+    7,
+    9,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "1d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "chuul": {
+   "name": "Chuul",
+   "size": "Large",
+   "type": "aberration",
+   "ac": [
+    16
+   ],
+   "hp": 93,
+   "hp_roll": "11d10+33",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    19,
+    10,
+    16,
+    5,
+    11,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Pincer",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "otyugh": {
+   "name": "Otyugh",
+   "size": "Large",
+   "type": "aberration",
+   "ac": [
+    14
+   ],
+   "hp": 114,
+   "hp_roll": "12d10+48",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    11,
+    19,
+    6,
+    13,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d8+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tentacle",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "bludgeoning"
+       ],
+       [
+        "1d8",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "roper": {
+   "name": "Roper",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    20
+   ],
+   "hp": 93,
+   "hp_roll": "11d10+33",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "10 ft.",
+    "climb": "10 ft."
+   },
+   "abilities": [
+    18,
+    8,
+    17,
+    7,
+    16,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "4d8+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tendril",
+     "attack_bonus": 7,
+     "damage_options": []
+    }
+   ]
+  },
+  "shambling-mound": {
+   "name": "Shambling Mound",
+   "size": "Large",
+   "type": "plant",
+   "ac": [
+    15
+   ],
+   "hp": 136,
+   "hp_roll": "16d10+48",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "20 ft.",
+    "swim": "20 ft."
+   },
+   "abilities": [
+    18,
+    8,
+    16,
+    5,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "cold",
+    "fire"
+   ],
+   "damage_immunities": [
+    "lightning"
+   ],
+   "condition_immunities": [
+    "blinded",
+    "blinded",
+    "exhaustion"
+   ],
+   "attacks": [
+    {
+     "name": "Slam",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d8+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "invisible-stalker": {
+   "name": "Invisible Stalker",
+   "size": "Medium",
+   "type": "elemental",
+   "ac": [
+    14
+   ],
+   "hp": 104,
+   "hp_roll": "16d8+32",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "50 ft.",
+    "fly": "50 ft.",
+    "hover": true
+   },
+   "abilities": [
+    16,
+    19,
+    14,
+    10,
+    15,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "unconscious"
+   ],
+   "attacks": [
+    {
+     "name": "Slam",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "sea-hag": {
+   "name": "Sea Hag",
+   "size": "Medium",
+   "type": "fey",
+   "ac": [
+    14
+   ],
+   "hp": 52,
+   "hp_roll": "7d8+21",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    16,
+    13,
+    16,
+    12,
+    12,
+    13
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "water-elemental": {
+   "name": "Water Elemental",
+   "size": "Large",
+   "type": "elemental",
+   "ac": [
+    14
+   ],
+   "hp": 114,
+   "hp_roll": "12d10+48",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "90 ft."
+   },
+   "abilities": [
+    18,
+    14,
+    18,
+    5,
+    10,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "acid",
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "unconscious"
+   ],
+   "attacks": [
+    {
+     "name": "Slam",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d8+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "green-hag": {
+   "name": "Green Hag",
+   "size": "Medium",
+   "type": "fey",
+   "ac": [
+    17
+   ],
+   "hp": 82,
+   "hp_roll": "11d8+33",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    18,
+    12,
+    16,
+    13,
+    14,
+    14
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d8+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "succubus": {
+   "name": "Succubus/Incubus",
+   "size": "Medium",
+   "type": "fiend",
+   "ac": [
+    15
+   ],
+   "hp": 66,
+   "hp_roll": "12d8+12",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    8,
+    17,
+    13,
+    15,
+    12,
+    20
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "cold",
+    "fire",
+    "lightning",
+    "poison",
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claw (Fiend Form Only)",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "ghost": {
+   "name": "Ghost",
+   "size": "Medium",
+   "type": "undead",
+   "ac": [
+    11
+   ],
+   "hp": 45,
+   "hp_roll": "10d8",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "0 ft.",
+    "fly": "40 ft.",
+    "hover": true
+   },
+   "abilities": [
+    7,
+    13,
+    10,
+    10,
+    12,
+    17
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "acid",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "cold",
+    "necrotic",
+    "poison"
+   ],
+   "condition_immunities": [
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+   ],
+   "attacks": [
+    {
+     "name": "Withering Touch",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "4d6+3",
+        "necrotic"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "shield-guardian": {
+   "name": "Shield Guardian",
+   "size": "Large",
+   "type": "construct",
+   "ac": [
+    17
+   ],
+   "hp": 142,
+   "hp_roll": "15d10+60",
+   "cr": 7,
+   "xp": 2900,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    18,
+    8,
+    18,
+    7,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "paralyzed",
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Fist",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "bludgeoning"
        ]
       ]
      ]

@@ -38,6 +38,18 @@ std::optional<std::string> spawn_team_name(const world::EntitySpawn& sp, const A
     return name;
 }
 
+// Tiles a Grappled entry still holds across. The Grapple action (via_attack 0xFF) is 5 ft. B11 Whelm records
+// 0xFE, which is not an attack index, so it is 5 ft as well. An extended rider (restrains, exclusive, max_grapples,
+// instead_of_damage, no_damage) records the attack, and that attack's reach is the grappling effect's reach
+// (SRD: the grapple ends when the creature leaves that reach).
+int grapple_reach_tiles(const rules5e::EncounterState& s, const rules5e::SourcedCondition& sc) {
+    if (sc.via_attack == 0xFF || sc.via_attack == rules5e::kWhelmGrapple) return 1;
+    const rules5e::Combatant* g = rules5e::find(s, sc.source);
+    if (!g || sc.via_attack >= g->attacks.size()) return 1;
+    const int ft = int(g->attacks[sc.via_attack].reach_or_range_ft);
+    return std::max(1, ft / 5);
+}
+
 std::optional<Combat> Combat::create(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
                                      uint64_t seed, std::string* error) {
     return create(reg, chunk, content, seed, CombatOptions{}, error);
@@ -121,6 +133,31 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
         rules5e::Combatant k = a->base;
         k.id = sp.stable_id;
         k.team = uint8_t(std::lower_bound(c.team_names_.begin(), c.team_names_.end(), team_name) - c.team_names_.begin());
+        if (!sp.overrides_json.empty()) {   // B18: the amulet wearer. Not an item. Replay reads the same spawn override.
+            const assets::Json ov = assets::Json::parse(sp.overrides_json, nullptr, false);
+            if (ov.is_object()) {
+                if (auto w = ov.find("bound_wearer"); w != ov.end()) {
+                    if (k.bound.radius_ft == 0) {
+                        if (error) *error = "spawn overrides.bound_wearer needs the bound trait";
+                        return std::nullopt;
+                    }
+                    if (!w->is_number_integer()) {
+                        if (error) *error = "spawn overrides.bound_wearer must be a combatant id";
+                        return std::nullopt;
+                    }
+                    const int64_t n = w->get<int64_t>();
+                    if (n < 1 || n > 4294967295LL) {
+                        if (error) *error = "spawn overrides.bound_wearer must be a combatant id";
+                        return std::nullopt;
+                    }
+                    if (rules5e::CombatantId(n) == k.id) {
+                        if (error) *error = "spawn overrides.bound_wearer cannot be the guardian";
+                        return std::nullopt;
+                    }
+                    k.bound.wearer = rules5e::CombatantId(n);
+                }
+            }
+        }
         const ecs::Entity e = reg.create(sp.stable_id);
         reg.emplace(e, Health{k.hp, k.hp_max});
         reg.emplace(e, Team{k.team});
@@ -130,6 +167,15 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
         c.slots_.push_back({k.id, e, a});
         if (!a->equipment.empty()) c.equipment_[k.id] = a->equipment;
         cs.push_back(std::move(k));
+    }
+    for (const auto& one : cs) {
+        if (one.bound.wearer == 0) continue;
+        bool found = false;
+        for (const auto& other : cs) found = found || other.id == one.bound.wearer;
+        if (!found) {
+            if (error) *error = "spawn overrides.bound_wearer is not a combatant in this fight";
+            return std::nullopt;
+        }
     }
     std::vector<rules5e::Event> opening;
     if (!content.spells()->all().empty()) c.spells_ = content.spells();
@@ -232,35 +278,23 @@ const rules5e::SpellDef* Combat::spell_def(uint32_t id) const { return spells_ ?
 namespace {
 using rules5e::AreaShape;
 int64_t i64(int v) { return v; }
-}
 
-std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
-                                              std::string* error) const {
-    auto fail = [&](const char* m) { if (error) *error = m; return std::vector<CombatantId>{}; };
-    if (def.area == AreaShape::None) return fail("spell has no area");
-    if (!rules5e::find(state_, caster)) return fail("bad caster");
-    if (!grid_.in_bounds(aim)) return fail("aim tile out of bounds");
-    const Spot cs = spot(caster);
-    const bool self_origin = def.range_ft == 0;
-    const bool directional = def.area == AreaShape::Cone || def.area == AreaShape::Line;
-    const int size = int(def.area_size_ft) / kFeetPerTile;   // cone/line length, cube side, sphere/cylinder radius (tiles)
-    const int width = std::max(1, int(def.area_width_ft) / kFeetPerTile);
-    // Doubled coordinates keep even footprints' centres integral.
-    const Vec2i c2{2 * cs.p.x + cs.n - 1, 2 * cs.p.y + cs.n - 1};
-    const Vec2i a2{2 * aim.x - c2.x, 2 * aim.y - c2.y};   // aim relative to the caster's centre
-    if (!self_origin && !directional) {
-        if (rect_distance(cs.p, cs.n, aim, 1) * kFeetPerTile > int(def.range_ft)) return fail("aim beyond range");
-        bool seen = false;
-        for (int y = 0; y < cs.n && !seen; ++y)
-            for (int x = 0; x < cs.n && !seen; ++x) seen = grid_.line_of_sight({cs.p.x + x, cs.p.y + y}, aim);
-        if (!seen) return fail("aim not in line of sight");
-    } else if (directional || def.area == AreaShape::Cube) {
-        if (a2.x == 0 && a2.y == 0) return fail("aim must differ from the caster's tile");
-    }
-    // Template membership of one tile.
-    auto inside = [&](Vec2i t) {
+// One template for area_targets and area_preview. The renderer must call area_preview, not copy this.
+struct AreaTemplate {
+    const Grid* grid = nullptr;
+    AreaShape shape = AreaShape::None;
+    bool self_origin = false;
+    bool directional = false;
+    Combat::Spot cs{};
+    Vec2i aim{};
+    Vec2i c2{};
+    Vec2i a2{};
+    int size = 0;    // cone/line length, cube side, sphere/cylinder radius, in tiles
+    int width = 1;   // line width in tiles (at least 1)
+
+    bool inside(Vec2i t) const {
         const Vec2i v2{2 * t.x - c2.x, 2 * t.y - c2.y};   // tile centre relative to the caster centre, doubled
-        switch (def.area) {
+        switch (shape) {
             case AreaShape::Cone: {
                 const int64_t dot = i64(v2.x) * a2.x + i64(v2.y) * a2.y, cross = i64(v2.x) * a2.y - i64(v2.y) * a2.x;
                 const int cheb = std::max(std::abs(v2.x), std::abs(v2.y));
@@ -298,15 +332,89 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
             }
             default: return false;
         }
-    };
-    // Where line of sight is taken from: the aim tile for a point origin, otherwise the caster's footprint.
-    auto origin_sees = [&](Vec2i t) {
-        if (!self_origin && !directional) return grid_.line_of_sight(aim, t);
+    }
+    // Line of sight from the origin: the aim tile for a point origin, otherwise any caster footprint tile.
+    bool origin_sees(Vec2i t) const {
+        if (!self_origin && !directional) return grid->line_of_sight(aim, t);
         for (int y = 0; y < cs.n; ++y)
             for (int x = 0; x < cs.n; ++x)
-                if (grid_.line_of_sight({cs.p.x + x, cs.p.y + y}, t)) return true;
+                if (grid->line_of_sight({cs.p.x + x, cs.p.y + y}, t)) return true;
         return false;
+    }
+    bool member(Vec2i t) const { return inside(t) && origin_sees(t); }
+    // A superset of member tiles: the footprint and the aim, each grown by the template's reach. member() is the test.
+    void tile_box(int& x0, int& x1, int& y0, int& y1) const {
+        const int pad = size + width + 2;
+        const int ax0 = cs.p.x - pad, ax1 = cs.p.x + cs.n - 1 + pad;
+        const int ay0 = cs.p.y - pad, ay1 = cs.p.y + cs.n - 1 + pad;
+        const int bx0 = aim.x - pad, bx1 = aim.x + pad;
+        const int by0 = aim.y - pad, by1 = aim.y + pad;
+        x0 = ax0 < bx0 ? ax0 : bx0;
+        x1 = ax1 > bx1 ? ax1 : bx1;
+        y0 = ay0 < by0 ? ay0 : by0;
+        y1 = ay1 > by1 ? ay1 : by1;
+    }
+};
+
+// Aim rejections shared with area_targets. "spell has no area" and "bad caster" are checked by the callers, in that
+// order, so a missing spell still wins over a bad id. Does not report "no creature in the area".
+std::optional<AreaTemplate> make_area_template(const Grid& grid, Combat::Spot cs, const rules5e::SpellDef& def, Vec2i aim,
+                                              std::string* error) {
+    auto fail = [&](const char* m) -> std::optional<AreaTemplate> {
+        if (error) *error = m;
+        return std::nullopt;
     };
+    if (!grid.in_bounds(aim)) return fail("aim tile out of bounds");
+    AreaTemplate g;
+    g.grid = &grid;
+    g.shape = def.area;
+    g.self_origin = def.range_ft == 0;
+    g.directional = def.area == AreaShape::Cone || def.area == AreaShape::Line;
+    g.cs = cs;
+    g.aim = aim;
+    g.size = int(def.area_size_ft) / kFeetPerTile;
+    g.width = std::max(1, int(def.area_width_ft) / kFeetPerTile);
+    // Doubled coordinates keep even footprints' centres integral.
+    g.c2 = {2 * cs.p.x + cs.n - 1, 2 * cs.p.y + cs.n - 1};
+    g.a2 = {2 * aim.x - g.c2.x, 2 * aim.y - g.c2.y};   // aim relative to the caster's centre
+    if (!g.self_origin && !g.directional) {
+        if (rect_distance(cs.p, cs.n, aim, 1) * kFeetPerTile > int(def.range_ft)) return fail("aim beyond range");
+        bool seen = false;
+        for (int y = 0; y < cs.n && !seen; ++y)
+            for (int x = 0; x < cs.n && !seen; ++x) seen = grid.line_of_sight({cs.p.x + x, cs.p.y + y}, aim);
+        if (!seen) return fail("aim not in line of sight");
+    } else if (g.directional || def.area == AreaShape::Cube) {
+        if (g.a2.x == 0 && g.a2.y == 0) return fail("aim must differ from the caster's tile");
+    }
+    return g;
+}
+} // namespace
+
+std::vector<Vec2i> Combat::area_preview(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
+                                        std::string* error) const {
+    auto fail = [&](const char* m) { if (error) *error = m; return std::vector<Vec2i>{}; };
+    if (def.area == AreaShape::None) return fail("spell has no area");
+    if (!rules5e::find(state_, caster)) return fail("bad caster");
+    const auto tmpl = make_area_template(grid_, spot(caster), def, aim, error);
+    if (!tmpl) return {};
+    int x0 = 0, x1 = -1, y0 = 0, y1 = -1;
+    tmpl->tile_box(x0, x1, y0, y1);
+    std::vector<Vec2i> tiles;
+    for (int y = y0; y <= y1; ++y)
+        for (int x = x0; x <= x1; ++x) {
+            const Vec2i t{x, y};
+            if (grid_.in_bounds(t) && tmpl->member(t)) tiles.push_back(t);
+        }
+    return tiles;
+}
+
+std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
+                                              std::string* error) const {
+    auto fail = [&](const char* m) { if (error) *error = m; return std::vector<CombatantId>{}; };
+    if (def.area == AreaShape::None) return fail("spell has no area");
+    if (!rules5e::find(state_, caster)) return fail("bad caster");
+    const auto tmpl = make_area_template(grid_, spot(caster), def, aim, error);
+    if (!tmpl) return {};
     std::vector<CombatantId> out;
     for (const auto& sl : slots_) {
         const auto* c = rules5e::find(state_, sl.id);
@@ -314,10 +422,8 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
         const Spot s = spot(sl.id);
         bool hit = false;
         for (int y = 0; y < s.n && !hit; ++y)
-            for (int x = 0; x < s.n && !hit; ++x) {
-                const Vec2i t{s.p.x + x, s.p.y + y};
-                hit = inside(t) && origin_sees(t);
-            }
+            for (int x = 0; x < s.n && !hit; ++x)
+                hit = tmpl->member({s.p.x + x, s.p.y + y});
         if (hit) out.push_back(sl.id);
     }
     if (out.empty()) return fail("no creature in the area");
@@ -325,7 +431,17 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
 }
 
 bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const {
+    if (def.requires_jumped_ft > 0 || rules5e::is_space_save(def)) {   // B8 landing / B10 Whirlwind / B11 Whelm: footprints overlap
+        if (caster == target || !rules5e::find(state_, target)) return false;
+        const Spot a = spot(caster), b = spot(target);
+        return a.p.x < b.p.x + b.n && b.p.x < a.p.x + a.n && a.p.y < b.p.y + b.n && b.p.y < a.p.y + a.n;
+    }
     if (derived_area_) return true;   // area_targets already applied range, origin and line of sight
+    // B5 Reel: a pull of creatures grappled by the caster has no second range and no sight check. The grapple
+    // gate is the constraint. The attack's reach, not this cast, is what ends the grapple.
+    if (def.kind == rules5e::SpellEffectKind::ForcedMove && !def.is_spell &&
+        (def.target_requires_any & rules5e::kTargetGateGrappledBySelf) != 0)
+        return true;
     if (def.area != AreaShape::None && def.range_ft == 0) {   // self-origin template: anyone inside its extent in sight
         if (caster == target) return true;
         return distance_tiles(caster, target) * kFeetPerTile <= int(def.area_size_ft) && line_of_sight(caster, target);
@@ -358,9 +474,11 @@ int Combat::natural_footprint(CombatantId id) const {
 
 // SRD 5.1 Moving Around Other Creatures (feat/size-space): a creature may move through an ally's space, and through a
 // hostile's space only when the hostile is at least two sizes larger or smaller. Swarms already ignore spaces (occupied_except).
+// B9: Air Form / Water Form may enter a hostile's space at any size difference. The other creature does not gain that.
 bool Combat::may_pass(CombatantId mover, CombatantId other) const {
     if (!hostile(mover, other)) return true;
     const auto* a = rules5e::find(state_, mover);
+    if (a && a->enter_hostile_space) return true;
     const auto* b = rules5e::find(state_, other);
     return a && b && std::abs(int(a->size) - int(b->size)) >= 2;
 }
@@ -386,6 +504,29 @@ CombatantId Combat::occupant_at(Vec2i t, CombatantId except, int mover_abs_ft) c
     return 0;
 }
 
+// B9: true when stopping at `anchor` would end inside a creature this mover may not stop in. Air/Water Form may stop in a
+// hostile. Anyone else may stop in no one. Swarms occupy no tiles (occupied_except). A vertical span that does not overlap
+// is not in the way (altitude PR2, the same test as overlaps_other).
+bool Combat::forbids_stop(CombatantId id, Vec2i anchor, int n) const {
+    bool mover_swarm = false;
+    for (const auto& s : slots_) if (s.id == id) mover_swarm = s.archetype->swarm;
+    if (mover_swarm) return false;
+    const auto* me = rules5e::find(state_, id);
+    const bool form = me && me->enter_hostile_space;
+    const int abs_ft = airborne(id) ? abs_height_ft(id)
+                                    : grid_.footprint_ground_ft(anchor, n) + (burrowed(id) && me ? int(me->alt_ft) : 0);
+    for (const auto& s : slots_) {
+        const auto* c = rules5e::find(state_, s.id);
+        if (s.id == id || !c || c->dead || s.archetype->swarm) continue;
+        const Spot sp = spot(s.id);
+        if (rect_distance(anchor, n, sp.p, sp.n) != 0) continue;
+        if (!spans_overlap(abs_ft, n, abs_height_ft(s.id), sp.n)) continue;
+        if (form && hostile(id, s.id)) continue;
+        return true;
+    }
+    return false;
+}
+
 // Does `id`'s footprint at `anchor` (side n) share a tile with another living creature's space?
 bool Combat::overlaps_other(CombatantId id, Vec2i anchor, int n) const {
     // altitude PR2: at the height the mover would have there (an airborne flyer keeps its absolute height).
@@ -402,7 +543,8 @@ bool Combat::overlaps_other(CombatantId id, Vec2i anchor, int n) const {
 // must be walkable; an occupied one only when may_pass (and it is difficult terrain: 10 ft). The full footprint is tried
 // first; a Large+ creature that does not fit squeezes into a space one size smaller (side n - 1: every foot costs one extra
 // foot). A squeezing creature stops squeezing on the first step where its full footprint fits.
-std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze) const {
+std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze,
+                                             bool allow_occupied) const {
     const Vec2i from = pos(mover);
     if (chebyshev(from, to) != 1) return std::string("step must be to an adjacent tile");
     const int cur = footprint_size(mover), full = natural_footprint(mover);
@@ -424,7 +566,8 @@ std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPl
                           : air ? !grid_.passable_over(t, caps, air_abs) : !grid_.enterable(t, caps))
                     return std::string("tile not walkable");   // feat/move-modes
                 if (const CombatantId o = occupant_at(t, mover, abs_ft)) {
-                    if (!may_pass(mover, o)) return std::string("tile occupied");
+                    // B8: a jump may land in another creature's space. may_pass (two sizes apart) is unchanged for a walk.
+                    if (!may_pass(mover, o) && !allow_occupied) return std::string("tile occupied");
                     through = true;
                 }
             }
@@ -557,9 +700,17 @@ rules5e::SightFacts Combat::sight_facts_of(CombatantId viewer, CombatantId subje
     const int dist = distance_tiles(viewer, subject);
     f.distance_ft = uint16_t(std::min(dist * kFeetPerTile, 65535));
     f.line_of_sight = line_of_sight(viewer, subject);   // altitude PR5: 3D LoS (absolute heights at both ends)
-    if (const auto* t = rules5e::find(state_, subject))
+    if (const auto* t = rules5e::find(state_, subject)) {
         f.subject_invisible = t->has(rules5e::Condition::Invisible);
-    f.subject_grounded = true;   // no airborne altitude model yet; tremorsense treats everyone as grounded
+        // Tremorsense needs the subject in contact with a surface. An airborne flyer is not. Above the
+        // ground, contact is on_climb_wall (climbable, and no walkable tile). On the ground, swimming,
+        // or burrowed (alt_ft <= 0) it is. The viewer's own contact is not part of this fact. Eye height
+        // is unchanged.
+        if (airborne(subject))
+            f.subject_grounded = false;
+        else if (t->alt_ft > 0)
+            f.subject_grounded = on_climb_wall(sp, footprint_size(subject));
+    }
     f.audible = true;            // Silence deafens via rules (kZoneSilence); hearing is not a light fact
 
     // LightSample -> TileLight. sim::Light is Dark=0..Bright=2; rules5e::Light is Bright=0..Dark=2.
@@ -1085,7 +1236,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         if (v10) split = teardown_begin ? std::min(*teardown_begin, evs.size() - 1) : evs.size() - 1;
     }
     pending_removed_.clear();
-    struct ClearPlaced { std::vector<std::pair<CombatantId, Vec2i>>& v; ~ClearPlaced() { v.clear(); } } clear_placed{forced_placed_};
+    struct ClearPlaced { Combat* self; ~ClearPlaced() { self->clear_forced(); } } clear_placed{this};
     // Priced material consumed by a completed cast (rule 4): the entry that satisfied it, one per cast. Rules checked the
     // components for this cast unless it was a sustain or an innate spell not cast as listed; replay runs the same code.
     if (q.kind == ActionKind::CastSpell && !q.sustain && spells_) {
@@ -1111,8 +1262,10 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     // TokenSpawned right after it; a SummonEnded marks the slot gone (TokenRemoved after the step's sim events, see below).
     for (std::size_t i = 0; i < split; ++i) push_rules_event(evs[i], &ls);
     sync_ecs();
-    // R-G8 helpers: put a creature on a tile (forced movement / drag), and end grapples whose holder and held creature are no
-    // longer within 5 ft after an effect moved one of them (Grappled is removed from the target; the next step prunes the entry).
+    // R-G8 helpers: put a creature on a tile (forced movement / drag), and end grapples whose holder and held creature are
+    // farther apart than the grapple's reach after an effect moved one of them (Grappled is removed from the target; the
+    // next step prunes the entry). A plain grapple (via_attack 0xFF, the Grapple action) is 5 ft. An extended rider uses
+    // that attack's reach, so a 50 ft tendril still holds after a pull that stops at 25 ft.
     auto place = [this](CombatantId id, Vec2i t) {
         if (TilePos* p = reg_->get<TilePos>(entity(id))) { p->x = t.x; p->y = t.y; }
         SimEvent se;
@@ -1121,24 +1274,16 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         se.tile = t;
         events_.push_back(se);
     };
-    auto free_for = [this](CombatantId id, Vec2i t) {
-        const int fp = footprint_size(id);
-        if (!grid_.footprint_walkable(t, fp)) return false;
-        const auto occ = occupied_except(id);
-        for (int dy = 0; dy < fp; ++dy)
-            for (int dx = 0; dx < fp; ++dx)
-                if (std::find(occ.begin(), occ.end(), Vec2i{t.x + dx, t.y + dy}) != occ.end()) return false;
-        return true;
-    };
+    auto free_for = [this](CombatantId id, Vec2i t) { return space_free(id, t); };
     auto release_out_of_reach = [this](CombatantId moved) {
         std::vector<CombatantId> released;
         for (const auto& sc : state_.sourced) {
             if (sc.condition != rules5e::Condition::Grappled || (sc.target != moved && sc.source != moved)) continue;
-            if (distance_tiles(sc.source, sc.target) <= 1) continue;
-            bool held_elsewhere = false;   // another holder still within 5 ft keeps the condition
+            if (distance_tiles(sc.source, sc.target) <= grapple_reach_tiles(state_, sc)) continue;
+            bool held_elsewhere = false;   // another holder still within its own reach keeps the condition
             for (const auto& o : state_.sourced)
                 held_elsewhere = held_elsewhere || (o.condition == rules5e::Condition::Grappled && o.target == sc.target &&
-                                                    o.source != sc.source && distance_tiles(o.source, o.target) <= 1);
+                                                    o.source != sc.source && distance_tiles(o.source, o.target) <= grapple_reach_tiles(state_, o));
             if (!held_elsewhere && std::find(released.begin(), released.end(), sc.target) == released.end()) released.push_back(sc.target);
         }
         for (CombatantId id : released) {
@@ -1339,6 +1484,9 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         events_.push_back(ae);
     }
     state_.landed.clear();
+    // A flyer a forced move kept aloft (absolute height preserved). After the fall events, and after the tile is the
+    // destination, so the event's tile matches. fall_check already ran against the pre-move alt_ft.
+    for (const auto& a : forced_alt_) set_altitude(a.id, a.alt_ft, kAltForced);
     if (split < evs.size()) sync_ecs();
     for (auto& sl : slots_)   // gone summons: the entity goes at the end of the step (never mid-step)
         if (sl.gone && reg_->alive(sl.entity)) { reg_->destroy(sl.entity); sl.entity = ecs::kNullEntity; }
@@ -1511,7 +1659,8 @@ SubmitResult Combat::submit(const Command& cmd) {
         return r;
     }
     install_hooks();
-    return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1, cmd.request.alt_to) : do_rules(cmd.request, cmd.to, cmd.aim);
+    return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1, cmd.request.alt_to, cmd.request.jump_ft)
+                                         : do_rules(cmd.request, cmd.to, cmd.aim);
 }
 
 SubmitResult Combat::decide(const ReactionDecision& d) {
@@ -1521,7 +1670,7 @@ SubmitResult Combat::decide(const ReactionDecision& d) {
     if (d.window_seq != nd->window_seq) { r.error = "decision for a different window"; r.needs = nd; return r; }
     install_hooks();
     if (state_.pending) set_step_context(state_.pending->request);
-    forced_placed_.clear();
+    clear_forced();
     return finish(rules5e::step(state_, rules5e::decision_request(*nd, d)));
 }
 
@@ -1543,11 +1692,18 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     SubmitResult r;
     derived_area_ = false;
     const CombatantId actor = rules5e::current_actor(state_);
+    // SRD: concentration may be ended at any time, no action required. Same rules admission as Heal
+    // and AbilityCheck. This is the one sim forward of an off-turn request; Heal stays on the turn gate.
+    if (req.kind == ActionKind::EndConcentration) {
+        step_to_.reset();
+        return finish(rules5e::step(state_, req));
+    }
     if (req.actor != actor) { r.error = "not this combatant's turn"; return r; }
     if (req.kind == ActionKind::Move) { r.error = "use Step commands for movement (sim paths the grid)"; return r; }
     // SRD (feat/size-space): a creature can't willingly end its move in another creature's space. The turn may not end
-    // while it overlaps one, unless no step out is possible (then it stays: unwilling).
-    if (req.kind == ActionKind::EndTurn && overlaps_other(actor, pos(actor), footprint_size(actor))) {
+    // while it overlaps one it may not stop in, unless no step out is possible (then it stays: unwilling).
+    // B8: a Deadly Leap landing does not grant a lasting exception. B9: Air/Water Form may keep a hostile's space.
+    if (req.kind == ActionKind::EndTurn && forbids_stop(actor, pos(actor), footprint_size(actor))) {
         const Vec2i p = pos(actor);
         for (int dy = -1; dy <= 1; ++dy)
             for (int dx = -1; dx <= 1; ++dx) {
@@ -1597,6 +1753,26 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     }
     if (req.kind == ActionKind::CastSpell) {
         if (!spells_ || !spells_->find(req.spell_id)) { r.error = "unknown spell"; return r; }
+        // B8: every named creature must already stand in the leaper's space. The jump step landed there.
+        // Rules still checks the jump distance and does not see tiles.
+        if (const auto* ldef = spells_->find(req.spell_id); ldef->requires_jumped_ft > 0 && !req.sustain) {
+            std::vector<rules5e::CombatantId> ids = req.targets;
+            if (ids.empty() && req.target != 0) ids.push_back(req.target);
+            if (ids.empty()) { r.error = "target required"; return r; }
+            for (rules5e::CombatantId id : ids) {
+                if (id == actor) { r.error = "bad target"; return r; }
+                if (!spell_in_reach(*ldef, actor, id)) { r.error = "target is not in the landing space"; return r; }
+            }
+        }
+        // B10 / B11: every named creature must already stand in the elemental's space. An empty list is an empty space.
+        if (const auto* wdef = spells_->find(req.spell_id); rules5e::is_space_save(*wdef) && !req.sustain) {
+            std::vector<rules5e::CombatantId> ids = req.targets;
+            if (ids.empty() && req.target != 0) ids.push_back(req.target);
+            for (rules5e::CombatantId id : ids) {
+                if (id == actor) { r.error = "bad target"; return r; }
+                if (!spell_in_reach(*wdef, actor, id)) { r.error = "target is not in the elemental's space"; return r; }
+            }
+        }
         // EC spider follow-up: a non-spell ranged attack_effect (Web) gets the ranged attack facts (beyond its normal range,
         // a hostile within 5 ft); spells are unchanged (rules ignores the facts for them).
         if (const auto* adef = spells_->find(req.spell_id); adef->kind == rules5e::SpellEffectKind::SpellAttack && !adef->is_spell &&
@@ -1703,8 +1879,10 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             for (CombatantId id : req.targets) hits = hits || id == charmer;
             if (harmful && hits) { r.error = "charmed: cannot target the charmer with a harmful spell"; derived_area_ = false; return r; }
         }
+        // B10: an empty Whirlwind names nobody. There is no first target to check.
+        const bool whirl_empty = rules5e::is_space_save(*spells_->find(req.spell_id)) && req.targets.empty() && req.target == 0;
         const CombatantId first = !req.targets.empty() ? req.targets[0] : req.target;
-        if (!rules5e::find(state_, first)) { r.error = "bad target"; return r; }
+        if (!whirl_empty && !rules5e::find(state_, first)) { r.error = "bad target"; return r; }
         // R-G15 Revivify: a dead creature does not block its tiles, so another may stand there now; it cannot come back
         // into an occupied space (rules check death and the time window).
         if (!req.sustain && spells_->find(req.spell_id)->kind == rules5e::SpellEffectKind::Revive) {
@@ -1712,7 +1890,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             for (Vec2i t : footprint_tiles(first))
                 if (std::find(taken.begin(), taken.end(), t) != taken.end()) { r.error = "revive target's space is occupied"; return r; }
         }
-        req.target_within_5ft = distance_tiles(actor, first) <= 1;   // spell attacks: crit vs Paralyzed/Unconscious
+        if (!whirl_empty) req.target_within_5ft = distance_tiles(actor, first) <= 1;   // spell attacks: crit vs Paralyzed/Unconscious
     }
     ready_to_.reset();
     if (req.kind == ActionKind::Ready) {
@@ -1775,14 +1953,15 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     }
     step_to_.reset();
     set_step_context(req);
-    forced_placed_.clear();
+    clear_forced();
     return finish(rules5e::step(state_, req));
 }
 
-SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
+SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to, uint16_t jump_ft) {
     SubmitResult r;
     const CombatantId mover = rules5e::current_actor(state_);
     if (state_.budget.gaze_pending) { r.error = "gaze pending: answer with GazeResponse first"; return r; }
+    if (state_.budget.appearance_pending) { r.error = "appearance pending: answer with AppearanceResponse first"; return r; }
     const Vec2i from = pos(mover);
     if (alt_to != 0) {   // altitude PR2: vertical movement in place (5 ft per 5 ft from the shared budget)
         if (to != from) { r.error = "alt_to: a vertical move is a Step to the mover's own tile"; return r; }
@@ -1795,9 +1974,12 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
         int target = cur + alt_to;
         uint8_t mode = 0;
         int mult = 1;
-        if (target > 0 || (target >= 0 && cur > 0)) {   // in the air (or on a wall): flight, else climbing terrain
+        // A climb down stops at the ground, the way a swim descent stops at the water's bottom. Flyers are not clamped.
+        const int fp = footprint_size(mover);
+        if (cur > 0 && target < 0 && on_climb_wall(from, fp) && !(caps.fly && !prone)) target = 0;
+        if (target > 0 || (target >= 0 && cur > 0)) {   // in the air (or on a wall): flight, else a climbable wall
             if (caps.fly && !prone) mode = 1;
-            else if (grid_.climbable(from)) { mode = caps.climb ? 3 : 0; mult = caps.climb ? 1 : 2; }
+            else if (on_climb_wall(from, fp)) { mode = caps.climb ? 3 : 0; mult = caps.climb ? 1 : 2; }
             else { r.error = prone && caps.fly ? "cannot fly while prone" : "alt_to: needs flight or climbable terrain"; return r; }
         } else if (caps.burrow && !grid_.water(from)) {   // feat/rules-burrow-speed: down into (or up out of) the ground
             if (!grid_.walkable(from)) { r.error = "alt_to: cannot burrow here"; return r; }
@@ -1821,11 +2003,11 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
         mv.leaves_reach = leaves_reach(mover, from, from, target - cur);   // altitude PR3: rising / sinking out of reach
         step_to_ = from;
         set_step_context(mv);
-        forced_placed_.clear();
+        clear_forced();
         return finish(rules5e::step(state_, mv));
     }
     StepPlan plan;
-    if (auto e = plan_step(mover, to, plan, allow_squeeze)) { r.error = *e; return r; }
+    if (auto e = plan_step(mover, to, plan, allow_squeeze, jump_ft != 0)) { r.error = *e; return r; }
     const int fp = plan.n;
     // R-G8 Frightened: no step that ends closer to the recorded source of the fear.
     if (const CombatantId src = rules5e::condition_source(state_, mover, rules5e::Condition::Frightened)) {
@@ -1837,9 +2019,12 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
     const uint8_t mode = step_mode(mover, from, to, cost, fp);
     if (mode == 0xFF) { r.error = "not enough movement"; return r; }
     if (mode == 0xFE) { r.error = "cannot fly while prone"; return r; }
-    // SRD: a creature can't willingly end its move in another creature's space: a step into one needs movement left (in
-    // the step's speed) for another 5 ft step (actions other than Step are refused while it overlaps, see do_rules).
-    if (plan.ends_in_other && rules5e::move_allowance(state_, *rules5e::find(state_, mover), mode) - cost < 5) {
+    // SRD: a creature can't willingly end its move in another creature's space. A step that would finish in a space it
+    // may not stop in needs movement left (in the step's speed) for another 5 ft step. EndTurn refuses a later overlap
+    // the mover may not keep (do_rules). B8: a jump step may end there. That is the Deadly Leap landing, and it is not a
+    // lasting exception. B9: Air/Water Form may stop in a hostile's space, so that overlap does not need the spare step.
+    if (jump_ft == 0 && forbids_stop(mover, to, fp) &&
+        rules5e::move_allowance(state_, *rules5e::find(state_, mover), mode) - cost < 5) {
         r.error = "cannot end movement in another creature's space";
         return r;
     }
@@ -1848,6 +2033,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
     mv.move_ft = int16_t(cost);
     mv.move_tiles = 1;
     mv.move_mode = mode;
+    mv.jump_ft = jump_ft;   // B8: rules rejects a bad distance; 0 is an ordinary step
     mv.leaves_reach = leaves_reach(mover, from, to);
     mv.squeeze = plan.squeeze;
     if (!state_.zones.empty()) {   // R-G11: membership facts, sim-derived (Q2 / Q8)
@@ -1856,7 +2042,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
     }
     step_to_ = to;
     set_step_context(mv);
-    forced_placed_.clear();
+    clear_forced();
     return finish(rules5e::step(state_, mv));
 }
 
@@ -1994,7 +2180,8 @@ uint64_t Combat::hash() const {
             }
         }
         // 0xDB (Druid gap G, monster grapple rider): the appended SourcedCondition fields, only for Grappled entries a rider
-        // with restrains / exclusive / max_grapples made (via_attack != 0xFF); plain grapples leave every hash unchanged.
+        // with restrains / exclusive / max_grapples / instead_of_damage / no_damage made (via_attack != 0xFF); plain
+        // grapples leave every hash unchanged. no_damage adds no flag bit: the lasting state is the grapple itself.
         bool rider = false;
         for (const auto& sc : state_.sourced) rider = rider || (sc.condition == rules5e::Condition::Grappled && sc.via_attack != 0xFF);
         if (rider) {
@@ -2149,6 +2336,64 @@ uint64_t Combat::hash() const {
         h.u32(uint32_t(state_.action_immunities.size()));
         for (const auto& im : state_.action_immunities) { h.u32(im.creature); h.u32(im.source); h.u32(im.spell_id); h.u32(im.until_round); }
     }
+    // 0xE3 (B6 bite disease): schedule rows, then any disease_hp_max_reduction, only while one of them exists.
+    {
+        uint32_t hp_max_reduced = 0;
+        for (const auto& c : state_.combatants) if (c.disease_hp_max_reduction != 0) ++hp_max_reduced;
+        if (!state_.diseases.empty() || hp_max_reduced != 0) {
+            h.byte(0xE3);
+            h.u32(uint32_t(state_.diseases.size()));
+            for (const auto& d : state_.diseases) {
+                h.u32(d.target); h.u32(d.spell_id); h.u32(d.source);
+                h.u16(uint16_t(d.dc)); h.u16(uint16_t(d.reduction));
+                h.u32(d.next_round); h.u32(d.interval_rounds);
+                h.byte(d.dice.count); h.byte(d.dice.sides); h.u16(uint16_t(d.dice.bonus));
+                h.byte(uint8_t(d.condition)); h.byte(uint8_t(d.save_ability));
+            }
+            h.u32(hp_max_reduced);
+            for (const auto& c : state_.combatants)
+                if (c.disease_hp_max_reduction != 0) { h.u32(c.id); h.u16(uint16_t(c.disease_hp_max_reduction)); }
+        }
+    }
+    // 0xE5 (B18 Bound, CONTENT_CONVENTIONS §50): the amulet wearer, only while some guardian has one set.
+    // radius_ft with wearer 0 is static content and is not folded.
+    {
+        uint32_t links = 0;
+        for (const auto& c : state_.combatants) if (c.bound.wearer != 0) ++links;
+        if (links != 0) {
+            h.byte(0xE5);
+            h.u32(links);
+            for (const auto& c : state_.combatants)
+                if (c.bound.wearer != 0) { h.u32(c.id); h.u32(c.bound.wearer); h.u16(c.bound.radius_ft); }
+        }
+    }
+    // 0xE6 (B19 Etherealness, CONTENT_CONVENTIONS §51): plane, only while some combatant is not Material.
+    // Material is the default and is not folded, so a fight that never leaves it hashes as before.
+    {
+        uint32_t shifted = 0;
+        for (const auto& c : state_.combatants) if (c.plane != rules5e::Plane::Material) ++shifted;
+        if (shifted != 0) {
+            h.byte(0xE6);
+            h.u32(shifted);
+            for (const auto& c : state_.combatants)
+                if (c.plane != rules5e::Plane::Material) { h.u32(c.id); h.byte(uint8_t(c.plane)); }
+        }
+    }
+    // 0xE7 (visible figure, CONTENT_CONVENTIONS §52): active figures, then discernment pairs.
+    // Folded only while one of those vectors is non-empty. next_figure_instance is not folded.
+    if (!state_.figures.empty() || !state_.figure_discerned.empty()) {
+        h.byte(0xE7);
+        h.u32(uint32_t(state_.figures.size()));
+        for (const auto& f : state_.figures) {
+            h.u32(f.bearer); h.u32(f.instance); h.u32(f.spell_id);
+            h.byte(uint8_t(f.shape)); h.byte(uint8_t(f.size)); h.u16(uint16_t(f.dc));
+            h.u32(f.armor_def);
+            h.u32(uint32_t(f.covered_items.size()));
+            for (uint32_t id : f.covered_items) h.u32(id);
+        }
+        h.u32(uint32_t(state_.figure_discerned.size()));
+        for (const auto& d : state_.figure_discerned) { h.u32(d.observer); h.u32(d.subject); }
+    }
     return h.value();
 }
 
@@ -2221,6 +2466,7 @@ uint64_t Combat::log_hash() const {
         if (q.flexible != 0) { h.byte(0xBA); h.byte(q.flexible); h.byte(q.flexible_level); }
         if (q.squeeze != 0) { h.byte(0xC2); h.byte(q.squeeze); }   // SRD Squeezing on a Move (feat/size-space)
         if (q.move_mode != 0) { h.byte(0xC3); h.byte(q.move_mode); }   // feat/move-modes: the speed a Move used
+        if (q.jump_ft != 0) { h.byte(0xE4); h.u16(q.jump_ft); }   // B8 Deadly Leap: feet of this Move that are a jump
         if (q.alt_to != 0) { h.byte(0xD7); h.i16(q.alt_to); }   // altitude PR2: vertical Move delta, only when non-zero
         if (q.command_word != 0) { h.byte(0xC4); h.byte(q.command_word); }   // 7.2v Command's word on a CastSpell: folded only when set
         if (q.has_guess) { h.byte(0xC6); h.i32(q.guess_x); h.i32(q.guess_y); }   // vision 7.2x: guessed tile of a hidden target
@@ -2470,6 +2716,16 @@ bool Combat::burrowed(CombatantId id) const {
     const auto* c = rules5e::find(state_, id);
     return c && c->alt_ft < 0 && c->burrow_ft > 0 && !grid_.water(pos(id));
 }
+bool Combat::on_climb_wall(Vec2i anchor, int fp) const {
+    bool wall = false, floor = false;
+    for (int dy = 0; dy < std::max(fp, 1); ++dy)
+        for (int dx = 0; dx < std::max(fp, 1); ++dx) {
+            const Vec2i t{anchor.x + dx, anchor.y + dy};
+            if (grid_.walkable(t)) floor = true;
+            else if (grid_.climbable(t)) wall = true;
+        }
+    return wall && !floor;
+}
 std::vector<Vec2i> Combat::occupied_except(CombatantId id, int abs_ft) const {
     std::vector<Vec2i> out;
     bool mover_swarm = false;
@@ -2496,27 +2752,48 @@ void Combat::step_altitude(const rules5e::ActionRequest& q, int from_ground_ft, 
     const auto* c = rules5e::find(state_, q.actor);
     if (!c) return;
     if (q.alt_to != 0) { set_altitude(q.actor, int16_t(c->alt_ft + q.alt_to), kAltMove); return; }
+    const int alt0 = c->alt_ft;
+    // A fall: alt_ft ends at 0 on the new ground. The event is emitted even when alt was already 0 (a walker).
+    // Then the SRD falling damage (rules5e::fall: 1d6 per 10 ft, max 20d6, lands prone).
+    auto land = [&](int drop) {
+        falls_.push_back({q.actor, drop});
+        if (!set_altitude(q.actor, 0, kAltFall)) {
+            SimEvent e;
+            e.kind = SimEvent::Kind::AltitudeChanged;
+            e.actor = q.actor;
+            e.tile = pos(q.actor);
+            e.rules.a = 0;
+            e.rules.b = kAltFall;
+            events_.push_back(e);
+        }
+        std::vector<rules5e::Event> fev;
+        rules5e::fall(state_, q.actor, drop, fev);
+        apply_rules_events(fev);
+    };
+    if (was_airborne) {
+        if (!grid_.has_ground()) return;   // flat maps: an airborne step does not change alt_ft
+        const int g1 = grid_.footprint_ground_ft(pos(q.actor), footprint_size(q.actor));
+        set_altitude(q.actor, int16_t(std::max(0, from_abs_ft - g1)), kAltMove);
+        return;
+    }
+    if (alt0 < 0) return;   // swimming / burrowing: the step keeps its depth
+    if (alt0 > 0) {         // climbing: keep alt_ft on a wall; leaving it lands or falls
+        const int fp = footprint_size(q.actor);
+        const Vec2i at = pos(q.actor);
+        if (on_climb_wall(at, fp)) return;
+        const int g1 = grid_.has_ground() ? grid_.footprint_ground_ft(at, fp) : 0;
+        const int drop = from_abs_ft - g1;
+        if (drop > kWalkableStepFt) land(drop);
+        else set_altitude(q.actor, 0, kAltMove);
+        return;
+    }
     if (!grid_.has_ground()) return;   // chunk@1 / chunk@2 maps are flat: alt_ft is unchanged by a step
     const int g1 = grid_.footprint_ground_ft(pos(q.actor), footprint_size(q.actor));
-    if (was_airborne) { set_altitude(q.actor, int16_t(std::max(0, from_abs_ft - g1)), kAltMove); return; }
-    if (c->alt_ft != 0) return;   // on a wall / in water: the step keeps its alt_ft
     const int drop = from_ground_ft - g1;
     if (drop <= kWalkableStepFt) return;
     const MoveCaps caps = caps_of(q.actor);
     if (caps.fly && !c->has(rules5e::Condition::Prone)) { set_altitude(q.actor, int16_t(drop), kAltMove); return; }
-    // A fall (altitude design §3): alt_ft stays 0 at the new ground; the event says so and the distance is recorded.
-    // PR4: then the SRD falling damage (rules5e::fall: 1d6 per 10 ft, max 20d6, lands prone), its rules events after it.
-    falls_.push_back({q.actor, drop});
-    SimEvent e;
-    e.kind = SimEvent::Kind::AltitudeChanged;
-    e.actor = q.actor;
-    e.tile = pos(q.actor);
-    e.rules.a = 0;
-    e.rules.b = kAltFall;
-    events_.push_back(e);
-    std::vector<rules5e::Event> fev;
-    rules5e::fall(state_, q.actor, drop, fev);
-    apply_rules_events(fev);
+    land(drop);
 }
 
 MoveCaps Combat::caps_of(CombatantId id) const {
@@ -2526,25 +2803,28 @@ MoveCaps Combat::caps_of(CombatantId id) const {
 }
 
 // feat/move-modes: the move mode for one step (0 walk, 1 fly, 2 swim, 3 climb, 4 burrow while burrowed), 0xFF when no fitting speed has `cost`
-// feet left, 0xFE when only flight fits and the mover is prone. The terrain picks the speed: open air needs flight; climb
-// terrain uses a climb speed, else flight, else walking (extra cost already priced); water likewise with a swim speed.
+// feet left, 0xFE when only flight fits and the mover is prone. The terrain picks the speed: open air needs flight; a
+// destination that is on_climb_wall (climbable, and no walkable tile) uses a climb speed, else flight, else walking
+// (extra cost already priced); a rise of more than 5 ft is a climb too; water likewise with a swim speed.
 // On plain ground the walking speed, or flight when walking has too little left.
 uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost, int fp_in) const {
     const auto* c = rules5e::find(state_, mover);
     if (!c) return 0xFF;
     const int fp = fp_in > 0 ? fp_in : footprint_size(mover);
-    bool air = false, climb = false, water = false;
+    bool air = false, water = false;
     for (int dy = 0; dy < fp; ++dy)
         for (int dx = 0; dx < fp; ++dx) {
             const Vec2i t{to.x + dx, to.y + dy};
             if (fp > 1 && t.x >= from.x && t.x < from.x + fp && t.y >= from.y && t.y < from.y + fp) continue;
             if (grid_.open_air(t)) air = true;
-            else if (!grid_.walkable(t) && grid_.climbable(t)) climb = true;
             else if (grid_.water(t)) water = true;
         }
+    const bool climb = on_climb_wall(to, fp);   // the whole destination, same predicate as subject_grounded
     std::vector<uint8_t> order;
-    const bool high = grid_.has_ground() &&
-                      ledge_ft(grid_.footprint_ground_ft(from, fp), grid_.footprint_ground_ft(to, fp)) > kWalkableStepFt;
+    int g_from = grid_.footprint_ground_ft(from, fp);
+    const int g_to = grid_.footprint_ground_ft(to, fp);
+    if (c->alt_ft > 0 && !airborne(mover) && !burrowed(mover)) g_from += int(c->alt_ft);   // a climber's feet, not the wall's base
+    const bool high = grid_.has_ground() && ledge_ft(g_from, g_to) > kWalkableStepFt;
     if (airborne(mover)) order = {1};   // altitude PR2: an airborne flyer keeps flying
     else if (burrowed(mover)) order = {4};   // altitude PR2: a burrowed mover tunnels on its burrow speed
     else if (air) order = {1};
@@ -2609,19 +2889,82 @@ int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool t
     // altitude PR2 (chunk@3 ground; 0 on flat maps): a step up of 5 ft or less and descending are free (grid.hpp step_cost_ft);
     // an airborne flyer pays only for ground that rises above its absolute height.
     if (grid_.has_ground()) {
+        const int g0 = grid_.footprint_ground_ft(from, fp);
         const int g1 = grid_.footprint_ground_ft(to, fp);
+        const auto* mc = rules5e::find(state_, mover);
+        const bool climbing = mc && mc->alt_ft > 0 && !airborne(mover) && !burrowed(mover);
         if (burrowed(mover)) {}   // stays at its depth below the ground: no ledge cost
-        else if (air) cost += std::max(0, g1 - abs_height_ft(mover));
-        else cost += eng::sim::step_cost_ft(grid_.footprint_ground_ft(from, fp), g1, caps);
+        else if (airborne(mover)) cost += std::max(0, g1 - abs_height_ft(mover));
+        else if (climbing) {
+            // Along a wall the tile cost is the whole price. Leaving it, a rise of the new ground more than 5 ft
+            // above the climber's feet is a climb; a drop (including a fall) is free.
+            if (!on_climb_wall(to, fp)) {
+                const int abs0 = g0 + int(mc->alt_ft);
+                if (g1 - abs0 > kWalkableStepFt) cost += eng::sim::step_cost_ft(abs0, g1, caps);
+            }
+        } else cost += eng::sim::step_cost_ft(g0, g1, caps);
     }
     return cost;
 }
 
 // ---- R-G9 forced movement / teleport (FORCED_MOVEMENT.md §3) ----
+void Combat::clear_forced() {
+    forced_placed_.clear();
+    forced_alt_.clear();
+}
+bool Combat::space_free(CombatantId id, Vec2i t) const {
+    const int fp = footprint_size(id);
+    if (!grid_.footprint_walkable(t, fp)) return false;
+    const auto occ = occupied_except(id);
+    for (int dy = 0; dy < fp; ++dy)
+        for (int dx = 0; dx < fp; ++dx)
+            if (std::find(occ.begin(), occ.end(), Vec2i{t.x + dx, t.y + dy}) != occ.end()) return false;
+    return true;
+}
+Combat::LedgeAdj Combat::ledge_adjust(CombatantId id, Vec2i from, Vec2i to) const {
+    LedgeAdj a;
+    if (!grid_.has_ground()) return a;
+    const auto* c = rules5e::find(state_, id);
+    if (!c || c->alt_ft < 0) return a;                 // swimming / burrowing: depth unchanged
+    const int fp = footprint_size(id);
+    const int g0 = grid_.footprint_ground_ft(from, fp);
+    const int g1 = grid_.footprint_ground_ft(to, fp);
+    if (airborne(id)) {                                // keep absolute height; rising ground lands at 0, no damage
+        const int neu = std::max(0, (g0 + int(c->alt_ft)) - g1);
+        if (neu != int(c->alt_ft)) { a.set_alt = true; a.alt_ft = int16_t(neu); }
+        return a;
+    }
+    if (c->alt_ft > 0) {                               // climbing: stay on a wall; otherwise land or fall
+        if (on_climb_wall(to, fp)) return a;
+        const int drop = (g0 + int(c->alt_ft)) - g1;
+        if (drop > kWalkableStepFt) a.fell_ft = uint16_t(drop);
+        else { a.set_alt = true; a.alt_ft = 0; }
+        return a;
+    }
+    const int drop = g0 - g1;                          // on the ground (alt_ft == 0)
+    if (drop <= kWalkableStepFt) return a;             // a short drop or a rise: stand on the new ground
+    if (caps_of(id).fly && !c->has(rules5e::Condition::Prone)) {
+        a.set_alt = true;                              // step off and fly: absolute height kept, no falling damage
+        a.alt_ft = int16_t(drop);
+        return a;
+    }
+    a.fell_ft = uint16_t(drop);
+    return a;
+}
+void Combat::note_ledge(CombatantId id, Vec2i from, Vec2i to, rules5e::ForcedMoveResult& res) {
+    const LedgeAdj adj = ledge_adjust(id, from, to);
+    if (adj.fell_ft > 0) res.fell_ft = adj.fell_ft;
+    if (adj.set_alt) forced_alt_.push_back({id, adj.alt_ft});
+}
 rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery& q) {
     rules5e::ForcedMoveResult res;
     if (shove_actor_ != 0 && q.source == shove_actor_ && q.mover == shove_target_ && !q.teleport) {
         res.feet_moved = q.feet;   // EC #104's shove placement stays in complete(); report the 5 ft as before
+        // Same dest complete() will use. Altitude only when that tile is free; a blocked shove still reports the 5 ft.
+        const Vec2i sp = pos(q.source), tp = pos(q.mover);
+        const Vec2i d{(tp.x > sp.x) - (tp.x < sp.x), (tp.y > sp.y) - (tp.y < sp.y)};
+        const Vec2i dest{tp.x + d.x, tp.y + d.y};
+        if ((d.x != 0 || d.y != 0) && space_free(q.mover, dest)) note_ledge(q.mover, tp, dest, res);
         return res;
     }
     auto commit = [this](CombatantId id, Vec2i t) {
@@ -2647,6 +2990,7 @@ rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery&
         Vec2i d{(dx2 > 0) - (dx2 < 0), (dy2 > 0) - (dy2 < 0)};
         if (d.x == 0 && d.y == 0) d = {1, 0};
         if (q.mode == 2) d = {-d.x, -d.y};
+        if (q.dir_x != 0 || q.dir_y != 0) d = {q.dir_x, q.dir_y};   // B10: the d8 direction, not away-from-centre
         const int fp = ms.n;
         const auto occ = occupied_except(q.mover);
         Vec2i cur = start;
@@ -2655,11 +2999,35 @@ rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery&
         std::vector<Vec2i> walked{start};
         for (; moved < steps; ++moved) {
             const Vec2i nx{cur.x + d.x, cur.y + d.y};
-            bool free = grid_.footprint_walkable(nx, fp);
-            for (int yy = 0; yy < fp && free; ++yy)
-                for (int xx = 0; xx < fp && free; ++xx)
-                    free = std::find(occ.begin(), occ.end(), Vec2i{nx.x + xx, nx.y + yy}) == occ.end();
-            if (!free) break;
+            if (q.impact_per_ft > 0) {   // B10: the source's tiles are the whirlwind, not a wall and not a creature
+                if (!grid_.footprint_walkable(nx, fp)) { res.struck_object = true; break; }
+                CombatantId struck = 0;
+                for (int yy = 0; yy < fp; ++yy)
+                    for (int xx = 0; xx < fp; ++xx) {
+                        const CombatantId o = occupant_at({nx.x + xx, nx.y + yy}, q.mover);
+                        if (o != 0 && o != q.source && (struck == 0 || o < struck)) struck = o;
+                    }
+                if (struck != 0) { res.struck = struck; break; }
+            } else if (q.clear_of_source) {   // B11: leave the source's space. Its tiles are not a wall.
+                bool free = grid_.footprint_walkable(nx, fp);
+                for (int yy = 0; yy < fp && free; ++yy)
+                    for (int xx = 0; xx < fp && free; ++xx) {
+                        const CombatantId o = occupant_at({nx.x + xx, nx.y + yy}, q.mover);
+                        if (o != 0 && o != q.source) free = false;
+                    }
+                if (!free) break;
+                cur = nx;
+                walked.push_back(cur);
+                const bool overlap = cur.x < ss.p.x + ss.n && ss.p.x < cur.x + fp && cur.y < ss.p.y + ss.n && ss.p.y < cur.y + fp;
+                if (!overlap) { ++moved; break; }   // this step counts; the for-increment does not run
+                continue;
+            } else {
+                bool free = grid_.footprint_walkable(nx, fp);
+                for (int yy = 0; yy < fp && free; ++yy)
+                    for (int xx = 0; xx < fp && free; ++xx)
+                        free = std::find(occ.begin(), occ.end(), Vec2i{nx.x + xx, nx.y + yy}) == occ.end();
+                if (!free) break;
+            }
             cur = nx;
             walked.push_back(cur);
         }
@@ -2678,14 +3046,9 @@ rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery&
         }
         res.feet_moved = uint16_t(moved * kFeetPerTile);
         res.stopped_short = moved < steps;
-        // altitude PR4: pushed off a drop of more than 5 ft (chunk@3 ground), a creature on the ground falls the drop; rules
-        // applies the SRD falling damage and lands it prone. A flyer that can fly (fly speed, not prone) does not fall.
-        if (moved > 0 && grid_.has_ground())
-            if (const auto* mc = rules5e::find(state_, q.mover); mc && mc->alt_ft == 0) {
-                const int drop = grid_.footprint_ground_ft(start, fp) - grid_.footprint_ground_ft(cur, fp);
-                const bool can_fly = caps_of(q.mover).fly && !mc->has(rules5e::Condition::Prone);
-                if (drop > kWalkableStepFt && !can_fly) res.fell_ft = uint16_t(drop);
-            }
+        // A drop of more than 5 ft: a non-flyer on the ground falls (fell_ft; rules lands it). A flyer that can fly
+        // becomes airborne at that drop (applied in complete, cause kAltForced). Already airborne: absolute height kept.
+        if (moved > 0) note_ledge(q.mover, start, cur, res);
         if (moved > 0) commit(q.mover, cur);
         else forced_placed_.push_back({q.mover, start});
     }
@@ -2693,7 +3056,7 @@ rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery&
     for (const auto& sc : state_.sourced) {
         if (sc.condition != rules5e::Condition::Grappled || (sc.target != q.mover && sc.source != q.mover)) continue;
         const CombatantId other = sc.target == q.mover ? sc.source : sc.target;
-        if (distance_tiles(sc.source, sc.target) > 1 &&
+        if (distance_tiles(sc.source, sc.target) > grapple_reach_tiles(state_, sc) &&
             std::find(res.out_of_reach_of.begin(), res.out_of_reach_of.end(), other) == res.out_of_reach_of.end())
             res.out_of_reach_of.push_back(other);
     }
@@ -2767,7 +3130,7 @@ std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* c
         if (e.step.request.kind == ActionKind::Ready) c->ready_to_ = e.to;
         c->derived_area_ = e.step.request.kind == ActionKind::CastSpell && e.to;   // logged targets came from an aim tile
         c->set_step_context(e.step.request);
-        c->forced_placed_.clear();
+        c->clear_forced();
         rules5e::StepResult sr = rules5e::replay_step(c->state_, e.step);   // rules' replay; no decider
         if (!sr.ok || sr.desync || sr.status != StepStatus::Done) {
             if (error) *error = "replay desync at entry " + std::to_string(i) + ": " +
@@ -2828,6 +3191,7 @@ rules5e::FormStats stats_of(const rules5e::Combatant& c) {
     f.reactions = c.reactions;
     f.bonus_attacks = c.bonus_attacks;
     f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.burrow_ft = c.burrow_ft; f.hover = c.hover;   // feat/move-modes
+    f.keen_senses = c.keen_senses;   // Keen Senses (§30): the beast's mask, restored from own_stats on revert
     return f;
 }
 }  // namespace

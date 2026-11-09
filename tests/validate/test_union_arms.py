@@ -47,7 +47,7 @@ PREDICATE = {("weapon",): (S({"kind", "is"}), S()),
              ("attack_from_feature",): (S({"kind", "feature"}), S())}   # 7.2zb Open Hand
 # when: rider-level predicates (sim #170), read only in on_hit[] of attack actions
 RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale", "when"})),
-         ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success", "when", "zero_hp"})),
+         ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success", "when", "zero_hp", "disease"})),
          ("apply_condition",): (S({"kind", "apply"}), S({"when"})),
          ("heal_self", "temp_hp"): (S({"kind"}), S({"dice", "amount", "amount_from", "when"})),
          ("set_hp",): (S({"kind", "value"}), S({"when"})),
@@ -56,7 +56,7 @@ RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale", "when"})),
          ("spend",): (S({"kind"}), S({"pool", "cost", "slot", "when"})),
          ("forced_move",): (S({"kind", "mode", "feet"}), S({"save", "when"})),   # 7.2zb Open Hand
          ("apply_modifier",): (S({"kind", "modifier"}), S({"when"})),            # 7.2zb Open Hand
-         ("grapple",): (S({"kind"}), S({"escape_dc", "when", "restrains", "exclusive", "max_grapples", "instead_of_damage"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
+         ("grapple",): (S({"kind"}), S({"escape_dc", "when", "restrains", "exclusive", "max_grapples", "instead_of_damage", "no_damage", "max_size"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
 _M = {"applies_to", "stacks", "consume"}   # consume: any stat (section 6.2b, docs/CONTENT_CONVENTIONS.md 1)
 MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "sign", "mode", "when"} | _M)),   # 7.2ze sign
             ("save", "ability_check"): (S({"stat", "duration"}), S({"bonus", "die", "sign", "mode", "ability"} | _M)),
@@ -272,7 +272,7 @@ class TransformArmsRG12(unittest.TestCase):
 class GrabContainArms(unittest.TestCase):
     """VERSION_BUMP_BATCH 7.2w: the closed transparent arm and the additive apply keys."""
     TRANSPARENT = (S({"kind", "dc"}), S())
-    APPLY = (S({"condition"}), S({"duration", "repeat_save", "escape", "object", "max_size", "contain", "excludes_formless"}))
+    APPLY = (S({"condition"}), S({"duration", "repeat_save", "escape", "object", "max_size", "contain", "excludes_formless", "while"}))
     CONTAIN = (S({"kind", "damage"}), S({"regurgitate"}))
 
     def test_transparent_arm(self):
@@ -506,7 +506,12 @@ class ControlConditionsArms(unittest.TestCase):
     """VERSION_BUMP_BATCH 7.2v: additive save-effect keys (spell@1) and their common@2 defs."""
     SAVE = (S({"kind", "ability"}), S({"damage", "on_success", "condition", "repeat_save", "control",
                                          "control_excludes_creature_types", "control_min_int", "destroy_undead_max_cr8",
-                                         "description", "applies_to", "choices", "ends_on"}))   # 7.2ze choices; 7.2zg ends_on
+                                         "description", "applies_to", "choices", "ends_on",
+                                         # 7.2zj. ends_on_ally_harm stays optional for Charm Person and Suggestion.
+                                         # Geas uses ends_on_restoration only.
+                                         "hostile_save_advantage", "ends_on_ally_harm", "suppress_conditions",
+                                         "also_damage", "difficult_terrain", "charm_immune", "ends_on_restoration",
+                                         "caster_sees_target", "requires_hearing"}))   # 7.2ze choices; 7.2zg ends_on
 
     def test_save_arm_keys(self):
         eff = load("spell/v1.schema.json")["$defs"]["effect"]
@@ -515,6 +520,7 @@ class ControlConditionsArms(unittest.TestCase):
         self.assertEqual(set(arm["required"]), set(req))
         self.assertEqual(set(arm["properties"]), set(req | opt))
         self.assertIn({"required": ["control"]}, arm["anyOf"])
+        self.assertIn({"required": ["suppress_conditions"]}, arm["anyOf"])   # 7.2zj Calm Emotions
 
     def test_common_defs(self):
         d = load("common/v2.schema.json")["$defs"]

@@ -5,11 +5,14 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "assets/clip_registry.hpp"
 #include "assets/pack_set.hpp"
 #include "assets/schema_registry.hpp"
 #include "sim/equipment.hpp"
+#include "sim/presentation.hpp"
 #include "rules5e/spells.hpp"
 #include "sim/features.hpp"
 #include "rules5e/spells.hpp"
@@ -64,9 +67,17 @@ struct Archetype {
         Recharge pool_recharge = Recharge::None;
         uint8_t uses = 0;               // usage_kind 2
         Recharge recharge = Recharge::None;   // usage_kind 2
-        bool area = false;              // has an area template (the AI never picks these before the area-template row)
+        bool area = false;              // has an area template (the AI never picks these before the area-template row).
+                                        // monster@5 area_effect always sets this: one synthetic SpellDef on the spell area path.
         uint16_t range_ft = 0;
         bool teleport = false;          // batch 3 `teleport` action (blink dog): needs a destination, the AI skips it
+        bool rider_only = false;        // B3b: not a standalone action; only the multiattack free rider (chuul Tentacles)
+        bool leap = false;              // B8: Deadly Leap. The built-in AI does not declare a jump or pick a landing.
+        bool whirl = false;             // B10: Whirlwind. The built-in AI does not pick a random fling.
+        bool whelm = false;             // B11: Whelm. The built-in AI does not use it.
+        bool ethereal = false;          // B19: Etherealness. The built-in AI does not toggle planes.
+        bool illusory = false;          // visible figure: the built-in AI does not start or end it.
+        bool passage = false;           // Invisible Passage: the built-in AI does not use it.
     };
     std::vector<SaveAction> save_actions;
     // resources[] (row 13): pools Combat::create registers (resolved against the archetype's level / abilities at load).
@@ -105,7 +116,14 @@ struct Archetype {
     std::vector<std::string> innate_spell_ids;   // spellcasting.innate.* content ids (monster@4 / character@4); base.innate holds the rows
     // `multiattack` effect options as authored: option id + indices into base.attacks. ContentLibrary::add
     // turns them into base.multiattacks (ids stored in the library). Declared order = option order.
-    struct MultiattackDecl { std::string id; std::vector<uint8_t> attacks; rules5e::DiceExpr count_dice{0, 0, 0}; };   // count_dice: batch 3
+    // B7: both-hits Engulf (Shambling Mound). Compiled to an ApplyCondition contain SpellDef; not an action.
+    struct EngulfBothSpec {
+        int8_t max_size = -1;   // rules5e::Size
+        int8_t escape_dc = 0;
+        rules5e::DiceExpr damage{};
+        rules5e::DamageType damage_type = rules5e::DamageType::Bludgeoning;
+    };
+    struct MultiattackDecl { std::string id; std::vector<uint8_t> attacks; rules5e::DiceExpr count_dice{0, 0, 0}; std::string free_rider; std::optional<EngulfBothSpec> engulf_both_hits; };   // count_dice: batch 3; free_rider: B3b action id; engulf_both_hits: B7
     std::vector<MultiattackDecl> multiattack_decls;
     std::optional<std::string> ai;        // behavior.ai (monster@2 / character@2), pack-relative
     // Script id of behavior.ai, resolved within the archetype's own pack: "pack_id:path".
@@ -141,6 +159,8 @@ struct Archetype {
     // Feature ids whose effect sets requires_humanoid_form (Wild Shape blocks them in a beast form, D7).
     std::vector<uint32_t> humanoid_only_features;
     std::vector<EquipmentEntry> equipment;   // equipment[] in array order (priced materials; Combat copies it per combatant)
+    // Presentation only (Engine Core M0). Not folded into Combat::hash or log_hash.
+    CreatureVisual visual;
 };
 
 // R-G12 summons (VERSION_BUMP_BATCH 7.2r, SUMMONS_TRANSFORMS.md D1): which creatures a Summon spell may bring.
@@ -173,8 +193,10 @@ public:
     // Adapter: PackSet::load({pack_dir}) + load(). Prefer building the PackSet once.
     std::vector<std::string> load_pack(const std::string& pack_dir);
     // Adds one already-migrated stat block document (owned by pack_id, may be empty).
+    // `pack_dir` is the pack root used to check visual.art_root. Empty skips the existence check
+    // (direct add() from tests). A non-empty root that is not a directory is a load error.
     std::optional<std::string> add(const assets::Json& doc, const std::string& schema_type, const std::string& pack_id = "",
-                                    uint32_t declared_version = 0);
+                                    uint32_t declared_version = 0, std::string_view pack_dir = {});
 
     // Spell definitions of every spell@1 document loaded by load() (pack order). Shared with Combat,
     // which installs it as rules5e hooks.spells. Empty when no pack has spells.
@@ -187,6 +209,8 @@ public:
     std::optional<std::string> add_item(const assets::Json& doc) { return items_->add(doc, &warnings_); }
 
     const Archetype* find(const std::string& id) const;
+    // Kit loaded from <pack>/art/clips.json. nullptr when this library has no kit with that id.
+    const assets::ClipRegistry* clip_kit(std::string_view id) const;
     const std::map<std::string, Archetype>& all() const noexcept { return by_id_; }
     // R-G12 summons: a Summon SpellDef (kind Summon) and its creature options. Until spell@1 has a `summon` arm (T&C) this is
     // the way in; the def joins spells(). Errors: not a Summon def, empty or unknown archetypes, duplicate id, max_count 0.
@@ -199,6 +223,7 @@ private:
     std::map<uint32_t, SummonOptions> summons_;
     std::vector<std::string> warnings_;
     std::map<std::string, Archetype> by_id_;
+    std::map<std::string, assets::ClipRegistry, std::less<>> clip_by_id_;
     std::deque<std::string> strings_;
     std::shared_ptr<rules5e::SpellBook> spells_ = std::make_shared<rules5e::SpellBook>();
     std::shared_ptr<ItemDefTable> items_ = std::make_shared<ItemDefTable>();

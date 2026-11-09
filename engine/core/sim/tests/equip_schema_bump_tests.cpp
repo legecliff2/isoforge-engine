@@ -84,8 +84,8 @@ TEST_CASE("equip schema bump: @4 and @5 files with the same body load and hash i
     REQUIRE_MESSAGE(f3.ok, f3.error);
     CHECK(g3.current.version == assets::kMonsterSchemaVersion);
     CHECK(f3.current.version == assets::kCharacterSchemaVersion);
-    CHECK(assets::kMonsterSchemaVersion == 5u);
-    CHECK(assets::kCharacterSchemaVersion == 5u);
+    CHECK(assets::kMonsterSchemaVersion == 6u);
+    CHECK(assets::kCharacterSchemaVersion == 6u);
 
     auto g4 = load(with_version(g3.data, "monster", 4));
     auto g5 = load(with_version(g3.data, "monster", 5));

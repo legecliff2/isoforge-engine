@@ -143,7 +143,7 @@ int owner_level(const Json& doc, const Json& per_levels) {
 // rules (kEndsByOwnRules), applied untracked; only save_condition riders pass true.
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
                                                Archetype::SaveAction& sa, const Json& doc, bool& unsupported,
-                                               bool untimed_ok = false);
+                                               bool untimed_ok = false, const char* kind_label = "save_effect");
 
 // What a rider needs beyond its own JSON: the owner's attacks (bonus_attack resolves attack_id) and the list the
 // synthetic Save SpellDefs of area_save riders go to (registered in the SpellBook by ContentLibrary::add).
@@ -295,6 +295,8 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
         return std::nullopt;
     }
     if (k == "save_condition") {   // a synthetic Save SpellDef (fixed DC, damage, condition); same_as_weapon is a load error (bad damage type)
+        if (r.contains("disease") && (where.size() < 7 || where.compare(where.size() - 7, 7, " on_hit") != 0))
+            return where + ": disease is an on_hit save_condition";
         Json act = r;
         act["kind"] = "save_effect";
         act["id"] = "save_condition." + std::to_string(rc.synth.size());
@@ -726,6 +728,406 @@ std::optional<std::string> compile_teleport_action(const std::string& arch, cons
     return std::nullopt;
 }
 
+// B19 Etherealness (CONTENT_CONVENTIONS §51). An action. No target, no roll. Toggles Combatant::plane
+// between Material and the Border Ethereal. The built-in AI does not pick it.
+std::optional<std::string> compile_etherealness(const std::string& arch, const Json& act, uint32_t declared,
+                                                const std::string& schema_type, rules5e::SpellDef& d,
+                                                Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": etherealness '" + aid + "'";
+    if (schema_type != "monster") return where + ": etherealness: only valid on monsters";
+    if (declared != 0 && declared < 5) return where + ": etherealness needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description")
+            return where + ": etherealness: unknown key '" + k + "'";
+    }
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.kind = rules5e::SpellEffectKind::ApplyCondition;
+    d.is_spell = false;
+    d.magical = false;
+    d.components = 0;
+    d.targets = 1;
+    d.range_ft = 0;
+    d.applies_condition = false;
+    d.ethereal_toggle = true;
+    d.casting_time = rules5e::CastingTime::Action;
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.range_ft = 0;
+    sa.ethereal = true;
+    return std::nullopt;
+}
+
+// Visible figure (CONTENT_CONVENTIONS §52). An action starts it. A bonus action ends it.
+// fixed_dc is the inspect DC. The built-in AI does not pick it. Not a form.
+std::optional<std::string> compile_illusory_appearance(const std::string& arch, const Json& act, uint32_t declared,
+                                                       const std::string& schema_type, rules5e::SpellDef& d,
+                                                       Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": illusory appearance '" + aid + "'";
+    if (schema_type != "monster") return where + ": illusory appearance: only valid on monsters";
+    if (declared != 0 && declared < 5) return where + ": illusory appearance needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description" && k != "dc")
+            return where + ": illusory appearance: unknown key '" + k + "'";
+    }
+    const bool dc_ok = act.contains("dc") && act["dc"].is_number_integer();
+    const int dc = dc_ok ? act["dc"].get<int>() : 0;
+    if (!dc_ok || dc < 1 || dc > 30) return where + ": illusory appearance: dc must be 1..30";
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.kind = rules5e::SpellEffectKind::ApplyCondition;
+    d.is_spell = false;
+    d.magical = false;
+    d.components = 0;
+    d.targets = 1;
+    d.range_ft = 0;
+    d.applies_condition = false;
+    d.fixed_dc = int8_t(dc);
+    d.illusory_appearance = true;
+    d.casting_time = rules5e::CastingTime::Action;
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.range_ft = 0;
+    sa.illusory = true;
+    return std::nullopt;
+}
+
+// Invisible Passage (CONTENT_CONVENTIONS §53). An action. Not a spell, not innate_invisibility.
+// No extra keys. The built-in AI does not use it.
+std::optional<std::string> compile_invisible_passage(const std::string& arch, const Json& act, uint32_t declared,
+                                                     const std::string& schema_type, rules5e::SpellDef& d,
+                                                     Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": invisible passage '" + aid + "'";
+    if (schema_type != "monster") return where + ": invisible passage: only valid on monsters";
+    if (declared != 0 && declared < 5) return where + ": invisible passage needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description")
+            return where + ": invisible passage: unknown key '" + k + "'";
+    }
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.kind = rules5e::SpellEffectKind::ApplyCondition;
+    d.is_spell = false;
+    d.magical = false;
+    d.components = 0;
+    d.targets = 1;
+    d.range_ft = 0;
+    d.applies_condition = false;
+    d.concentration = true;
+    d.condition = rules5e::Condition::Invisible;
+    d.ends_on = uint8_t(rules5e::kEndsOnAttack | rules5e::kEndsOnCast);
+    d.invisible_passage = true;
+    d.casting_time = rules5e::CastingTime::Action;
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.range_ft = 0;
+    sa.passage = true;
+    return std::nullopt;
+}
+
+// B8 Deadly Leap (CONTENT_CONVENTIONS §38). Its own action. Not a multiattack rider.
+// {kind: deadly_leap, jump_ft, save: {ability, dc}, save_alt, damage: [two], push_ft}.
+// One save, the higher of the two abilities (tie: save.ability). Fail: both damages and prone.
+// Success: half of each, then a push of push_ft. A push that cannot move knocks prone. The jump gate is jump_ft.
+std::optional<std::string> compile_deadly_leap(const std::string& arch, const Json& act, uint32_t declared,
+                                               const std::string& schema_type, rules5e::SpellDef& d,
+                                               Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": deadly_leap '" + aid + "'";
+    if (schema_type != "monster" || (declared != 0 && declared < 5))
+        return where + ": deadly_leap needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description" && k != "jump_ft" && k != "save" &&
+            k != "save_alt" && k != "damage" && k != "push_ft")
+            return where + ": deadly_leap: unknown key '" + k + "'";
+    }
+    const int jump = act.contains("jump_ft") && act["jump_ft"].is_number_integer() ? act["jump_ft"].get<int>() : 0;
+    if (jump < 5 || jump > 60 || jump % 5 != 0) return where + ": deadly_leap: jump_ft must be 5..60, a multiple of 5";
+    const auto sv = act.find("save");
+    if (sv == act.end() || !sv->is_object()) return where + ": deadly_leap: missing save";
+    auto ab = ability_of(sv->value("ability", ""));
+    const int dc = geti(*sv, "dc");
+    if (!ab || dc < 1 || dc > 30) return where + ": deadly_leap: bad save";
+    auto alt = ability_of(act.value("save_alt", ""));
+    if (!alt || *alt == *ab) return where + ": deadly_leap: save_alt must be a different ability";
+    const auto dm = act.find("damage");
+    if (dm == act.end() || !dm->is_array() || dm->size() != 2) return where + ": deadly_leap: damage needs two components";
+    if (!(*dm)[0].is_object() || !(*dm)[1].is_object()) return where + ": deadly_leap: bad damage";
+    auto d0 = parse_dice((*dm)[0].value("dice", ""));
+    auto t0 = damage_type((*dm)[0].value("type", ""));
+    auto d1 = parse_dice((*dm)[1].value("dice", ""));
+    auto t1 = damage_type((*dm)[1].value("type", ""));
+    if (!d0 || !t0 || !d1 || !t1) return where + ": deadly_leap: bad damage";
+    const int push = act.contains("push_ft") && act["push_ft"].is_number_integer() ? act["push_ft"].get<int>() : 0;
+    if (push < 5 || push > 30 || push % 5 != 0) return where + ": deadly_leap: push_ft must be 5..30, a multiple of 5";
+    d = rules5e::SpellDef{};
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.casting_time = rules5e::CastingTime::Action;
+    d.kind = rules5e::SpellEffectKind::Save;
+    d.is_spell = false;
+    d.magical = false;
+    d.targets = 8;   // the existing multi-target save cap. The caller names the creatures in the space.
+    d.range_ft = 0;
+    d.save_ability = *ab;
+    d.has_save_choice = true;
+    d.save_alt = *alt;
+    d.fixed_dc = int8_t(dc);
+    d.dice = *d0;
+    d.damage_type = *t0;
+    d.on_save = rules5e::OnSave::Half;
+    d.has_also_damage = true;
+    d.also_dice = *d1;
+    d.also_damage_type = *t1;
+    d.applies_condition = true;
+    d.condition = rules5e::Condition::Prone;
+    d.condition_untracked = true;
+    d.requires_jumped_ft = uint16_t(jump);
+    d.leap_push_ft = uint16_t(push);
+    sa = {};
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.leap = true;
+    return std::nullopt;
+}
+
+// B10 Whirlwind (CONTENT_CONVENTIONS §40). Its own action. Not a multiattack rider.
+// {kind: whirlwind, save: {ability, dc}, damage: {dice, type}, fling_ft, impact: {dice, per_ft, type},
+//  impact_save: {ability, dc}, usage: {kind: recharge, min}}.
+// Each named creature in the user's space saves. Fail: the damage, prone, and a fling of up to fling_ft.
+// Success: half that damage (integer division), no fling, no prone. The Dexterity impact save is not half. Recharge is the sentence.
+std::optional<std::string> compile_whirlwind(const std::string& arch, const Json& act, uint32_t declared,
+                                             const std::string& schema_type, const Json& doc, rules5e::SpellDef& d,
+                                             Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": whirlwind '" + aid + "'";
+    if (schema_type != "monster" || (declared != 0 && declared < 5))
+        return where + ": whirlwind needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description" && k != "save" && k != "damage" &&
+            k != "fling_ft" && k != "impact" && k != "impact_save" && k != "usage")
+            return where + ": whirlwind: unknown key '" + k + "'";
+    }
+    const auto sv = act.find("save");
+    if (sv == act.end() || !sv->is_object()) return where + ": whirlwind: missing save";
+    auto ab = ability_of(sv->value("ability", ""));
+    const int dc = geti(*sv, "dc");
+    if (!ab || dc < 1 || dc > 30) return where + ": whirlwind: bad save";
+    const auto dm = act.find("damage");
+    if (dm == act.end() || !dm->is_array() || dm->size() != 1 || !(*dm)[0].is_object())
+        return where + ": whirlwind: damage needs one component";
+    auto dice = action_damage_dice((*dm)[0], true);
+    auto ty = damage_type((*dm)[0].value("type", ""));
+    if (!dice || !ty) return where + ": whirlwind: bad damage";
+    const int fling = act.contains("fling_ft") && act["fling_ft"].is_number_integer() ? act["fling_ft"].get<int>() : 0;
+    if (fling < 5 || fling > 60 || fling % 5 != 0) return where + ": whirlwind: fling_ft must be 5..60, a multiple of 5";
+    const auto im = act.find("impact");
+    if (im == act.end() || !im->is_object()) return where + ": whirlwind: missing impact";
+    for (auto it = im->begin(); it != im->end(); ++it) {
+        const std::string k = it.key();
+        if (k != "dice" && k != "flat" && k != "per_ft" && k != "type")
+            return where + ": whirlwind: unknown impact key '" + k + "'";
+    }
+    auto idice = action_damage_dice(*im, true);
+    auto ity = damage_type(im->value("type", ""));
+    const int per = im->contains("per_ft") && (*im)["per_ft"].is_number_integer() ? (*im)["per_ft"].get<int>() : 0;
+    if (!idice || !ity || per < 5 || per > 30 || per % 5 != 0)
+        return where + ": whirlwind: bad impact";
+    const auto isv = act.find("impact_save");
+    if (isv == act.end() || !isv->is_object()) return where + ": whirlwind: missing impact_save";
+    auto iab = ability_of(isv->value("ability", ""));
+    const int idc = geti(*isv, "dc");
+    if (!iab || idc < 1 || idc > 30) return where + ": whirlwind: bad impact_save";
+    d = rules5e::SpellDef{};
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.casting_time = rules5e::CastingTime::Action;
+    d.kind = rules5e::SpellEffectKind::Save;
+    d.is_spell = false;
+    d.magical = false;
+    d.targets = 8;   // the existing multi-target save cap. The caller names the creatures in the space.
+    d.range_ft = 0;
+    d.save_ability = *ab;
+    d.fixed_dc = int8_t(dc);
+    d.dice = *dice;
+    d.damage_type = *ty;
+    d.on_save = rules5e::OnSave::Half;   // "If the saving throw is successful, the target takes half the bludgeoning damage"
+    d.applies_condition = true;
+    d.condition = rules5e::Condition::Prone;
+    d.condition_untracked = true;
+    d.whirl_ft = uint16_t(fling);
+    d.impact_per_ft = uint8_t(per);
+    d.impact_die = *idice;
+    d.impact_type = *ity;
+    d.impact_save = *iab;
+    d.impact_dc = int8_t(idc);
+    sa = {};
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.whirl = true;
+    bool unsupported = false;
+    if (!act.contains("usage")) return where + ": whirlwind: recharge is the sentence";
+    if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported)) return e;
+    if (unsupported) return where + ": whirlwind: pool usage is not supported";
+    if (d.usage_kind != 1) return where + ": whirlwind: recharge is the sentence";
+    sa.whirl = true;
+    return std::nullopt;
+}
+
+// B11 Whelm (CONTENT_CONVENTIONS §41). Its own action. Not a multiattack rider.
+// {kind: whelm, save: {ability, dc}, damage: [{dice|flat, type}], grapple: {escape_dc, max_size},
+//  crush: {dice|flat, type}, usage: {kind: recharge, min}}.
+// Each named creature in the user's space saves. Fail: the damage, and (Large or smaller, while the cap
+// has room) a restraining grapple. Success: no damage, pushed out of the space. on_save is None.
+// dnd5eapi success_type is none. Recharge is the sentence.
+std::optional<std::string> compile_whelm(const std::string& arch, const Json& act, uint32_t declared,
+                                         const std::string& schema_type, const Json& doc, rules5e::SpellDef& d,
+                                         Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": whelm '" + aid + "'";
+    if (schema_type != "monster" || (declared != 0 && declared < 5))
+        return where + ": whelm needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description" && k != "save" && k != "damage" &&
+            k != "grapple" && k != "crush" && k != "usage")
+            return where + ": whelm: unknown key '" + k + "'";
+    }
+    const auto sv = act.find("save");
+    if (sv == act.end() || !sv->is_object()) return where + ": whelm: missing save";
+    auto ab = ability_of(sv->value("ability", ""));
+    const int dc = geti(*sv, "dc");
+    if (!ab || dc < 1 || dc > 30) return where + ": whelm: bad save";
+    const auto dm = act.find("damage");
+    if (dm == act.end() || !dm->is_array() || dm->size() != 1 || !(*dm)[0].is_object())
+        return where + ": whelm: damage needs one component";
+    auto dice = action_damage_dice((*dm)[0], true);
+    auto ty = damage_type((*dm)[0].value("type", ""));
+    if (!dice || !ty) return where + ": whelm: bad damage";
+    const auto gr = act.find("grapple");
+    if (gr == act.end() || !gr->is_object()) return where + ": whelm: missing grapple";
+    for (auto it = gr->begin(); it != gr->end(); ++it) {
+        const std::string k = it.key();
+        if (k != "escape_dc" && k != "max_size") return where + ": whelm: unknown grapple key '" + k + "'";
+    }
+    const int edc = gr->contains("escape_dc") && (*gr)["escape_dc"].is_number_integer() ? (*gr)["escape_dc"].get<int>() : 0;
+    static const char* kSizes[] = {"tiny", "small", "medium", "large", "huge", "gargantuan"};
+    int msz = -1;
+    if (auto ms = gr->find("max_size"); ms != gr->end() && ms->is_string())
+        for (int i = 0; i < 6; ++i) if (ms->get<std::string>() == kSizes[i]) msz = i;
+    if (edc < 1 || edc > 30 || msz < 0) return where + ": whelm: bad grapple";
+    const auto cr = act.find("crush");
+    if (cr == act.end() || !cr->is_object()) return where + ": whelm: missing crush";
+    for (auto it = cr->begin(); it != cr->end(); ++it) {
+        const std::string k = it.key();
+        if (k != "dice" && k != "flat" && k != "type") return where + ": whelm: unknown crush key '" + k + "'";
+    }
+    auto cdice = action_damage_dice(*cr, true);
+    auto cty = damage_type(cr->value("type", ""));
+    if (!cdice || !cty) return where + ": whelm: bad crush";
+    d = rules5e::SpellDef{};
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.casting_time = rules5e::CastingTime::Action;
+    d.kind = rules5e::SpellEffectKind::Save;
+    d.is_spell = false;
+    d.magical = false;
+    d.targets = 8;
+    d.range_ft = 0;
+    d.save_ability = *ab;
+    d.fixed_dc = int8_t(dc);
+    d.dice = *dice;
+    d.damage_type = *ty;
+    d.on_save = rules5e::OnSave::None;   // success_type none: pushed out, not half the bludgeoning damage
+    d.whelm = true;
+    d.whelm_escape_dc = int16_t(edc);
+    d.whelm_max_size = int8_t(msz);
+    d.whelm_crush = *cdice;
+    d.whelm_crush_type = *cty;
+    sa = {};
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.whelm = true;
+    bool unsupported = false;
+    if (!act.contains("usage")) return where + ": whelm: recharge is the sentence";
+    if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported)) return e;
+    if (unsupported) return where + ": whelm: pool usage is not supported";
+    if (d.usage_kind != 1) return where + ": whelm: recharge is the sentence";
+    sa.whelm = true;
+    return std::nullopt;
+}
+
+// B5 Reel: monster@5 action {kind: "pull", feet, targets?, target_requires_any: ["grappled_by_self"]}.
+// "The roper pulls each creature grappled by it up to 25 feet straight toward it." A synthetic ForcedMove SpellDef
+// (mode pull, up_to). The caller names the creatures (1..8). Each must be grappled by the user; one that is not refuses
+// the cast before the action is spent. The engine does not add a grappled creature the caller left out (the same gate
+// as Tentacle Slam). Omitting forced_feet pulls the full distance; a multiple of 5 up to feet pulls that far (0xB4
+// only when set). No save, no damage, no second range: spell_in_reach skips this kind. Not a free_rider. A free_rider
+// runs after every attack in the option, and Reel in a Multiattack sits between the tendril attacks and the bite.
+std::optional<std::string> compile_pull_action(const std::string& arch, const Json& act, uint32_t declared,
+                                               const std::string& schema_type, rules5e::SpellDef& d,
+                                               Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": pull '" + aid + "'";
+    if (schema_type != "monster" || (declared != 0 && declared < 5))
+        return where + ": pull needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it)
+        if (it.key() != "id" && it.key() != "name" && it.key() != "kind" && it.key() != "description" &&
+            it.key() != "feet" && it.key() != "targets" && it.key() != "target_requires_any")
+            return where + ": pull: unknown key '" + it.key() + "'";
+    const int ft = act.contains("feet") && act["feet"].is_number_integer() ? act["feet"].get<int>() : 0;
+    if (ft < 5 || ft > 60 || ft % 5 != 0) return where + ": pull: feet must be 5..60, a multiple of 5";
+    const auto tg = act.find("target_requires_any");
+    if (tg == act.end() || !tg->is_array() || tg->size() != 1 || !(*tg)[0].is_string() ||
+        (*tg)[0].get<std::string>() != "grappled_by_self")
+        return where + ": pull: target_requires_any is grappled_by_self only";
+    int n = 1;
+    if (act.contains("targets")) {
+        if (!act["targets"].is_number_integer()) return where + ": pull: targets must be an integer 1..8";
+        n = act["targets"].get<int>();
+        if (n < 1 || n > 8) return where + ": pull: targets must be an integer 1..8";
+    }
+    d = rules5e::SpellDef{};
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.casting_time = rules5e::CastingTime::Action;
+    d.is_spell = false;
+    d.magical = false;
+    d.targets = uint8_t(n);
+    d.kind = rules5e::SpellEffectKind::ForcedMove;
+    d.forced.mode = 2;
+    d.forced.feet = uint16_t(ft);
+    d.forced.up_to = true;
+    d.target_requires_any = rules5e::kTargetGateGrappledBySelf;
+    d.range_ft = 0;
+    sa = {};
+    sa.id = aid;
+    sa.spell_id = d.id;
+    return std::nullopt;
+}
+
 // EC deferred monsters (giant spider Web): a monster@4 / character@4 `attack_effect` action, an attack roll that only applies
 // conditions: { id, attack: "ranged" | "melee", to_hit, range_ft, apply: [{ condition, escape: { ability: "str", dc } }],
 // usage }. Compiles to a synthetic SpellAttack SpellDef (is_spell false, not magical, fixed_attack, no damage) whose
@@ -849,9 +1251,15 @@ std::optional<std::string> compile_attack_effect(const std::string& arch_id, con
 
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
                                                Archetype::SaveAction& sa, const Json& doc, bool& unsupported,
-                                               bool untimed_ok) {
+                                               bool untimed_ok, const char* kind_label) {
     const std::string aid = act.value("id", "");
-    const std::string where = arch_id + ": save_effect '" + aid + "'";
+    const std::string where = arch_id + ": " + kind_label + " '" + aid + "'";
+    // Pack load migrates monster@5 to the current schema (monster@6) before this runs. The keys were introduced at
+    // monster@5; the error text keeps that wording. A direct lib.add of a monster@5 file still matches.
+    auto monster_since_5 = [&] {
+        const auto ref = assets::parse_schema_ref(doc.value("$schema", ""));
+        return ref && ref->type == "monster" && ref->version >= 5;
+    };
     if (aid.empty() || aid.find('#') != std::string::npos || arch_id.find('#') != std::string::npos)
         return where + ": id must be non-empty and contain no '#'";
     d = rules5e::SpellDef{};
@@ -998,8 +1406,17 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 // Gladiator Shield Bash: "If the target is a Medium or smaller creature, it must succeed on a DC 15 Strength
                 // saving throw or be knocked prone"): a larger target makes no save and gets no condition; the hit's damage stands.
                 if (!untimed_ok && x.contains("max_size") && !x.contains("contain"))
-                    return where + ": max_size on a save_effect needs contain (only a containing condition skips a larger target)";
+                    return where + ": max_size on a " + std::string(kind_label) + " needs contain (only a containing condition skips a larger target)";
                 if (auto m = read_contain(x, where, d)) return m;
+                if (x.contains("while")) {   // B3b: paralyzed while poisoned, on the primary entry only
+                    if (!monster_since_5()) return where + ": while on apply needs a monster@5 file";
+                    if (has_area) return where + ": while takes no area";
+                    if (untracked) return where + ": while needs a tracked primary condition";
+                    auto wcond = condition_of(x.value("while", ""));
+                    if (!wcond || *wcond == *cond) return where + ": while must be a different condition from the primary";
+                    d.has_while = true;
+                    d.while_condition = *wcond;
+                }
                 first = false;
             } else {       // further conditions: ApplyCondition on the creatures that failed the save
                 rules5e::SpellEffect e;
@@ -1012,19 +1429,93 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 e.condition_untracked = untracked;
                 e.affected_only = true;
                 e.escape_dc = int8_t(esc);
+                if (x.contains("while")) return where + ": while goes on the first apply[] entry";
                 if (x.contains("max_size") && !x.contains("contain"))   // the size gate is the whole save's: first entry only
-                    return where + (untimed_ok ? ": max_size on a save_condition rider goes on the first apply[] entry"
-                                               : ": max_size on a save_effect needs contain (only a containing condition skips a larger target)");
+                    return where + (untimed_ok ? std::string(": max_size on a save_condition rider goes on the first apply[] entry")
+                                               : ": max_size on a " + std::string(kind_label) + " needs contain (only a containing condition skips a larger target)");
                 if (auto m = read_contain(x, where, e)) return m;
                 d.extra_effects.push_back(e);
             }
         }
     }
+    // B6 (otyugh / death dog bite): disease on a save_condition on_hit. One failed Constitution save applies until_cured
+    // poisoned and schedules the same save every 24 hours. A failed repeat reduces hit point maximum by hp_max. A success
+    // cures that disease. Not mummy rot (no repeat save, not cured on a success) and not Life Drain.
+    if (auto dz = act.find("disease"); dz != act.end()) {
+        if (!untimed_ok) return where + ": disease is a save_condition on_hit rider, not a " + std::string(kind_label);
+        if (!monster_since_5()) return where + ": disease needs a monster@5 file";
+        if (!dz->is_object()) return where + ": disease must be an object";
+        for (auto it = dz->begin(); it != dz->end(); ++it)
+            if (it.key() != "every_hours" && it.key() != "hp_max")
+                return where + ": disease: unknown key '" + it.key() + "'";
+        const auto hours = dz->find("every_hours");
+        if (hours == dz->end() || !hours->is_number_integer() || hours->get<int64_t>() != 24)
+            return where + ": disease.every_hours must be 24";
+        const auto hp = dz->find("hp_max");
+        auto dice = hp != dz->end() && hp->is_string() ? parse_dice(hp->get<std::string>()) : std::nullopt;
+        if (!dice || dice->count < 1) return where + ": disease.hp_max must be dice";
+        if (d.save_ability != rules5e::Ability::Con) return where + ": disease needs a Constitution save";
+        if (!d.applies_condition || !d.condition_untracked || d.condition != rules5e::Condition::Poisoned || !d.extra_effects.empty())
+            return where + ": disease needs exactly one until_cured poisoned apply";
+        if (d.dice.count != 0 || d.dice.bonus != 0) return where + ": disease takes no damage";
+        if (has_area) return where + ": disease takes no area";
+        d.disease = true;
+        d.disease_hours = 24;
+        d.disease_dice = *dice;
+    }
+    // B4 (Gorgon Petrifying Breath): the gaze keys escalates / escalate_to / escalate_margin on a save_effect,
+    // including one with an area. A failed save applies the primary condition; a failed repeat save replaces it
+    // with escalate_to (SpellDef fields the save resolver already reads). escalate_margin > 0 petrifies at once,
+    // as medusa. No new hash: ActiveSpellEffect::escalates is already folded. Not a save_condition rider.
+    if (act.contains("escalates") || act.contains("escalate_to") || act.contains("escalate_margin")) {
+        if (untimed_ok) return where + ": escalates is a save_effect action, not a rider";
+        if (!monster_since_5()) return where + ": escalates / escalate_to / escalate_margin need a monster@5 file";
+        if (!act.contains("escalates")) return where + ": escalate_to / escalate_margin need escalates";
+        if (!act["escalates"].is_boolean()) return where + ": escalates must be a boolean";
+        const bool esc = act["escalates"].get<bool>();
+        if (!esc) {
+            // Explicit false and no siblings is the gaze default. Do not return: usage still compiles.
+            if (act.contains("escalate_to") || act.contains("escalate_margin"))
+                return where + ": escalate_to / escalate_margin need escalates";
+        } else {
+            std::string to_name = "petrified";
+            if (act.contains("escalate_to")) {
+                if (!act["escalate_to"].is_string()) return where + ": bad escalate_to";
+                to_name = act["escalate_to"].get<std::string>();
+            }
+            auto to = condition_of(to_name);
+            if (!to) return where + ": bad escalate_to";
+            if (act.contains("escalate_margin") && !act["escalate_margin"].is_number_integer())
+                return where + ": bad escalate_margin";
+            const int margin = geti(act, "escalate_margin", 0);
+            if (margin < 0 || margin > 30) return where + ": bad escalate_margin";
+            if (!d.applies_condition || d.condition_untracked)
+                return where + ": escalates needs a tracked primary condition in apply[]";
+            if (*to == d.condition) return where + ": escalate_to must differ from the primary condition";
+            if (d.repeat_save == rules5e::RepeatSave::None)
+                return where + ": escalates needs a repeat save on the primary condition";
+            if (d.has_while) return where + ": escalates takes no while";
+            if (act.contains("control")) return where + ": escalates takes no control";
+            for (const auto& ex : d.extra_effects)
+                if (ex.applies_condition) return where + ": escalates applies to the primary condition only";
+            d.escalates = true;
+            d.escalate_to = *to;
+            d.escalate_margin = uint8_t(margin);
+        }
+    }
     // Tier-A §26 (mummy Dreadful Glare): also_on_fail_by {margin, condition}, immune_on_success {hours, scope},
     // target_must_see_source. monster@5 only.
     if (act.contains("also_on_fail_by") || act.contains("immune_on_success") || act.contains("target_must_see_source")) {
-        if (doc.value("$schema", "") != "monster@5") return where + ": also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file";
-        if (has_area) return where + ": also_on_fail_by / immune_on_success / target_must_see_source take no area";
+        // Introduced at monster@5. The migrated tag is the current schema (monster@6+), so the gate is
+        // the version, not the literal "monster@5". The error text stays the loader's original wording.
+        {
+            const auto ref = assets::parse_schema_ref(doc.value("$schema", ""));
+            if (!ref || ref->type != "monster" || ref->version < 5)
+                return where + ": also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file";
+        }
+        // also_on_fail_by still takes no area (a second condition on one entry). immune_on_success and
+        // target_must_see_source may ride an area save (B17 Horrifying Visage, CONTENT_CONVENTIONS §49).
+        if (has_area && act.contains("also_on_fail_by")) return where + ": also_on_fail_by takes no area";
         if (auto af = act.find("also_on_fail_by"); af != act.end()) {
             if (!af->is_object()) return where + ": bad also_on_fail_by";
             const int m = geti(*af, "margin", 0);
@@ -1051,6 +1542,41 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             d.target_sees_source = ts->get<bool>();
         }
     }
+    // Chuul Tentacles / Otyugh Tentacle Slam: grappled_by_self. B16 Draining Kiss: charmed_by_self and willing.
+    // monster@5 save_effect only. incapacitated and restrained stay weapon-attack-only. No area: the caller names
+    // the creatures. `targets` (1..8, default 1) is how many one cast may name.
+    if (auto tg = act.find("target_requires_any"); tg != act.end()) {
+        if (!monster_since_5()) return where + ": target_requires_any on a save_effect needs a monster@5 file";
+        if (has_area) return where + ": target_requires_any takes no area";
+        if (!tg->is_array() || tg->empty())
+            return where + ": target_requires_any on a save_effect is grappled_by_self, charmed_by_self, or willing";
+        uint8_t gates = 0;
+        for (const Json& item : *tg) {
+            const std::string k = item.is_string() ? item.get<std::string>() : "";
+            const uint8_t b = k == "grappled_by_self" ? rules5e::kTargetGateGrappledBySelf
+                            : k == "charmed_by_self" ? rules5e::kTargetGateCharmedBySelf
+                            : k == "willing" ? rules5e::kTargetGateWilling : 0;
+            if (b == 0 || (gates & b) != 0)
+                return where + ": target_requires_any on a save_effect is grappled_by_self, charmed_by_self, or willing";
+            gates = uint8_t(gates | b);
+        }
+        d.target_requires_any = gates;
+        if (act.contains("targets")) {
+            const int n = geti(act, "targets", 0);
+            if (n < 1 || n > 8) return where + ": targets must be an integer 1..8";
+            d.targets = uint8_t(n);
+        }
+    }
+    // B3b: Tentacles is only the multiattack free rider, not an action of its own.
+    if (act.contains("rider_only")) {
+        if (untimed_ok) return where + ": rider_only is a save_effect action, not a rider";
+        if (!monster_since_5()) return where + ": rider_only needs a monster@5 file";
+        if (has_area) return where + ": rider_only takes no area";
+        const Json& ro = act["rider_only"];
+        if (!ro.is_boolean() || !ro.get<bool>()) return where + ": rider_only must be true";
+        d.rider_only = true;
+        sa.rider_only = true;
+    }
     // 7.2y class feature hooks (T&C): the spell@1 control keys, target_creature_types and a control duration.
     if (auto tt = act.find("target_creature_types"); tt != act.end()) {
         if (!tt->is_array() || tt->empty()) return where + ": bad target_creature_types";
@@ -1066,7 +1592,9 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                   : k == "laughter" ? rules5e::ControlKind::Laughter : k == "command" ? rules5e::ControlKind::Command
                   : rules5e::ControlKind::None;
         if (d.control == rules5e::ControlKind::None) return where + ": bad control";
-        if (d.control == rules5e::ControlKind::Command) return where + ": control command needs a spell (the word is a cast choice)";
+        if (d.control == rules5e::ControlKind::Command &&
+            !(act.contains("charm_command") && act["charm_command"].is_boolean() && act["charm_command"].get<bool>()))
+            return where + ": control command needs a spell (the word is a cast choice)";
         if (auto ex = act.find("control_excludes_creature_types"); ex != act.end()) {
             if (!ex->is_array() || ex->empty()) return where + ": bad control_excludes_creature_types";
             for (const Json& t : *ex) {
@@ -1089,21 +1617,192 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
     } else if (act.contains("control_excludes_creature_types") || act.contains("destroy_undead_max_cr8") || act.contains("duration")) {
         return where + ": control_excludes_creature_types / destroy_undead_max_cr8 / duration need control";
     }
-    if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition && d.control == rules5e::ControlKind::None)
+    if (d.has_while && (d.also_margin > 0 || d.control != rules5e::ControlKind::None))
+        return where + ": while takes no also_on_fail_by / control";
+    // B15 Death Glare. drop_to_zero is the failed-save outcome (not damage). target_has_condition is frightened only.
+    // caster_sees_target is the existing cast gate (the hag can see the target).
+    if (act.contains("drop_to_zero") || act.contains("target_has_condition") || act.contains("caster_sees_target")) {
+        if (!monster_since_5())
+            return where + ": drop_to_zero / target_has_condition / caster_sees_target need a monster@5 file";
+        if (has_area) return where + ": drop_to_zero / target_has_condition / caster_sees_target take no area";
+        if (auto dz = act.find("drop_to_zero"); dz != act.end()) {
+            if (!dz->is_boolean() || !dz->get<bool>()) return where + ": drop_to_zero must be true";
+            if (d.dice.count != 0 || d.dice.bonus != 0 || d.applies_condition || d.control != rules5e::ControlKind::None)
+                return where + ": drop_to_zero takes no damage, apply or control";
+            d.drop_to_zero = true;
+        }
+        if (auto tc = act.find("target_has_condition"); tc != act.end()) {
+            if (!tc->is_string() || tc->get<std::string>() != "frightened")
+                return where + ": target_has_condition must be frightened";
+            d.has_target_condition = true;
+            d.target_condition = rules5e::Condition::Frightened;
+        }
+        if (auto cs = act.find("caster_sees_target"); cs != act.end()) {
+            if (!cs->is_boolean() || !cs->get<bool>()) return where + ": caster_sees_target must be true";
+            d.caster_sees_target = true;
+        }
+    }
+    // B16 Charm (CONTENT_CONVENTIONS §47). control command is allowed only with this key. One target, and ending
+    // the effect grants the immune_on_success immunity. The word is not chosen at the cast.
+    if (act.contains("charm_command")) {
+        if (!monster_since_5()) return where + ": charm_command needs a monster@5 file";
+        if (has_area) return where + ": charm_command takes no area";
+        const Json& cc = act["charm_command"];
+        if (!cc.is_boolean() || !cc.get<bool>()) return where + ": charm_command must be true";
+        if (d.control != rules5e::ControlKind::Command) return where + ": charm_command needs control command";
+        if (!d.magical) return where + ": charm_command needs magical: true";
+        if (!d.caster_sees_target) return where + ": charm_command needs caster_sees_target";
+        if (!d.applies_condition || d.condition != rules5e::Condition::Charmed || d.condition_untracked)
+            return where + ": charm_command needs a tracked charmed apply";
+        if (d.repeat_save != rules5e::RepeatSave::OnDamage) return where + ": charm_command needs repeat_save on_damage";
+        if (d.expiry != uint8_t(rules5e::Expiry::Rounds) || d.duration_rounds == 0)
+            return where + ": charm_command needs a rounds duration";
+        if (d.success_immunity_hours == 0) return where + ": charm_command needs immune_on_success";
+        if (d.target_types == 0) return where + ": charm_command needs target_creature_types";
+        if (d.drop_to_zero) return where + ": charm_command takes no drop_to_zero";
+        d.charm_command = true;
+    }
+    // B16 Draining Kiss (CONTENT_CONVENTIONS §48). The same save's damage, full or half, reduces the maximum.
+    // Not the weapon-attack drain object (that one can roll a second Constitution save).
+    if (act.contains("drain_max_hp")) {
+        if (!monster_since_5()) return where + ": drain_max_hp needs a monster@5 file";
+        if (has_area) return where + ": drain_max_hp takes no area";
+        const Json& dm = act["drain_max_hp"];
+        if (!dm.is_boolean() || !dm.get<bool>()) return where + ": drain_max_hp must be true";
+        if (d.dice.count == 0 && d.dice.bonus == 0) return where + ": drain_max_hp needs damage";
+        if (d.charm_command || d.drop_to_zero) return where + ": drain_max_hp takes no charm_command or drop_to_zero";
+        d.save_drain_max_hp = true;
+    }
+    // B17 Horrifying Visage (CONTENT_CONVENTIONS §49). exclude_creature_types skips those types (an area save does not
+    // refuse the cast). immune_on_end stamps the applied condition so ending it grants immune_on_success. age_on_fail_by
+    // is the fail-by margin (the also_on_fail_by comparison) as years, not a second condition.
+    if (act.contains("exclude_creature_types") || act.contains("immune_on_end") || act.contains("age_on_fail_by")) {
+        if (!monster_since_5())
+            return where + ": age_on_fail_by / immune_on_end / exclude_creature_types need a monster@5 file";
+        if (auto ex = act.find("exclude_creature_types"); ex != act.end()) {
+            if (!ex->is_array() || ex->empty()) return where + ": bad exclude_creature_types";
+            for (const Json& t : *ex) {
+                auto c = creature_type_of(t.is_string() ? t.get<std::string>() : "");
+                if (!c) return where + ": bad exclude_creature_types";
+                d.excluded_types |= rules5e::bit(*c);
+            }
+        }
+        if (auto ie = act.find("immune_on_end"); ie != act.end()) {
+            if (!ie->is_boolean() || !ie->get<bool>()) return where + ": immune_on_end must be true";
+            if (d.success_immunity_hours == 0) return where + ": immune_on_end needs immune_on_success";
+            if (!d.applies_condition || d.condition_untracked)
+                return where + ": immune_on_end needs a tracked primary condition";
+            d.immune_on_effect_end = true;
+        }
+        if (auto ag = act.find("age_on_fail_by"); ag != act.end()) {
+            if (!ag->is_object()) return where + ": bad age_on_fail_by";
+            const int m = geti(*ag, "margin", 0);
+            auto dice = ag->contains("dice") && (*ag)["dice"].is_string() ? parse_dice((*ag)["dice"].get<std::string>()) : std::nullopt;
+            const int per = geti(*ag, "years_per", 0);
+            if (m < 1 || m > 30) return where + ": bad age_on_fail_by margin (1..30)";
+            if (!dice || dice->count == 0) return where + ": bad age_on_fail_by dice";
+            if (per < 1 || per > 255) return where + ": bad age_on_fail_by years_per (1..255)";
+            if (!has_area || d.area != rules5e::AreaShape::Sphere) return where + ": age_on_fail_by needs a sphere area";
+            if (d.range_ft != 0) return where + ": age_on_fail_by needs origin self";
+            if (!d.target_sees_source) return where + ": age_on_fail_by needs target_must_see_source";
+            if (d.excluded_types == 0) return where + ": age_on_fail_by needs exclude_creature_types";
+            if (d.success_immunity_hours == 0) return where + ": age_on_fail_by needs immune_on_success";
+            if (!d.immune_on_effect_end) return where + ": age_on_fail_by needs immune_on_end";
+            if (!d.applies_condition || d.condition_untracked || d.repeat_save != rules5e::RepeatSave::EndOfTurn)
+                return where + ": age_on_fail_by needs a tracked primary condition with an end-of-turn repeat";
+            if (d.expiry != uint8_t(rules5e::Expiry::Rounds) || d.duration_rounds == 0)
+                return where + ": age_on_fail_by needs a rounds duration";
+            if (d.also_margin > 0 || d.escalates || d.control != rules5e::ControlKind::None || d.has_while)
+                return where + ": age_on_fail_by takes no also_on_fail_by / control / escalates / while";
+            if (d.drop_to_zero || d.charm_command || d.save_drain_max_hp)
+                return where + ": age_on_fail_by takes no drop_to_zero / charm_command / drain_max_hp";
+            d.age_margin = uint8_t(m);
+            d.age_dice = *dice;
+            d.age_years_per = uint8_t(per);
+        }
+    }
+    if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition && d.control == rules5e::ControlKind::None && !d.drop_to_zero)
         return where + ": needs damage[], apply[] or control";
     if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported); e || unsupported) return e;
     sa.usage_kind = d.usage_kind;
     return std::nullopt;
 }
 
+// Monster area action (docs/proposals/AOE_MONSTER_ABILITIES.md, PR 2). monster@5 `area_effect` compiles to the same
+// synthetic Save SpellDef a save_effect with an area already does, so targets come from Combat::area_targets, half
+// damage is OnSave::Half, and recharge / per-day uses are the existing ActionUse / FeatureUses rows. One action is
+// one SpellDef and one use. Two shapes that share a recharge (brass / copper Breath Weapons) are not two of these.
+std::optional<std::string> compile_area_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
+                                               Archetype::SaveAction& sa, const Json& doc, bool& unsupported,
+                                               const std::string& schema_type, uint32_t declared) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch_id + ": area_effect '" + aid + "'";
+    if (schema_type != "monster" || (declared != 0 && declared < 5))
+        return where + ": area_effect needs a monster@5 file";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description" && k != "save" && k != "area" &&
+            k != "origin" && k != "range_ft" && k != "on_success" && k != "damage" && k != "apply" &&
+            k != "usage" && k != "magical")
+            return where + ": unknown key '" + k + "'";
+    }
+    const auto ar = act.find("area");
+    if (ar == act.end() || !ar->is_object()) return where + ": needs an area";
+    for (auto it = ar->begin(); it != ar->end(); ++it)
+        if (it.key() != "shape" && it.key() != "size_ft" && it.key() != "width_ft" && it.key() != "height_ft")
+            return where + ": area: unknown key '" + it.key() + "'";
+    const std::string shape = ar->value("shape", "");
+    if (shape != "cone" && shape != "cube" && shape != "line" && shape != "sphere" && shape != "cylinder")
+        return where + ": bad area shape";
+    if (!ar->contains("size_ft") || !(*ar)["size_ft"].is_number_integer()) return where + ": bad area size";
+    const int size = (*ar)["size_ft"].get<int>();
+    if (size < 5 || size > 65535 || size % 5 != 0) return where + ": bad area size";
+    const bool line = shape == "line", cyl = shape == "cylinder";
+    if (ar->contains("width_ft") != line) return where + (line ? ": line needs width_ft" : ": width_ft is line only");
+    if (line) {
+        if (!(*ar)["width_ft"].is_number_integer()) return where + ": bad area size";
+        const int w = (*ar)["width_ft"].get<int>();
+        if (w < 5 || w > 65535 || w % 5 != 0) return where + ": bad area size";
+    }
+    if (ar->contains("height_ft") != cyl) return where + (cyl ? ": cylinder needs height_ft" : ": height_ft is cylinder only");
+    if (cyl) {
+        if (!(*ar)["height_ft"].is_number_integer()) return where + ": bad area size";
+        const int h = (*ar)["height_ft"].get<int>();
+        if (h < 5 || h > 65535 || h % 5 != 0) return where + ": bad area size";
+        // area_height_ft is stored and ignored by area_targets (the cylinder-height gap). This loader does not use it.
+    }
+    const std::string origin = act.value("origin", "self");
+    if (origin != "self" && origin != "point") return where + ": bad origin";
+    if (origin == "self" && act.contains("range_ft"))
+        return where + ": range_ft is forbidden when origin is self and area is present";
+    if (origin == "point" && !act.contains("range_ft")) return where + ": point origin needs range_ft";
+    if (act.contains("damage") && (!act["damage"].is_array() || act["damage"].empty())) return where + ": bad damage";
+    const bool has_dmg = act.contains("damage") && act["damage"].is_array() && !act["damage"].empty();
+    const bool has_apply = act.contains("apply") && act["apply"].is_array() && !act["apply"].empty();
+    if (has_dmg) {
+        const std::string os = act.value("on_success", "");
+        if (os != "half" && os != "none") return where + ": damage needs on_success half or none";
+    } else if (act.contains("on_success")) {
+        return where + ": on_success needs damage[]";
+    }
+    if (!has_dmg && !has_apply) return where + ": needs damage[] or apply[]";
+    if (auto e = compile_save_action(arch_id, act, d, sa, doc, unsupported, false, "area_effect")) return e;
+    if (unsupported) return std::nullopt;
+    if (!sa.area) return where + ": needs an area";
+    return std::nullopt;
+}
+
 // ---- Reactions (row 11 sim side): reactions[] entries -> rules5e::Reaction rows on the base combatant ----
 // Compiled: window damaged / ally_attacked with reduce_damage (fraction half | dice), impose_disadvantage, retaliate
 // (synthetic Save or AutoHit SpellDef) and attack (attack_id -> attack index); window roll_attack (R-G7, AttackRolled) with
-// subtract_roll {dice} and an optional `usage: {kind: pool, pool, cost}` (Cutting Words). Listed in unsupported_features and
-// not compiled: every other window (being_hit / spell_cast / leaving_reach: ac_bonus and the opportunity-attack path stay with
-// the existing hooks and features; a leaving_reach `attack` is never a second OA), effect kinds cast / ac_bonus, any other
-// `usage`, `source: ally_within_5ft` and `visible: false`.
-std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, const RiderCtx& rc, rules5e::Combatant& c) {
+// subtract_roll {dice} and an optional `usage: {kind: pool, pool, cost}` (Cutting Words). Shield Guardian Shield
+// (CONTENT_CONVENTIONS §54): ally_attacked + ac_bonus 2 on a monster@5 creature that has the bound trait, compiled as
+// WearerAc. Listed in unsupported_features and not compiled: every other window (being_hit / spell_cast / leaving_reach:
+// ac_bonus and the opportunity-attack path stay with the existing hooks and features; a leaving_reach `attack` is never a
+// second OA), effect kinds cast / ac_bonus on any window other than that Shield pair, any other `usage`,
+// `source: ally_within_5ft` and `visible: false`.
+std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, const RiderCtx& rc, rules5e::Combatant& c,
+                                            uint32_t declared) {
     auto rs = doc.find("reactions");
     if (rs == doc.end() || !rs->is_array()) return std::nullopt;
     using RE = rules5e::ReactionEffectKind;
@@ -1230,6 +1929,17 @@ std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, cons
             for (std::size_t i = 0; i < rc.attacks.size() && !found; ++i)
                 if (!at.empty() && rc.attacks[i]->value("id", "") == at) { x.attack_index = uint8_t(i); found = true; }
             if (!found) return where + ": attack names unknown attack_id '" + at + "'";
+        } else if (ek == "ac_bonus" && wk == "ally_attacked") {   // §54 Shield: this attack only, bound wearer, 5 feet
+            if (a.schema_type != "monster") return where + ": shield: only valid on monsters";
+            if (declared != 0 && declared < 5) return where + ": shield reaction needs a monster@5 file";
+            if (c.bound.radius_ft == 0) return where + ": shield: needs the bound trait";
+            const auto bonus = ef->find("bonus");
+            if (bonus == ef->end() || !bonus->is_number_integer() || bonus->get<int>() != 2)
+                return where + ": shield: bonus must be 2";
+            for (const auto& prev : c.reactions)
+                if (prev.kind == RE::WearerAc) return where + ": shield: a creature has one shield";
+            x.kind = RE::WearerAc;
+            x.ac_bonus = 2;
         } else { a.unsupported_features.push_back(rid + " (reaction effect " + ek + ")"); continue; }
         x.id = rules5e::spell_id_of(a.id + "#" + rid);
         if (auto [it, fresh] = ids.emplace(x.id, rid); !fresh) return where + ": id collides with reaction '" + it->second + "'";
@@ -1334,6 +2044,108 @@ bool carries_shield(const Json& doc) {
     return false;
 }
 
+std::optional<std::string> check_art_root(std::string_view root, std::string_view pack_dir) {
+    if (root.empty() || root.front() == '/' || root.find('\\') != std::string_view::npos || root.find("..") != std::string_view::npos)
+        return "visual.art_root must be a pack-relative path under art/ with no '..'";
+    if (root.size() < 5 || root.substr(0, 4) != "art/") return "visual.art_root must start with art/";
+    for (char ch : root) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (!(std::isalnum(c) || c == '_' || c == '.' || c == '/' || c == '-'))
+            return "visual.art_root has an invalid character";
+    }
+    if (!pack_dir.empty()) {
+        const std::filesystem::path dir = std::filesystem::path(std::string(pack_dir)) / std::string(root);
+        std::error_code ec;
+        if (!std::filesystem::is_directory(dir, ec)) return "visual.art_root '" + std::string(root) + "' does not exist";
+    }
+    return std::nullopt;
+}
+
+// Defaults when `visual` is absent: humanoid -> paperdoll; otherwise a stand-in bin from size.
+// Huge and gargantuan have no M0 bin (Unbinned, empty kit) unless the file names one.
+// size_short is stored and not applied (kSizeShortRuntime is false).
+// Kit id: visual.kit, else presentation.sprite, else paperdoll / standin.<standin_bin>.
+std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize size, std::string_view pack_dir, CreatureVisual& out) {
+    CreatureVisual v;
+    if (auto pres = doc.find("presentation"); pres != doc.end() && pres->is_object()) {
+        if (auto sp = pres->find("sprite"); sp != pres->end()) {
+            if (!sp->is_string() || sp->get<std::string>().empty()) return "presentation.sprite must be a non-empty string";
+            v.sprite = sp->get<std::string>();
+        }
+    }
+    bool kind_set = false, bin_set = false;
+    std::string kind_s, bin_s, authored_kit;
+    if (auto vis = doc.find("visual"); vis != doc.end()) {
+        if (!vis->is_object()) return "visual must be an object";
+        for (auto it = vis->begin(); it != vis->end(); ++it)
+            if (it.key() != "kind" && it.key() != "kit" && it.key() != "standin_bin" && it.key() != "art_root" && it.key() != "size_short")
+                return "visual: unknown key '" + it.key() + "'";
+        if (auto k = vis->find("kind"); k != vis->end()) {
+            if (!k->is_string()) return "visual.kind must be paperdoll or standin";
+            kind_s = k->get<std::string>();
+            if (kind_s != "paperdoll" && kind_s != "standin") return "visual.kind must be paperdoll or standin";
+            kind_set = true;
+        }
+        if (auto kit = vis->find("kit"); kit != vis->end()) {
+            if (!kit->is_string() || kit->get<std::string>().empty()) return "visual.kit must be a non-empty string";
+            authored_kit = kit->get<std::string>();
+        }
+        if (auto b = vis->find("standin_bin"); b != vis->end()) {
+            if (!b->is_string()) return "visual.standin_bin must be tiny, small, medium, or large";
+            bin_s = b->get<std::string>();
+            if (bin_s != "tiny" && bin_s != "small" && bin_s != "medium" && bin_s != "large")
+                return "visual.standin_bin must be tiny, small, medium, or large";
+            bin_set = true;
+        }
+        if (auto a = vis->find("art_root"); a != vis->end()) {
+            if (!a->is_string()) return "visual.art_root must be a string";
+            if (auto e = check_art_root(a->get<std::string>(), pack_dir)) return e;
+            v.art_root = a->get<std::string>();
+        }
+        if (auto s = vis->find("size_short"); s != vis->end()) {
+            if (!s->is_boolean()) return "visual.size_short must be a boolean";
+            v.size_short = s->get<bool>();
+            (void)kSizeShortRuntime;   // M1 applies plates / scale; M0 only stores the flag
+        }
+    }
+    const bool humanoid = doc.value("type", "") == "humanoid";
+    auto bin_of = [](CreatureSize s) -> const char* {
+        switch (s) {
+        case CreatureSize::Tiny: return "tiny";
+        case CreatureSize::Small: return "small";
+        case CreatureSize::Medium: return "medium";
+        case CreatureSize::Large: return "large";
+        default: return nullptr;   // huge / gargantuan: no M0 art bin
+        }
+    };
+    if (kind_set && kind_s == "paperdoll") {
+        v.kind = VisualKind::Paperdoll;
+    } else if ((kind_set && kind_s == "standin") || bin_set) {
+        if (bin_set) {
+            v.kind = VisualKind::Standin;
+            v.standin_bin = std::move(bin_s);
+        } else if (const char* b = bin_of(size)) {
+            v.kind = VisualKind::Standin;
+            v.standin_bin = b;
+        } else {
+            v.kind = VisualKind::Unbinned;
+        }
+    } else if (humanoid) {
+        v.kind = VisualKind::Paperdoll;
+    } else if (const char* b = bin_of(size)) {
+        v.kind = VisualKind::Standin;
+        v.standin_bin = b;
+    } else {
+        v.kind = VisualKind::Unbinned;
+    }
+    if (!authored_kit.empty()) v.kit = std::move(authored_kit);
+    else if (!v.sprite.empty()) v.kit = v.sprite;
+    else if (v.kind == VisualKind::Paperdoll) v.kit = "paperdoll";
+    else if (v.kind == VisualKind::Standin) v.kit = "standin." + v.standin_bin;
+    out = std::move(v);
+    return std::nullopt;
+}
+
 } // namespace
 
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
@@ -1358,7 +2170,7 @@ std::optional<int> cr_x8_of(const Json& r) {
 }
 
 std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type, const std::string& pack_id,
-                                                 uint32_t declared_version) {
+                                                 uint32_t declared_version, std::string_view pack_dir) {
     Archetype a;
     a.id = doc.value("id", "");
     if (a.id.empty()) return "stat block without id";
@@ -1383,9 +2195,14 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     c.burrow_ft = uint8_t(std::clamp(geti(doc.at("speed"), "burrow", 0), 0, 255));
     if (auto hv = doc.at("speed").find("hover"); hv != doc.at("speed").end() && hv->is_boolean()) c.hover = hv->get<bool>();
     // altitude PR3: SRD Flyby is a descriptive monster trait (traits[].id == "flyby", no effect object needed).
+    // B9: Air Form / Water Form are the same shape. Either id sets enter_hostile_space (CONTENT_CONVENTIONS §39).
     if (auto ts = doc.find("traits"); ts != doc.end() && ts->is_array())
         for (const Json& t : *ts)
-            if (t.is_object() && t.value("id", "") == "flyby") c.flyby = true;
+            if (t.is_object()) {
+                const std::string id = t.value("id", "");
+                if (id == "flyby") c.flyby = true;
+                if (id == "air_form" || id == "water_form") c.enter_hostile_space = true;
+            }
     if (auto ch = doc.find("challenge"); ch != doc.end() && ch->is_object())
         if (auto rt = ch->find("rating"); rt != ch->end())
             if (auto x = cr_x8_of(*rt)) a.cr_x8 = int16_t(*x);
@@ -1443,6 +2260,9 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         // R-G12 sim: the creature itself carries its size (Heavy weapons, forms); an inert size stays Medium, matching footprint 1.
         if (!inert.count("size")) c.size = rules5e::Size(uint8_t(a.size));
     }
+    // Presentation visual (character@6 / monster@6, optional on every earlier file the loader accepts).
+    // Inert: not copied onto the combatant and not hashed. size_short is stored and not applied (M0).
+    if (auto e = read_creature_visual(doc, a.size, pack_dir, a.visual)) return a.id + ": " + *e;
     if (!inert.count("creature_type") && doc.contains("type")) {
         auto ct = creature_type_of(doc.value("type", ""));
         if (!ct) return a.id + ": bad creature type";
@@ -1624,18 +2444,47 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         const std::string kind = act.value("kind", "");
         const bool melee = kind == "melee_weapon_attack", ranged = kind == "ranged_weapon_attack";
         if (!melee && !ranged) continue;
-        const Json& dmg = act.at("damage").at(0);
+        // B5: the last grapple rider's no_damage. 1 = this attack lists no damage. -1 = a bad bool.
+        int no_dmg = 0;
+        if (auto oh = act.find("on_hit"); oh != act.end() && oh->is_array())
+            for (const Json& g : *oh) {
+                if (!g.is_object() || !g.contains("kind") || !g["kind"].is_string() || g["kind"].get<std::string>() != "grapple") continue;
+                if (!g.contains("no_damage")) { no_dmg = 0; continue; }
+                if (!g["no_damage"].is_boolean()) { no_dmg = -1; break; }
+                no_dmg = g["no_damage"].get<bool>() ? 1 : 0;
+            }
+        if (no_dmg < 0) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple no_damage";
+        const bool damageless = no_dmg == 1;
+        if (damageless) {
+            if (schema_type != "monster" || (declared != 0 && declared < 5))
+                return a.id + ": " + act.value("id", "?") + " on_hit: grapple no_damage needs a monster@5 file";
+            if (act.contains("damage"))
+                return a.id + ": " + act.value("id", "?") + " on_hit: grapple no_damage can't list damage";
+            if (act.contains("half_hp_damage"))
+                return a.id + ": " + act.value("id", "?") + " on_hit: grapple no_damage can't list half_hp_damage";
+        }
         const bool allow_flat = schema_type == "monster" && (declared == 0 || declared >= 5);
-        auto dice = action_damage_dice(dmg, allow_flat);
-        auto type = damage_type(dmg.value("type", ""));
-        if (!dice || !type) return a.id + ": bad damage in action " + act.value("id", "?");
+        rules5e::DiceExpr dicev{0, 0, 0};
+        rules5e::DamageType dtype = rules5e::DamageType::Bludgeoning;
+        const Json* dmg = nullptr;
+        if (!damageless) {
+            if (!act.contains("damage") || !act["damage"].is_array() || act["damage"].empty())
+                return a.id + ": bad damage in action " + act.value("id", "?");
+            dmg = &act.at("damage").at(0);
+            auto dice = action_damage_dice(*dmg, allow_flat);
+            auto type = damage_type(dmg->value("type", ""));
+            if (!dice || !type) return a.id + ": bad damage in action " + act.value("id", "?");
+            dicev = *dice;
+            dtype = *type;
+        }
         strings_.push_back(act.value("id", ""));
         rules5e::Attack at{};
         at.id = strings_.back();
         at.to_hit = int8_t(geti(act, "to_hit"));
-        at.damage = *dice;
-        at.type = *type;
-        if (auto er = read_bonus_vs(dmg, at.vs_types, at.vs_dice); !er.empty()) return a.id + ": action " + act.value("id", "?") + ": " + er;
+        at.damage = dicev;
+        at.type = dtype;
+        if (!damageless)
+            if (auto er = read_bonus_vs(*dmg, at.vs_types, at.vs_dice); !er.empty()) return a.id + ": action " + act.value("id", "?") + ": " + er;
         at.ranged = ranged;
         at.finesse = false;
         // EC swarm: "half_hp_damage": "1d6" replaces component 1's dice while the attacker has half its HP or fewer
@@ -1793,7 +2642,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     else if (qn == "adamantine") at.qualifiers |= rules5e::kAttackAdamantine;
                     else return a.id + ": bad qualifier '" + qn + "' in action " + act.value("id", "?");
                 }
-        if (multi_damage)   // components 2..n (monster@3 / character@3)
+        if (multi_damage && !damageless)   // components 2..n (monster@3 / character@3)
             for (std::size_t i = 1; i < act.at("damage").size(); ++i) {
                 const Json& extra = act.at("damage").at(i);
                 auto xd = action_damage_dice(extra, allow_flat);
@@ -1882,21 +2731,37 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     if (dc < 0 || dc > 30) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple escape_dc";
                     rules5e::GrappleRider gr;
                     gr.escape_dc = int16_t(dc);
-                    for (const char* k : {"restrains", "exclusive", "instead_of_damage"})
+                    for (const char* k : {"restrains", "exclusive", "instead_of_damage", "no_damage"})
                         if (g.contains(k) && !g[k].is_boolean()) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple " + k;
                     gr.restrains = g.value("restrains", false);
                     gr.exclusive = g.value("exclusive", false);
                     gr.instead_of_damage = g.value("instead_of_damage", false);   // Tier-A §27
+                    gr.no_damage = g.value("no_damage", false);   // B5: always, not a choice
+                    if (gr.no_damage && (schema_type != "monster" || (declared != 0 && declared < 5)))
+                        return a.id + ": " + act.value("id", "?") + " on_hit: grapple no_damage needs a monster@5 file";
                     if (gr.instead_of_damage && gr.restrains)
                         return a.id + ": " + act.value("id", "?") + " on_hit: grapple instead_of_damage can't be combined with restrains";
+                    if (gr.no_damage && gr.instead_of_damage)
+                        return a.id + ": " + act.value("id", "?") + " on_hit: grapple no_damage can't be combined with instead_of_damage";
                     if (g.contains("max_grapples")) {
                         const Json& m = g["max_grapples"];
                         if (!m.is_number_integer() || m.get<int>() < 1 || m.get<int>() > 8)
                             return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple max_grapples";
                         gr.max_grapples = uint8_t(m.get<int>());
                     }
+                    if (g.contains("max_size")) {   // Chuul pincer Large / Otyugh tentacle Medium: monster@5 only
+                        if (schema_type != "monster" || (declared != 0 && declared < 5))
+                            return a.id + ": " + act.value("id", "?") + " on_hit: grapple max_size needs a monster@5 file";
+                        static const char* kSizes[] = {"tiny", "small", "medium", "large", "huge", "gargantuan"};
+                        int k = -1;
+                        const Json& ms = g["max_size"];
+                        for (int i = 0; i < 6; ++i) if (ms.is_string() && ms.get<std::string>() == kSizes[i]) k = i;
+                        if (k < 0) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple max_size";
+                        gr.max_size = int8_t(k);
+                    }
                     a.grapple_on_hit[uint8_t(ai)] = gr;
                     if (gr.instead_of_damage && ai < c.attacks.size()) c.attacks[ai].grapple_instead_ok = true;
+                    if (gr.no_damage && ai < c.attacks.size()) c.attacks[ai].grapple_no_damage = true;
                     continue;
                 }
                 rules5e::Trigger t;
@@ -1921,7 +2786,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
     // reactions[] (monster@4 / character@4; older files carry them stamped inert)
     if (declared == 0 || declared >= 4)
-        if (auto e = compile_reactions(a, doc, rider_ctx, c)) return *e;
+        if (auto e = compile_reactions(a, doc, rider_ctx, c, declared)) return *e;
     if (declared == 0 || declared >= 4)
         if (auto e = compile_bonus_attacks(a.id, a.features, attack_actions, schema_type == "character", doc, c)) return *e;
     // multiattack options -> rules5e::AttackSequence (ids owned by the library, stable addresses).
@@ -1936,10 +2801,75 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (declared == 0 || declared >= 4)
         for (const Json& act : doc.at("actions")) {
             const std::string ak = act.value("kind", "");
-            if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport") continue;
+            if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect" && ak != "pull" &&
+                ak != "deadly_leap" && ak != "whirlwind" && ak != "whelm" && ak != "etherealness" &&
+                ak != "illusory_appearance" && ak != "invisible_passage") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
+            if (ak == "etherealness") {   // B19: toggle Material ↔ Border Ethereal. No target.
+                if (auto e = compile_etherealness(a.id, act, declared, schema_type, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": etherealness ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "illusory_appearance") {
+                if (auto e = compile_illusory_appearance(a.id, act, declared, schema_type, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": illusory appearance ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "invisible_passage") {
+                if (auto e = compile_invisible_passage(a.id, act, declared, schema_type, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": invisible passage ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "deadly_leap") {   // B8: jump, then land on the creatures in this space
+                if (auto e = compile_deadly_leap(a.id, act, declared, schema_type, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": deadly_leap ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "whirlwind") {   // B10: each creature in this space, then a fling
+                if (auto e = compile_whirlwind(a.id, act, declared, schema_type, doc, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": whirlwind ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "whelm") {   // B11: each creature in this space, then a grapple or a push
+                if (auto e = compile_whelm(a.id, act, declared, schema_type, doc, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": whelm ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "pull") {   // B5 Reel: pull creatures grappled by the user
+                if (auto e = compile_pull_action(a.id, act, declared, schema_type, d, sa)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": pull ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
             if (ak == "teleport") {   // batch 3 (Lich ruling, blink dog): synthetic Teleport SpellDef + optional follow-up attack
                 if (auto e = compile_teleport_action(a.id, act, declared, attack_actions, d, sa, c, strings_, doc)) return e;
                 for (const auto& prev : synth)
@@ -1959,6 +2889,16 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 synth.push_back(std::move(d));
                 continue;
             }
+            if (ak == "area_effect") {   // monster area ability: synthetic Save SpellDef on the spell area path
+                if (auto e = compile_area_action(a.id, act, d, sa, doc, unsupported, schema_type, declared)) return e;
+                if (unsupported) { a.unsupported_features.push_back(act.value("id", "?") + " (area_effect: unsupported usage or condition duration)"); continue; }
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": area_effect ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
             if (auto e = compile_save_action(a.id, act, d, sa, doc, unsupported)) return e;
             if (unsupported) { a.unsupported_features.push_back(act.value("id", "?") + " (save_effect: unsupported usage or condition duration)"); continue; }
             for (const auto& prev : synth)
@@ -1967,6 +2907,59 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             a.save_actions.push_back(sa);
             synth.push_back(std::move(d));
         }
+    // B3b: a multiattack option's free_rider names a rider_only save_effect of this creature. Sequences for the decls were
+    // pushed before this loop, in the same order; teleport follow-ups are appended during it and are not decls.
+    {
+        std::map<std::string, uint32_t> riders;
+        for (const auto& sa : a.save_actions)
+            if (sa.rider_only) riders.emplace(sa.id, sa.spell_id);
+        std::map<std::string, int> used;
+        for (std::size_t i = 0; i < a.multiattack_decls.size(); ++i) {
+            const auto& m = a.multiattack_decls[i];
+            if (m.free_rider.empty()) continue;
+            const auto it = riders.find(m.free_rider);
+            if (it == riders.end())
+                return a.id + ": multiattack option '" + m.id + "': free_rider '" + m.free_rider + "' must name a rider_only save_effect";
+            if (i >= c.multiattacks.size()) return a.id + ": multiattack option '" + m.id + "': free_rider has no sequence";
+            c.multiattacks[i].free_rider = it->second;
+            ++used[m.free_rider];
+        }
+        for (const auto& kv : riders)
+            if (!used.count(kv.first))
+                return a.id + ": rider_only save_effect '" + kv.first + "' must be a multiattack free_rider";
+    }
+    // B7: both-hits Engulf. A synthetic ApplyCondition (gelatinous-cube contain, blinded while restrained). Not in
+    // spells_known and not a save_action: the multiattack applies it. No Constitution save (the cube's automatic
+    // turn-start damage). One creature at a time (contain_one).
+    for (std::size_t i = 0; i < a.multiattack_decls.size(); ++i) {
+        const auto& m = a.multiattack_decls[i];
+        if (!m.engulf_both_hits) continue;
+        if (i >= c.multiattacks.size()) return a.id + ": multiattack option '" + m.id + "': engulf_both_hits has no sequence";
+        const auto& spec = *m.engulf_both_hits;
+        rules5e::SpellDef d;
+        d.content_id = a.id + "#" + m.id + "#engulf";
+        d.id = rules5e::spell_id_of(d.content_id);
+        d.level = 0;
+        d.kind = rules5e::SpellEffectKind::ApplyCondition;
+        d.is_spell = false;
+        d.magical = false;
+        d.components = 0;
+        d.targets = 1;
+        d.applies_condition = true;
+        d.condition = rules5e::Condition::Restrained;
+        d.escape_dc = spec.escape_dc;
+        d.contain = 1;
+        d.contain_dice = spec.damage;
+        d.contain_damage_type = spec.damage_type;
+        d.condition_max_size = spec.max_size;
+        d.contain_one = true;
+        d.has_while = true;
+        d.while_condition = rules5e::Condition::Blinded;
+        for (const auto& prev : synth)
+            if (prev.id == d.id) return a.id + ": engulf ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+        c.multiattacks[i].engulf_both = d.id;
+        synth.push_back(std::move(d));
+    }
     // batch 3 ghast Stench: aura traits (built by the "aura" hook) -> synthetic Zone SpellDefs, attached at Combat::create.
     for (auto& d : a.aura_defs) {
         for (const auto& prev : synth)
@@ -1985,6 +2978,9 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 if (const auto* d = spells_->find(id)) old.push_back(*d);
             for (uint32_t id : prev->second.aura_spell_ids)
                 if (const auto* d = spells_->find(id)) old.push_back(*d);
+            for (const auto& m : prev->second.base.multiattacks)   // B7: both-hits Engulf defs live only in the book
+                if (m.engulf_both != 0)
+                    if (const auto* d = spells_->find(m.engulf_both)) old.push_back(*d);
         }
         for (const auto& d : old) spells_->erase(d.id);
         std::vector<uint32_t> added;
@@ -2034,9 +3030,31 @@ std::optional<std::string> ContentLibrary::add_spell(const Json& doc) {
     return std::nullopt;
 }
 
+const assets::ClipRegistry* ContentLibrary::clip_kit(std::string_view id) const {
+    auto it = clip_by_id_.find(id);
+    return it == clip_by_id_.end() ? nullptr : &it->second;
+}
+
 std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
     if (!packs.ok()) return packs.error_strings();
     std::vector<std::string> errors = packs.document_errors();
+    // art/clips.json is kit data, not a manifest content document. Invalid JSON or a non-member alias fails the load.
+    for (const assets::PackInfo& p : packs.packs()) {
+        const auto path = p.dir / "art" / "clips.json";
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec)) continue;
+        assets::ClipFile file;
+        if (auto e = assets::load_clip_file(path, file)) {
+            errors.push_back(p.id + ": art/clips.json: " + *e);
+            continue;
+        }
+        for (auto& kit : file.kits) {
+            if (clip_by_id_.find(kit.id) != clip_by_id_.end())
+                errors.push_back(p.id + ": art/clips.json: duplicate kit '" + kit.id + "'");
+            else
+                clip_by_id_.emplace(kit.id, std::move(kit));
+        }
+    }
     for (const assets::PackDocument& d : packs.documents()) {
         if (!d.doc.ok || d.doc.current.type != "spell") continue;
         const std::string& pack_id = packs.packs()[d.pack].id;
@@ -2060,7 +3078,8 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
         if (!d.doc.ok || (d.doc.current.type != "monster" && d.doc.current.type != "character")) continue;
         const std::string& pack_id = packs.packs()[d.pack].id;
         try {
-            if (auto e = add(d.doc.data, d.doc.current.type, pack_id, d.doc.declared.version)) errors.push_back(pack_id + ":" + d.path + ": " + *e);
+            if (auto e = add(d.doc.data, d.doc.current.type, pack_id, d.doc.declared.version, packs.packs()[d.pack].dir.string()))
+                errors.push_back(pack_id + ":" + d.path + ": " + *e);
         } catch (const std::exception& ex) {
             errors.push_back(pack_id + ":" + d.path + ": " + ex.what());
         }

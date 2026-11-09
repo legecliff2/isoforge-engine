@@ -1,0 +1,26 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.charm_person",
+  "name": "Charm Person",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "description": "A humanoid you can see must make a Wisdom save or be charmed for 1 hour. It has advantage if you or your companions are fighting it (opposite team). It knows you charmed it when the spell ends: that narrative is deferred. Harm from the caster's team ends the charm.",
+  "level": 1,
+  "school": "enchantment",
+  "classes": ["bard", "druid", "sorcerer", "warlock", "wizard"],
+  "casting_time": { "kind": "action" },
+  "range": { "kind": "ranged", "feet": 30 },
+  "components": { "v": true, "s": true },
+  "duration": { "kind": "hours", "amount": 1 },
+  "targets": { "count": 1, "creature_type": ["humanoid"], "max_spread_ft": 30 },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "wis",
+      "condition": "charmed",
+      "hostile_save_advantage": true,
+      "ends_on_ally_harm": true,
+      "caster_sees_target": true
+    }
+  ],
+  "scaling": { "upcast": { "targets": 1 } }
+}

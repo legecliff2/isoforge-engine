@@ -1,0 +1,148 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.gorgon",
+  "name": "Gorgon",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "monstrosity",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 19,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 19,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 114,
+    "formula": "12d10+48"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 20,
+    "dex": 11,
+    "con": 18,
+    "int": 2,
+    "wis": 12,
+    "cha": 7
+  },
+  "skills": {
+    "perception": 4
+  },
+  "condition_immunities": [
+    "petrified"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 14
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "5",
+    "xp": 1800
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "trampling_charge",
+      "name": "Trampling Charge",
+      "description": "If the gorgon moves at least 20 ft. straight toward a creature and then hits it with a gore attack on the same turn, that target must succeed on a DC 16 Strength saving throw or be knocked prone. If the target is prone, the gorgon can make one attack with its hooves against it as a bonus action. (Descriptive only: the bonus-action hooves against the prone target has no prone-target gate, same as lion and tiger Pounce. \"Straight toward\" isn't checked. Hooves remains an action. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "gore",
+      "name": "Gore",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d12",
+        "ability": "str"
+      },
+      "to_hit": 8,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d12+5",
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "str",
+            "dc": 16
+          },
+          "apply": [
+            {
+              "condition": "prone"
+            }
+          ],
+          "when": [
+            {
+              "kind": "moved_at_least_ft",
+              "ft": 20
+            }
+          ]
+        }
+      ],
+      "description": "Melee Weapon Attack: +8 to hit, reach 5 ft., one target. Hit: 18 (2d12 + 5) piercing damage."
+    },
+    {
+      "id": "hooves",
+      "name": "Hooves",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d10",
+        "ability": "str"
+      },
+      "to_hit": 8,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d10+5",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +8 to hit, reach 5 ft., one target. Hit: 16 (2d10 + 5) bludgeoning damage."
+    },
+    {
+      "id": "petrifying_breath",
+      "name": "Petrifying Breath",
+      "kind": "save_effect",
+      "description": "The gorgon exhales petrifying gas in a 30-foot cone. Each creature in that area must succeed on a DC 13 Constitution saving throw. On a failed save, a target begins to turn to stone and is restrained. The restrained target must repeat the saving throw at the end of its next turn. On a success, the effect ends on the target. On a failure, the target is petrified until freed by the greater restoration spell or other magic.",
+      "save": {
+        "ability": "con",
+        "dc": 13
+      },
+      "origin": "self",
+      "area": {
+        "shape": "cone",
+        "size_ft": 30
+      },
+      "apply": [
+        {
+          "condition": "restrained",
+          "repeat_save": "end_of_turn"
+        }
+      ],
+      "escalates": true,
+      "escalate_to": "petrified",
+      "escalate_margin": 0,
+      "usage": {
+        "kind": "recharge",
+        "min": 5
+      }
+    }
+  ]
+}

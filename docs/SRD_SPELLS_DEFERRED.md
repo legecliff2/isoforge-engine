@@ -10,17 +10,19 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 
 ## Counts (168 SRD spells of level 0-3)
 
-| level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
-|---|---|---|---|---|
-| 0 (cantrips) | 17 | 0 | 7 | 24 |
-| 1 | 27 | 2 | 19 | 48 |
-| 2 | 25 | 6 | 23 | 54 |
-| 3 | 14 | 9 | 19 | 42 |
-| **total** | **83** | **17** | **68** | **168** |
+| level | in `srd51.core` | rules landed, pack pending | deferred: needs a mechanic | deferred: out of combat scope | total |
+|---|---|---|---|---|---|
+| 0 (cantrips) | 17 | 0 | 0 | 7 | 24 |
+| 1 | 28 | 0 | 1 | 19 | 48 |
+| 2 | 27 | 0 | 4 | 23 | 54 |
+| 3 | 15 | 0 | 8 | 19 | 42 |
+| **total** | **87** | **0** | **13** | **68** | **168** |
 
 Hunter's Mark is non-SRD, excluded (PHB-only; its text is not in SRD 5.1). Not NEW and not Authored. An earlier pass counted it, which is why the level-1 total and the overall total are one spell below the old 49 level 1 / 169 overall. Authored is 79: Expeditious Retreat is in the pack, and Hunter's Mark is not. Hex is non-SRD, excluded (PHB-only; not in SRD 5.1). Not NEW and not Authored. It was never in these counts and is not on the warlock lists. Spike Growth is already in the 79 (authored for the druid); putting it back on the ranger level-5 list does not change these totals. The ranger then knows 4 spells at level 5.
 
 7.2zi (Rules #283, `feat/rules-spell-batch-zi`) implements Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, and Warding Bond. Specimens: `tests/validate/fixtures/spell_batch_zi/`. Six are authored below. Expeditious Retreat is authored after Rules #285 (`dash_on_cast`): the pack grants the Dash on the cast and `bonus_dash` covers later turns.
+
+7.2zj lands the combat mechanics for Charm Person, Calm Emotions, Suggestion, and Fly. Those four are authored in `srd51.core` (83 + 4 = 87). Rules-landed pack-pending is 0. Needs-a-mechanic stays 13. Out of combat scope stays 68. Level totals stay 48 / 54 / 42 / 168. Level 4–5 spells in the same batch (Cone of Cold, Ice Storm, Greater Invisibility, Dispel Evil and Good, Greater Restoration, Geas) stay outside this census and are not packed. Dream and Scrying stay unimplemented.
 
 ## Authored in this change (9)
 
@@ -193,6 +195,17 @@ Expeditious Retreat (7.2zi follow-up, Rules #285). The pack's `effects` equal `t
 |---|---|---|---|
 | Expeditious Retreat | 1 | `apply_modifier` `dash_on_cast`, `bonus_dash` on self, `rounds 600`; bonus action, self, concentration 10 minutes, V S | sorcerer, warlock, wizard; the cast includes a Dash, later turns Dash as a bonus action |
 
+## Authored after 7.2zj (4)
+
+Spell batch zj. Each pack's `effects`, casting time, range, duration, `targets`, `scaling`, components, classes, level, and school equal the Rules specimen in `tests/validate/fixtures/spell_batch_zj/`. Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_batch_zj_packs`). Counts from 83 → 87 authored / 0 pack-pending / 13 needs-a-mechanic / 68 OOS of 168. Cone of Cold, Ice Storm, Greater Invisibility, Dispel Evil and Good, Greater Restoration, and Geas stay out of the pack (level 4–5, outside this census).
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Charm Person | 1 | `save` WIS charmed, humanoid, `hostile_save_advantage`, `ends_on_ally_harm`, `caster_sees_target`; 1 hour; `targets {count 1, max_spread_ft 30}`, `upcast.targets 1`; V S | bard, druid, sorcerer, warlock, wizard. **Deferred (narrative):** the creature knows it was charmed when the spell ends |
+| Calm Emotions | 2 | `save` CHA, sphere 20, humanoid, `suppress_conditions [charmed, frightened]`; `targets.count 255`; concentration 1 minute; V S | bard, cleric. **Deferred:** indifference toward chosen hostiles, and a voluntary failed save |
+| Suggestion | 2 | `save` WIS charmed, `ends_on_ally_harm`, `charm_immune`, `caster_sees_target`, `requires_hearing`; concentration 8 hours; V M (text only) | bard, sorcerer, warlock, wizard (a6212be). **Deferred:** the course of action (shared language and whether the suggestion is reasonable stay the same gap, already in the specimen) |
+| Fly | 3 | `grant_fly` `fly_ft` 60; touch, concentration 10 minutes; `targets.count 1`, `upcast.targets 1`; V S M (wing feather, text) | sorcerer, warlock, wizard. Willing is the caster's team, including the caster |
+
 ## Authored: descriptive cantrips (4)
 
 Text-only spells (CONTENT_CONVENTIONS §28; Rules PR #309, feat/rules-spell-descriptive @ cdd2b09). `effects` is `[{"kind": "descriptive"}]`; verbatim SRD 5.1 text, `source {ref: "SRD 5.1", license: "CC-BY-4.0"}`. They load and stay on spell lists, but `legal_actions` never offers them. Pinned by `tests/validate/test_srd51_spells.py` (table rows) and `tests/validate/test_spell_descriptive.py`. Listed as Descriptive (not Authored) in `docs/SRD_COMBAT_COVERAGE.md` 8.1.
@@ -206,7 +219,9 @@ Text-only spells (CONTENT_CONVENTIONS §28; Rules PR #309, feat/rules-spell-desc
 
 No character class list in srd51.core is changed by this batch: the spells are on the SRD class lists above, and the acolyte and cult fanatic (authored on this branch) are their first users.
 
-## Deferred (85 spells; reasons re-checked against main at `8b8d8c9`)
+## Deferred (81 spells; reasons re-checked against main at `8b8d8c9`)
+
+Charm Person, Calm Emotions, Suggestion, and Fly left this table when they were authored from the 7.2zj specimens. The 81 rows below are the previous 85 minus those four. Needs-a-mechanic stays 13. Out of combat scope stays 68.
 
 **Planned descriptive-only, not yet authored.** `light`, `thaumaturgy`, `dancing_lights` and `minor_illusion` are planned as `{"kind":"descriptive"}` (the spell's only effect; `docs/CONTENT_CONVENTIONS.md` section 28). They are not in `srd51.core`, so the counts in this file are unchanged and the four rows below stay deferred. Light authored this way sheds no light: `append_active_zones` in `engine/core/sim/src/light_driver.cpp` keeps a spell only when its kind is `SpellEffectKind::Zone`. The real light mechanics stay deferred.
 
@@ -223,7 +238,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 0 | Resistance | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 1 | Alarm | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Animal Friendship | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Charm Person | NEW | Charmed with source (R-G8). | R-G8 (C1) |
 | 1 | Comprehend Languages | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Create or Destroy Water | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Detect Evil and Good | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
@@ -247,7 +261,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Arcane Lock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Arcanist's Magic Aura | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Augury | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Calm Emotions | NEW | Area + suppress condition (R-G10, R-G3). | R-G3, R-G10 (B2, C3) |
 | 2 | Continual Flame | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Darkvision | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Detect Thoughts | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
@@ -269,7 +282,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Rope Trick | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | See Invisibility | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Spider Climb | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Suggestion | NEW | Forced behavior (R-G8). | R-G8 (C1) |
 | 2 | Zone of Truth | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 3 | Animate Dead | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Bestow Curse | NEW | Touch + chosen effect (R-G2/R-G3). | R-G2, R-G3 (B1, B2) |
@@ -279,7 +291,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 3 | Conjure Animals | NEW | Summons rules (R-G12 PR 2) exist, but spell@1 has no summon key yet. | R-G12 (C5) |
 | 3 | Create Food and Water | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Daylight | NEW | Light/obscurement dispelling (R-G13). | R-G13 (C7) |
-| 3 | Fly | NEW | Movement mode (T&C-G12, T&C-G14). | T&C-G12, T&C-G14 |
 | 3 | Gaseous Form | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Glyph of Warding | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Magic Circle | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
@@ -300,9 +311,25 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 3 | Water Walk | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Wind Wall | NEW | Zone (R-G11). | R-G11 (C4) |
 
+## 7.2zj level 4–5 (not packed)
+
+Charm Person, Calm Emotions, Suggestion, and Fly are authored in `srd51.core` (see above). Specimens for the whole batch remain in `tests/validate/fixtures/spell_batch_zj/`. Cone of Cold, Ice Storm, Greater Invisibility, Dispel Evil and Good, Greater Restoration, and Geas are level 4–5, were never in the 168 census, and are not packed (magic / L4–9 hold). Dream and Scrying stay unimplemented.
+
+| spell | level | census | `spell@1` shape |
+|---|---|---|---|
+| Cone of Cold | 5 | outside the 0–3 census | Con save, 8d8 cold, half, cone 60, self; upcast dice 1. No new keys. Frozen statue on a kill deferred. V S M (crystal cone, text). |
+| Ice Storm | 4 | outside the 0–3 census | Dex save, 2d8 bludgeoning (upcast +1d8) and `also_damage` 4d6 cold (not upcast), half; cylinder radius 20 height 40, range 300. Difficult terrain until the end of the caster's next turn, not concentration, even if every save succeeds. |
+| Greater Invisibility | 4 | outside the 0–3 census | `apply_condition` invisible, no `ends_on`. Touch, concentration 1 minute; upcast +1 target. An attack or a cast does not end it. |
+| Dispel Evil and Good | 5 | outside the 0–3 census | `apply_modifier` `scope.from_types` celestial, elemental, fey, fiend, undead; `attack_roll` disadvantage, `applies_to` attackers; concentration 1 minute, self. Not charmed or frightened immunity. Break Enchantment, Dismissal, and possession deferred. Material text is not consumed. |
+| Greater Restoration | 5 | outside the 0–3 census | `restore` options in JSON order: exhaustion, charmed, petrified, the six ability scores, hit point maximum. `condition_choice` is 1 + index. One charmed or petrified effect. A successful option also ends every `ends_on_restoration` effect. Touch. Diamond dust `cost_cp` 10000, consumed, no item id (validator warning; Tools & Content adds the item). Curses and attunement deferred. |
+| Geas | 5 | outside the 0–3 census | Wis save, charmed, `ends_on_restoration`, `caster_sees_target`; no `ends_on_ally_harm` (that clause is Charm Person and Suggestion). Range 60; duration 720 hours with no round timer (the int16 cap is 32767). Greater Restoration ends it. Casting time is 1 minute and an encounter cast is still refused. 5d10 psychic on disobedience, language, dismiss, remove curse, and upcast duration deferred. V only. |
+
+Choosing the charmed option of Greater Restoration while both Charm Person and Geas are on the target ends the first charmed effect and then every `ends_on_restoration` effect, so both can end.
+
 ## Follow-ups when the mechanics land
 
 - Acid Arrow authored in 7.2zg (#265): `spell_attack` `on_miss half` + `delayed_damage` (upcast reaches the rider).
 - Small additive changes that unblock more: a spell@1 condition-choice key (Blindness/Deafness). Faerie Fire, Protection from Energy, Spiritual Weapon, Haste / Slow, and `targets` on modifiers landed in 7.2zg (#263 / #265).
 - Every `NEW` row above is additive content once its row lands; ids are `srd51.spell.<snake_case_name>` and are not reserved yet.
 - Spare the Dying: authored from the 7.2zi `stabilize` fixture (Rules #283). `ActionKind::SpareTheDying` is unchanged.
+- Charm Person, Calm Emotions, Suggestion, and Fly: authored from the 7.2zj specimens. Still text only: Charm Person "knows it was charmed"; Calm Emotions indifference and a voluntary failed save; Suggestion's course of action; Fly's willing check is the caster's team (in the specimen).

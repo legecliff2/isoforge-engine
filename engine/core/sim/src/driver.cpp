@@ -503,6 +503,51 @@ std::optional<Command> spell_kind_command(const Combat& c, const rules5e::Combat
     return std::nullopt;
 }
 
+// Rampage / bonus_attack_grant. The granted attack index is grant - 1. `who` must be living and in reach
+// (melee) or legal to shoot. `hostile_only` is the retarget scan: another foe, never the charmer. The sticky
+// target itself is not re-checked for hostility (a caller already chose it).
+std::optional<Command> granted_bonus_attack(const Combat& c, CombatantId self, const rules5e::Combatant& me,
+                                            CombatantId who, bool hostile_only) {
+    const auto& s = c.state();
+    if (s.budget.bonus_attack_grant == 0 || !s.budget.bonus_action) return std::nullopt;
+    const uint8_t gi = uint8_t(s.budget.bonus_attack_grant - 1);
+    if (gi >= me.attacks.size()) return std::nullopt;
+    if (equipment_ai_active(c, self) && !attack_usable(s, self, gi)) return std::nullopt;
+    const auto* k = rules5e::find(s, who);
+    if (!k || k->id == self || k->dead || k->gone || !rules5e::is_conscious(*k)) return std::nullopt;
+    if (hostile_only && !c.hostile(self, who)) return std::nullopt;
+    if (hostile_only && rules5e::condition_source(s, self, rules5e::Condition::Charmed) == who) return std::nullopt;
+    const rules5e::Attack& at = me.attacks[gi];
+    const bool ok = at.ranged ? c.can_shoot(self, gi, who)
+                              : c.distance_tiles(self, who) <= reach_tiles(at.reach_or_range_ft);
+    if (!ok) return std::nullopt;
+    Command b;
+    b.request = {self, ActionKind::Attack, who};
+    b.request.attack_index = gi;
+    b.request.as_bonus_action = true;
+    return b;
+}
+
+// Another living hostile the grant can reach: nearest Chebyshev, lowest id on a tie. nullopt = leave it unused.
+std::optional<Command> retarget_bonus_grant(const Combat& c, CombatantId self, const rules5e::Combatant& me) {
+    if (c.state().budget.bonus_attack_grant == 0 || !c.state().budget.bonus_action) return std::nullopt;
+    std::optional<Command> best_cmd;
+    CombatantId best = 0;
+    int best_d = 0;
+    for (const auto& k : c.state().combatants) {
+        if (k.id == self) continue;
+        auto cmd = granted_bonus_attack(c, self, me, k.id, true);
+        if (!cmd) continue;
+        const int d = c.distance_tiles(self, k.id);
+        if (best == 0 || d < best_d || (d == best_d && k.id < best)) {
+            best = k.id;
+            best_d = d;
+            best_cmd = std::move(cmd);
+        }
+    }
+    return best_cmd;
+}
+
 Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     const auto& s = c.state();
     const CombatantId self = rules5e::current_actor(s);
@@ -511,6 +556,11 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     if (s.budget.gaze_pending) {   // Petrifying Gaze (7.2p): answer first, even surprised or incapacitated; AI default: look
         Command look;
         look.request = {self, ActionKind::GazeResponse};   // avert_gaze false; submit fills gaze_seen
+        return look;
+    }
+    if (s.budget.appearance_pending) {   // B15 Horrific Appearance: the gaze peer. Look. Do not avert. Even while surprised.
+        Command look;
+        look.request = {self, ActionKind::AppearanceResponse};
         return look;
     }
     const auto* me = rules5e::find(s, self);
@@ -574,8 +624,29 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             }
     if (!beast_form)
         if (auto x = spell_kind_command(c, *me)) return *x;
+    if (s.budget.free_rider != 0 && !beast_form) {   // B3b: after the pincers, tentacles on one grappled target, no action
+        const uint32_t sid = s.budget.free_rider;
+        const rules5e::ActionRequest* pick = nullptr;
+        const auto legal = c.legal_actions();
+        for (const auto& q : legal) {
+            if (q.kind != ActionKind::CastSpell || q.spell_id != sid) continue;
+            if (target && q.target == *target) { pick = &q; break; }
+            if (!pick || q.target < pick->target) pick = &q;
+        }
+        if (pick) {
+            Command cast;
+            cast.request = *pick;
+            if (cast.request.targets.empty()) cast.request.targets = {cast.request.target};
+            return cast;
+        }
+    }
     const auto* t = target ? rules5e::find(s, *target) : nullptr;
-    if (!t || t->dead) return end;
+    // Sticky target dead, gone, or missing: the turn would end. A Rampage grant is still spent on another
+    // living hostile the granted attack can reach. No such foe: the grant stays unused.
+    if (!t || t->dead || t->gone) {
+        if (auto b = retarget_bonus_grant(c, self, *me)) return *b;
+        return end;
+    }
     // R-G8 Charmed: the charmer is never attacked (rules refuse it) or targeted with a harmful spell (sim refuses it).
     if (rules5e::condition_source(s, self, rules5e::Condition::Charmed) == t->id) return end;
     // 7.2zc: a movable mark whose creature dropped to 0 hp moves (bonus action) before anything else spends the bonus action.
@@ -662,7 +733,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     if (const Archetype* arch = c.archetype(self); arch && !beast_form && s.budget.action && s.budget.sequence == 0 &&
                                                    s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t))
         for (const auto& sa : arch->save_actions) {
-            if (sa.teleport) continue;   // batch 3 blink dog: the teleport destination is not guessed (AI deferred)
+            if (sa.teleport || sa.rider_only || sa.leap || sa.whirl || sa.whelm || sa.ethereal || sa.illusory || sa.passage) continue;   // blink dog: destination not guessed. B3b: a free rider is not this action. B8: the AI does not jump or land. B10: the AI does not pick a random fling. B11: the AI does not use Whelm. B19: the AI does not use Etherealness. The visible-figure action is not this AI's choice. Invisible Passage is not this AI's choice.
             if (sa.usage_kind == 1) {
                 const auto* u = rules5e::find_action_use(s, self, sa.spell_id);
                 if (u && u->expended) continue;
@@ -704,6 +775,25 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 !c.line_of_sight(self, t->id))
                 continue;
             if (const auto* sd = c.spell_def(sa.spell_id); sd && sd->kind == rules5e::SpellEffectKind::Descriptive) continue;
+            // A gate the current target fails would refuse the cast and stall the turn. Willing is a caller
+            // flag; the built-in AI does not mark a target willing. Other targets stay the caller's choice.
+            if (const auto* sd = c.spell_def(sa.spell_id);
+                sd && sd->target_requires_any != 0 &&
+                !rules5e::target_gate_reason(s, *me, *t, sd->target_requires_any, false).empty())
+                continue;
+            if (const auto* sd = c.spell_def(sa.spell_id); sd && sd->charm_command) {
+                if (sd->target_types != 0 && (sd->target_types & rules5e::bit(t->creature_type)) == 0) continue;
+                bool held = false;
+                for (const auto& e : s.effects)
+                    if (e.spell_id == sd->id && e.caster == self && e.target == t->id &&
+                        e.control == uint8_t(rules5e::ControlKind::Command))
+                        held = true;
+                if (held) continue;   // B16: ordering the charmed creature is not this AI's choice
+            }
+            if (const auto* sd = c.spell_def(sa.spell_id);
+                sd && ((sd->has_target_condition && !t->has(sd->target_condition)) ||
+                       (sd->caster_sees_target && !rules5e::sight(s, self, t->id).can_see)))
+                continue;   // B15 Death Glare: a refused cast would stall the turn
             Command cast;
             cast.request = {self, ActionKind::CastSpell, t->id};
             cast.request.spell_id = sa.spell_id;
@@ -753,23 +843,17 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             }
             return cast;
         }
-    // Rampage (trigger rider bonus_attack): while a grant is present, the bonus-action attack is the granted attack index
-    // (grant - 1) against the target if it is in reach (melee) or legal to shoot; otherwise the grant is left unused.
-    if (s.budget.bonus_attack_grant != 0 && s.budget.bonus_action && rules5e::is_conscious(*t)) {
-        const uint8_t gi = uint8_t(s.budget.bonus_attack_grant - 1);
-        if (gi < me->attacks.size() && usable(gi)) {
-            const bool ok = me->attacks[gi].ranged ? c.can_shoot(self, gi, t->id)
-                                                   : c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[gi].reach_or_range_ft);
-            if (ok) {
-                Command b;
-                b.request = {self, ActionKind::Attack, t->id};
-                b.request.attack_index = gi;
-                b.request.as_bonus_action = true;
-                return b;
-            }
-        }
+    // Rampage (trigger rider bonus_attack): the granted attack against the sticky target when that foe is
+    // living and in reach (melee) or legal to shoot. A sticky target that is not living (0 HP, unconscious)
+    // retargets the same way as a dead one. A living sticky target the attack cannot reach yet leaves the
+    // grant unused; the creature keeps closing on that target.
+    if (s.budget.bonus_attack_grant != 0 && s.budget.bonus_action) {
+        if (auto b = granted_bonus_attack(c, self, *me, t->id, false)) return *b;
+        if (!rules5e::is_conscious(*t))
+            if (auto b = retarget_bonus_grant(c, self, *me)) return *b;
     }
-    // R-G8 grapple / shove / escape (only arise once something grapples; no existing content does):
+    // R-G8 grapple / shove / escape. These come up once a grapple is on the board. Content does grapple
+    // (ankheg bite, giant toad bite, and others):
     //  * held (Grappled with a recorded holder) and the target is out of reach: Escape (takes the action);
     //  * the target holds one of my allies and is within 5 ft: Shove it 5 ft away (breaks the hold when the push lands);
     //  * I hold the target and it is not prone: Shove it prone.
@@ -855,21 +939,40 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         }
     }
     if (me->attacks.empty()) return end;
-    // Declared multiattack (T&C-G1): continue the sequence in progress, else start the first option made
-    // only of melee attacks (declaration order; options with a ranged attack are never picked by the AI).
+    // Declared multiattack (T&C-G1): continue the sequence in progress. To start one, in declaration order:
+    // the first all-melee option (after_action == 0, every attack usable) whose first attack is in melee reach;
+    // else the first all-ranged option under those constraints when can_shoot is true for its first attack.
+    // Mixed melee+ranged options are never started. after_action sequences are never started.
     uint8_t multi = 0;   // ActionRequest::multiattack to send (0 = continue / plain attack)
     if (s.budget.sequence != 0 && s.budget.sequence <= me->multiattacks.size()) {
         if (const int next = rules5e::multiattack_next(me->multiattacks, s.budget.sequence, s.budget.sequence_pos); next >= 0)
             ai = uint8_t(next);
     } else {
+        auto pure = [&](const rules5e::AttackSequence& seq, bool ranged) {
+            if (seq.after_action != 0 || seq.attacks.empty()) return false;
+            for (uint8_t k : seq.attacks)
+                if (k >= me->attacks.size() || me->attacks[k].ranged != ranged || !usable(k)) return false;
+            return true;
+        };
+        int melee_i = -1, ranged_i = -1;
         for (std::size_t i = 0; i < me->multiattacks.size() && i < 255; ++i) {
-            const auto& seq = me->multiattacks[i].attacks;
-            bool melee_only = !seq.empty() && me->multiattacks[i].after_action == 0;
-            for (uint8_t k : seq) melee_only = melee_only && k < me->attacks.size() && !me->attacks[k].ranged && usable(k);
-            if (!melee_only) continue;
-            ai = seq[0];
-            multi = uint8_t(i + 1);
-            break;
+            if (melee_i < 0 && pure(me->multiattacks[i], false)) melee_i = int(i);
+            if (ranged_i < 0 && pure(me->multiattacks[i], true)) ranged_i = int(i);
+        }
+        if (melee_i >= 0) {
+            const uint8_t a0 = me->multiattacks[std::size_t(melee_i)].attacks[0];
+            if (c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[a0].reach_or_range_ft)) {
+                ai = a0;
+                multi = uint8_t(melee_i + 1);
+            }
+        }
+        if (multi == 0 && ranged_i >= 0) {
+            const uint8_t a0 = me->multiattacks[std::size_t(ranged_i)].attacks[0];
+            const bool action_ready = (s.budget.action || s.budget.extra_actions > 0 || s.budget.attacks_remaining > 0) && !no_weapon;
+            if (action_ready && rules5e::is_conscious(*t) && c.can_shoot(self, a0, t->id)) {
+                ai = a0;
+                multi = uint8_t(ranged_i + 1);
+            }
         }
     }
     const int reach = reach_tiles(me->attacks[ai].reach_or_range_ft);
@@ -887,6 +990,16 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             return a;
         }
         return end;
+    }
+    // Ranged multiattack opener past normal range. can_shoot includes long range; the reach test above uses the
+    // attack's normal range, so a legal long-range opener would otherwise become a step or a plain shot.
+    // Continuation (multi == 0) stays on the path below.
+    if (multi != 0 && me->attacks[ai].ranged && can_attack && rules5e::is_conscious(*t) && c.can_shoot(self, ai, t->id)) {
+        Command a;
+        a.request = {self, ActionKind::Attack, t->id};
+        a.request.attack_index = ai;
+        if (s.budget.attacks_remaining == 0) a.request.multiattack = multi;
+        return a;
     }
     // Can't get into melee reach this turn: shoot if a ranged attack is legal (range + LOS),
     // preferring one without disadvantage.
@@ -1113,7 +1226,7 @@ RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_comman
         if (!turn || !(*turn == c.turn_key())) {
             turn = c.turn_key();
             IActorPolicy* p = policy_for(self);
-            target = p ? p->choose_target(c, self) : std::nullopt;
+            target = p ? p->choose_target(c, self) : std::nullopt;   // sticky for this turn; a dead or downed one is retargeted only to spend a bonus_attack grant
         }
         const auto sc = summon_turn_command(c, self);
         const Command cmd = sc ? *sc : next_command(c, target);

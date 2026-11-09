@@ -178,6 +178,214 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "keen_senses"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/keen_senses_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "regen"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/regen_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "regain"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/regain_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "freeze"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/freeze_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "absorb"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/absorb_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "innate_invisibility"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/innate_invisibility_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "horrific_appearance"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/horrific_appearance_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "bound"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/bound_effect"
+                }
+              }
+            }
           }
         ]
       },
@@ -568,8 +776,22 @@
             "special",
             "save_effect",
             "attack_effect",
-            "teleport"
+            "teleport",
+            "area_effect",
+            "pull",
+            "deadly_leap",
+            "whirlwind",
+            "whelm",
+            "etherealness",
+            "illusory_appearance",
+            "invisible_passage"
           ]
+        },
+        "dc": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "description": "Illusory Appearance only: Intelligence (Investigation) DC to visually inspect the figure."
         },
         "to_hit": {
           "type": "integer",
@@ -973,15 +1195,20 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "description": "Batch 3 (vampire spawn Bite: \"one willing creature, or a creature that is grappled by the vampire, incapacitated, or restrained\"): the target must meet at least one. willing counts only for an ally with ActionRequest target_willing. Weapon attacks only.",
+          "description": "Batch 3 (vampire spawn Bite: \"one willing creature, or a creature that is grappled by the vampire, incapacitated, or restrained\"): the target must meet at least one. willing counts only for an ally with ActionRequest target_willing. On a weapon attack, any of the four gates. On a monster@5 save_effect, grappled_by_self (Chuul Tentacles, Otyugh Tentacle Slam), charmed_by_self, and willing (B16 Draining Kiss): each named target must meet one, and the cast is refused before the action is spent. A willing target is an ally with target_willing. charmed_by_self is the Charmed condition sourced to the user. targets (1..8, default 1) on that save is how many creatures one cast may name. No area. Chuul Tentacles also sets rider_only, so the save is the Multiattack free rider and not its own action.",
           "items": {
             "enum": [
               "willing",
               "grappled_by_self",
               "incapacitated",
-              "restrained"
+              "restrained",
+              "charmed_by_self"
             ]
           }
+        },
+        "rider_only": {
+          "const": true,
+          "description": "B3b (monster@5 save_effect only): this save is not a standalone action. A multiattack option's free_rider names it. After that option's attacks, it may be used once this turn without spending an action, on one target that passes target_requires_any. A cast outside that window is refused and does not spend the action."
         },
         "feet": {
           "type": "integer",
@@ -989,6 +1216,68 @@
           "maximum": 500,
           "multipleOf": 5,
           "description": "Batch 3 teleport action (blink dog 40): up to this many feet to an unoccupied space the creature can see."
+        },
+        "jump_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 60,
+          "multipleOf": 5,
+          "description": "B8 Deadly Leap: the jump, in feet, that must already have been taken this turn. A multiple of 5."
+        },
+        "save_alt": {
+          "$ref": "../common/v1.schema.json#/$defs/ability",
+          "description": "B8 Deadly Leap: the other ability of the target's choice. save.ability is the one used on a tie."
+        },
+        "push_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 30,
+          "multipleOf": 5,
+          "description": "B8 Deadly Leap: feet a successful save pushes the creature out of the leaper's space."
+        },
+        "fling_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 60,
+          "multipleOf": 5,
+          "description": "B10 Whirlwind: up to this many feet the failed save flings the creature, in a random direction."
+        },
+        "impact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["per_ft", "type"],
+          "properties": {
+            "dice": { "type": "string" },
+            "flat": { "type": "integer", "minimum": 1, "maximum": 255 },
+            "per_ft": { "type": "integer", "minimum": 5, "maximum": 30, "multipleOf": 5 },
+            "type": { "$ref": "../common/v1.schema.json#/$defs/damage_type" }
+          },
+          "description": "B10 Whirlwind: damage for every per_ft feet a thrown creature actually moved before it struck an object, and the same packet a creature it is thrown at takes on a failed impact_save. One of dice or flat."
+        },
+        "impact_save": {
+          "$ref": "../common/v2.schema.json#/$defs/save",
+          "description": "B10 Whirlwind: the save a creature the target is thrown at makes. A failure takes the impact packet and is knocked prone. A success takes neither."
+        },
+        "grapple": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["escape_dc", "max_size"],
+          "properties": {
+            "escape_dc": { "type": "integer", "minimum": 1, "maximum": 30 },
+            "max_size": { "enum": ["tiny", "small", "medium", "large", "huge", "gargantuan"] }
+          },
+          "description": "B11 Whelm: a failed save grapples a creature of this size or smaller (escape DC). The target is restrained until that grapple ends. One Large, or up to two Medium or smaller."
+        },
+        "crush": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "dice": { "type": "string" },
+            "flat": { "type": "integer", "minimum": 1, "maximum": 255 },
+            "type": { "$ref": "../common/v1.schema.json#/$defs/damage_type" }
+          },
+          "description": "B11 Whelm: damage each grappled target takes at the start of each of the user's later turns. One of dice or flat."
         },
         "with_attack": {
           "$ref": "../common/v1.schema.json#/$defs/local_id",
@@ -1016,11 +1305,65 @@
         },
         "target_must_see_source": {
           "type": "boolean",
-          "description": "Tier-A §26 (save_effect only; 'One creature ... that can see the mummy'): a target that cannot see the user (blinded, or the sight hook says so) makes no save and gains no immunity (FeatureTriggered c = 3)."
+          "description": "Tier-A §26 (save_effect only; 'One creature ... that can see the mummy'): a target that cannot see the user (blinded, or the sight hook says so) makes no save and gains no immunity (FeatureTriggered c = 3). An area save may use it (B17 Horrifying Visage)."
+        },
+        "exclude_creature_types": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_types",
+          "description": "B17 Horrifying Visage (save_effect, monster@5, CONTENT_CONVENTIONS §49): these creature types are unaffected. An area save skips them (no roll, no immunity, no aging). A single-target save that names one is refused. SRD ghost: [\"undead\"]."
+        },
+        "immune_on_end": {
+          "const": true,
+          "description": "B17 (save_effect, monster@5): ending the applied condition grants the same action immunity as immune_on_success (hours and scope, 0xE1). Needs immune_on_success and a tracked primary condition. The repeat save uses the action's magical flag. Dreadful Glare does not set this."
+        },
+        "age_on_fail_by": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["margin", "dice", "years_per"],
+          "properties": {
+            "margin": {"type": "integer", "minimum": 1, "maximum": 30},
+            "dice": {"$ref": "../common/v1.schema.json#/$defs/dice"},
+            "years_per": {"type": "integer", "minimum": 1, "maximum": 255}
+          },
+          "description": "B17 Horrifying Visage (save_effect, monster@5, CONTENT_CONVENTIONS §49): failing the save by margin or more adds (the dice) times years_per to the target's aged years. Not a condition and not an aging system. Needs a self-origin sphere, target_must_see_source, exclude_creature_types, immune_on_success, immune_on_end, and a tracked primary condition with an end-of-turn repeat and a rounds duration. No also_on_fail_by, control, escalates, or while."
+        },
+        "drop_to_zero": {
+          "type": "boolean",
+          "description": "B15 Death Glare (save_effect, monster@5): a failed save drops the target to 0 hit points. Not a damage packet. Takes no damage, apply, control, or area. CONTENT_CONVENTIONS §46."
+        },
+        "target_has_condition": {
+          "const": "frightened",
+          "description": "B15 Death Glare (save_effect, monster@5): the named target must already be frightened or the cast is refused before the action is spent."
+        },
+        "caster_sees_target": {
+          "type": "boolean",
+          "description": "B15 Death Glare (save_effect, monster@5): the user must be able to see the target (the existing caster_sees_target cast gate) or the cast is refused before the action is spent."
+        },
+        "charm_command": {
+          "const": true,
+          "description": "B16 Charm (save_effect, monster@5, CONTENT_CONVENTIONS §47): control command with no word at the cast. A failed save applies charmed and Command control. A later command_word 1..5 orders that target and does not spend the action. 6 is a suicidal command (the repeat save). One target at a time. Ending the effect grants immune_on_success. Needs control command, magical, caster_sees_target, a tracked charmed apply with repeat_save on_damage and a rounds duration, immune_on_success, and target_creature_types."
+        },
+        "drain_max_hp": {
+          "const": true,
+          "description": "B16 Draining Kiss (save_effect, monster@5, CONTENT_CONVENTIONS §48): the target's hit point maximum is reduced by the damage taken from this save (full, or half when on_success is half), after immunity, resistance, and vulnerability, before temporary hit points. No second save. The reduction lasts until a long rest. A maximum of 0 kills. Not the weapon-attack drain object."
+        },
+        "escalates": {
+          "type": "boolean",
+          "description": "B4 (monster@5 save_effect, including an area): a failed save applies the primary apply[] condition; a failed repeat save replaces it with escalate_to. Same SpellDef fields as gaze (basilisk / medusa). SRD 5.1 Gorgon Petrifying Breath. ActiveSpellEffect::escalates is already hashed; no new tag."
+        },
+        "escalate_to": {
+          "$ref": "../common/v1.schema.json#/$defs/condition",
+          "description": "B4: the condition a failed repeat save, or a first save failed by escalate_margin or more, replaces the primary with. Omitted means petrified."
+        },
+        "escalate_margin": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 30,
+          "description": "B4: failing the first save by this much or more applies escalate_to at once, with no repeat save (medusa gaze is 5). 0 never does (gorgon)."
         }
       },
       "allOf": [
         {
+          "description": "Weapon attacks need to_hit. damage is required below, except a B5 no_damage grapple (CONTENT_CONVENTIONS §35).",
           "if": {
             "properties": {
               "kind": {
@@ -1030,9 +1373,61 @@
           },
           "then": {
             "required": [
-              "to_hit",
+              "to_hit"
+            ]
+          }
+        },
+        {
+          "description": "B5: a weapon attack whose on_hit grapple sets no_damage lists no damage array. Every other _attack still requires damage.",
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "_attack$"
+              }
+            },
+            "not": {
+              "properties": {
+                "on_hit": {
+                  "contains": {
+                    "type": "object",
+                    "required": ["kind", "no_damage"],
+                    "properties": {
+                      "kind": { "const": "grapple" },
+                      "no_damage": { "const": true }
+                    }
+                  }
+                }
+              },
+              "required": ["on_hit"]
+            }
+          },
+          "then": {
+            "required": [
               "damage"
             ]
+          }
+        },
+        {
+          "description": "B5: no_damage forbids a damage array (the loader's 'can't list damage').",
+          "if": {
+            "required": ["on_hit"],
+            "properties": {
+              "on_hit": {
+                "contains": {
+                  "type": "object",
+                  "required": ["kind", "no_damage"],
+                  "properties": {
+                    "kind": { "const": "grapple" },
+                    "no_damage": { "const": true }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": ["damage"]
+            }
           }
         },
         {
@@ -1107,6 +1502,11 @@
                 "required": [
                   "control"
                 ]
+              },
+              {
+                "required": [
+                  "drop_to_zero"
+                ]
               }
             ],
             "not": {
@@ -1158,7 +1558,11 @@
                 "kind": {
                   "enum": [
                     "attack_effect",
-                    "teleport"
+                    "teleport",
+                    "area_effect",
+                    "deadly_leap",
+                    "whirlwind",
+                    "whelm"
                   ]
                 }
               }
@@ -1245,7 +1649,10 @@
             ],
             "properties": {
               "kind": {
-                "const": "save_effect"
+                "enum": [
+                  "save_effect",
+                  "area_effect"
+                ]
               }
             }
           },
@@ -1253,6 +1660,59 @@
             "required": [
               "on_success"
             ]
+          }
+        },
+        {
+          "description": "Monster area action (AOE_MONSTER_ABILITIES PR2): one shape, one save, one synthetic SpellDef on the spell area path. Cone, line, cube, sphere, or cylinder (height is stored and still ignored). on_success half is half damage. Recharge and per-day uses are the existing usage object.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "area_effect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "save",
+              "area"
+            ],
+            "dependentRequired": {
+              "on_success": [
+                "damage"
+              ]
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "damage"
+                ]
+              },
+              {
+                "required": [
+                  "apply"
+                ]
+              }
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "description",
+                "save",
+                "area",
+                "origin",
+                "range_ft",
+                "on_success",
+                "damage",
+                "apply",
+                "usage",
+                "magical"
+              ]
+            }
           }
         },
         {
@@ -1341,6 +1801,40 @@
           "description": "sim #170 compile_attack_effect: an attack roll that only applies conditions (giant spider Web); every apply[] entry has a Strength escape."
         },
         {
+          "description": "B4: escalates / escalate_to / escalate_margin are save_effect only (an area is allowed). Gaze keeps its own keys on the trait.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save_effect"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "escalates"
+                  ]
+                },
+                {
+                  "required": [
+                    "escalate_to"
+                  ]
+                },
+                {
+                  "required": [
+                    "escalate_margin"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
           "description": "VERSION_BUMP_BATCH 7.2y: the control / target_creature_types keys are save_effect only.",
           "if": {
             "required": [
@@ -1413,19 +1907,189 @@
             }
           },
           "else": {
+            "if": {
+              "not": {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "pull"
+                  }
+                }
+              }
+            },
+            "then": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "feet"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "with_attack"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "description": "B5 Reel: pull each named creature grappled by the user up to feet straight toward the user. Not a save. Omitting forced_feet pulls the full distance; a shorter multiple of 5 is ActionRequest::forced_feet (0xB4).",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "pull"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "feet",
+              "target_requires_any"
+            ],
+            "properties": {
+              "feet": {
+                "maximum": 60
+              },
+              "targets": {
+                "maximum": 8
+              },
+              "target_requires_any": {
+                "minItems": 1,
+                "maxItems": 1,
+                "items": {
+                  "const": "grappled_by_self"
+                }
+              }
+            },
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "description",
+                "feet",
+                "targets",
+                "target_requires_any"
+              ]
+            }
+          }
+        },
+        {
+          "description": "B8 Deadly Leap: its own action. A jump of jump_ft this turn, then each creature in the leaper's space saves. Fail: both damage components and prone. Success: half of each and a push of push_ft, or prone in the space if that push cannot move. save.ability wins a tie against save_alt.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "deadly_leap" } }
+          },
+          "then": {
+            "required": ["jump_ft", "save", "save_alt", "damage", "push_ft"],
+            "properties": {
+              "damage": { "minItems": 2, "maxItems": 2 }
+            },
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description", "jump_ft", "save", "save_alt", "damage", "push_ft"]
+            }
+          },
+          "else": {
             "not": {
               "anyOf": [
-                {
-                  "required": [
-                    "feet"
-                  ]
-                },
-                {
-                  "required": [
-                    "with_attack"
-                  ]
-                }
+                { "required": ["jump_ft"] },
+                { "required": ["save_alt"] },
+                { "required": ["push_ft"] }
               ]
+            }
+          }
+        },
+        {
+          "description": "B10 Whirlwind: each creature in the user's space makes the save. Failure: the one damage component, prone, and a fling of up to fling_ft. Success: half that damage, no fling, no prone. A strike deals impact once per per_ft feet moved. A creature in the way makes impact_save; that success takes nothing. usage recharge is required.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "whirlwind" } }
+          },
+          "then": {
+            "required": ["save", "damage", "fling_ft", "impact", "impact_save", "usage"],
+            "properties": {
+              "damage": { "minItems": 1, "maxItems": 1 }
+            },
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description", "save", "damage", "fling_ft", "impact", "impact_save", "usage"]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["fling_ft"] },
+                { "required": ["impact"] },
+                { "required": ["impact_save"] }
+              ]
+            }
+          }
+        },
+        {
+          "description": "B11 Whelm: each creature in the user's space makes the save. Failure: the one damage component, and a restraining grapple when the target is within grapple.max_size and the cap has room. Success: no damage, pushed out of the space. crush is the later turn-start damage. usage recharge is required. on_success is not a key.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "whelm" } }
+          },
+          "then": {
+            "required": ["save", "damage", "grapple", "crush", "usage"],
+            "properties": {
+              "damage": { "minItems": 1, "maxItems": 1 }
+            },
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description", "save", "damage", "grapple", "crush", "usage"]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["grapple"] },
+                { "required": ["crush"] }
+              ]
+            }
+          }
+        },
+        {
+          "description": "B19 Etherealness: an action that toggles the user's plane between the Material Plane and the Border Ethereal. No target, no roll. Sight is unchanged. monster@5 only.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "etherealness" } }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description"]
+            }
+          }
+        },
+        {
+          "description": "Invisible Passage: an action. The user is invisible, concentrating, until she attacks or casts a spell, or concentration ends. No duration, no target. monster@5 only. Not a spell.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "invisible_passage" } }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description"]
+            }
+          }
+        },
+        {
+          "description": "Visible figure: an action covers the user and the equipment she is wearing or carrying. dc is the Investigation DC. A bonus action ends it. monster@5 only. Not a form.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "illusory_appearance" } }
+          },
+          "then": {
+            "required": ["dc"],
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description", "dc"]
             }
           }
         }
@@ -1592,6 +2256,218 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 168
+        }
+      }
+    },
+    "keen_senses_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "senses"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §30; common@2 unchanged): advantage on Wisdom (Perception) checks that rely on a listed sense. SRD Keen Hearing and Smell: {kind keen_senses, senses [hearing, smell]}. Does not change the printed passive Perception.",
+      "properties": {
+        "kind": {
+          "const": "keen_senses"
+        },
+        "senses": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "sight",
+              "hearing",
+              "smell"
+            ]
+          }
+        }
+      }
+    },
+    "regen_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "amount",
+        "suppressed_by"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §31; common@2 unchanged): regains `amount` hit points at the start of its turn unless it took a `suppressed_by` damage type since its last turn started. At 0 hit points it is not dead until a later turn starts without regenerating (SRD troll). SRD Troll: {kind regen, amount 10, suppressed_by [acid, fire]}. Not oni, shield guardian, or vampire spawn.",
+      "properties": {
+        "kind": {
+          "const": "regen"
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32767,
+          "description": "Hit points regained (int16). Capped at the creature's hit point maximum."
+        },
+        "suppressed_by": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 13,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/damage_type"
+          },
+          "description": "Damage types that suppress the next start-of-turn regeneration. A type reduced to 0 by resistance or immunity does not count."
+        }
+      }
+    },
+    "regain_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "amount"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §55; common@2 unchanged): regains amount hit points at the start of its turn if it has at least 1 hit point. Ordinary death at 0. Not troll regen. SRD Shield Guardian: {kind regain, amount 10}.",
+      "properties": {
+        "kind": {
+          "const": "regain"
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32767,
+          "description": "Hit points regained (int16) while current hit points are at least 1. Capped at the effective maximum."
+        }
+      }
+    },
+    "freeze_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "by",
+        "speed_sub"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §42; common@2 unchanged): if the creature takes a listed damage type, every speed is reduced by speed_sub feet until the end of its next turn. SRD Water Elemental Freeze: {kind freeze, by [cold], speed_sub 20}. One reduction; a later hit refreshes it.",
+      "properties": {
+        "kind": {
+          "const": "freeze"
+        },
+        "by": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 13,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/damage_type"
+          },
+          "description": "Damage types that apply the slow. A type reduced to 0 by resistance or immunity does not count (DamageApplied::types_dealt)."
+        },
+        "speed_sub": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255,
+          "description": "Feet subtracted from every speed after speed_scale 1/1 (rules5e ModifierSpec::speed_sub)."
+        }
+      }
+    },
+    "absorb_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "by"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §43; common@2 unchanged): a listed damage type is not taken. The creature regains hit points equal to that component's amount, before its immunity, resistance, and vulnerability. SRD Shambling Mound Lightning Absorption: {kind absorb, by [lightning]}. One mask per creature.",
+      "properties": {
+        "kind": {
+          "const": "absorb"
+        },
+        "by": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 13,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/damage_type"
+          },
+          "description": "Damage types that heal instead of harm. The amount is the component passed to apply_damage, not the post-immunity total. A listed type is left out of DamageApplied::types_dealt."
+        }
+      }
+    },
+    "innate_invisibility_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §44; common@2 unchanged): the creature has the Invisible condition, with no duration and no concentration. Attacking or casting does not end it. SRD Invisible Stalker Invisibility: {kind innate_invisibility}. Spell Invisibility's ends_on is a different effect. One trait per creature; a second declaration adds nothing.",
+      "properties": {
+        "kind": {
+          "const": "innate_invisibility"
+        }
+      }
+    },
+    "horrific_appearance_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "radius_ft",
+        "save",
+        "immunity_hours"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §45; common@2 unchanged): a humanoid that starts its turn within radius_ft and can see this creature's true form makes the save or is frightened for 1 minute. It repeats the save at the end of each of its turns, with disadvantage while this creature is within line of sight. A success, or the effect ending, makes it immune to this creature's Horrific Appearance for immunity_hours. Unless surprised, it may avert its eyes and skip the initial save; until the start of its next turn its attack rolls against this creature have disadvantage. SRD Sea Hag: {kind horrific_appearance, radius_ft 30, save {wis, 11}, immunity_hours 24}. Not Illusory Appearance. One trait per creature.",
+      "properties": {
+        "kind": {
+          "const": "horrific_appearance"
+        },
+        "radius_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "save": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dc"
+          ],
+          "properties": {
+            "ability": {
+              "$ref": "../common/v1.schema.json#/$defs/ability"
+            },
+            "dc": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            }
+          }
+        },
+        "immunity_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 168
+        }
+      }
+    },
+    "bound_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "radius_ft"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §50; common@2 unchanged): while this guardian is within radius_ft of the amulet's wearer, half of any damage the wearer takes (rounded up) is transferred to the guardian. The wearer is not this object; spawn overrides.bound_wearer names that combatant. SRD Shield Guardian: {kind bound, radius_ft 60}. The link does not end past that distance. Not the Shield reaction. One trait per creature.",
+      "properties": {
+        "kind": {
+          "const": "bound"
+        },
+        "radius_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 120,
+          "multipleOf": 5,
+          "description": "Feet. The guardian must be within this distance (sight_facts.distance_ft, inclusive). Shield Guardian is 60."
         }
       }
     },

@@ -21,10 +21,17 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 159 authored / 4 deferred): batch 3 and tier-A triage (3: mimic, doppelganger, green hag). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. CR 2 batch K authored druid, priest, merrow and wererat (druid's four missing spells stay in the trait text only; priest Divine Eminence is text only and Religion +4 is the printed total; merrow Pull is text only; wererat is the humanoid form, with shapechange, bite and the curse as text). Sea hag is a new deferral. Mimic stays deferred. CR 2 batch L authored grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp and ochre jelly. Grick's beak-if-tentacles-hit gate stays in the Multiattack description. Gibbering Mouther Blinding Spittle is a point-origin sphere save_effect (recharge 5-6). Will-o'-wisp Consume Life, Ephemeral, Incorporeal Movement, Variable Illumination and Invisibility stay description only on the authored monster. Ochre Jelly Split stays a description-only trait. Sea hag, mimic, doppelganger and green hag stay deferred.
-DEFERRED: list[str] = ["doppelganger", "green-hag", "mimic", "sea-hag"]   # docs/SRD_MONSTERS_DEFERRED.md: 159 / 4
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 206 authored / 4 deferred): batch 3 and tier-A triage (mimic and doppelganger; green hag left when the stat block was authored). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. CR 2 batch K authored druid, priest, merrow and wererat (druid's four missing spells stay in the trait text only; priest Divine Eminence is text only and Religion +4 is the printed total; merrow Pull is text only; wererat is the humanoid form, with shapechange, bite and the curse as text). Sea hag is a new deferral. Mimic stays deferred. CR 2 batch L authored grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp and ochre jelly. Grick's beak-if-tentacles-hit gate stays in the Multiattack description. Gibbering Mouther Blinding Spittle is a point-origin sphere save_effect (recharge 5-6). Will-o'-wisp Consume Life, Ephemeral, Incorporeal Movement, Variable Illumination and Invisibility stay description only on the authored monster. Ochre Jelly Split stays a description-only trait. CR 3 batch M authored giant scorpion, minotaur, hell hound and winter wolf (no new deferrals). Minotaur has no Multiattack (one greataxe or one gore). CR 3 batch N authored manticore, werewolf and phase spider. Manticore Tail Spike Regrowth spike count is description only and the row stays green. Werewolf is the humanoid form (a6212be werewolf-human); hybrid/wolf AC 12, wolf speed 40, bite, claws and the lycanthropy curse stay description only. Phase spider Ethereal Jaunt stays description only (no Ethereal Plane). Stealth +6 is expertise (Dex +2 and 2×PB). CR 4 batch O authored black pudding, elephant and ettin. Black Pudding Corrosive Form contact acid, weapon and armor corrosion, and Split stay description only; condition immunities follow the SRD line (deafened) over a6212be. Elephant Stomp stays description only (no prone-target gate). Ettin battleaxe and morningstar are naturals at the printed 2d8. Chuul and ghost are new deferrals. CR 4 batch P authored wereboar, weretiger, lamia and couatl. Wereboar and weretiger are the humanoid forms (a6212be wereboar-human / weretiger-human); hybrid and animal forms, tusks, bite, claws, lycanthropy and Charge/Pounce stay description only. Wereboar Relentless is live (damage_at_most 14, per_rest short) and keeps the SRD recharge name (a6212be omits it from the trait text, as giant boar). Lamia Innate Spellcasting and Intoxicating Touch stay description only (claws + dagger is the authored multiattack). Couatl Magic Weapons is {kind: magic_weapons}. Bite poisoned 24 hours (14400 rounds) is a save_condition; unconscious-while-poisoned and the wake action stay description only (no zero_hp.while). Constrict grapple restrains and is exclusive; the Medium-or-smaller gate stays in the text. Change Shape does not set shapechanger. Succubus is parked. CR 5 batch Q authored triceratops, giant crocodile and giant shark. Triceratops Stomp stays description only (elephant). Giant crocodile Tail's not-grappled gate stays in the text. Giant shark Blood Frenzy stays description only (hunter shark). Troll, bulette and otyugh are new deferrals. CR 5 batch R authored earth elemental, fire elemental, salamander and xorn. Earth Glide and Siege Monster stay description only. Fire Form contact fire, Ignite, Illumination and Water Susceptibility stay description only (not emits_light). Salamander Heated Body and the tail's automatic hit stay description only; the spear is srd51.item.spear with weapon_dice_multiplier 2 and a printed extra 1d6 fire, and the tail grapple restrains and is exclusive. Xorn Earth Glide, Treasure Sense and Stone Camouflage stay descriptive and the row stays green. Xorn Claw is the printed 1d6 + 3. Air elemental and water elemental are parked. CR 5 batch S authored werebear and wraith. Werebear is the humanoid form (a6212be werebear-human); hybrid and bear forms, bite, claw, the lycanthropy curse, and Keen Smell stay description only. Wraith Create Specter stays a description-only special (no spawn construct). Gorgon, shambling mound, roper and unicorn are new deferrals. CR 6 batch T authored young white dragon, young brass dragon, chimera and wyvern (no new parks). Young white dragon is green (Ice Walk descriptive). Young brass Sleep Breath and the shared recharge stay description only (CONTENT_CONVENTIONS 29). Chimera's breath in place of bite or horns stays description only on Multiattack. Wyvern's claws-while-flying substitution stays description only; claws is a standalone action. CR 6 batch U, merged onto Batch T (tip caab78fe, 186/16), authored mammoth and drider. Mammoth follows elephant / triceratops: Gore on_hit save_condition Str DC 18 when moved_at_least_ft 20, Stomp description only. Drider Multiattack is exactly four options (longsword x3, longsword x2 + bite, longbow x3, longbow x2 + bite; no mixed sword and bow). The two-handed longsword is the versatile action, not a fifth option. Innate Spellcasting (Wisdom DC 13), Sunlight Sensitivity, and the sleep clause stay description only. Perception +5 is proficiency; Stealth +9 is expertise. Invisible stalker and mage are new deferrals. CR 7 batch V, from tip 5ccd71cc (188/18), authored young black dragon and young copper dragon (Elf LOCK Option A, 190/18). Young black is green (Amphibious descriptive, black wyrmling; no partial flag). Young copper Slowing Breath and the shared recharge stay description only (young brass Sleep Breath; no mechanical Slow, no apply, no second recharge). Acid Breath is the mechanical save_effect line. No new parks. CR 7 batch W, merged onto Batch V (tip 1ed0dfa, 190/18), authored oni and parked shield guardian. Oni Multiattack is exactly two options (claw x2 or glaive x2; the SRD line is either/or, so the mixed glaive-and-claw option in a6212be action_options is not authored). Chain mail is srd51.item.chain_mail (AC 16). Glaive is srd51.item.glaive with weapon_dice_multiplier 2 (reach 10, +7 / 2d10+4). Claw is natural 1d8 Str (+7 / 1d8+4). Magic Weapons is {kind: magic_weapons}. Fly 30 is on speed. Arcana +5 and Perception +4 are proficiency; Deception +8 is expertise. Innate Spellcasting (Charisma DC 13), Change Shape, and Regeneration stay description only. Shield guardian is a new deferral (Bound and Spell Storing). Troll left the deferred list when regen content shipped (Phase B after the #383 loader): Keen Smell is keen_senses smell and Regeneration is regen amount 10 suppressed by acid and fire (test_troll_regen_content). Mimic, doppelganger, unicorn, and mage stay deferred. Shambling mound left Deferred when the stat block was authored (test_shambling_mound). Roper left Deferred when the stat block was authored (test_roper). Bulette left Deferred when the stat block was authored (test_bulette). Gorgon left Deferred in B4 (area save_effect escalates). Chuul left Deferred in B3b (tentacles free rider). Otyugh left Deferred when the stat block was authored (test_otyugh). Air elemental left Deferred when the stat block was authored (test_air_elemental): air_form, whirlwind, multiattack slam x2. The 1-inch gap stays description only. The built-in AI does not use Whirlwind. Water elemental stays deferred. Invisible stalker left Deferred when the stat block was authored (test_invisible_stalker): innate_invisibility, multiattack slam x2, slam natural 2d6 Str. Faultless Tracker stays description only (not innate_invisibility, and not a tracking mechanic). See Invisibility, Faerie Fire outlined, and Branding Smite reveal_invisible versus a permanent holder stay open. Built-in AI targeting is unchanged.  Whether Invisible needs a Combat::hash tag stays open. Sea hag left Deferred when the stat block was authored (test_sea_hag): horrific_appearance, Death Glare drop_to_zero, claws natural 2d6 Str. There is no Multiattack. Amphibious stays descriptive. Illusory Appearance stays description only (not a disguise mechanic, no Investigation DC, no sudden-revelation flag). Water elemental left Deferred when the stat block was authored (test_water_elemental): water_form, freeze, whelm, multiattack slam x2, slam natural 2d8 Str. The 1-inch gap stays description only. Unable to breathe unless it can breathe water stays unmodelled. An ally's DC 14 Strength check to pull a creature or object out stays unmodelled. The built-in AI does not use Whelm. Green hag left Deferred when the stat block was authored (test_green_hag): illusory_appearance dc 20, invisible_passage, claws natural 2d8 Str. There is no Multiattack. Amphibious stays descriptive. Innate Spellcasting stays description only (the three at-will spells are in the pack; a6212be prints no caster level, so there is no innate block and no fake slots). Mimicry stays description only (as raven; the DC 14 Wisdom (Insight) check is not a check). The equipment sentence and which magic tracks stay escalated. A start while a figure is up is refused and the action is not spent. Discernment persists. Body art stays the true form (Art HOLD; no art assets). The built-in AI does not use either action. No new hash tag. Succubus left Deferred when the stat block was authored (test_succubus): charm_command, drain_max_hp, claw natural 1d6 Dex. Shapechanger, Etherealness, and Telepathic Bond stay description only. Etherealness is not the ghost §51 action. No new hash tag. Ghost left Deferred when the stat block was authored (test_ghost): horrifying_visage, etherealness, withering touch printed +5 / 4d6+3. Possession, Ethereal Sight, and Incorporeal Movement stay description only. Greater restoration does not reverse aging. aged_years is not hashed. Deep Ethereal is not a plane. No new hash tag. Shield guardian left Deferred when the stat block was authored (test_shield_guardian): bound radius 60, Shield ally_attacked ac_bonus 2, regain amount 10, multiattack fist x2, fist natural 2d6 Str reach 5. Spell Storing stays description only (HOLD). Same plane, the telepathic call, and the distance and direction stay descriptive. No amulet item. No new hash tag.
+DEFERRED: list[str] = ["doppelganger", "mage", "mimic", "unicorn"]   # docs/SRD_MONSTERS_DEFERRED.md: 206 / 4
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
+# Table attacks kept verbatim that are not weapon actions. Elephant Stomp is a bonus action
+# against one prone creature; there is no prone-target gate, so it is not an ungated action.
+DESCRIPTION_ONLY_ATTACKS = {
+    ("elephant", "Stomp"): "bonus action vs one prone creature; description-only on Trampling Charge",
+    ("triceratops", "Stomp"): "bonus action vs one prone creature; description-only on Trampling Charge",
+    ("mammoth", "Stomp"): "bonus action vs one prone creature; description-only on Trampling Charge",
+}
 # Documented deviations: monster -> why the content differs from the raw table.
 DEVIATIONS = {
     "lizardfolk": "AC: the table lists 13 (natural armor) and 15 (with shield); the SRD line is 15 and the Spiked Shield attack needs the shield.",
@@ -58,12 +65,33 @@ DEVIATIONS = {
     "grick": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as specter).",
     "will-o-wisp": "damage_resistances lists the five plain types: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as specter). speed.hover is the printed fly hover flag. Shock to_hit: the SRD prints +4 (the table agrees); Dex 28 + PB 2 = +11. Carried as an approved attack_bonus override of +4 (printed value wins).",
     "ochre-jelly": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, charmed, deafened, exhaustion, frightened, prone (as gray ooze / gelatinous cube; same mirror shape as shrieker).",
+    "werewolf": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be werewolf-human); bite and claws are not weapon attacks on that form.",
+    "wereboar": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be wereboar-human); tusks are not a weapon attack on that form.",
+    "weretiger": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be weretiger-human); bite and claw are not weapon attacks on that form.",
+    "couatl": "damage_immunities lists psychic only: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (immunities.nonmagical, the mummy/specter qualifier, as an immunity). Bite to_hit: the SRD prints +8 (the table agrees); Dex 20 (+5) + PB 2 = +7. Constrict to_hit: the SRD prints +6 (the table agrees); Str 16 (+3) + PB 2 = +5. Both are approved attack_bonus overrides (printed value wins).",
+    "earth-elemental": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as grick).",
+    "fire-elemental": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as grick).",
+    "air-elemental": "damage_resistances lists lightning and thunder: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as fire elemental). speed has no walk key (fly 90 ft., hover); content walk is 0. Whirlwind is not an attack.",
+    "water-elemental": "The fixture row was absent while deferred (tests asserted the index was not in the table). Appended at authoring from 5e-database a6212be index water-elemental (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27), reduced like the other rows; the pinned fields match that object. damage_resistances lists acid: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as air elemental). Whelm is not an attack.",
+    "salamander": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as grick).",
+    "xorn": "damage_resistances stays empty: the qualified 'nonmagical weapons that aren't adamantine' entry lives in the damage_mitigation trait effect (resistances.nonmagical_not_adamantine on piercing and slashing only, the gargoyle qualifier). Bludgeoning is not in that line.",
+    "black-pudding": "condition_immunities: the table omits deafened; the SRD line is blinded, charmed, deafened, exhaustion, frightened, prone (as ochre jelly / gray ooze / gelatinous cube). a6212be drops deafened rather than listing blinded twice (the ochre-jelly mirror shape).",
+    "elephant": "Stomp: the table lists +8, 3d10+6 bludgeoning, one prone creature. No prone-target gate, so Stomp stays in the Trampling Charge description and is not an ungated action (unlike elk Hooves). Gore is the authored attack.",
+    "triceratops": "Stomp: the table lists +9, 3d10+6 bludgeoning, one prone creature. No prone-target gate, so Stomp stays in the Trampling Charge description and is not an ungated action (as elephant). Gore is the authored attack.",
+    "mammoth": "Stomp: the table lists +10, 4d10+7 bludgeoning, one prone creature. No prone-target gate, so Stomp stays in the Trampling Charge description and is not an ungated action (as elephant). Gore is the authored attack.",
+    "werebear": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be werebear-human); bite and claw are not weapon attacks on that form.",
+    "wraith": "damage_resistances lists the five plain types: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (resistances.nonmagical_not_silvered, as wight). speed.hover is the printed fly hover flag. Create Specter is not an attack.",
+    "shambling-mound": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, exhaustion (as ochre jelly / shrieker). senses.blindsight is the integer 60; the printed parenthetical 'blind beyond this radius' has no separate key (as gray ooze). Engulf is not a weapon attack: both-hits contain is engulf_both_hits on Multiattack (CONTENT_CONVENTIONS §37).",
+    "invisible-stalker": "The fixture row was absent while deferred (tests asserted the index was not in the table). Appended at authoring from 5e-database a6212be index invisible-stalker (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27), reduced like the other rows; the pinned fields match that object. damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as air elemental).",
+    "succubus": "The fixture row was absent while deferred (tests asserted the index was not in the table). Appended at authoring from 5e-database a6212be index succubus-incubus (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27), reduced like the other rows; the pinned fields match that object. One stat block: the content id is srd51.monster.succubus. damage_resistances lists cold, fire, lightning, and poison: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as specter). Charm, Draining Kiss, and Etherealness are not attacks.",
+    "ghost": "The fixture row was absent while deferred (tests asserted the index was not in the table). Appended at authoring from 5e-database a6212be index ghost (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27), reduced like the other rows; the pinned fields match that object. damage_resistances lists acid, fire, lightning, and thunder: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as specter). Cold is an immunity, not a resistance. Withering Touch prints +5 / 4d6+3; Dex derives +3 / 4d6+1 and Str derives +0 / 4d6-2. Cha 17 would derive the print, and natural.ability is str or dex only, so attack_bonus and damage_override carry the printed totals and action ability is none. Etherealness, Horrifying Visage, and Possession are not attacks.",
+    "shield-guardian": "The fixture row was absent while deferred (tests asserted the index was not in the table). Appended at authoring from 5e-database a6212be index shield-guardian (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27), reduced like the other rows; the pinned fields match that object. Regeneration's a6212be desc prints '1 hit. point.'; that period is a mirror typo and the authored sentence is 'at least 1 hit point.' Fist prints +7 / 2d6+4 and reach 5 ft.; Str 18 and PB 3 derive the totals, so there is no attack_bonus and no damage_override. Spell Storing, Bound's call, and Shield are not attacks.",
 }
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
 
-QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow", "mummy", "specter", "grick", "will-o-wisp")
-QUALIFIED_IMMUNITIES = ("wererat",)
+QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow", "mummy", "specter", "grick", "will-o-wisp", "earth-elemental", "fire-elemental", "salamander", "xorn", "wraith", "air-elemental", "invisible-stalker", "water-elemental", "succubus", "ghost")
+QUALIFIED_IMMUNITIES = ("wererat", "werewolf", "wereboar", "weretiger", "couatl", "werebear")
 
 
 def load(idx):
@@ -135,6 +163,12 @@ class MonsterTable(unittest.TestCase):
                 elif idx == "ochre-jelly":
                     self.assertEqual(t["condition_immunities"], ["blinded", "charmed", "blinded", "exhaustion", "frightened", "prone"])
                     self.assertEqual(d["condition_immunities"], ["blinded", "charmed", "deafened", "exhaustion", "frightened", "prone"])
+                elif idx == "black-pudding":
+                    self.assertEqual(t["condition_immunities"], ["blinded", "charmed", "exhaustion", "frightened", "prone"])
+                    self.assertEqual(d["condition_immunities"], ["blinded", "charmed", "deafened", "exhaustion", "frightened", "prone"])
+                elif idx == "shambling-mound":
+                    self.assertEqual(t["condition_immunities"], ["blinded", "blinded", "exhaustion"])
+                    self.assertEqual(d["condition_immunities"], ["blinded", "deafened", "exhaustion"])
                 else:
                     self.assertEqual(d.get("condition_immunities", []), t["condition_immunities"])
                 self.assertEqual(d["proficiency_bonus"], 2 if t["cr"] <= 4 else 3)   # SRD: CR 0-4 +2, CR 5-8 +3 (medusa, CR 6)
@@ -144,6 +178,18 @@ class MonsterTable(unittest.TestCase):
             t, d = TABLE[idx], load(idx)
             attacks = [a for a in d["actions"] if a["kind"] in ("melee_weapon_attack", "ranged_weapon_attack")]
             for ta in t["attacks"]:
+                if (idx, ta["name"]) in DESCRIPTION_ONLY_ATTACKS:
+                    continue
+                if not ta["damage_options"]:
+                    # Damageless weapon attack (roper Tendril): B5 no_damage grapple, no damage array.
+                    with self.subTest(monster=idx, attack=ta["name"], damage=()):
+                        self.assertTrue(
+                            any(a["to_hit"] == ta["attack_bonus"] and "damage" not in a
+                                and any(isinstance(r, dict) and r.get("kind") == "grapple" and r.get("no_damage") is True
+                                        for r in a.get("on_hit") or [])
+                                for a in attacks),
+                            f"no damageless action with to_hit {ta['attack_bonus']}")
+                    continue
                 for opt in ta["damage_options"]:
                     with self.subTest(monster=idx, attack=ta["name"], damage=opt):
                         want = [dmg(x, y) for x, y in opt]
@@ -154,6 +200,14 @@ class MonsterTable(unittest.TestCase):
             known = [(ta["attack_bonus"], [dmg(x, y) for x, y in opt]) for ta in t["attacks"] for opt in ta["damage_options"]]
             for a in attacks:
                 if (idx, a["id"]) in EXTRA_ATTACKS:
+                    continue
+                if "damage" not in a:
+                    with self.subTest(monster=idx, action=a["id"]):
+                        self.assertTrue(
+                            any(ta["attack_bonus"] == a["to_hit"] and not ta["damage_options"]
+                                for ta in t["attacks"]
+                                if (idx, ta["name"]) not in DESCRIPTION_ONLY_ATTACKS),
+                            "damageless attack is not in the table")
                     continue
                 with self.subTest(monster=idx, action=a["id"]):
                     self.assertIn((a["to_hit"], a["damage"]), known)
@@ -230,11 +284,14 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(bite["on_hit"][0]["damage"], [{"dice": "3d6", "type": "poison"}])
         self.assertEqual((bite["on_hit"][0]["save"], bite["on_hit"][0]["on_success"]), ({"ability": "con", "dc": 11}, "half"))
         self.assertEqual(load("skeleton")["damage_vulnerabilities"], ["bludgeoning"])
-        # Pack Tactics (common@1 open kind pack_tactics, sim #127): one declaration, no fields
-        for idx in ("jackal", "kobold", "wolf", "dire-wolf", "hyena", "tribal-warrior", "vulture", "blood-hawk", "lion"):
+        # Pack Tactics (common@1 open kind pack_tactics, sim #127): one declaration, no fields.
+        # Wolf also stamps Keen Hearing and Smell (CONTENT_CONVENTIONS §30); the others stay description-only.
+        for idx in ("jackal", "kobold", "dire-wolf", "hyena", "tribal-warrior", "vulture", "blood-hawk", "lion"):
             with self.subTest(monster=idx):
                 effs = [t["effect"] for t in load(idx)["traits"] if "effect" in t]
                 self.assertEqual(effs, [{"kind": "pack_tactics"}])
+        self.assertEqual([t["effect"] for t in load("wolf")["traits"] if "effect" in t],
+                         [{"kind": "keen_senses", "senses": ["hearing", "smell"]}, {"kind": "pack_tactics"}])
         # bite knock-prone rider (sim #133): on_hit save_condition, Str DC 11 / 13, prone untimed (ends when the target
         # stands up; applied untracked like Shove)
         for idx, dc in (("wolf", 11), ("dire-wolf", 13), ("mastiff", 11)):
@@ -1224,14 +1281,13 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual((sword["to_hit"], sword["damage"]), (4, [{"dice": "1d6+2", "type": "piercing"}]))
         self.assertEqual((bow["to_hit"], bow["range"], bow["damage"]),
                          (4, [30, 120], [{"dice": "1d6+2", "type": "piercing"}]))
-        self.assertFalse((PACK / "monsters" / "sea_hag.json").exists())
         self.assertFalse((PACK / "monsters" / "mimic.json").exists())
 
     def test_cr2_batch_l(self):
         # CR 2 batch L. Grick's multiattack is unconditional; the hit-gate stays text. Swarm poison
         # rides the same Bites as half_hp_damage. Blinding Spittle is a point sphere, recharge 5.
         # Will-o'-wisp's other actions stay text. Ochre Jelly Split is a trait, not a spawn.
-        # Sea hag, mimic, doppelganger and green hag stay deferred.
+        # Mimic and doppelganger stay deferred. Sea hag and green hag left when their stat blocks were authored.
 
         def trait(idx, tid):
             return {t["id"]: t for t in load(idx)["traits"]}[tid]
@@ -1342,14 +1398,2503 @@ class MonsterTable(unittest.TestCase):
             {"dice": "2d6+2", "type": "bludgeoning"},
             {"dice": "1d6", "type": "acid"},
         ])
-        self.assertFalse((PACK / "monsters" / "sea_hag.json").exists())
         self.assertFalse((PACK / "monsters" / "mimic.json").exists())
         self.assertFalse((PACK / "monsters" / "doppelganger.json").exists())
-        self.assertFalse((PACK / "monsters" / "green_hag.json").exists())
+    def test_cr3_batch_m(self):
+        # CR 3 batch M. Giant scorpion is the giant-crab grapple (max_grapples 2, no restrain)
+        # plus the scorpion / giant-spider poison rider (no zero_hp), with claw repeated in Multiattack.
+        # Minotaur has no Multiattack: one greataxe or one gore. Charge copies the minotaur-skeleton
+        # gore on_hit; the push stays text. Reckless is the berserker reckless_attack.
+        # Hell hound and winter wolf breaths are the mephit cone with the wyrmling recharge (min 5).
+        # Printed Perception is expertise (Wis mod + 2*PB), so it is not a PRINTED_SKILL_TOTALS entry
+        # (unlike priest Religion). Mimic and doppelganger stay deferred. Sea hag and green hag left when their stat blocks were authored.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        moved = [{"kind": "moved_at_least_ft", "ft": 10}]
+
+        scorp = load("giant-scorpion")
+        self.assertEqual((scorp["size"], scorp["type"], scorp["hands"]), ("large", "beast", 0))
+        self.assertEqual(scorp["armor_class"]["value"], 15)
+        self.assertEqual(scorp["natural_armor"], {"base": 14, "dex": True})
+        self.assertEqual(scorp["hit_points"], {"average": 52, "formula": "7d10+14"})
+        self.assertEqual(scorp["speed"], {"walk": 40})
+        self.assertEqual(scorp["senses"], {"blindsight": 60, "passive_perception": 9})
+        self.assertNotIn("skills", scorp)
+        self.assertEqual(opts("giant-scorpion"), {"claws_sting": ["claw", "claw", "sting"]})
+        claw = act("giant-scorpion", "claw")
+        self.assertEqual(claw["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual((claw["to_hit"], claw["damage"]), (4, [{"dice": "1d8+2", "type": "bludgeoning"}]))
+        self.assertEqual(claw["on_hit"], [{"kind": "grapple", "escape_dc": 12, "max_grapples": 2}])
+        self.assertNotIn("restrains", claw["on_hit"][0])
+        self.assertNotIn("attack_bonus", claw)
+        sting = act("giant-scorpion", "sting")
+        self.assertEqual(sting["natural"], {"dice": "1d10", "ability": "str"})
+        self.assertEqual((sting["to_hit"], sting["damage"]), (4, [{"dice": "1d10+2", "type": "piercing"}]))
+        self.assertEqual(sting["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "con", "dc": 12},
+            "damage": [{"dice": "4d10", "type": "poison"}],
+            "on_success": "half",
+        }])
+        self.assertNotIn("zero_hp", sting["on_hit"][0])
+
+        mino = load("minotaur")
+        self.assertEqual((mino["size"], mino["type"]), ("large", "monstrosity"))
+        self.assertEqual(mino["armor_class"]["value"], 14)
+        self.assertEqual(mino["natural_armor"], {"base": 14, "dex": True})
+        self.assertEqual(mino["hit_points"], {"average": 76, "formula": "9d10+27"})
+        self.assertEqual(mino["skills"], {"perception": 7})
+        self.assertEqual(mino["senses"], {"darkvision": 60, "passive_perception": 17})
+        self.assertNotIn("passive_perception_reason", mino)
+        self.assertEqual(mino["hands"], 2)
+        self.assertEqual(mino["weapon_dice_multiplier"], 2)
+        self.assertEqual([e["item"] for e in mino["equipment"]], ["srd51.item.greataxe"])
+        self.assertNotIn("multiattack", {t["id"] for t in mino["traits"]})
+        self.assertEqual([a["id"] for a in mino["actions"]], ["greataxe", "gore"])
+        self.assertEqual([t["effect"] for t in mino["traits"] if "effect" in t], [{"kind": "reckless_attack"}])
+        self.assertNotIn("effect", trait("minotaur", "charge"))
+        self.assertNotIn("effect", trait("minotaur", "labyrinthine_recall"))
+        self.assertIn("straight toward", trait("minotaur", "charge")["description"])
+        self.assertIn("pushed up to 10 ft.", trait("minotaur", "charge")["description"])
+        axe = act("minotaur", "greataxe")
+        self.assertEqual(axe["weapon"], "srd51.item.greataxe")
+        self.assertEqual(axe["use"], "two_hands")
+        self.assertNotIn("natural", axe)
+        self.assertEqual((axe["to_hit"], axe["damage"]), (6, [{"dice": "2d12+4", "type": "slashing"}]))
+        self.assertNotIn("attack_bonus", axe)
+        gore = act("minotaur", "gore")
+        self.assertEqual(gore["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual((gore["to_hit"], gore["damage"]), (6, [{"dice": "2d8+4", "type": "piercing"}]))
+        self.assertEqual(gore["on_hit"], act("minotaur-skeleton", "gore")["on_hit"])
+        self.assertEqual(gore["on_hit"], [
+            {"kind": "extra_damage", "damage": [{"dice": "2d8", "type": "piercing"}], "when": moved},
+            {"kind": "save_condition", "save": {"ability": "str", "dc": 14},
+             "apply": [{"condition": "prone"}], "when": moved},
+        ])
+        self.assertNotIn("forced_move", json.dumps(mino))
+
+        hound = load("hell-hound")
+        self.assertEqual((hound["size"], hound["type"]), ("medium", "fiend"))
+        self.assertEqual(hound["armor_class"]["value"], 15)
+        self.assertEqual(hound["natural_armor"], {"base": 14, "dex": True})
+        self.assertEqual(hound["hit_points"], {"average": 45, "formula": "7d8+14"})
+        self.assertEqual(hound["speed"], {"walk": 50})
+        self.assertEqual(hound["skills"], {"perception": 5})
+        self.assertEqual(hound["damage_immunities"], ["fire"])
+        self.assertEqual(hound["senses"], {"darkvision": 60, "passive_perception": 15})
+        self.assertNotIn("passive_perception_reason", hound)
+        self.assertNotIn("effect", trait("hell-hound", "keen_hearing_and_smell"))
+        self.assertEqual([t["effect"] for t in hound["traits"] if "effect" in t], [{"kind": "pack_tactics"}])
+        bite = act("hell-hound", "bite")
+        self.assertEqual(bite["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual((bite["to_hit"], bite["damage"]), (5, [
+            {"dice": "1d8+3", "type": "piercing"},
+            {"dice": "2d6", "type": "fire"},
+        ]))
+        self.assertNotIn("attack_bonus", bite)
+        self.assertNotIn("on_hit", bite)
+        breath = act("hell-hound", "fire_breath")
+        self.assertEqual((breath["kind"], breath["origin"]), ("save_effect", "self"))
+        self.assertEqual(breath["area"], {"shape": "cone", "size_ft": 15})
+        self.assertEqual(breath["save"], {"ability": "dex", "dc": 12})
+        self.assertEqual(breath["damage"], [{"dice": "6d6", "type": "fire"}])
+        self.assertEqual((breath["on_success"], breath["usage"]), ("half", {"kind": "recharge", "min": 5}))
+
+        wolf = load("winter-wolf")
+        self.assertEqual((wolf["size"], wolf["type"]), ("large", "monstrosity"))
+        self.assertEqual(wolf["armor_class"]["value"], 13)
+        self.assertEqual(wolf["natural_armor"], {"base": 12, "dex": True})
+        self.assertEqual(wolf["hit_points"], {"average": 75, "formula": "10d10+20"})
+        self.assertEqual(wolf["speed"], {"walk": 50})
+        self.assertEqual(wolf["skills"], {"perception": 5, "stealth": 3})
+        self.assertEqual(wolf["damage_immunities"], ["cold"])
+        self.assertEqual(wolf["senses"], {"passive_perception": 15})
+        self.assertNotIn("darkvision", wolf["senses"])
+        self.assertNotIn("passive_perception_reason", wolf)
+        self.assertNotIn("effect", trait("winter-wolf", "keen_hearing_and_smell"))
+        self.assertNotIn("effect", trait("winter-wolf", "snow_camouflage"))
+        self.assertEqual([t["effect"] for t in wolf["traits"] if "effect" in t], [{"kind": "pack_tactics"}])
+        wb = act("winter-wolf", "bite")
+        self.assertEqual(wb["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual((wb["to_hit"], wb["damage"]), (6, [{"dice": "2d6+4", "type": "piercing"}]))
+        self.assertEqual(wb["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "str", "dc": 14},
+            "apply": [{"condition": "prone"}],
+        }])
+        cold = act("winter-wolf", "cold_breath")
+        self.assertEqual((cold["kind"], cold["origin"]), ("save_effect", "self"))
+        self.assertEqual(cold["area"], {"shape": "cone", "size_ft": 15})
+        self.assertEqual(cold["save"], {"ability": "dex", "dc": 12})
+        self.assertEqual(cold["damage"], [{"dice": "4d8", "type": "cold"}])
+        self.assertEqual((cold["on_success"], cold["usage"]), ("half", {"kind": "recharge", "min": 5}))
+
+        for idx in ("mimic", "doppelganger"):
+            self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
+
+    def test_cr3_batch_n(self):
+        # CR 3 batch N. Manticore is green: Tail Spike Regrowth's 24-spike count is text only.
+        # Werewolf is the humanoid form (wererat pattern). Phase spider Ethereal Jaunt is text only.
+        # Mimic and doppelganger stay deferred. Sea hag and green hag left when their stat blocks were authored.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        manticore = load("manticore")
+        self.assertEqual((manticore["size"], manticore["type"], manticore["hands"]), ("large", "monstrosity", 0))
+        self.assertEqual(manticore["alignment"], "lawful evil")
+        self.assertEqual(manticore["natural_armor"], {"base": 11, "dex": True})
+        self.assertEqual(manticore["armor_class"]["value"], 14)
+        self.assertEqual(manticore["speed"], {"walk": 30, "fly": 50})
+        self.assertNotIn("hover", manticore["speed"])
+        self.assertEqual(manticore["senses"], {"darkvision": 60, "passive_perception": 11})
+        self.assertEqual(manticore["languages"], [])
+        self.assertNotIn("skills", manticore)
+        self.assertNotIn("effect", trait("manticore", "tail_spike_regrowth"))
+        self.assertIn("unlimited", trait("manticore", "tail_spike_regrowth")["description"])
+        self.assertEqual(opts("manticore"), {
+            "bite_claws": ["bite", "claw", "claw"],
+            "tail_spikes": ["tail_spike", "tail_spike", "tail_spike"],
+        })
+        self.assertEqual(act("manticore", "bite")["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual(act("manticore", "claw")["natural"], {"dice": "1d6", "ability": "str"})
+        spike = act("manticore", "tail_spike")
+        self.assertEqual(spike["kind"], "ranged_weapon_attack")
+        self.assertEqual(spike["natural"], {"dice": "1d8", "ability": "dex"})
+        self.assertEqual((spike["to_hit"], spike["range"], spike["damage"]),
+                         (5, [100, 200], [{"dice": "1d8+3", "type": "piercing"}]))
+        self.assertNotIn("weapon", spike)
+        self.assertNotIn("usage", json.dumps(manticore))
+
+        wolf = load("werewolf")
+        self.assertIs(wolf["shapechanger"], True)
+        self.assertEqual((wolf["size"], wolf["type"], wolf["tags"]), ("medium", "humanoid", ["human", "shapechanger"]))
+        self.assertEqual(wolf["alignment"], "chaotic evil")
+        self.assertEqual((wolf["armor_class"], wolf["hands"], wolf["speed"]), ({"value": 11}, 2, {"walk": 30}))
+        self.assertNotIn("natural_armor", wolf)
+        self.assertEqual(wolf["equipment"], [{"item": "srd51.item.spear", "equipped": True}])
+        self.assertEqual(wolf["skills"], {"perception": 4})
+        self.assertEqual(wolf["senses"], {"passive_perception": 14})
+        self.assertNotIn("darkvision", wolf["senses"])
+        self.assertEqual(wolf["languages"], ["Common"])
+        self.assertNotIn("damage_immunities", wolf)
+        self.assertEqual(trait("werewolf", "damage_immunities_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "immunities": {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", trait("werewolf", "shapechanger"))
+        self.assertNotIn("forms", trait("werewolf", "shapechanger"))
+        self.assertIn("wolf form speed 40", trait("werewolf", "shapechanger")["description"])
+        self.assertIn("hybrid/wolf AC 12", trait("werewolf", "shapechanger")["description"])
+        self.assertNotIn("effect", trait("werewolf", "keen_hearing_and_smell"))
+        self.assertEqual(opts("werewolf"), {
+            "spear_x2": ["spear", "spear"],
+            "spear_two_handed_x2": ["spear_two_handed", "spear_two_handed"],
+            "spear_thrown_x2": ["spear_thrown", "spear_thrown"],
+        })
+        self.assertEqual(act("werewolf", "bite")["kind"], "special")
+        self.assertNotIn("natural", act("werewolf", "bite"))
+        self.assertIn("lycanthropy", act("werewolf", "bite")["description"])
+        self.assertEqual(act("werewolf", "claws")["kind"], "special")
+        self.assertNotIn("natural", act("werewolf", "claws"))
+        self.assertIn("2d4 + 2", act("werewolf", "claws")["description"])
+        spear = act("werewolf", "spear")
+        two = act("werewolf", "spear_two_handed")
+        thrown = act("werewolf", "spear_thrown")
+        self.assertEqual(spear["weapon"], "srd51.item.spear")
+        self.assertEqual(spear["ability"], "str")
+        self.assertEqual((spear["to_hit"], spear["damage"]), (4, [{"dice": "1d6+2", "type": "piercing"}]))
+        self.assertEqual((two["use"], two["to_hit"], two["damage"]),
+                         ("two_hands", 4, [{"dice": "1d8+2", "type": "piercing"}]))
+        self.assertEqual((thrown["use"], thrown["range"], thrown["damage"]),
+                         ("thrown", [20, 60], [{"dice": "1d6+2", "type": "piercing"}]))
+
+        spider = load("phase-spider")
+        self.assertEqual((spider["size"], spider["type"], spider["alignment"], spider["hands"]),
+                         ("large", "monstrosity", "unaligned", 0))
+        self.assertEqual(spider["natural_armor"], {"base": 11, "dex": True})
+        self.assertEqual(spider["armor_class"]["value"], 13)
+        self.assertEqual(spider["speed"], {"walk": 30, "climb": 30})
+        self.assertEqual(spider["skills"], {"stealth": 6})
+        self.assertNotIn("passive_perception_reason", spider)
+        self.assertEqual(spider["senses"], {"darkvision": 60, "passive_perception": 10})
+        self.assertEqual(spider["languages"], [])
+        self.assertNotIn("effect", trait("phase-spider", "ethereal_jaunt"))
+        self.assertIn("no Ethereal Plane", trait("phase-spider", "ethereal_jaunt")["description"])
+        self.assertNotIn("effect", trait("phase-spider", "spider_climb"))
+        self.assertNotIn("effect", trait("phase-spider", "web_walker"))
+        self.assertNotIn("web_sense", {t["id"] for t in spider["traits"]})
+        self.assertNotIn("bonus_actions", spider)
+        self.assertEqual([a["id"] for a in spider["actions"]], ["bite"])
+        bite = act("phase-spider", "bite")
+        self.assertEqual(bite["natural"], {"dice": "1d10", "ability": "str"})
+        self.assertEqual((bite["to_hit"], bite["damage"]), (4, [{"dice": "1d10+2", "type": "piercing"}]))
+        self.assertIn("one creature", bite["description"])
+        self.assertEqual(bite["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "con", "dc": 11},
+            "damage": [{"dice": "4d8", "type": "poison"}],
+            "on_success": "half",
+            "zero_hp": {
+                "condition": "poisoned",
+                "while": "paralyzed",
+                "duration": {"kind": "rounds", "n": 600},
+            },
+        }])
+        self.assertFalse((PACK / "monsters" / "mimic.json").exists())
+        self.assertFalse((PACK / "monsters" / "doppelganger.json").exists())
+    def test_cr4_batch_o(self):
+        # CR 4 batch O. Black Pudding is an honest partial (ochre jelly / gray ooze): Split, Amorphous,
+        # Spider Climb, Corrosive Form contact acid, and armor/weapon corrosion stay description only.
+        # Deafened follows the SRD line; a6212be omits it. Elephant Stomp is description only.
+        # Trampling Charge is the gore's on_hit (lion / elk), not any melee hit. Ettin weapons are naturals.
+        # Chuul and ghost were new deferrals. Ghost left when the stat block was authored (test_ghost). The standing four stay deferred.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        pudding = load("black-pudding")
+        self.assertEqual((pudding["size"], pudding["type"], pudding["alignment"], pudding["hands"]),
+                         ("large", "ooze", "unaligned", 0))
+        self.assertEqual(pudding["armor_class"], {"value": 7})
+        self.assertNotIn("natural_armor", pudding)
+        self.assertEqual(pudding["speed"], {"walk": 20, "climb": 20})
+        self.assertEqual(pudding["damage_immunities"], ["acid", "cold", "lightning", "slashing"])
+        self.assertNotIn("damage_resistances", pudding)
+        self.assertEqual(pudding["senses"], {"blindsight": 60, "passive_perception": 8})
+        self.assertIsInstance(pudding["senses"]["blindsight"], int)
+        self.assertEqual(pudding["languages"], [])
+        self.assertNotIn("reactions", pudding)
+        for tid in ("amorphous", "corrosive_form", "spider_climb", "split"):
+            self.assertNotIn("effect", trait("black-pudding", tid))
+        self.assertIn("1d8", trait("black-pudding", "corrosive_form")["description"])
+        self.assertIn("Descriptive only", trait("black-pudding", "corrosive_form")["description"])
+        self.assertIn("no creature-spawn", trait("black-pudding", "split")["description"])
+        self.assertEqual([a["id"] for a in pudding["actions"]], ["pseudopod"])
+        pod = act("black-pudding", "pseudopod")
+        self.assertEqual(pod["natural"], {"dice": "1d6", "ability": "str"})
+        self.assertNotIn("attack_bonus", pod)
+        self.assertEqual((pod["to_hit"], pod["damage"]), (5, [
+            {"dice": "1d6+3", "type": "bludgeoning"},
+            {"dice": "4d8", "type": "acid"},
+        ]))
+        self.assertIn("armor", pod["description"])
+        self.assertIn("descriptive only", pod["description"])
+
+        elephant = load("elephant")
+        self.assertEqual((elephant["size"], elephant["type"], elephant["alignment"], elephant["hands"]),
+                         ("huge", "beast", "unaligned", 0))
+        self.assertEqual(elephant["natural_armor"], {"base": 13, "dex": True})
+        self.assertEqual(elephant["armor_class"]["value"], 12)
+        self.assertEqual(elephant["speed"], {"walk": 40})
+        self.assertEqual(elephant["senses"], {"passive_perception": 10})
+        self.assertEqual(elephant["languages"], [])
+        self.assertNotIn("skills", elephant)
+        self.assertNotIn("effect", trait("elephant", "trampling_charge"))
+        charge = trait("elephant", "trampling_charge")["description"]
+        self.assertIn("straight toward", charge)
+        self.assertIn("gore", charge)
+        self.assertIn("3d10 + 6", charge)
+        self.assertIn("not an action", charge)
+        self.assertNotIn("extra_damage", json.dumps(elephant))
+        self.assertEqual([a["id"] for a in elephant["actions"]], ["gore"])
+        gore = act("elephant", "gore")
+        self.assertEqual(gore["natural"], {"dice": "3d8", "ability": "str"})
+        self.assertEqual((gore["to_hit"], gore["damage"]), (8, [{"dice": "3d8+6", "type": "piercing"}]))
+        self.assertNotIn("attack_bonus", gore)
+        self.assertEqual(gore["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "str", "dc": 12},
+            "apply": [{"condition": "prone"}],
+            "when": [{"kind": "moved_at_least_ft", "ft": 20}],
+        }])
+        self.assertEqual([a["name"] for a in TABLE["elephant"]["attacks"]], ["Gore", "Stomp"])
+
+        ettin = load("ettin")
+        self.assertEqual((ettin["size"], ettin["type"], ettin["alignment"], ettin["hands"]),
+                         ("large", "giant", "chaotic evil", 0))
+        self.assertEqual(ettin["natural_armor"], {"base": 13, "dex": True})
+        self.assertEqual(ettin["armor_class"]["value"], 12)
+        self.assertEqual(ettin["speed"], {"walk": 40})
+        self.assertEqual(ettin["skills"], {"perception": 4})
+        self.assertNotIn("passive_perception_reason", ettin)
+        self.assertEqual(ettin["senses"], {"darkvision": 60, "passive_perception": 14})
+        self.assertEqual(ettin["languages"], ["Giant", "Orc"])
+        self.assertNotIn("equipment", ettin)
+        self.assertEqual(trait("ettin", "two_heads")["effect"], {
+            "kind": "save_advantage",
+            "save_vs_conditions": ["blinded", "charmed", "deafened", "frightened", "stunned", "unconscious"],
+        })
+        self.assertIn("Perception", trait("ettin", "two_heads")["description"])
+        self.assertNotIn("effect", trait("ettin", "wakeful"))
+        self.assertEqual(opts("ettin"), {"battleaxe_morningstar": ["battleaxe", "morningstar"]})
+        axe = act("ettin", "battleaxe")
+        star = act("ettin", "morningstar")
+        self.assertEqual(axe["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual(star["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertNotIn("weapon", axe)
+        self.assertNotIn("weapon", star)
+        self.assertEqual((axe["to_hit"], axe["damage"]), (7, [{"dice": "2d8+5", "type": "slashing"}]))
+        self.assertEqual((star["to_hit"], star["damage"]), (7, [{"dice": "2d8+5", "type": "piercing"}]))
+
+        for idx in ("mimic", "doppelganger"):
+            self.assertNotIn(idx, TABLE)
+            self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
+
+    def test_cr4_batch_p(self):
+        # CR 4 batch P. Wereboar and weretiger are the humanoid forms (wererat / werewolf pattern).
+        # Lamia intoxicating touch and innate spells are text only. Couatl Magic Weapons is live.
+        # Succubus left when the stat block was authored (test_succubus). Mimic and doppelganger stay deferred. Sea hag and green hag left when their stat blocks were authored.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        boar = load("wereboar")
+        self.assertIs(boar["shapechanger"], True)
+        self.assertEqual((boar["size"], boar["type"], boar["tags"], boar["alignment"]),
+                         ("medium", "humanoid", ["human", "shapechanger"], "neutral evil"))
+        self.assertEqual((boar["armor_class"], boar["hands"], boar["speed"]), ({"value": 10}, 2, {"walk": 30}))
+        self.assertNotIn("natural_armor", boar)
+        self.assertEqual(boar["equipment"], [{"item": "srd51.item.maul", "equipped": True}])
+        self.assertEqual(boar["hit_points"], {"average": 78, "formula": "12d8+24"})
+        self.assertEqual(boar["skills"], {"perception": 2})
+        self.assertEqual(boar["senses"], {"passive_perception": 12})
+        self.assertNotIn("darkvision", boar["senses"])
+        self.assertNotIn("damage_immunities", boar)
+        self.assertEqual(trait("wereboar", "damage_immunities_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "immunities": {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", trait("wereboar", "shapechanger"))
+        self.assertIn("boar form speed 40", trait("wereboar", "shapechanger")["description"])
+        self.assertIn("hybrid/boar AC 11", trait("wereboar", "shapechanger")["description"])
+        self.assertNotIn("effect", trait("wereboar", "charge"))
+        self.assertIn("15 feet", trait("wereboar", "charge")["description"])
+        rel = trait("wereboar", "relentless")
+        self.assertEqual(rel["name"], "Relentless (Recharges after a Short or Long Rest)")
+        self.assertEqual(rel["effect"], {
+            "kind": "on_event",
+            "on": "drop_to_zero",
+            "when": [{"kind": "damage_at_most", "amount": 14}],
+            "usage": {"kind": "per_rest", "uses": 1, "rest": "short"},
+            "effects": [{"kind": "set_hp", "value": 1}],
+        })
+        self.assertEqual(opts("wereboar"), {"maul_x2": ["maul", "maul"]})
+        maul = act("wereboar", "maul")
+        self.assertEqual((maul["weapon"], maul["use"], maul["to_hit"], maul["damage"]),
+                         ("srd51.item.maul", "two_hands", 5, [{"dice": "2d6+3", "type": "bludgeoning"}]))
+        self.assertEqual(act("wereboar", "tusks")["kind"], "special")
+        self.assertNotIn("natural", act("wereboar", "tusks"))
+        self.assertIn("lycanthropy", act("wereboar", "tusks")["description"])
+
+        tiger = load("weretiger")
+        self.assertIs(tiger["shapechanger"], True)
+        self.assertEqual((tiger["size"], tiger["type"], tiger["tags"], tiger["alignment"]),
+                         ("medium", "humanoid", ["human", "shapechanger"], "neutral"))
+        self.assertEqual((tiger["armor_class"], tiger["hands"], tiger["speed"]), ({"value": 12}, 2, {"walk": 30}))
+        self.assertNotIn("natural_armor", tiger)
+        self.assertEqual(tiger["equipment"], [
+            {"item": "srd51.item.scimitar", "equipped": True},
+            {"item": "srd51.item.longbow"},
+        ])
+        self.assertEqual(tiger["hit_points"], {"average": 120, "formula": "16d8+48"})
+        self.assertEqual(tiger["skills"], {"perception": 5, "stealth": 4})
+        self.assertEqual(tiger["senses"], {"darkvision": 60, "passive_perception": 15})
+        self.assertNotIn("damage_immunities", tiger)
+        self.assertEqual(trait("weretiger", "damage_immunities_nonmagical")["effect"]["immunities"],
+                         {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]})
+        self.assertNotIn("effect", trait("weretiger", "shapechanger"))
+        self.assertIn("tiger form speed 40", trait("weretiger", "shapechanger")["description"])
+        self.assertNotIn("effect", trait("weretiger", "keen_hearing_and_smell"))
+        self.assertNotIn("effect", trait("weretiger", "pounce"))
+        self.assertIn("DC 14", trait("weretiger", "pounce")["description"])
+        self.assertEqual(opts("weretiger"), {
+            "scimitar_x2": ["scimitar", "scimitar"],
+            "longbow_x2": ["longbow", "longbow"],
+        })
+        scimitar = act("weretiger", "scimitar")
+        self.assertEqual((scimitar["weapon"], scimitar["ability"], scimitar["to_hit"], scimitar["damage"]),
+                         ("srd51.item.scimitar", "str", 5, [{"dice": "1d6+3", "type": "slashing"}]))
+        bow = act("weretiger", "longbow")
+        self.assertEqual((bow["weapon"], bow["ability"], bow["to_hit"], bow["range"], bow["damage"]),
+                         ("srd51.item.longbow", "dex", 4, [150, 600], [{"dice": "1d8+2", "type": "piercing"}]))
+        self.assertEqual(act("weretiger", "bite")["kind"], "special")
+        self.assertIn("lycanthropy", act("weretiger", "bite")["description"])
+        self.assertEqual(act("weretiger", "claw")["kind"], "special")
+        self.assertNotIn("natural", act("weretiger", "claw"))
+
+        lamia = load("lamia")
+        self.assertNotIn("shapechanger", lamia)
+        self.assertEqual((lamia["size"], lamia["type"], lamia["alignment"], lamia["hands"]),
+                         ("large", "monstrosity", "chaotic evil", 2))
+        self.assertEqual(lamia["natural_armor"], {"base": 12, "dex": True})
+        self.assertEqual(lamia["armor_class"]["value"], 13)
+        self.assertEqual(lamia["hit_points"], {"average": 97, "formula": "13d10+26"})
+        self.assertEqual(lamia["speed"], {"walk": 30})
+        self.assertEqual(lamia["skills"], {"deception": 7, "insight": 4, "stealth": 3})
+        self.assertEqual(lamia["senses"], {"darkvision": 60, "passive_perception": 12})
+        self.assertEqual(lamia["languages"], ["Abyssal", "Common"])
+        self.assertEqual(lamia["equipment"], [{"item": "srd51.item.dagger", "equipped": True}])
+        self.assertNotIn("effect", trait("lamia", "innate_spellcasting"))
+        self.assertNotIn("spellcasting", lamia)
+        self.assertIn("geas", trait("lamia", "innate_spellcasting")["description"])
+        self.assertEqual(opts("lamia"), {"claws_dagger": ["claws", "dagger"]})
+        self.assertNotIn("intoxicating_touch", opts("lamia")["claws_dagger"])
+        claws = act("lamia", "claws")
+        self.assertEqual(claws["natural"], {"dice": "2d10", "ability": "str"})
+        self.assertEqual((claws["to_hit"], claws["damage"]), (5, [{"dice": "2d10+3", "type": "slashing"}]))
+        dagger = act("lamia", "dagger")
+        self.assertEqual((dagger["weapon"], dagger["ability"], dagger["to_hit"], dagger["damage"]),
+                         ("srd51.item.dagger", "str", 5, [{"dice": "1d4+3", "type": "piercing"}]))
+        self.assertNotIn("use", dagger)
+        touch = act("lamia", "intoxicating_touch")
+        self.assertEqual(touch["kind"], "special")
+        self.assertNotIn("effect", touch)
+        self.assertIn("disadvantage on Wisdom", touch["description"])
+
+        couatl = load("couatl")
+        self.assertNotIn("shapechanger", couatl)
+        self.assertEqual((couatl["size"], couatl["type"], couatl["alignment"], couatl["hands"]),
+                         ("medium", "celestial", "lawful good", 0))
+        self.assertEqual(couatl["natural_armor"], {"base": 14, "dex": True})
+        self.assertEqual(couatl["armor_class"]["value"], 19)
+        self.assertEqual(couatl["hit_points"], {"average": 97, "formula": "13d8+39"})
+        self.assertEqual(couatl["speed"], {"walk": 30, "fly": 90})
+        self.assertNotIn("hover", couatl["speed"])
+        self.assertEqual(couatl["saving_throws"], {"con": 5, "wis": 7, "cha": 6})
+        self.assertEqual(couatl["damage_resistances"], ["radiant"])
+        self.assertEqual(couatl["damage_immunities"], ["psychic"])
+        self.assertEqual(couatl["senses"], {"truesight": 120, "passive_perception": 15})
+        self.assertEqual(couatl["languages"], ["all", "telepathy 120 ft."])
+        self.assertNotIn("spellcasting", couatl)
+        self.assertNotIn("effect", trait("couatl", "innate_spellcasting"))
+        self.assertNotIn("effect", trait("couatl", "shielded_mind"))
+        self.assertEqual(trait("couatl", "magic_weapons")["effect"], {"kind": "magic_weapons"})
+        self.assertEqual(trait("couatl", "damage_immunities_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "immunities": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertFalse(any(t.get("effect", {}).get("kind") == "multiattack" for t in couatl["traits"]))
+        bite = act("couatl", "bite")
+        self.assertEqual(bite["natural"], {"dice": "1d6", "ability": "dex"})
+        self.assertEqual(bite["attack_bonus"]["value"], 8)
+        self.assertEqual((bite["to_hit"], bite["damage"]), (8, [{"dice": "1d6+5", "type": "piercing"}]))
+        self.assertEqual(bite["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "con", "dc": 13},
+            "apply": [{"condition": "poisoned", "duration": {"kind": "rounds", "n": 14400}}],
+        }])
+        self.assertIn("unconscious", bite["description"])
+        constrict = act("couatl", "constrict")
+        self.assertEqual(constrict["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual(constrict["attack_bonus"]["value"], 6)
+        self.assertEqual((constrict["to_hit"], constrict["reach"], constrict["damage"]),
+                         (6, 10, [{"dice": "2d6+3", "type": "bludgeoning"}]))
+        self.assertEqual(constrict["on_hit"], [{
+            "kind": "grapple", "escape_dc": 15, "restrains": True, "exclusive": True,
+        }])
+        self.assertNotIn("max_size", constrict["on_hit"][0])
+        self.assertIn("Medium or smaller", constrict["description"])
+        shape = act("couatl", "change_shape")
+        self.assertEqual(shape["kind"], "special")
+        self.assertNotIn("effect", shape)
+        self.assertIn("shapechanger is not set", shape["description"])
+
+        for idx in ("mimic", "doppelganger", "succubus-incubus"):
+            self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
+
+    def test_cr5_batch_q(self):
+        # CR 5 batch Q. Triceratops follows elephant (Stomp description only). Giant crocodile
+        # follows crocodile (bite grapple) plus a tail prone save; the not-grappled clause stays
+        # in the text. Giant shark follows hunter shark (Blood Frenzy description only, swim-only).
+        # Bulette left this list (test_bulette). Otyugh left this list (test_otyugh). Troll left this list (test_troll_regen_content). The standing seven stay deferred.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        tri = load("triceratops")
+        self.assertEqual((tri["size"], tri["type"], tri["alignment"], tri["hands"]),
+                         ("huge", "beast", "unaligned", 0))
+        self.assertEqual(tri["natural_armor"], {"base": 14, "dex": True})
+        self.assertEqual(tri["armor_class"]["value"], 13)
+        self.assertEqual(tri["hit_points"], {"average": 95, "formula": "10d12+30"})
+        self.assertEqual(tri["speed"], {"walk": 50})
+        self.assertEqual(tri["abilities"], {"str": 22, "dex": 9, "con": 17, "int": 2, "wis": 11, "cha": 5})
+        self.assertEqual(tri["senses"], {"passive_perception": 10})
+        self.assertEqual(tri["languages"], [])
+        self.assertEqual(tri["proficiency_bonus"], 3)
+        self.assertNotIn("skills", tri)
+        self.assertNotIn("effect", trait("triceratops", "trampling_charge"))
+        charge = trait("triceratops", "trampling_charge")["description"]
+        self.assertIn("DC 13", charge)
+        self.assertIn("3d10 + 6", charge)
+        self.assertIn("not an action", charge)
+        self.assertNotIn("extra_damage", json.dumps(tri))
+        self.assertEqual([a["id"] for a in tri["actions"]], ["gore"])
+        gore = act("triceratops", "gore")
+        self.assertEqual(gore["natural"], {"dice": "4d8", "ability": "str"})
+        self.assertNotIn("attack_bonus", gore)
+        self.assertEqual((gore["to_hit"], gore["damage"]), (9, [{"dice": "4d8+6", "type": "piercing"}]))
+        self.assertEqual(gore["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "str", "dc": 13},
+            "apply": [{"condition": "prone"}],
+            "when": [{"kind": "moved_at_least_ft", "ft": 20}],
+        }])
+        self.assertEqual([a["name"] for a in TABLE["triceratops"]["attacks"]], ["Gore", "Stomp"])
+
+        croc = load("giant-crocodile")
+        self.assertEqual((croc["size"], croc["type"], croc["alignment"], croc["hands"]),
+                         ("huge", "beast", "unaligned", 0))
+        self.assertEqual(croc["natural_armor"], {"base": 15, "dex": True})
+        self.assertEqual(croc["armor_class"]["value"], 14)
+        self.assertEqual(croc["hit_points"], {"average": 85, "formula": "9d12+27"})
+        self.assertEqual(croc["speed"], {"walk": 30, "swim": 50})
+        self.assertEqual(croc["abilities"], {"str": 21, "dex": 9, "con": 17, "int": 2, "wis": 10, "cha": 7})
+        self.assertEqual(croc["skills"], {"stealth": 5})
+        self.assertEqual(croc["senses"], {"passive_perception": 10})
+        self.assertEqual(croc["languages"], [])
+        self.assertEqual(croc["proficiency_bonus"], 3)
+        self.assertNotIn("effect", trait("giant-crocodile", "hold_breath"))
+        self.assertIn("30 minutes", trait("giant-crocodile", "hold_breath")["description"])
+        self.assertEqual(opts("giant-crocodile"), {"bite_tail": ["bite", "tail"]})
+        bite = act("giant-crocodile", "bite")
+        tail = act("giant-crocodile", "tail")
+        self.assertEqual(bite["natural"], {"dice": "3d10", "ability": "str"})
+        self.assertEqual(tail["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertNotIn("attack_bonus", bite)
+        self.assertNotIn("attack_bonus", tail)
+        self.assertEqual((bite["to_hit"], bite["reach"], bite["damage"]),
+                         (8, 5, [{"dice": "3d10+5", "type": "piercing"}]))
+        self.assertEqual(bite["on_hit"], [{
+            "kind": "grapple", "escape_dc": 16, "restrains": True, "exclusive": True,
+        }])
+        self.assertEqual((tail["to_hit"], tail["reach"], tail["damage"]),
+                         (8, 10, [{"dice": "2d8+5", "type": "bludgeoning"}]))
+        self.assertEqual(tail["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "str", "dc": 16},
+            "apply": [{"condition": "prone"}],
+        }])
+        self.assertNotIn("target_requires_any", tail)
+        self.assertIn("not grappled by the crocodile", tail["description"])
+
+        shark = load("giant-shark")
+        self.assertEqual((shark["size"], shark["type"], shark["alignment"], shark["hands"]),
+                         ("huge", "beast", "unaligned", 0))
+        self.assertEqual(shark["natural_armor"], {"base": 13, "dex": True})
+        self.assertEqual(shark["armor_class"]["value"], 13)
+        self.assertEqual(shark["hit_points"], {"average": 126, "formula": "11d12+55"})
+        self.assertEqual(shark["speed"], {"walk": 0, "swim": 50})
+        self.assertEqual(shark["abilities"], {"str": 23, "dex": 11, "con": 21, "int": 1, "wis": 10, "cha": 5})
+        self.assertEqual(shark["skills"], {"perception": 3})
+        self.assertEqual(shark["senses"], {"blindsight": 60, "passive_perception": 13})
+        self.assertEqual(shark["languages"], [])
+        self.assertEqual(shark["proficiency_bonus"], 3)
+        self.assertNotIn("effect", trait("giant-shark", "blood_frenzy"))
+        self.assertNotIn("effect", trait("giant-shark", "water_breathing"))
+        self.assertIn("doesn't have all its hit points", trait("giant-shark", "blood_frenzy")["description"])
+        self.assertEqual([a["id"] for a in shark["actions"]], ["bite"])
+        sbite = act("giant-shark", "bite")
+        self.assertEqual(sbite["natural"], {"dice": "3d10", "ability": "str"})
+        self.assertNotIn("attack_bonus", sbite)
+        self.assertEqual((sbite["to_hit"], sbite["damage"]), (9, [{"dice": "3d10+6", "type": "piercing"}]))
+
+        for idx in ("mimic", "doppelganger"):
+            self.assertNotIn(idx, TABLE)
+            self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
+
+
+    def test_cr5_batch_r(self):
+        # CR 5 batch R. Earth, fire and salamander are honest partials. Xorn stays green.
+        # Air elemental left this list (test_air_elemental). Water elemental left this list (test_water_elemental). The standing five stay deferred.
+        # Xorn Claw is the printed 1d6 + 3 (a6212be), not 1d3.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        earth = load("earth-elemental")
+        self.assertEqual((earth["size"], earth["type"], earth["alignment"], earth["hands"]),
+                         ("large", "elemental", "neutral", 0))
+        self.assertEqual(earth["natural_armor"], {"base": 18, "dex": True})
+        self.assertEqual(earth["armor_class"]["value"], 17)
+        self.assertEqual(earth["hit_points"], {"average": 126, "formula": "12d10+60"})
+        self.assertEqual(earth["speed"], {"walk": 30, "burrow": 30})
+        self.assertEqual(earth["damage_vulnerabilities"], ["thunder"])
+        self.assertEqual(earth["damage_immunities"], ["poison"])
+        self.assertNotIn("damage_resistances", earth)
+        self.assertEqual(earth["condition_immunities"],
+                         ["exhaustion", "paralyzed", "petrified", "poisoned", "unconscious"])
+        self.assertEqual(earth["senses"], {"darkvision": 60, "tremorsense": 60, "passive_perception": 10})
+        self.assertIsInstance(earth["senses"]["tremorsense"], int)
+        self.assertEqual(earth["languages"], ["Terran"])
+        self.assertEqual(earth["proficiency_bonus"], 3)
+        self.assertEqual(trait("earth-elemental", "damage_resistances_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", trait("earth-elemental", "earth_glide"))
+        self.assertIn("Descriptive only", trait("earth-elemental", "earth_glide")["description"])
+        self.assertNotIn("effect", trait("earth-elemental", "siege_monster"))
+        self.assertIn("Descriptive only", trait("earth-elemental", "siege_monster")["description"])
+        self.assertEqual(opts("earth-elemental"), {"slam_x2": ["slam", "slam"]})
+        slam = act("earth-elemental", "slam")
+        self.assertEqual(slam["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertNotIn("attack_bonus", slam)
+        self.assertEqual((slam["to_hit"], slam["reach"], slam["damage"]),
+                         (8, 10, [{"dice": "2d8+5", "type": "bludgeoning"}]))
+
+        fire = load("fire-elemental")
+        self.assertEqual((fire["size"], fire["type"], fire["alignment"], fire["hands"]),
+                         ("large", "elemental", "neutral", 0))
+        self.assertNotIn("natural_armor", fire)
+        self.assertEqual(fire["armor_class"], {"value": 13})
+        self.assertEqual(fire["hit_points"], {"average": 102, "formula": "12d10+36"})
+        self.assertEqual(fire["speed"], {"walk": 50})
+        self.assertEqual(fire["damage_immunities"], ["fire", "poison"])
+        self.assertNotIn("damage_resistances", fire)
+        self.assertNotIn("damage_vulnerabilities", fire)
+        self.assertEqual(fire["senses"], {"darkvision": 60, "passive_perception": 10})
+        self.assertEqual(fire["languages"], ["Ignan"])
+        self.assertNotIn("emits_light", fire)
+        self.assertEqual(trait("fire-elemental", "damage_resistances_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", trait("fire-elemental", "fire_form"))
+        self.assertIn("1d10", trait("fire-elemental", "fire_form")["description"])
+        self.assertIn("Descriptive only", trait("fire-elemental", "fire_form")["description"])
+        self.assertNotIn("effect", trait("fire-elemental", "illumination"))
+        self.assertIn("not emits_light", trait("fire-elemental", "illumination")["description"])
+        self.assertNotIn("effect", trait("fire-elemental", "water_susceptibility"))
+        self.assertEqual(opts("fire-elemental"), {"touch_x2": ["touch", "touch"]})
+        touch = act("fire-elemental", "touch")
+        self.assertEqual(touch["natural"], {"dice": "2d6", "ability": "dex"})
+        self.assertNotIn("attack_bonus", touch)
+        self.assertNotIn("on_hit", touch)
+        self.assertEqual((touch["to_hit"], touch["damage"]), (6, [{"dice": "2d6+3", "type": "fire"}]))
+        self.assertIn("1d10", touch["description"])
+        self.assertIn("Descriptive only", touch["description"])
+
+        sal = load("salamander")
+        self.assertEqual((sal["size"], sal["type"], sal["alignment"], sal["hands"]),
+                         ("large", "elemental", "neutral evil", 2))
+        self.assertEqual(sal["natural_armor"], {"base": 13, "dex": True})
+        self.assertEqual(sal["armor_class"]["value"], 15)
+        self.assertEqual(sal["weapon_dice_multiplier"], 2)
+        self.assertEqual(sal["equipment"], [{"item": "srd51.item.spear", "equipped": True}])
+        self.assertEqual(sal["hit_points"], {"average": 90, "formula": "12d10+24"})
+        self.assertEqual(sal["damage_vulnerabilities"], ["cold"])
+        self.assertEqual(sal["damage_immunities"], ["fire"])
+        self.assertNotIn("damage_resistances", sal)
+        self.assertEqual(sal["senses"], {"darkvision": 60, "passive_perception": 10})
+        self.assertEqual(sal["languages"], ["Ignan"])
+        self.assertNotIn("effect", trait("salamander", "heated_body"))
+        self.assertIn("2d6", trait("salamander", "heated_body")["description"])
+        self.assertIn("Descriptive only", trait("salamander", "heated_body")["description"])
+        self.assertNotIn("effect", trait("salamander", "heated_weapons"))
+        self.assertIn("included in the attack", trait("salamander", "heated_weapons")["description"])
+        self.assertEqual(opts("salamander"), {
+            "spear_tail": ["spear", "tail"],
+            "spear_two_handed_tail": ["spear_two_handed", "tail"],
+            "spear_thrown_tail": ["spear_thrown", "tail"],
+        })
+        spear = act("salamander", "spear")
+        two = act("salamander", "spear_two_handed")
+        thrown = act("salamander", "spear_thrown")
+        self.assertEqual(spear["weapon"], "srd51.item.spear")
+        self.assertEqual(spear["ability"], "str")
+        self.assertNotIn("use", spear)
+        self.assertEqual((spear["to_hit"], spear["damage"]), (7, [
+            {"dice": "2d6+4", "type": "piercing"},
+            {"dice": "1d6", "type": "fire"},
+        ]))
+        self.assertEqual((two["use"], two["to_hit"], two["damage"]), ("two_hands", 7, [
+            {"dice": "2d8+4", "type": "piercing"},
+            {"dice": "1d6", "type": "fire"},
+        ]))
+        self.assertEqual((thrown["use"], thrown["range"], thrown["damage"]), ("thrown", [20, 60], [
+            {"dice": "2d6+4", "type": "piercing"},
+            {"dice": "1d6", "type": "fire"},
+        ]))
+        tail = act("salamander", "tail")
+        self.assertEqual(tail["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual((tail["to_hit"], tail["reach"], tail["damage"]), (7, 10, [
+            {"dice": "2d6+4", "type": "bludgeoning"},
+            {"dice": "2d6", "type": "fire"},
+        ]))
+        self.assertEqual(tail["on_hit"], [{
+            "kind": "grapple", "escape_dc": 14, "restrains": True, "exclusive": True,
+        }])
+        self.assertIn("automatically hit", tail["description"])
+        self.assertIn("descriptive only", tail["description"])
+
+        xorn = load("xorn")
+        self.assertEqual((xorn["size"], xorn["type"], xorn["alignment"], xorn["hands"]),
+                         ("medium", "elemental", "neutral", 0))
+        self.assertEqual(xorn["natural_armor"], {"base": 19, "dex": True})
+        self.assertEqual(xorn["armor_class"]["value"], 19)
+        self.assertEqual(xorn["hit_points"], {"average": 73, "formula": "7d8+42"})
+        self.assertEqual(xorn["speed"], {"walk": 20, "burrow": 20})
+        self.assertEqual(xorn["skills"], {"perception": 6, "stealth": 3})
+        self.assertNotIn("passive_perception_reason", xorn)
+        self.assertNotIn("damage_resistances", xorn)
+        self.assertNotIn("damage_immunities", xorn)
+        self.assertNotIn("damage_vulnerabilities", xorn)
+        self.assertEqual(xorn["senses"], {"darkvision": 60, "tremorsense": 60, "passive_perception": 16})
+        self.assertEqual(xorn["languages"], ["Terran"])
+        self.assertEqual(trait("xorn", "damage_resistances_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical_not_adamantine": ["piercing", "slashing"]},
+        })
+        for tid in ("earth_glide", "stone_camouflage", "treasure_sense"):
+            self.assertNotIn("effect", trait("xorn", tid))
+            self.assertNotIn("Descriptive only", trait("xorn", tid)["description"])
+        self.assertEqual(opts("xorn"), {"claw_x3_bite": ["claw", "claw", "claw", "bite"]})
+        claw = act("xorn", "claw")
+        bite = act("xorn", "bite")
+        self.assertEqual(claw["natural"], {"dice": "1d6", "ability": "str"})
+        self.assertEqual((claw["to_hit"], claw["damage"]), (6, [{"dice": "1d6+3", "type": "slashing"}]))
+        self.assertNotIn("1d3", claw["description"])
+        self.assertEqual(bite["natural"], {"dice": "3d6", "ability": "str"})
+        self.assertEqual((bite["to_hit"], bite["damage"]), (6, [{"dice": "3d6+3", "type": "piercing"}]))
+
+        for idx in ("mimic", "doppelganger"):
+            self.assertNotIn(idx, TABLE)
+            self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
+
+    def test_cr5_batch_s(self):
+        # CR 5 batch S, merged onto Batch R (tip 0647748d, 180/12). Werebear is the humanoid
+        # form (wereboar / weretiger pattern). Wraith follows specter / wight (Life Drain
+        # max-HP drain, fly hover). Create Specter is description only. Gorgon, shambling
+        # mound, roper and unicorn join the tip's twelve deferrals (182/16).
+        # Roper later left Deferred (test_roper).
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        bear = load("werebear")
+        self.assertIs(bear["shapechanger"], True)
+        self.assertEqual((bear["size"], bear["type"], bear["tags"], bear["alignment"]),
+                         ("medium", "humanoid", ["human", "shapechanger"], "neutral good"))
+        self.assertEqual((bear["armor_class"], bear["hands"], bear["speed"]), ({"value": 10}, 2, {"walk": 30}))
+        self.assertNotIn("natural_armor", bear)
+        self.assertEqual(bear["equipment"], [{"item": "srd51.item.greataxe", "equipped": True}])
+        self.assertEqual(bear["hit_points"], {"average": 135, "formula": "18d8+54"})
+        self.assertEqual(bear["abilities"], {"str": 19, "dex": 10, "con": 17, "int": 11, "wis": 12, "cha": 12})
+        self.assertEqual(bear["skills"], {"perception": 7})
+        self.assertEqual(bear["senses"], {"passive_perception": 17})
+        self.assertNotIn("darkvision", bear["senses"])
+        self.assertEqual(bear["languages"], ["Common"])
+        self.assertEqual(bear["proficiency_bonus"], 3)
+        self.assertNotIn("damage_immunities", bear)
+        self.assertEqual(trait("werebear", "damage_immunities_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "immunities": {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", trait("werebear", "shapechanger"))
+        self.assertNotIn("forms", trait("werebear", "shapechanger"))
+        self.assertIn("bear form speed 40", trait("werebear", "shapechanger")["description"])
+        self.assertIn("climb 30", trait("werebear", "shapechanger")["description"])
+        self.assertIn("hybrid/bear AC 11", trait("werebear", "shapechanger")["description"])
+        self.assertNotIn("effect", trait("werebear", "keen_smell"))
+        self.assertEqual(opts("werebear"), {"greataxe_x2": ["greataxe", "greataxe"]})
+        axe = act("werebear", "greataxe")
+        self.assertEqual((axe["weapon"], axe["use"], axe["to_hit"], axe["damage"]),
+                         ("srd51.item.greataxe", "two_hands", 7, [{"dice": "1d12+4", "type": "slashing"}]))
+        self.assertNotIn("attack_bonus", axe)
+        self.assertEqual(act("werebear", "bite")["kind"], "special")
+        self.assertNotIn("natural", act("werebear", "bite"))
+        self.assertIn("lycanthropy", act("werebear", "bite")["description"])
+        self.assertIn("DC 14", act("werebear", "bite")["description"])
+        self.assertEqual(act("werebear", "claw")["kind"], "special")
+        self.assertNotIn("natural", act("werebear", "claw"))
+        self.assertEqual([a["name"] for a in TABLE["werebear"]["attacks"]], ["Greataxe"])
+
+        wraith = load("wraith")
+        self.assertNotIn("shapechanger", wraith)
+        self.assertEqual((wraith["size"], wraith["type"], wraith["alignment"], wraith["hands"]),
+                         ("medium", "undead", "neutral evil", 0))
+        self.assertEqual(wraith["armor_class"], {"value": 13})
+        self.assertNotIn("natural_armor", wraith)
+        self.assertEqual(wraith["hit_points"], {"average": 67, "formula": "9d8+27"})
+        self.assertEqual(wraith["speed"], {"walk": 0, "fly": 60, "hover": True})
+        self.assertEqual(wraith["abilities"], {"str": 6, "dex": 16, "con": 16, "int": 12, "wis": 14, "cha": 15})
+        self.assertNotIn("skills", wraith)
+        self.assertEqual(wraith["damage_resistances"], ["acid", "cold", "fire", "lightning", "thunder"])
+        self.assertEqual(wraith["damage_immunities"], ["necrotic", "poison"])
+        self.assertEqual(wraith["condition_immunities"],
+                         ["charmed", "exhaustion", "grappled", "paralyzed", "petrified", "poisoned", "prone", "restrained"])
+        self.assertEqual(wraith["senses"], {"darkvision": 60, "passive_perception": 12})
+        self.assertEqual(wraith["languages"], ["the languages it knew in life"])
+        self.assertEqual(wraith["proficiency_bonus"], 3)
+        self.assertEqual(trait("wraith", "damage_resistances_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", trait("wraith", "incorporeal_movement"))
+        self.assertNotIn("effect", trait("wraith", "sunlight_sensitivity"))
+        self.assertFalse(any(t.get("effect", {}).get("kind") == "multiattack" for t in wraith["traits"]))
+        drain = act("wraith", "life_drain")
+        self.assertEqual(drain["kind"], "melee_weapon_attack")
+        self.assertEqual(drain["natural"], {"dice": "4d8", "ability": "dex"})
+        self.assertEqual(drain["ability"], "dex")
+        self.assertNotIn("attack_bonus", drain)
+        self.assertEqual((drain["to_hit"], drain["damage"]), (6, [{"dice": "4d8+3", "type": "necrotic"}]))
+        self.assertEqual(drain["drain"], {"max_hp": True, "save": {"ability": "con", "dc": 14}})
+        self.assertIn("hit point maximum to 0", drain["description"])
+        spawn = act("wraith", "create_specter")
+        self.assertEqual(spawn["kind"], "special")
+        self.assertNotIn("effect", spawn)
+        self.assertIn("seven specters", spawn["description"])
+        self.assertEqual([a["name"] for a in TABLE["wraith"]["attacks"]], ["Life Drain"])
+
+        for idx in ("unicorn", "mimic", "doppelganger"):
+            self.assertNotIn(idx, TABLE)
+            self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
+
+    def test_cr6_batch_t(self):
+        # CR 6 batch T on tip 79c91a79 (182/16). Young white dragon is green. Young brass,
+        # chimera and wyvern are honest partials. No new parks (186/16). Medusa stays as it was.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        white = load("young-white-dragon")
+        self.assertEqual((white["size"], white["type"], white["alignment"], white["hands"]),
+                         ("large", "dragon", "chaotic evil", 0))
+        self.assertEqual(white["natural_armor"], {"base": 17, "dex": True})
+        self.assertEqual(white["armor_class"]["value"], 17)
+        self.assertEqual(white["hit_points"], {"average": 133, "formula": "14d10+56"})
+        self.assertEqual(white["speed"], {"walk": 40, "burrow": 20, "fly": 80, "swim": 40})
+        self.assertEqual(white["abilities"], {"str": 18, "dex": 10, "con": 18, "int": 6, "wis": 11, "cha": 12})
+        self.assertEqual(white["saving_throws"], {"dex": 3, "con": 7, "wis": 3, "cha": 4})
+        self.assertEqual(white["skills"], {"perception": 6, "stealth": 3})
+        self.assertEqual(white["damage_immunities"], ["cold"])
+        self.assertEqual(white["senses"], {"blindsight": 30, "darkvision": 120, "passive_perception": 16})
+        self.assertEqual(white["languages"], ["Common", "Draconic"])
+        self.assertEqual(white["proficiency_bonus"], 3)
+        self.assertNotIn("effect", trait("young-white-dragon", "ice_walk"))
+        self.assertNotIn("Descriptive only", trait("young-white-dragon", "ice_walk")["description"])
+        self.assertNotIn("partial", trait("young-white-dragon", "ice_walk")["description"])
+        self.assertIn("extra movement", trait("young-white-dragon", "ice_walk")["description"])
+        self.assertEqual(opts("young-white-dragon"), {"bite_claws": ["bite", "claw", "claw"]})
+        bite = act("young-white-dragon", "bite")
+        self.assertEqual(bite["natural"], {"dice": "2d10", "ability": "str"})
+        self.assertNotIn("attack_bonus", bite)
+        self.assertEqual((bite["to_hit"], bite["reach"], bite["damage"]), (7, 10, [
+            {"dice": "2d10+4", "type": "piercing"},
+            {"dice": "1d8", "type": "cold"},
+        ]))
+        claw = act("young-white-dragon", "claw")
+        self.assertEqual(claw["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual((claw["to_hit"], claw["reach"], claw["damage"]),
+                         (7, 5, [{"dice": "2d6+4", "type": "slashing"}]))
+        cold = act("young-white-dragon", "cold_breath")
+        self.assertEqual(cold["kind"], "save_effect")
+        self.assertEqual(cold["save"], {"ability": "con", "dc": 15})
+        self.assertEqual(cold["area"], {"shape": "cone", "size_ft": 30})
+        self.assertEqual(cold["damage"], [{"dice": "10d8", "type": "cold"}])
+        self.assertEqual((cold["on_success"], cold["usage"]), ("half", {"kind": "recharge", "min": 5}))
+        self.assertEqual([a["name"] for a in TABLE["young-white-dragon"]["attacks"]], ["Bite", "Claw"])
+
+        brass = load("young-brass-dragon")
+        self.assertEqual((brass["size"], brass["type"], brass["alignment"], brass["hands"]),
+                         ("large", "dragon", "chaotic good", 0))
+        self.assertEqual(brass["natural_armor"], {"base": 17, "dex": True})
+        self.assertEqual(brass["hit_points"], {"average": 110, "formula": "13d10+39"})
+        self.assertEqual(brass["speed"], {"walk": 40, "burrow": 20, "fly": 80})
+        self.assertNotIn("swim", brass["speed"])
+        self.assertEqual(brass["abilities"], {"str": 19, "dex": 10, "con": 17, "int": 12, "wis": 11, "cha": 15})
+        self.assertEqual(brass["saving_throws"], {"dex": 3, "con": 6, "wis": 3, "cha": 5})
+        self.assertEqual(brass["skills"], {"perception": 6, "persuasion": 5, "stealth": 3})
+        self.assertEqual(brass["damage_immunities"], ["fire"])
+        self.assertEqual(brass["senses"], {"blindsight": 30, "darkvision": 120, "passive_perception": 16})
+        self.assertEqual(opts("young-brass-dragon"), {"bite_claws": ["bite", "claw", "claw"]})
+        self.assertEqual((act("young-brass-dragon", "bite")["to_hit"], act("young-brass-dragon", "bite")["damage"]),
+                         (7, [{"dice": "2d10+4", "type": "piercing"}]))
+        self.assertEqual(act("young-brass-dragon", "bite")["reach"], 10)
+        fire = act("young-brass-dragon", "fire_breath")
+        self.assertEqual(fire["kind"], "save_effect")
+        self.assertEqual(fire["save"], {"ability": "dex", "dc": 14})
+        self.assertEqual(fire["area"], {"shape": "line", "size_ft": 40, "width_ft": 5})
+        self.assertEqual(fire["damage"], [{"dice": "12d6", "type": "fire"}])
+        self.assertEqual((fire["on_success"], fire["usage"]), ("half", {"kind": "recharge", "min": 5}))
+        sleep = act("young-brass-dragon", "sleep_breath")
+        self.assertEqual(sleep["kind"], "special")
+        self.assertNotIn("effect", sleep)
+        self.assertNotIn("usage", sleep)
+        self.assertNotIn("save", sleep)
+        self.assertNotIn("apply", sleep)
+        self.assertIn("Descriptive only", sleep["description"])
+        self.assertIn("shared recharge", sleep["description"])
+        self.assertIn("unconscious", sleep["description"])
+        self.assertNotIn("sleep_breath", opts("young-brass-dragon")["bite_claws"])
+        self.assertEqual([a["name"] for a in TABLE["young-brass-dragon"]["attacks"]], ["Bite", "Claw"])
+
+        chim = load("chimera")
+        self.assertEqual((chim["size"], chim["type"], chim["alignment"], chim["hands"]),
+                         ("large", "monstrosity", "chaotic evil", 0))
+        self.assertEqual(chim["natural_armor"], {"base": 14, "dex": True})
+        self.assertEqual(chim["armor_class"]["value"], 14)
+        self.assertEqual(chim["hit_points"], {"average": 114, "formula": "12d10+48"})
+        self.assertEqual(chim["speed"], {"walk": 30, "fly": 60})
+        self.assertEqual(chim["abilities"], {"str": 19, "dex": 11, "con": 19, "int": 3, "wis": 14, "cha": 10})
+        self.assertEqual(chim["skills"], {"perception": 8})
+        self.assertNotIn("saving_throws", chim)
+        self.assertEqual(chim["senses"], {"darkvision": 60, "passive_perception": 18})
+        self.assertEqual(chim["languages"], ["understands Draconic but can't speak"])
+        self.assertEqual(opts("chimera"), {"bite_horns_claws": ["bite", "horns", "claws"]})
+        self.assertIn("bite or horns", trait("chimera", "multiattack")["description"])
+        self.assertIn("descriptive only", trait("chimera", "multiattack")["description"])
+        self.assertNotIn("fire_breath", opts("chimera")["bite_horns_claws"])
+        for aid, dice, dtype in (("bite", "2d6+4", "piercing"), ("horns", "1d12+4", "bludgeoning"),
+                                 ("claws", "2d6+4", "slashing")):
+            a = act("chimera", aid)
+            self.assertEqual(a["kind"], "melee_weapon_attack")
+            self.assertEqual((a["to_hit"], a["reach"], a["damage"]), (7, 5, [{"dice": dice, "type": dtype}]))
+            self.assertNotIn("attack_bonus", a)
+        breath = act("chimera", "fire_breath")
+        self.assertEqual(breath["kind"], "save_effect")
+        self.assertEqual(breath["save"], {"ability": "dex", "dc": 15})
+        self.assertEqual(breath["area"], {"shape": "cone", "size_ft": 15})
+        self.assertEqual(breath["damage"], [{"dice": "7d8", "type": "fire"}])
+        self.assertEqual((breath["on_success"], breath["usage"]), ("half", {"kind": "recharge", "min": 5}))
+        self.assertEqual([a["name"] for a in TABLE["chimera"]["attacks"]], ["Bite", "Horns", "Claws"])
+
+        wyv = load("wyvern")
+        self.assertEqual((wyv["size"], wyv["type"], wyv["alignment"], wyv["hands"]),
+                         ("large", "dragon", "unaligned", 0))
+        self.assertEqual(wyv["natural_armor"], {"base": 13, "dex": True})
+        self.assertEqual(wyv["armor_class"]["value"], 13)
+        self.assertEqual(wyv["hit_points"], {"average": 110, "formula": "13d10+39"})
+        self.assertEqual(wyv["speed"], {"walk": 20, "fly": 80})
+        self.assertEqual(wyv["abilities"], {"str": 19, "dex": 10, "con": 16, "int": 5, "wis": 12, "cha": 6})
+        self.assertEqual(wyv["skills"], {"perception": 4})
+        self.assertNotIn("saving_throws", wyv)
+        self.assertEqual(wyv["senses"], {"darkvision": 60, "passive_perception": 14})
+        self.assertEqual(wyv["languages"], [])
+        self.assertEqual(opts("wyvern"), {"bite_stinger": ["bite", "stinger"]})
+        self.assertIn("While flying", trait("wyvern", "multiattack")["description"])
+        self.assertIn("descriptive only", trait("wyvern", "multiattack")["description"])
+        self.assertNotIn("claws", opts("wyvern")["bite_stinger"])
+        self.assertEqual((act("wyvern", "bite")["to_hit"], act("wyvern", "bite")["reach"], act("wyvern", "bite")["damage"]),
+                         (7, 10, [{"dice": "2d6+4", "type": "piercing"}]))
+        claws = act("wyvern", "claws")
+        self.assertEqual(claws["kind"], "melee_weapon_attack")
+        self.assertEqual(claws["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual((claws["to_hit"], claws["reach"], claws["damage"]),
+                         (7, 5, [{"dice": "2d8+4", "type": "slashing"}]))
+        sting = act("wyvern", "stinger")
+        self.assertEqual(sting["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual((sting["to_hit"], sting["reach"], sting["damage"]),
+                         (7, 10, [{"dice": "2d6+4", "type": "piercing"}]))
+        self.assertEqual(sting["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "con", "dc": 15},
+            "damage": [{"dice": "7d6", "type": "poison"}],
+            "on_success": "half",
+        }])
+        scorp = act("giant-scorpion", "sting")["on_hit"][0]
+        self.assertEqual(set(sting["on_hit"][0]), set(scorp))
+        self.assertEqual(sting["on_hit"][0]["kind"], scorp["kind"])
+        self.assertEqual([a["name"] for a in TABLE["wyvern"]["attacks"]], ["Bite", "Claws", "Stinger"])
+
+        for idx in ("unicorn", "mimic", "doppelganger"):
+            self.assertNotIn(idx, TABLE)
+            self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
+
+    def test_cr6_batch_u(self):
+        # CR 6 batch U, merged onto Batch T (tip caab78fe, 186/16). Mammoth follows elephant /
+        # triceratops: Gore is the live attack; Stomp stays on Trampling Charge. Drider
+        # Multiattack is the four SRD options only (no mixed sword and bow). The two-handed
+        # longsword is the versatile action, not a fifth option. Invisible stalker and mage
+        # join the tip's sixteen deferrals (188/18).
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        mammoth = load("mammoth")
+        self.assertEqual((mammoth["size"], mammoth["type"], mammoth["alignment"], mammoth["hands"]),
+                         ("huge", "beast", "unaligned", 0))
+        self.assertEqual(mammoth["natural_armor"], {"base": 14, "dex": True})
+        self.assertEqual(mammoth["armor_class"]["value"], 13)
+        self.assertEqual(mammoth["hit_points"], {"average": 126, "formula": "11d12+55"})
+        self.assertEqual(mammoth["speed"], {"walk": 40})
+        self.assertEqual(mammoth["abilities"], {"str": 24, "dex": 9, "con": 21, "int": 3, "wis": 11, "cha": 6})
+        self.assertEqual(mammoth["senses"], {"passive_perception": 10})
+        self.assertEqual(mammoth["languages"], [])
+        self.assertEqual(mammoth["proficiency_bonus"], 3)
+        self.assertNotIn("skills", mammoth)
+        self.assertNotIn("equipment", mammoth)
+        self.assertNotIn("effect", trait("mammoth", "trampling_charge"))
+        charge = trait("mammoth", "trampling_charge")["description"]
+        self.assertIn("straight toward", charge)
+        self.assertIn("gore", charge)
+        self.assertIn("DC 18", charge)
+        self.assertIn("4d10 + 7", charge)
+        self.assertIn("not an action", charge)
+        self.assertNotIn("extra_damage", json.dumps(mammoth))
+        self.assertEqual([a["id"] for a in mammoth["actions"]], ["gore"])
+        gore = act("mammoth", "gore")
+        self.assertEqual(gore["natural"], {"dice": "4d8", "ability": "str"})
+        self.assertEqual((gore["to_hit"], gore["reach"], gore["damage"]),
+                         (10, 10, [{"dice": "4d8+7", "type": "piercing"}]))
+        self.assertNotIn("attack_bonus", gore)
+        self.assertEqual(gore["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "str", "dc": 18},
+            "apply": [{"condition": "prone"}],
+            "when": [{"kind": "moved_at_least_ft", "ft": 20}],
+        }])
+        self.assertEqual([a["name"] for a in TABLE["mammoth"]["attacks"]], ["Gore", "Stomp"])
+
+        drider = load("drider")
+        self.assertEqual((drider["size"], drider["type"], drider["alignment"], drider["hands"]),
+                         ("large", "monstrosity", "chaotic evil", 2))
+        self.assertEqual(drider["natural_armor"], {"base": 16, "dex": True})
+        self.assertEqual(drider["armor_class"]["value"], 19)
+        self.assertEqual(drider["hit_points"], {"average": 123, "formula": "13d10+52"})
+        self.assertEqual(drider["speed"], {"walk": 30, "climb": 30})
+        self.assertEqual(drider["abilities"], {"str": 16, "dex": 16, "con": 18, "int": 13, "wis": 14, "cha": 12})
+        # Perception +5 is proficiency (Wis +2 and PB 3). Stealth +9 is expertise (Dex +3 and 2×PB),
+        # as phase spider. Neither total needs PRINTED_SKILL_TOTALS.
+        self.assertEqual(drider["skills"], {"perception": 5, "stealth": 9})
+        self.assertNotIn("passive_perception_reason", drider)
+        self.assertEqual(drider["senses"], {"darkvision": 120, "passive_perception": 15})
+        self.assertEqual(drider["languages"], ["Elvish", "Undercommon"])
+        self.assertEqual(drider["proficiency_bonus"], 3)
+        self.assertEqual([e["item"] for e in drider["equipment"]], ["srd51.item.longsword", "srd51.item.longbow"])
+        self.assertEqual(drider["equipment"][0]["equipped"], True)
+        self.assertNotIn("equipped", drider["equipment"][1])
+        self.assertNotIn("spellcasting", drider)
+        self.assertEqual(trait("drider", "fey_ancestry")["effect"], {
+            "kind": "save_advantage",
+            "save_vs_conditions": ["charmed"],
+        })
+        self.assertIn("magic can't put the drider to sleep", trait("drider", "fey_ancestry")["description"])
+        self.assertIn("no sleep-immunity", trait("drider", "fey_ancestry")["description"])
+        innate = trait("drider", "innate_spellcasting")
+        self.assertNotIn("effect", innate)
+        self.assertIn("Wisdom (spell save DC 13)", innate["description"])
+        self.assertIn("dancing lights", innate["description"])
+        self.assertIn("darkness, faerie fire", innate["description"])
+        self.assertIn("not a spellcasting entry", innate["description"])
+        self.assertNotIn("effect", trait("drider", "spider_climb"))
+        self.assertNotIn("effect", trait("drider", "web_walker"))
+        self.assertIn("upside down on ceilings", trait("drider", "spider_climb")["description"])
+        self.assertIn("webbing", trait("drider", "web_walker")["description"])
+        self.assertNotIn("effect", trait("drider", "sunlight_sensitivity"))
+        self.assertIn("R-G13", trait("drider", "sunlight_sensitivity")["description"])
+        self.assertEqual(opts("drider"), {
+            "longsword_x3": ["longsword", "longsword", "longsword"],
+            "longsword_x2_bite": ["longsword", "longsword", "bite"],
+            "longbow_x3": ["longbow", "longbow", "longbow"],
+            "longbow_x2_bite": ["longbow", "longbow", "bite"],
+        })
+        self.assertEqual(len(opts("drider")), 4)
+        used = [a for seq in opts("drider").values() for a in seq]
+        self.assertNotIn("longsword_two_handed", used)
+        self.assertFalse(any("longsword" in seq and "longbow" in seq for seq in opts("drider").values()))
+        bite = act("drider", "bite")
+        self.assertEqual(bite["natural"], {"dice": "1d4", "ability": "str", "damage_ability": "none"})
+        self.assertEqual(bite["ability"], "str")
+        self.assertNotIn("attack_bonus", bite)
+        self.assertNotIn("on_hit", bite)
+        self.assertEqual((bite["to_hit"], bite["damage"]), (6, [
+            {"dice": "1d4", "type": "piercing"},
+            {"dice": "2d8", "type": "poison"},
+        ]))
+        sword = act("drider", "longsword")
+        two = act("drider", "longsword_two_handed")
+        bow = act("drider", "longbow")
+        self.assertEqual((sword["weapon"], sword["ability"], sword["to_hit"], sword["damage"]),
+                         ("srd51.item.longsword", "str", 6, [{"dice": "1d8+3", "type": "slashing"}]))
+        self.assertNotIn("use", sword)
+        self.assertNotIn("attack_bonus", sword)
+        self.assertEqual((two["weapon"], two["use"], two["to_hit"], two["damage"]),
+                         ("srd51.item.longsword", "two_hands", 6, [{"dice": "1d10+3", "type": "slashing"}]))
+        self.assertNotIn("attack_bonus", two)
+        self.assertEqual((bow["weapon"], bow["ability"], bow["to_hit"], bow["range"], bow["damage"]),
+                         ("srd51.item.longbow", "dex", 6, [150, 600], [
+                             {"dice": "1d8+3", "type": "piercing"},
+                             {"dice": "1d8", "type": "poison"},
+                         ]))
+        self.assertNotIn("attack_bonus", bow)
+        self.assertEqual([a["name"] for a in TABLE["drider"]["attacks"]], ["Bite", "Longsword", "Longbow"])
+
+        for idx in ("mage", "unicorn", "mimic", "doppelganger"):
+            self.assertNotIn(idx, TABLE)
+            self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
+
+    def test_cr7_batch_v(self):
+        # CR 7 batch V from tip 5ccd71cc (188/18). Elf LOCK Option A: both authored, ledger
+        # 190/18. Young black is green. Young copper Slowing Breath and the shared recharge
+        # stay description-only (young brass Sleep Breath). No new parks.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        black = load("young-black-dragon")
+        self.assertEqual((black["size"], black["type"], black["alignment"], black["hands"]),
+                         ("large", "dragon", "chaotic evil", 0))
+        self.assertEqual(black["natural_armor"], {"base": 16, "dex": True})
+        self.assertEqual(black["armor_class"]["value"], 18)
+        self.assertEqual(black["hit_points"], {"average": 127, "formula": "15d10+45"})
+        self.assertEqual(black["speed"], {"walk": 40, "fly": 80, "swim": 40})
+        self.assertEqual(black["abilities"], {"str": 19, "dex": 14, "con": 17, "int": 12, "wis": 11, "cha": 15})
+        self.assertEqual(black["saving_throws"], {"dex": 5, "con": 6, "wis": 3, "cha": 5})
+        self.assertEqual(black["skills"], {"perception": 6, "stealth": 5})
+        self.assertEqual(black["damage_immunities"], ["acid"])
+        self.assertEqual(black["senses"], {"blindsight": 30, "darkvision": 120, "passive_perception": 16})
+        self.assertEqual(black["languages"], ["Common", "Draconic"])
+        self.assertEqual(black["proficiency_bonus"], 3)
+        amph = trait("young-black-dragon", "amphibious")
+        self.assertNotIn("effect", amph)
+        self.assertNotIn("Descriptive only", amph["description"])
+        self.assertNotIn("partial", amph["description"])
+        self.assertEqual(amph["description"], "The dragon can breathe air and water.")
+        self.assertEqual(opts("young-black-dragon"), {"bite_claws": ["bite", "claw", "claw"]})
+        bite = act("young-black-dragon", "bite")
+        self.assertEqual(bite["natural"], {"dice": "2d10", "ability": "str"})
+        self.assertNotIn("attack_bonus", bite)
+        self.assertEqual((bite["to_hit"], bite["reach"], bite["damage"]), (7, 10, [
+            {"dice": "2d10+4", "type": "piercing"},
+            {"dice": "1d8", "type": "acid"},
+        ]))
+        claw = act("young-black-dragon", "claw")
+        self.assertEqual(claw["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual((claw["to_hit"], claw["reach"], claw["damage"]),
+                         (7, 5, [{"dice": "2d6+4", "type": "slashing"}]))
+        acid = act("young-black-dragon", "acid_breath")
+        self.assertEqual(acid["kind"], "save_effect")
+        self.assertEqual(acid["save"], {"ability": "dex", "dc": 14})
+        self.assertEqual(acid["origin"], "self")
+        self.assertEqual(acid["area"], {"shape": "line", "size_ft": 30, "width_ft": 5})
+        self.assertEqual(acid["damage"], [{"dice": "11d8", "type": "acid"}])
+        self.assertEqual((acid["on_success"], acid["usage"]), ("half", {"kind": "recharge", "min": 5}))
+        self.assertNotIn("apply", acid)
+        self.assertEqual([a["name"] for a in TABLE["young-black-dragon"]["attacks"]], ["Bite", "Claw"])
+        self.assertEqual([a["id"] for a in black["actions"]], ["bite", "claw", "acid_breath"])
+
+        copper = load("young-copper-dragon")
+        self.assertEqual((copper["size"], copper["type"], copper["alignment"], copper["hands"]),
+                         ("large", "dragon", "chaotic good", 0))
+        self.assertEqual(copper["natural_armor"], {"base": 16, "dex": True})
+        self.assertEqual(copper["armor_class"]["value"], 17)
+        self.assertEqual(copper["hit_points"], {"average": 119, "formula": "14d10+42"})
+        self.assertEqual(copper["speed"], {"walk": 40, "climb": 40, "fly": 80})
+        self.assertNotIn("swim", copper["speed"])
+        self.assertEqual(copper["abilities"], {"str": 19, "dex": 12, "con": 17, "int": 16, "wis": 13, "cha": 15})
+        self.assertEqual(copper["saving_throws"], {"dex": 4, "con": 6, "wis": 4, "cha": 5})
+        self.assertEqual(copper["skills"], {"deception": 5, "perception": 7, "stealth": 4})
+        self.assertEqual(copper["damage_immunities"], ["acid"])
+        self.assertEqual(copper["senses"], {"blindsight": 30, "darkvision": 120, "passive_perception": 17})
+        self.assertEqual(copper["languages"], ["Common", "Draconic"])
+        self.assertEqual(copper["proficiency_bonus"], 3)
+        self.assertEqual(opts("young-copper-dragon"), {"bite_claws": ["bite", "claw", "claw"]})
+        self.assertEqual((act("young-copper-dragon", "bite")["to_hit"], act("young-copper-dragon", "bite")["damage"]),
+                         (7, [{"dice": "2d10+4", "type": "piercing"}]))
+        self.assertEqual(act("young-copper-dragon", "bite")["reach"], 10)
+        self.assertEqual(len(act("young-copper-dragon", "bite")["damage"]), 1)
+        self.assertEqual((act("young-copper-dragon", "claw")["to_hit"], act("young-copper-dragon", "claw")["reach"],
+                          act("young-copper-dragon", "claw")["damage"]),
+                         (7, 5, [{"dice": "2d6+4", "type": "slashing"}]))
+        breath = act("young-copper-dragon", "acid_breath")
+        self.assertEqual(breath["kind"], "save_effect")
+        self.assertEqual(breath["save"], {"ability": "dex", "dc": 14})
+        self.assertEqual(breath["origin"], "self")
+        self.assertEqual(breath["area"], {"shape": "line", "size_ft": 40, "width_ft": 5})
+        self.assertEqual(breath["damage"], [{"dice": "9d8", "type": "acid"}])
+        self.assertEqual((breath["on_success"], breath["usage"]), ("half", {"kind": "recharge", "min": 5}))
+        self.assertNotIn("apply", breath)
+        slow = act("young-copper-dragon", "slowing_breath")
+        self.assertEqual(slow["kind"], "special")
+        self.assertEqual(set(slow), {"id", "name", "kind", "description"})
+        self.assertNotIn("effect", slow)
+        self.assertNotIn("usage", slow)
+        self.assertNotIn("save", slow)
+        self.assertNotIn("apply", slow)
+        self.assertNotIn("area", slow)
+        self.assertIn("Descriptive only", slow["description"])
+        self.assertIn("shared recharge", slow["description"])
+        self.assertIn("speed is halved", slow["description"])
+        self.assertIn("CONTENT_CONVENTIONS 29", slow["description"])
+        self.assertNotIn("slowing_breath", opts("young-copper-dragon")["bite_claws"])
+        self.assertEqual([a["id"] for a in copper["actions"]], ["bite", "claw", "acid_breath", "slowing_breath"])
+        self.assertEqual(sum(1 for a in copper["actions"] if a.get("usage", {}).get("kind") == "recharge"), 1)
+        self.assertEqual([a["name"] for a in TABLE["young-copper-dragon"]["attacks"]], ["Bite", "Claw"])
+
+        for idx in ("mage", "unicorn", "mimic", "doppelganger"):
+            self.assertNotIn(idx, TABLE)
+            self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
+
+
+    def test_cr7_batch_w(self):
+        # CR 7 batch W, from tip 5ccd71cc (188/18). Oni is a partial: Change Shape, Innate
+        # Spellcasting, and Regeneration stay description only. Multiattack is claw x2 or
+        # glaive x2 only. Shield guardian joins the deferred list (191/19, after Batch V 190/18).
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        oni = load("oni")
+        self.assertEqual((oni["size"], oni["type"], oni["alignment"], oni["hands"]),
+                         ("large", "giant", "lawful evil", 2))
+        self.assertNotIn("natural_armor", oni)
+        self.assertNotIn("shapechanger", oni)
+        self.assertNotIn("spellcasting", oni)
+        self.assertEqual(oni["armor_class"]["value"], 16)
+        self.assertEqual(oni["armor_class"]["note"], "chain mail")
+        self.assertEqual(oni["hit_points"], {"average": 110, "formula": "13d10+39"})
+        self.assertEqual(oni["speed"], {"walk": 30, "fly": 30})
+        self.assertNotIn("hover", oni["speed"])
+        self.assertEqual(oni["abilities"], {"str": 19, "dex": 11, "con": 16, "int": 14, "wis": 12, "cha": 15})
+        self.assertEqual(oni["saving_throws"], {"dex": 3, "con": 6, "wis": 4, "cha": 5})
+        # Arcana +5 is proficiency (Int +2 and PB 3). Perception +4 is proficiency (Wis +1 and PB 3).
+        # Deception +8 is expertise (Cha +2 and 2×PB). None of those totals need PRINTED_SKILL_TOTALS.
+        self.assertEqual(oni["skills"], {"arcana": 5, "deception": 8, "perception": 4})
+        self.assertNotIn("passive_perception_reason", oni)
+        self.assertEqual(oni["senses"], {"darkvision": 60, "passive_perception": 14})
+        self.assertEqual(oni["languages"], ["Common", "Giant"])
+        self.assertEqual(oni["proficiency_bonus"], 3)
+        self.assertEqual(oni["weapon_dice_multiplier"], 2)
+        self.assertEqual([e["item"] for e in oni["equipment"]], ["srd51.item.chain_mail", "srd51.item.glaive"])
+        self.assertTrue(all(e.get("equipped") is True for e in oni["equipment"]))
+        innate = trait("oni", "innate_spellcasting")
+        self.assertNotIn("effect", innate)
+        self.assertIn("Charisma (spell save DC 13)", innate["description"])
+        self.assertIn("darkness, invisibility", innate["description"])
+        self.assertIn("charm person, cone of cold, gaseous form, sleep", innate["description"])
+        self.assertIn("not a spellcasting entry", innate["description"])
+        self.assertEqual(trait("oni", "magic_weapons")["effect"], {"kind": "magic_weapons"})
+        self.assertEqual(trait("oni", "magic_weapons")["description"], "The oni's weapon attacks are magical.")
+        regen = trait("oni", "regeneration")
+        self.assertNotIn("effect", regen)
+        self.assertIn("regains 10 hit points", regen["description"])
+        self.assertIn("at least 1 hit point", regen["description"])
+        self.assertIn("not the troll park", regen["description"])
+        self.assertEqual(opts("oni"), {
+            "claw_x2": ["claw", "claw"],
+            "glaive_x2": ["glaive", "glaive"],
+        })
+        self.assertEqual(len(opts("oni")), 2)
+        self.assertFalse(any("claw" in seq and "glaive" in seq for seq in opts("oni").values()))
+        self.assertIn("either with its claws or its glaive", trait("oni", "multiattack")["description"])
+        claw = act("oni", "claw")
+        self.assertEqual(claw["name"], "Claw (Oni Form Only)")
+        self.assertEqual(claw["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual(claw["ability"], "str")
+        self.assertNotIn("attack_bonus", claw)
+        self.assertNotIn("damage_override", claw)
+        self.assertEqual((claw["to_hit"], claw["reach"], claw["damage"]),
+                         (7, 5, [{"dice": "1d8+4", "type": "slashing"}]))
+        glaive = act("oni", "glaive")
+        self.assertEqual((glaive["weapon"], glaive["use"], glaive["ability"], glaive["to_hit"], glaive["reach"]),
+                         ("srd51.item.glaive", "two_hands", "str", 7, 10))
+        self.assertNotIn("attack_bonus", glaive)
+        self.assertNotIn("damage_override", glaive)
+        self.assertEqual(glaive["damage"], [{"dice": "2d10+4", "type": "slashing"}])
+        self.assertIn("1d10 + 4", glaive["description"])
+        self.assertIn("descriptive only", glaive["description"])
+        shape = act("oni", "change_shape")
+        self.assertEqual(shape["kind"], "special")
+        self.assertNotIn("effect", shape)
+        self.assertIn("no shapechanger forms", shape["description"])
+        self.assertEqual([a["id"] for a in oni["actions"]], ["claw", "glaive", "change_shape"])
+        self.assertEqual([a["name"] for a in TABLE["oni"]["attacks"]], ["Claw (Oni Form Only)", "Glaive"])
+
+        self.assertNotIn("oni", DEFERRED)
+        self.assertNotIn("shield-guardian", DEFERRED)
+        self.assertIn("shield-guardian", TABLE)
+        self.assertTrue((PACK / "monsters" / "shield_guardian.json").exists())
+
+
+    def test_troll_regen_content(self):
+        """Phase B: srd51.monster.troll is the only regen, with keen_senses smell. Oni and vampire spawn stay off regen."""
+        troll = load("troll")
+        self.assertEqual((troll["$schema"], troll["derive"], troll["id"]), ("monster@5", True, "srd51.monster.troll"))
+        self.assertEqual((troll["size"], troll["type"], troll["alignment"], troll["hands"]),
+                         ("large", "giant", "chaotic evil", 0))
+        self.assertEqual(troll["natural_armor"], {"base": 14, "dex": True})
+        self.assertEqual(troll["armor_class"], {"value": 15, "note": "natural armor"})
+        self.assertEqual(troll["hit_points"], {"average": 84, "formula": "8d10+40"})
+        self.assertEqual(troll["speed"], {"walk": 30})
+        self.assertEqual(troll["abilities"], {"str": 18, "dex": 13, "con": 20, "int": 7, "wis": 9, "cha": 7})
+        self.assertEqual(troll["skills"], {"perception": 2})
+        self.assertEqual(troll["senses"], {"darkvision": 60, "passive_perception": 12})
+        self.assertEqual(troll["languages"], ["Giant"])
+        self.assertEqual(troll["challenge"], {"rating": "5", "xp": 1800})
+        self.assertEqual(troll["proficiency_bonus"], 3)
+        traits = {t["id"]: t for t in troll["traits"]}
+        self.assertEqual(traits["keen_smell"]["effect"], {"kind": "keen_senses", "senses": ["smell"]})
+        self.assertEqual(traits["keen_smell"]["description"],
+                         "The troll has advantage on Wisdom (Perception) checks that rely on smell.")
+        self.assertEqual(traits["regeneration"]["effect"],
+                         {"kind": "regen", "amount": 10, "suppressed_by": ["acid", "fire"]})
+        self.assertIn("regains 10 hit points", traits["regeneration"]["description"])
+        self.assertIn("acid or fire", traits["regeneration"]["description"])
+        self.assertIn("starts its turn with 0 hit points", traits["regeneration"]["description"])
+        self.assertEqual(
+            {o["id"]: o["attacks"] for o in traits["multiattack"]["effect"]["options"]},
+            {"bite_claws": ["bite", "claw", "claw"]},
+        )
+        bite, claw = troll["actions"]
+        self.assertEqual(bite["natural"], {"dice": "1d6", "ability": "str"})
+        self.assertEqual(claw["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual((bite["to_hit"], bite["reach"], bite["damage"]),
+                         (7, 5, [{"dice": "1d6+4", "type": "piercing"}]))
+        self.assertEqual((claw["to_hit"], claw["reach"], claw["damage"]),
+                         (7, 5, [{"dice": "2d6+4", "type": "slashing"}]))
+        self.assertNotIn("attack_bonus", bite)
+        self.assertNotIn("attack_bonus", claw)
+        self.assertEqual([a["name"] for a in TABLE["troll"]["attacks"]], ["Bite", "Claw"])
+        self.assertNotIn("troll", DEFERRED)
+
+        regen_ids = []
+        for path in sorted((PACK / "monsters").glob("*.json")):
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            for trait in doc.get("traits", []):
+                if trait.get("effect", {}).get("kind") == "regen":
+                    regen_ids.append((doc["id"], trait["effect"]))
+        self.assertEqual(regen_ids, [("srd51.monster.troll",
+                                      {"kind": "regen", "amount": 10, "suppressed_by": ["acid", "fire"]})])
+        for idx in ("oni", "vampire-spawn"):
+            regen = {t["id"]: t for t in load(idx)["traits"]}["regeneration"]
+            self.assertNotIn("effect", regen)
+        sg_regen = {t["id"]: t for t in load("shield-guardian")["traits"]}["regeneration"]
+        self.assertEqual(sg_regen["effect"], {"kind": "regain", "amount": 10})
+        self.assertNotEqual(sg_regen["effect"]["kind"], "regen")
+
+    def test_chuul_tentacles_rider(self):
+        # B3b: Tentacles is the free Multiattack rider, not its own action. Pincer size and count are data.
+        chuul = load("chuul")
+        self.assertEqual((chuul["size"], chuul["type"], chuul["alignment"], chuul["hands"]),
+                         ("large", "aberration", "chaotic evil", 0))
+        self.assertEqual(chuul["natural_armor"], {"base": 16, "dex": True})
+        self.assertEqual(chuul["armor_class"]["value"], 16)
+        self.assertEqual(chuul["skills"], {"perception": 4})
+        self.assertEqual(chuul["languages"], ["understands Deep Speech but can't speak"])
+        traits = {t["id"]: t for t in chuul["traits"]}
+        self.assertNotIn("effect", traits["amphibious"])
+        self.assertNotIn("effect", traits["sense_magic"])
+        opt = traits["multiattack"]["effect"]["options"][0]
+        self.assertEqual(opt, {"id": "pincers", "attacks": ["pincer", "pincer"], "free_rider": "tentacles"})
+        pincer = {a["id"]: a for a in chuul["actions"]}["pincer"]
+        self.assertEqual(pincer["on_hit"], [{
+            "kind": "grapple", "escape_dc": 14, "max_grapples": 2, "max_size": "large",
+        }])
+        tent = {a["id"]: a for a in chuul["actions"]}["tentacles"]
+        self.assertEqual(tent["kind"], "save_effect")
+        self.assertIs(tent["rider_only"], True)
+        self.assertEqual(tent["save"], {"ability": "con", "dc": 13})
+        self.assertEqual(tent["range_ft"], 10)
+        self.assertEqual(tent["target_requires_any"], ["grappled_by_self"])
+        self.assertNotIn("targets", tent)
+        self.assertEqual(tent["apply"], [{
+            "condition": "poisoned",
+            "while": "paralyzed",
+            "duration": {"kind": "rounds", "n": 10},
+            "repeat_save": "end_of_turn",
+        }])
+        self.assertEqual([a["name"] for a in TABLE["chuul"]["attacks"]], ["Pincer"])
+
+    def test_gorgon_area_petrify(self):
+        # B4: Petrifying Breath is the gaze path on an area save_effect. Trampling Charge is the
+        # gore's on_hit. Bonus-action hooves stays a partial (lion / tiger Pounce).
+        g = load("gorgon")
+        self.assertEqual((g["size"], g["type"], g["alignment"], g["hands"]),
+                         ("large", "monstrosity", "unaligned", 0))
+        self.assertEqual(g["natural_armor"], {"base": 19, "dex": True})
+        self.assertEqual(g["armor_class"]["value"], 19)
+        self.assertEqual(g["hit_points"], {"average": 114, "formula": "12d10+48"})
+        self.assertEqual(g["speed"], {"walk": 40})
+        self.assertEqual(g["abilities"], {"str": 20, "dex": 11, "con": 18, "int": 2, "wis": 12, "cha": 7})
+        self.assertEqual(g["skills"], {"perception": 4})
+        self.assertEqual(g["condition_immunities"], ["petrified"])
+        self.assertEqual(g["senses"], {"darkvision": 60, "passive_perception": 14})
+        self.assertEqual(g["languages"], [])
+        self.assertEqual(g["proficiency_bonus"], 3)
+        self.assertNotIn("gorgon", DEFERRED)
+        traits = {t["id"]: t for t in g["traits"]}
+        self.assertNotIn("effect", traits["trampling_charge"])
+        self.assertIn("bonus action", traits["trampling_charge"]["description"])
+        self.assertIn("Descriptive only", traits["trampling_charge"]["description"])
+        acts = {a["id"]: a for a in g["actions"]}
+        gore, hooves, breath = acts["gore"], acts["hooves"], acts["petrifying_breath"]
+        self.assertEqual(gore["natural"], {"dice": "2d12", "ability": "str"})
+        self.assertEqual((gore["to_hit"], gore["reach"], gore["damage"]),
+                         (8, 5, [{"dice": "2d12+5", "type": "piercing"}]))
+        self.assertEqual(gore["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "str", "dc": 16},
+            "apply": [{"condition": "prone"}],
+            "when": [{"kind": "moved_at_least_ft", "ft": 20}],
+        }])
+        self.assertEqual(hooves["natural"], {"dice": "2d10", "ability": "str"})
+        self.assertEqual((hooves["to_hit"], hooves["damage"]),
+                         (8, [{"dice": "2d10+5", "type": "bludgeoning"}]))
+        self.assertNotIn("on_hit", hooves)
+        self.assertEqual(breath["kind"], "save_effect")
+        self.assertEqual(breath["save"], {"ability": "con", "dc": 13})
+        self.assertEqual(breath["area"], {"shape": "cone", "size_ft": 30})
+        self.assertEqual(breath["apply"], [{"condition": "restrained", "repeat_save": "end_of_turn"}])
+        self.assertEqual((breath["escalates"], breath["escalate_to"], breath["escalate_margin"]),
+                         (True, "petrified", 0))
+        self.assertEqual(breath["usage"], {"kind": "recharge", "min": 5})
+        self.assertNotIn("damage", breath)
+        self.assertEqual([a["name"] for a in TABLE["gorgon"]["attacks"]], ["Gore", "Hooves"])
+
+    def test_otyugh(self):
+        # Bite disease is the §36 schedule. Tentacle Slam is a standalone grappled_by_self save,
+        # not chuul's free rider. Limited Telepathy stays descriptive. Cure spells stay unwired.
+        o = load("otyugh")
+        self.assertEqual((o["$schema"], o["derive"], o["id"]), ("monster@5", True, "srd51.monster.otyugh"))
+        self.assertEqual((o["size"], o["type"], o["alignment"], o["hands"]),
+                         ("large", "aberration", "neutral", 0))
+        self.assertEqual(o["natural_armor"], {"base": 14, "dex": True})
+        self.assertEqual(o["armor_class"], {"value": 14, "note": "natural armor"})
+        self.assertEqual(o["hit_points"], {"average": 114, "formula": "12d10+48"})
+        self.assertEqual(o["speed"], {"walk": 30})
+        self.assertEqual(o["abilities"], {"str": 16, "dex": 11, "con": 19, "int": 6, "wis": 13, "cha": 6})
+        self.assertEqual(o["saving_throws"], {"con": 7})
+        self.assertNotIn("skills", o)
+        self.assertEqual(o["senses"], {"darkvision": 120, "passive_perception": 11})
+        self.assertEqual(o["languages"], ["Otyugh"])
+        self.assertEqual(o["challenge"], {"rating": "5", "xp": 1800})
+        self.assertEqual(o["proficiency_bonus"], 3)
+        self.assertNotIn("otyugh", DEFERRED)
+        traits = {t["id"]: t for t in o["traits"]}
+        self.assertNotIn("effect", traits["limited_telepathy"])
+        self.assertIn("doesn't allow the receiving creature", traits["limited_telepathy"]["description"])
+        self.assertEqual(traits["multiattack"]["effect"]["options"], [{
+            "id": "bite_tentacles",
+            "attacks": ["bite", "tentacle", "tentacle"],
+        }])
+        self.assertNotIn("free_rider", traits["multiattack"]["effect"]["options"][0])
+        acts = {a["id"]: a for a in o["actions"]}
+        bite, tent, slam = acts["bite"], acts["tentacle"], acts["tentacle_slam"]
+        self.assertEqual(bite["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual(bite["ability"], "str")
+        self.assertEqual((bite["to_hit"], bite["reach"], bite["damage"]),
+                         (6, 5, [{"dice": "2d8+3", "type": "piercing"}]))
+        self.assertEqual(bite["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "con", "dc": 15},
+            "apply": [{"condition": "poisoned", "duration": {"kind": "until_cured"}}],
+            "disease": {"every_hours": 24, "hp_max": "1d10"},
+        }])
+        self.assertNotIn("damage", bite["on_hit"][0])
+        self.assertEqual(tent["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual(tent["ability"], "str")
+        self.assertEqual((tent["to_hit"], tent["reach"], tent["damage"]),
+                         (6, 10, [
+                             {"dice": "1d8+3", "type": "bludgeoning"},
+                             {"dice": "1d8", "type": "piercing"},
+                         ]))
+        self.assertEqual(tent["on_hit"], [{
+            "kind": "grapple",
+            "escape_dc": 13,
+            "restrains": True,
+            "max_grapples": 2,
+            "max_size": "medium",
+        }])
+        self.assertEqual(slam["kind"], "save_effect")
+        self.assertNotIn("rider_only", slam)
+        self.assertNotIn("area", slam)
+        self.assertEqual(slam["save"], {"ability": "con", "dc": 14})
+        self.assertEqual(slam["range_ft"], 10)
+        self.assertEqual(slam["targets"], 2)
+        self.assertEqual(slam["target_requires_any"], ["grappled_by_self"])
+        self.assertEqual(slam["damage"], [{"dice": "2d6+3", "type": "bludgeoning"}])
+        self.assertEqual(slam["on_success"], "half")
+        self.assertEqual(slam["apply"], [{
+            "condition": "stunned",
+            "duration": {"kind": "until_end_of_caster_next_turn"},
+        }])
+        self.assertEqual([a["name"] for a in TABLE["otyugh"]["attacks"]], ["Bite", "Tentacle"])
+        dog = load("death-dog")["actions"][0]["on_hit"][0]
+        self.assertNotIn("disease", dog)
+
+    def test_air_elemental(self):
+        # Air Form is the air_form id (§39). Whirlwind is the whirlwind action (§40).
+        # The 1-inch gap and the built-in AI's non-use stay description only.
+        air = load("air-elemental")
+        self.assertEqual((air["$schema"], air["derive"], air["id"]),
+                         ("monster@5", True, "srd51.monster.air_elemental"))
+        self.assertEqual((air["size"], air["type"], air["alignment"], air["hands"]),
+                         ("large", "elemental", "neutral", 0))
+        self.assertNotIn("natural_armor", air)
+        self.assertEqual(air["armor_class"], {"value": 15})
+        self.assertEqual(air["hit_points"], {"average": 90, "formula": "12d10+24"})
+        self.assertEqual(air["speed"], {"walk": 0, "fly": 90, "hover": True})
+        self.assertEqual(air["abilities"], {"str": 14, "dex": 20, "con": 14, "int": 6, "wis": 10, "cha": 6})
+        self.assertEqual(air["damage_resistances"], ["lightning", "thunder"])
+        self.assertEqual(air["damage_immunities"], ["poison"])
+        self.assertNotIn("damage_vulnerabilities", air)
+        self.assertEqual(air["condition_immunities"], [
+            "exhaustion", "grappled", "paralyzed", "petrified", "poisoned", "prone", "restrained", "unconscious",
+        ])
+        self.assertEqual(air["senses"], {"darkvision": 60, "passive_perception": 10})
+        self.assertEqual(air["languages"], ["Auran"])
+        self.assertEqual(air["challenge"], {"rating": "5", "xp": 1800})
+        self.assertEqual(air["proficiency_bonus"], 3)
+        self.assertNotIn("air-elemental", DEFERRED)
+        traits = {t["id"]: t for t in air["traits"]}
+        self.assertEqual(traits["damage_resistances_nonmagical"]["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", traits["air_form"])
+        self.assertEqual(traits["air_form"]["name"], "Air Form")
+        self.assertIn("1 inch", traits["air_form"]["description"])
+        self.assertIn("Descriptive only", traits["air_form"]["description"])
+        self.assertEqual(traits["multiattack"]["effect"]["options"], [{
+            "id": "slam_x2",
+            "attacks": ["slam", "slam"],
+        }])
+        acts = {a["id"]: a for a in air["actions"]}
+        slam, whirl = acts["slam"], acts["whirlwind"]
+        self.assertEqual(slam["kind"], "melee_weapon_attack")
+        self.assertEqual(slam["natural"], {"dice": "2d8", "ability": "dex"})
+        self.assertEqual(slam["ability"], "dex")
+        self.assertNotIn("attack_bonus", slam)
+        self.assertNotIn("on_hit", slam)
+        self.assertEqual((slam["to_hit"], slam["reach"], slam["damage"]),
+                         (8, 5, [{"dice": "2d8+5", "type": "bludgeoning"}]))
+        self.assertEqual(whirl["kind"], "whirlwind")
+        self.assertEqual(whirl["save"], {"ability": "str", "dc": 13})
+        self.assertEqual(whirl["damage"], [{"dice": "3d8+2", "type": "bludgeoning"}])
+        self.assertEqual(whirl["fling_ft"], 20)
+        self.assertEqual(whirl["impact"], {"dice": "1d6", "per_ft": 10, "type": "bludgeoning"})
+        self.assertEqual(whirl["impact_save"], {"ability": "dex", "dc": 13})
+        self.assertEqual(whirl["usage"], {"kind": "recharge", "min": 4})
+        self.assertNotIn("on_success", whirl)
+        self.assertNotIn("apply", whirl)
+        self.assertIn("isn't flung away or knocked prone", whirl["description"])
+        self.assertIn("built-in AI does not use", whirl["description"])
+        self.assertEqual([a["id"] for a in air["actions"]], ["slam", "whirlwind"])
+        self.assertEqual([a["name"] for a in TABLE["air-elemental"]["attacks"]], ["Slam"])
+
+
+    def test_bulette(self):
+        # Deadly Leap is the deadly_leap action (CONTENT_CONVENTIONS §38). The packets are the
+        # SRD 5.1 print (a6212be): 3d6+4 bludgeoning and 3d6+4 slashing. Standing Leap stays
+        # description only. The built-in AI does not leap. Burrow is the speed entry.
+        b = load("bulette")
+        self.assertEqual((b["$schema"], b["derive"], b["id"]),
+                         ("monster@5", True, "srd51.monster.bulette"))
+        self.assertEqual((b["size"], b["type"], b["alignment"], b["hands"]),
+                         ("large", "monstrosity", "unaligned", 0))
+        self.assertEqual(b["natural_armor"], {"base": 17, "dex": True})
+        self.assertEqual(b["armor_class"], {"value": 17, "note": "natural armor"})
+        self.assertEqual(b["hit_points"], {"average": 94, "formula": "9d10+45"})
+        self.assertEqual(b["speed"], {"walk": 40, "burrow": 40})
+        self.assertEqual(b["abilities"], {"str": 19, "dex": 11, "con": 21, "int": 2, "wis": 10, "cha": 5})
+        self.assertEqual(b["skills"], {"perception": 6})
+        self.assertNotIn("saving_throws", b)
+        self.assertNotIn("damage_resistances", b)
+        self.assertNotIn("damage_immunities", b)
+        self.assertNotIn("damage_vulnerabilities", b)
+        self.assertNotIn("condition_immunities", b)
+        self.assertEqual(b["senses"], {"darkvision": 60, "tremorsense": 60, "passive_perception": 16})
+        self.assertEqual(b["languages"], [])
+        self.assertEqual(b["challenge"], {"rating": "5", "xp": 1800})
+        self.assertEqual(b["proficiency_bonus"], 3)
+        self.assertNotIn("bulette", DEFERRED)
+        traits = {t["id"]: t for t in b["traits"]}
+        self.assertEqual(set(traits), {"standing_leap"})
+        self.assertNotIn("effect", traits["standing_leap"])
+        self.assertEqual(traits["standing_leap"]["name"], "Standing Leap")
+        self.assertIn("30 ft.", traits["standing_leap"]["description"])
+        self.assertIn("15 ft.", traits["standing_leap"]["description"])
+        self.assertIn("Descriptive only", traits["standing_leap"]["description"])
+        acts = {a["id"]: a for a in b["actions"]}
+        bite, leap = acts["bite"], acts["deadly_leap"]
+        self.assertEqual(bite["kind"], "melee_weapon_attack")
+        self.assertEqual(bite["natural"], {"dice": "4d12", "ability": "str"})
+        self.assertEqual(bite["ability"], "str")
+        self.assertNotIn("attack_bonus", bite)
+        self.assertNotIn("on_hit", bite)
+        self.assertEqual((bite["to_hit"], bite["reach"], bite["damage"]),
+                         (7, 5, [{"dice": "4d12+4", "type": "piercing"}]))
+        self.assertEqual(leap["kind"], "deadly_leap")
+        self.assertEqual(leap["jump_ft"], 15)
+        self.assertEqual(leap["save"], {"ability": "str", "dc": 16})
+        self.assertEqual(leap["save_alt"], "dex")
+        self.assertEqual(leap["damage"], [
+            {"dice": "3d6+4", "type": "bludgeoning"},
+            {"dice": "3d6+4", "type": "slashing"},
+        ])
+        self.assertEqual(leap["push_ft"], 5)
+        self.assertNotIn("on_success", leap)
+        self.assertNotIn("apply", leap)
+        self.assertNotIn("usage", leap)
+        self.assertIn("3d6 + 4", leap["description"])
+        self.assertIn("slashing", leap["description"])
+        self.assertIn("built-in AI does not leap", leap["description"])
+        self.assertEqual([a["id"] for a in b["actions"]], ["bite", "deadly_leap"])
+        self.assertEqual([a["name"] for a in TABLE["bulette"]["attacks"]], ["Bite"])
+
+    def test_roper(self):
+        # Reel is the pull action (CONTENT_CONVENTIONS §35). Tendril is a damageless restraining
+        # grapple (no_damage, not the vampire spawn choice). Grasping Tendrils as objects, the
+        # Strength-check disadvantage, and Reel between the tendrils and the bite stay description only.
+        r = load("roper")
+        self.assertEqual((r["$schema"], r["derive"], r["id"]),
+                         ("monster@5", True, "srd51.monster.roper"))
+        self.assertEqual((r["size"], r["type"], r["alignment"], r["hands"]),
+                         ("large", "monstrosity", "neutral evil", 0))
+        self.assertEqual(r["natural_armor"], {"base": 21, "dex": True})
+        self.assertEqual(r["armor_class"], {"value": 20, "note": "natural armor"})
+        self.assertEqual(r["hit_points"], {"average": 93, "formula": "11d10+33"})
+        self.assertEqual(r["speed"], {"walk": 10, "climb": 10})
+        self.assertEqual(r["abilities"], {"str": 18, "dex": 8, "con": 17, "int": 7, "wis": 16, "cha": 6})
+        self.assertEqual(r["skills"], {"perception": 6, "stealth": 5})
+        self.assertNotIn("saving_throws", r)
+        self.assertNotIn("damage_resistances", r)
+        self.assertNotIn("damage_immunities", r)
+        self.assertNotIn("damage_vulnerabilities", r)
+        self.assertNotIn("condition_immunities", r)
+        self.assertEqual(r["senses"], {"darkvision": 60, "passive_perception": 16})
+        self.assertEqual(r["languages"], [])
+        self.assertEqual(r["challenge"], {"rating": "5", "xp": 1800})
+        self.assertEqual(r["proficiency_bonus"], 3)
+        self.assertNotIn("roper", DEFERRED)
+        traits = {t["id"]: t for t in r["traits"]}
+        self.assertEqual(set(traits), {"false_appearance", "grasping_tendrils", "spider_climb", "multiattack"})
+        self.assertNotIn("effect", traits["false_appearance"])
+        self.assertNotIn("effect", traits["grasping_tendrils"])
+        self.assertNotIn("effect", traits["spider_climb"])
+        self.assertIn("Descriptive only", traits["grasping_tendrils"]["description"])
+        self.assertIn("AC 20", traits["grasping_tendrils"]["description"])
+        self.assertNotIn("Descriptive only", traits["false_appearance"]["description"])
+        self.assertNotIn("Descriptive only", traits["spider_climb"]["description"])
+        self.assertEqual(traits["multiattack"]["effect"]["options"], [{
+            "id": "tendrils_bite",
+            "attacks": ["tendril", "tendril", "tendril", "tendril", "bite"],
+        }])
+        self.assertNotIn("free_rider", traits["multiattack"]["effect"]["options"][0])
+        self.assertIn("not between", traits["multiattack"]["description"])
+        acts = {a["id"]: a for a in r["actions"]}
+        bite, tendril, reel = acts["bite"], acts["tendril"], acts["reel"]
+        self.assertEqual(bite["kind"], "melee_weapon_attack")
+        self.assertEqual(bite["natural"], {"dice": "4d8", "ability": "str"})
+        self.assertEqual(bite["ability"], "str")
+        self.assertNotIn("attack_bonus", bite)
+        self.assertNotIn("on_hit", bite)
+        self.assertEqual((bite["to_hit"], bite["reach"], bite["damage"]),
+                         (7, 5, [{"dice": "4d8+4", "type": "piercing"}]))
+        self.assertEqual(tendril["kind"], "melee_weapon_attack")
+        self.assertNotIn("natural", tendril)
+        self.assertNotIn("damage", tendril)
+        self.assertNotIn("weapon", tendril)
+        self.assertEqual(tendril["ability"], "str")
+        self.assertEqual((tendril["to_hit"], tendril["reach"]), (7, 50))
+        self.assertEqual(tendril["on_hit"], [{
+            "kind": "grapple",
+            "escape_dc": 15,
+            "restrains": True,
+            "no_damage": True,
+            "max_grapples": 6,
+        }])
+        self.assertNotIn("instead_of_damage", tendril["on_hit"][0])
+        self.assertNotIn("exclusive", tendril["on_hit"][0])
+        self.assertNotIn("max_size", tendril["on_hit"][0])
+        self.assertIn("description only", tendril["description"])
+        self.assertEqual(reel["kind"], "pull")
+        self.assertEqual(reel["feet"], 25)
+        self.assertEqual(reel["targets"], 6)
+        self.assertEqual(reel["target_requires_any"], ["grappled_by_self"])
+        self.assertNotIn("damage", reel)
+        self.assertNotIn("save", reel)
+        self.assertIn("built-in AI does not use", reel["description"])
+        self.assertEqual([a["id"] for a in r["actions"]], ["bite", "tendril", "reel"])
+        self.assertEqual([a["name"] for a in TABLE["roper"]["attacks"]], ["Bite", "Tendril"])
+        self.assertEqual(TABLE["roper"]["attacks"][1]["damage_options"], [])
+
+    def test_shambling_mound(self):
+        # Lightning Absorption is absorb (CONTENT_CONVENTIONS §43). Both-hits Engulf is
+        # engulf_both_hits on Multiattack (CONTENT_CONVENTIONS §37), not a separate action.
+        # The printed Constitution save is not rolled. Suffocation and contain-carry stay gaps.
+        m = load("shambling-mound")
+        self.assertEqual((m["$schema"], m["derive"], m["id"]),
+                         ("monster@5", True, "srd51.monster.shambling_mound"))
+        self.assertEqual((m["size"], m["type"], m["alignment"], m["hands"]),
+                         ("large", "plant", "unaligned", 0))
+        self.assertEqual(m["natural_armor"], {"base": 16, "dex": True})
+        self.assertEqual(m["armor_class"], {"value": 15, "note": "natural armor"})
+        self.assertEqual(m["hit_points"], {"average": 136, "formula": "16d10+48"})
+        self.assertEqual(m["speed"], {"walk": 20, "swim": 20})
+        self.assertEqual(m["abilities"], {"str": 18, "dex": 8, "con": 16, "int": 5, "wis": 10, "cha": 5})
+        self.assertEqual(m["skills"], {"stealth": 2})
+        self.assertNotIn("saving_throws", m)
+        self.assertEqual(m["damage_resistances"], ["cold", "fire"])
+        self.assertEqual(m["damage_immunities"], ["lightning"])
+        self.assertNotIn("damage_vulnerabilities", m)
+        self.assertEqual(m["condition_immunities"], ["blinded", "deafened", "exhaustion"])
+        self.assertEqual(m["senses"], {"blindsight": 60, "passive_perception": 10})
+        self.assertEqual(m["languages"], [])
+        self.assertEqual(m["challenge"], {"rating": "5", "xp": 1800})
+        self.assertEqual(m["proficiency_bonus"], 3)
+        self.assertNotIn("shambling-mound", DEFERRED)
+        traits = {t["id"]: t for t in m["traits"]}
+        self.assertEqual(set(traits), {"lightning_absorption", "multiattack"})
+        self.assertEqual(traits["lightning_absorption"]["effect"], {"kind": "absorb", "by": ["lightning"]})
+        self.assertIn("takes no damage", traits["lightning_absorption"]["description"])
+        self.assertIn("does not zero the regain", traits["lightning_absorption"]["description"])
+        opt = traits["multiattack"]["effect"]["options"]
+        self.assertEqual(len(opt), 1)
+        self.assertEqual(opt[0]["id"], "slams")
+        self.assertEqual(opt[0]["attacks"], ["slam", "slam"])
+        self.assertEqual(opt[0]["engulf_both_hits"], {
+            "max_size": "medium",
+            "escape_dc": 14,
+            "while": "blinded",
+            "damage": {"dice": "2d8+4", "type": "bludgeoning"},
+        })
+        self.assertNotIn("free_rider", opt[0])
+        self.assertNotIn("count_dice", opt[0])
+        self.assertIn("Constitution saving throw", traits["multiattack"]["description"])
+        self.assertIn("not rolled", traits["multiattack"]["description"])
+        self.assertIn("no sourced Grappled", traits["multiattack"]["description"])
+        self.assertIn("not modelled", traits["multiattack"]["description"])
+        acts = {a["id"]: a for a in m["actions"]}
+        self.assertEqual(list(acts), ["slam"])
+        slam = acts["slam"]
+        self.assertEqual(slam["kind"], "melee_weapon_attack")
+        self.assertEqual(slam["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual(slam["ability"], "str")
+        self.assertNotIn("attack_bonus", slam)
+        self.assertNotIn("on_hit", slam)
+        self.assertEqual((slam["to_hit"], slam["reach"], slam["damage"]),
+                         (7, 5, [{"dice": "2d8+4", "type": "bludgeoning"}]))
+        self.assertEqual([a["name"] for a in TABLE["shambling-mound"]["attacks"]], ["Slam"])
+        self.assertFalse(any(a["name"] == "Engulf" for a in TABLE["shambling-mound"]["attacks"]))
+
+    def test_invisible_stalker(self):
+        # Invisibility is innate_invisibility (CONTENT_CONVENTIONS §44). Faultless Tracker
+        # is description only. See Invisibility, Faerie Fire outlined, and Branding Smite
+        # reveal_invisible versus a permanent holder stay open.
+        s = load("invisible-stalker")
+        self.assertEqual((s["$schema"], s["derive"], s["id"]),
+                         ("monster@5", True, "srd51.monster.invisible_stalker"))
+        self.assertEqual((s["size"], s["type"], s["alignment"], s["hands"]),
+                         ("medium", "elemental", "neutral", 0))
+        self.assertNotIn("natural_armor", s)
+        self.assertEqual(s["armor_class"], {"value": 14})
+        self.assertEqual(s["hit_points"], {"average": 104, "formula": "16d8+32"})
+        self.assertEqual(s["speed"], {"walk": 50, "fly": 50, "hover": True})
+        self.assertEqual(s["abilities"], {"str": 16, "dex": 19, "con": 14, "int": 10, "wis": 15, "cha": 11})
+        self.assertEqual(s["skills"], {"perception": 8, "stealth": 10})
+        self.assertNotIn("saving_throws", s)
+        self.assertNotIn("damage_resistances", s)
+        self.assertEqual(s["damage_immunities"], ["poison"])
+        self.assertNotIn("damage_vulnerabilities", s)
+        self.assertEqual(s["condition_immunities"], [
+            "exhaustion", "grappled", "paralyzed", "petrified", "poisoned", "prone", "restrained", "unconscious"])
+        self.assertEqual(s["senses"], {"darkvision": 60, "passive_perception": 18})
+        self.assertEqual(s["languages"], ["Auran", "understands Common but doesn't speak it"])
+        self.assertEqual(s["challenge"], {"rating": "6", "xp": 2300})
+        self.assertEqual(s["proficiency_bonus"], 3)
+        self.assertNotIn("invisible-stalker", DEFERRED)
+        traits = {t["id"]: t for t in s["traits"]}
+        self.assertEqual(set(traits), {
+            "damage_resistances_nonmagical", "invisibility", "faultless_tracker", "multiattack"})
+        self.assertEqual(traits["damage_resistances_nonmagical"]["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertEqual(traits["invisibility"]["effect"], {"kind": "innate_invisibility"})
+        self.assertEqual(traits["invisibility"]["name"], "Invisibility")
+        self.assertIn("The stalker is invisible.", traits["invisibility"]["description"])
+        self.assertIn("Faultless Tracker is not this trait", traits["invisibility"]["description"])
+        self.assertIn("not decided", traits["invisibility"]["description"])
+        self.assertIn("Combat::hash", traits["invisibility"]["description"])
+        self.assertIn("built-in AI is not changed", traits["invisibility"]["description"])
+        self.assertIn("Heard or noticed hiding is not modelled", traits["invisibility"]["description"])
+        self.assertNotIn("effect", traits["faultless_tracker"])
+        self.assertIn("Descriptive only", traits["faultless_tracker"]["description"])
+        self.assertIn("not a tracking mechanic", traits["faultless_tracker"]["description"])
+        self.assertIn("direction and distance", traits["faultless_tracker"]["description"])
+        self.assertEqual(traits["multiattack"]["effect"]["options"], [{
+            "id": "slam_x2",
+            "attacks": ["slam", "slam"],
+        }])
+        acts = {a["id"]: a for a in s["actions"]}
+        self.assertEqual(list(acts), ["slam"])
+        slam = acts["slam"]
+        self.assertEqual(slam["kind"], "melee_weapon_attack")
+        self.assertEqual(slam["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual(slam["ability"], "str")
+        self.assertNotIn("attack_bonus", slam)
+        self.assertNotIn("on_hit", slam)
+        self.assertEqual((slam["to_hit"], slam["reach"], slam["damage"]),
+                         (6, 5, [{"dice": "2d6+3", "type": "bludgeoning"}]))
+        self.assertEqual([a["name"] for a in TABLE["invisible-stalker"]["attacks"]], ["Slam"])
+
+    def test_sea_hag(self):
+        # Horrific Appearance is horrific_appearance (CONTENT_CONVENTIONS §45). Death Glare is
+        # the save_effect keys (CONTENT_CONVENTIONS §46). Illusory Appearance is description only.
+        # The SRD line has no Multiattack.
+        s = load("sea-hag")
+        self.assertEqual((s["$schema"], s["derive"], s["id"]),
+                         ("monster@5", True, "srd51.monster.sea_hag"))
+        self.assertEqual((s["size"], s["type"], s["alignment"], s["hands"]),
+                         ("medium", "fey", "chaotic evil", 0))
+        self.assertEqual(s["natural_armor"], {"base": 13, "dex": True})
+        self.assertEqual(s["armor_class"], {"value": 14, "note": "natural armor"})
+        self.assertEqual(s["hit_points"], {"average": 52, "formula": "7d8+21"})
+        self.assertEqual(s["speed"], {"walk": 30, "swim": 40})
+        self.assertEqual(s["abilities"], {"str": 16, "dex": 13, "con": 16, "int": 12, "wis": 12, "cha": 13})
+        self.assertNotIn("saving_throws", s)
+        self.assertNotIn("skills", s)
+        self.assertNotIn("damage_resistances", s)
+        self.assertNotIn("damage_immunities", s)
+        self.assertNotIn("damage_vulnerabilities", s)
+        self.assertNotIn("condition_immunities", s)
+        self.assertEqual(s["senses"], {"darkvision": 60, "passive_perception": 11})
+        self.assertEqual(s["languages"], ["Aquan", "Common", "Giant"])
+        self.assertEqual(s["challenge"], {"rating": "2", "xp": 450})
+        self.assertEqual(s["proficiency_bonus"], 2)
+        self.assertNotIn("sea-hag", DEFERRED)
+        traits = {t["id"]: t for t in s["traits"]}
+        self.assertEqual(set(traits), {"amphibious", "horrific_appearance"})
+        self.assertNotIn("effect", traits["amphibious"])
+        self.assertEqual(traits["amphibious"]["description"], "The hag can breathe air and water.")
+        self.assertEqual(traits["horrific_appearance"]["effect"], {
+            "kind": "horrific_appearance",
+            "radius_ft": 30,
+            "save": {"ability": "wis", "dc": 11},
+            "immunity_hours": 24,
+        })
+        self.assertEqual(traits["horrific_appearance"]["name"], "Horrific Appearance")
+        self.assertIn("can see the hag's true form", traits["horrific_appearance"]["description"])
+        self.assertIn("Sudden revelation is not a flag", traits["horrific_appearance"]["description"])
+        self.assertIn("Illusory Appearance is not this trait", traits["horrific_appearance"]["description"])
+        self.assertIn("built-in AI looks and does not avert", traits["horrific_appearance"]["description"])
+        self.assertFalse(any(t.get("effect", {}).get("kind") == "multiattack" for t in s["traits"]))
+        acts = {a["id"]: a for a in s["actions"]}
+        self.assertEqual(list(acts), ["claws", "death_glare", "illusory_appearance"])
+        claws = acts["claws"]
+        self.assertEqual(claws["kind"], "melee_weapon_attack")
+        self.assertEqual(claws["name"], "Claws")
+        self.assertEqual(claws["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual(claws["ability"], "str")
+        self.assertNotIn("attack_bonus", claws)
+        self.assertNotIn("on_hit", claws)
+        self.assertEqual((claws["to_hit"], claws["reach"], claws["damage"]),
+                         (5, 5, [{"dice": "2d6+3", "type": "slashing"}]))
+        glare = acts["death_glare"]
+        self.assertEqual(glare["kind"], "save_effect")
+        self.assertEqual(glare["range_ft"], 30)
+        self.assertEqual(glare["save"], {"ability": "wis", "dc": 11})
+        self.assertIs(glare["magical"], True)
+        self.assertIs(glare["target_must_see_source"], True)
+        self.assertIs(glare["caster_sees_target"], True)
+        self.assertEqual(glare["target_has_condition"], "frightened")
+        self.assertIs(glare["drop_to_zero"], True)
+        self.assertNotIn("damage", glare)
+        self.assertNotIn("apply", glare)
+        self.assertIn("drop to 0 hit points", glare["description"])
+        self.assertIn("Not a damage packet", glare["description"])
+        illus = acts["illusory_appearance"]
+        self.assertEqual(illus["kind"], "special")
+        self.assertEqual(set(illus), {"id", "name", "kind", "description"})
+        self.assertNotIn("effect", illus)
+        self.assertIn("Descriptive only", illus["description"])
+        self.assertIn("not a disguise mechanic", illus["description"])
+        self.assertIn("No Investigation DC", illus["description"])
+        self.assertIn("no sudden-revelation flag", illus["description"])
+        self.assertIn("ugly creature", illus["description"])
+        self.assertEqual([a["name"] for a in TABLE["sea-hag"]["attacks"]], ["Claws"])
+
+    def test_water_elemental(self):
+        # Water Form is the water_form id (§39). Freeze is the freeze trait (§42).
+        # Whelm is the whelm action (§41). The 1-inch gap, suffocation, and the ally
+        # pull stay description only. The built-in AI does not use Whelm.
+        w = load("water-elemental")
+        self.assertEqual((w["$schema"], w["derive"], w["id"]),
+                         ("monster@5", True, "srd51.monster.water_elemental"))
+        self.assertEqual((w["size"], w["type"], w["alignment"], w["hands"]),
+                         ("large", "elemental", "neutral", 0))
+        self.assertEqual(w["natural_armor"], {"base": 12, "dex": True})
+        self.assertEqual(w["armor_class"], {"value": 14, "note": "natural armor"})
+        self.assertEqual(w["hit_points"], {"average": 114, "formula": "12d10+48"})
+        self.assertEqual(w["speed"], {"walk": 30, "swim": 90})
+        self.assertEqual(w["abilities"], {"str": 18, "dex": 14, "con": 18, "int": 5, "wis": 10, "cha": 8})
+        self.assertEqual(w["damage_resistances"], ["acid"])
+        self.assertEqual(w["damage_immunities"], ["poison"])
+        self.assertNotIn("damage_vulnerabilities", w)
+        self.assertNotIn("skills", w)
+        self.assertNotIn("saving_throws", w)
+        self.assertEqual(w["condition_immunities"], [
+            "exhaustion", "grappled", "paralyzed", "petrified", "poisoned", "prone", "restrained", "unconscious",
+        ])
+        self.assertEqual(w["senses"], {"darkvision": 60, "passive_perception": 10})
+        self.assertEqual(w["languages"], ["Aquan"])
+        self.assertEqual(w["challenge"], {"rating": "5", "xp": 1800})
+        self.assertEqual(w["proficiency_bonus"], 3)
+        self.assertNotIn("water-elemental", DEFERRED)
+        traits = {t["id"]: t for t in w["traits"]}
+        self.assertEqual(set(traits), {"damage_resistances_nonmagical", "water_form", "freeze", "multiattack"})
+        self.assertEqual(traits["damage_resistances_nonmagical"]["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", traits["water_form"])
+        self.assertEqual(traits["water_form"]["name"], "Water Form")
+        self.assertIn("1 inch", traits["water_form"]["description"])
+        self.assertIn("Descriptive only", traits["water_form"]["description"])
+        self.assertEqual(traits["freeze"]["name"], "Freeze")
+        self.assertEqual(traits["freeze"]["effect"], {"kind": "freeze", "by": ["cold"], "speed_sub": 20})
+        self.assertIn("20 feet", traits["freeze"]["description"])
+        self.assertIn("cold damage", traits["freeze"]["description"])
+        self.assertEqual(traits["multiattack"]["effect"]["options"], [{
+            "id": "slam_x2",
+            "attacks": ["slam", "slam"],
+        }])
+        acts = {a["id"]: a for a in w["actions"]}
+        slam, whelm = acts["slam"], acts["whelm"]
+        self.assertEqual(slam["kind"], "melee_weapon_attack")
+        self.assertEqual(slam["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual(slam["ability"], "str")
+        self.assertNotIn("attack_bonus", slam)
+        self.assertNotIn("on_hit", slam)
+        self.assertEqual((slam["to_hit"], slam["reach"], slam["damage"]),
+                         (7, 5, [{"dice": "2d8+4", "type": "bludgeoning"}]))
+        self.assertEqual(whelm["kind"], "whelm")
+        self.assertEqual(whelm["save"], {"ability": "str", "dc": 15})
+        self.assertEqual(whelm["damage"], [{"dice": "2d8+4", "type": "bludgeoning"}])
+        self.assertEqual(whelm["grapple"], {"escape_dc": 14, "max_size": "large"})
+        self.assertEqual(whelm["crush"], {"dice": "2d8+4", "type": "bludgeoning"})
+        self.assertEqual(whelm["usage"], {"kind": "recharge", "min": 4})
+        self.assertNotIn("on_success", whelm)
+        self.assertNotIn("apply", whelm)
+        self.assertIn("DC 14 Strength check", whelm["description"])
+        self.assertIn("unable to breathe unless it can breathe water", whelm["description"])
+        self.assertIn("not modelled", whelm["description"])
+        self.assertIn("built-in AI does not use", whelm["description"])
+        self.assertEqual([a["id"] for a in w["actions"]], ["slam", "whelm"])
+        self.assertEqual([a["name"] for a in TABLE["water-elemental"]["attacks"]], ["Slam"])
+
+    def test_green_hag(self):
+        # Illusory Appearance is illusory_appearance (CONTENT_CONVENTIONS §52). Invisible Passage
+        # is invisible_passage (CONTENT_CONVENTIONS §53). Innate Spellcasting and Mimicry are
+        # description only. The SRD line has no Multiattack. No art assets.
+        g = load("green-hag")
+        self.assertEqual((g["$schema"], g["derive"], g["id"]),
+                         ("monster@5", True, "srd51.monster.green_hag"))
+        self.assertEqual((g["size"], g["type"], g["alignment"], g["hands"]),
+                         ("medium", "fey", "neutral evil", 0))
+        self.assertEqual(g["natural_armor"], {"base": 16, "dex": True})
+        self.assertEqual(g["armor_class"], {"value": 17, "note": "natural armor"})
+        self.assertEqual(g["hit_points"], {"average": 82, "formula": "11d8+33"})
+        self.assertEqual(g["speed"], {"walk": 30})
+        self.assertEqual(g["abilities"], {"str": 18, "dex": 12, "con": 16, "int": 13, "wis": 14, "cha": 14})
+        self.assertEqual(g["skills"], {"arcana": 3, "deception": 4, "perception": 4, "stealth": 3})
+        self.assertNotIn("saving_throws", g)
+        self.assertNotIn("damage_resistances", g)
+        self.assertNotIn("damage_immunities", g)
+        self.assertNotIn("damage_vulnerabilities", g)
+        self.assertNotIn("condition_immunities", g)
+        self.assertNotIn("spellcasting", g)
+        self.assertNotIn("visual", g)
+        self.assertNotIn("presentation", g)
+        self.assertEqual(g["senses"], {"darkvision": 60, "passive_perception": 14})
+        self.assertEqual(g["languages"], ["Common", "Draconic", "Sylvan"])
+        self.assertEqual(g["challenge"], {"rating": "3", "xp": 700})
+        self.assertEqual(g["proficiency_bonus"], 2)
+        self.assertNotIn("green-hag", DEFERRED)
+        traits = {t["id"]: t for t in g["traits"]}
+        self.assertEqual(set(traits), {"amphibious", "innate_spellcasting", "mimicry"})
+        self.assertNotIn("effect", traits["amphibious"])
+        self.assertEqual(traits["amphibious"]["description"], "The hag can breathe air and water.")
+        innate = traits["innate_spellcasting"]
+        self.assertEqual(innate["name"], "Innate Spellcasting")
+        self.assertNotIn("effect", innate)
+        self.assertIn("dancing lights, minor illusion, vicious mockery", innate["description"])
+        self.assertIn("Descriptive only", innate["description"])
+        self.assertIn("no caster level", innate["description"])
+        self.assertIn("no fake slots", innate["description"])
+        self.assertIn("Not a spellcasting entry", innate["description"])
+        mimicry = traits["mimicry"]
+        self.assertNotIn("effect", mimicry)
+        self.assertIn("DC 14", mimicry["description"])
+        self.assertIn("Descriptive only", mimicry["description"])
+        self.assertIn("not a check", mimicry["description"])
+        self.assertFalse(any(t.get("effect", {}).get("kind") == "multiattack" for t in g["traits"]))
+        acts = {a["id"]: a for a in g["actions"]}
+        self.assertEqual(list(acts), ["claws", "illusory_appearance", "invisible_passage"])
+        claws = acts["claws"]
+        self.assertEqual(claws["kind"], "melee_weapon_attack")
+        self.assertEqual(claws["name"], "Claws")
+        self.assertEqual(claws["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual(claws["ability"], "str")
+        self.assertNotIn("attack_bonus", claws)
+        self.assertNotIn("on_hit", claws)
+        self.assertEqual((claws["to_hit"], claws["reach"], claws["damage"]),
+                         (6, 5, [{"dice": "2d8+4", "type": "slashing"}]))
+        illus = acts["illusory_appearance"]
+        self.assertEqual(illus["kind"], "illusory_appearance")
+        self.assertEqual(illus["dc"], 20)
+        self.assertEqual(illus["name"], "Illusory Appearance")
+        self.assertNotIn("effect", illus)
+        self.assertIn("another creature", illus["description"])
+        self.assertIn("DC 20", illus["description"])
+        self.assertIn("action is not spent", illus["description"])
+        self.assertIn("Discernment", illus["description"])
+        self.assertIn("Art HOLD", illus["description"])
+        self.assertIn("no art assets", illus["description"])
+        self.assertIn("built-in AI does not use it", illus["description"])
+        passage = acts["invisible_passage"]
+        self.assertEqual(passage["kind"], "invisible_passage")
+        self.assertEqual(set(passage), {"id", "name", "kind", "description"})
+        self.assertIn("leaves no physical evidence", passage["description"])
+        self.assertIn("invisible with her", passage["description"])
+        self.assertIn("Magical tracking stays unanswered", passage["description"])
+        self.assertIn("not per-item visibility", passage["description"])
+        self.assertIn("spends the action", passage["description"])
+        self.assertIn("Not innate_invisibility", passage["description"])
+        self.assertIn("No new hash tag", passage["description"])
+        self.assertIn("track_evidence(Physical)", passage["description"])
+        self.assertEqual([a["name"] for a in TABLE["green-hag"]["attacks"]], ["Claws"])
+
+
+    def test_succubus(self):
+        # Charm is charm_command (CONTENT_CONVENTIONS §47). Draining Kiss is drain_max_hp
+        # (CONTENT_CONVENTIONS §48). Shapechanger, Etherealness, and Telepathic Bond are
+        # description only. Etherealness is not the ghost Border Ethereal action (§51).
+        # The SRD line has no Multiattack. a6212be index succubus-incubus is this one block.
+        s = load("succubus")
+        self.assertEqual((s["$schema"], s["derive"], s["id"]),
+                         ("monster@5", True, "srd51.monster.succubus"))
+        self.assertEqual(s["name"], "Succubus/Incubus")
+        self.assertEqual((s["size"], s["type"], s["alignment"], s["hands"]),
+                         ("medium", "fiend", "neutral evil", 0))
+        self.assertNotIn("shapechanger", s)
+        self.assertNotIn("tags", s)
+        self.assertEqual(s["natural_armor"], {"base": 12, "dex": True})
+        self.assertEqual(s["armor_class"], {"value": 15, "note": "natural armor"})
+        self.assertEqual(s["hit_points"], {"average": 66, "formula": "12d8+12"})
+        self.assertEqual(s["speed"], {"walk": 30, "fly": 60})
+        self.assertNotIn("hover", s["speed"])
+        self.assertEqual(s["abilities"], {"str": 8, "dex": 17, "con": 13, "int": 15, "wis": 12, "cha": 20})
+        self.assertEqual(s["skills"], {
+            "deception": 9, "insight": 5, "perception": 5, "persuasion": 9, "stealth": 7,
+        })
+        self.assertNotIn("saving_throws", s)
+        self.assertEqual(s["damage_resistances"], ["cold", "fire", "lightning", "poison"])
+        self.assertNotIn("damage_immunities", s)
+        self.assertNotIn("damage_vulnerabilities", s)
+        self.assertNotIn("condition_immunities", s)
+        self.assertNotIn("spellcasting", s)
+        self.assertNotIn("visual", s)
+        self.assertNotIn("presentation", s)
+        self.assertEqual(s["senses"], {"darkvision": 60, "passive_perception": 15})
+        self.assertEqual(s["languages"], ["Abyssal", "Common", "Infernal", "telepathy 60 ft."])
+        self.assertEqual(s["challenge"], {"rating": "4", "xp": 1100})
+        self.assertEqual(s["proficiency_bonus"], 2)
+        self.assertNotIn("succubus", DEFERRED)
+        traits = {t["id"]: t for t in s["traits"]}
+        self.assertEqual(set(traits), {"damage_resistances_nonmagical", "telepathic_bond", "shapechanger"})
+        self.assertEqual(traits["damage_resistances_nonmagical"]["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        bond = traits["telepathic_bond"]
+        self.assertEqual(bond["name"], "Telepathic Bond")
+        self.assertNotIn("effect", bond)
+        self.assertIn("don't even need to be on the same plane", bond["description"])
+        self.assertIn("Descriptive only", bond["description"])
+        self.assertIn("no telepathy channel", bond["description"])
+        shape = traits["shapechanger"]
+        self.assertEqual(shape["name"], "Shapechanger")
+        self.assertNotIn("effect", shape)
+        self.assertNotIn("forms", shape)
+        self.assertIn("Small or Medium humanoid", shape["description"])
+        self.assertIn("loses its flying speed", shape["description"])
+        self.assertIn("Descriptive only", shape["description"])
+        self.assertIn("no shape", shape["description"])
+        self.assertIn("shapechanger is not set", shape["description"])
+        self.assertFalse(any(t.get("effect", {}).get("kind") == "multiattack" for t in s["traits"]))
+        self.assertFalse(any(t.get("effect", {}).get("kind") == "shapechanger" for t in s["traits"]))
+        acts = {a["id"]: a for a in s["actions"]}
+        self.assertEqual(list(acts), ["claw", "charm", "draining_kiss", "etherealness"])
+        claw = acts["claw"]
+        self.assertEqual(claw["kind"], "melee_weapon_attack")
+        self.assertEqual(claw["name"], "Claw (Fiend Form Only)")
+        self.assertEqual(claw["natural"], {"dice": "1d6", "ability": "dex"})
+        self.assertEqual(claw["ability"], "dex")
+        self.assertNotIn("attack_bonus", claw)
+        self.assertNotIn("on_hit", claw)
+        self.assertEqual((claw["to_hit"], claw["reach"], claw["damage"]),
+                         (5, 5, [{"dice": "1d6+3", "type": "slashing"}]))
+        self.assertIn("Fiend Form Only is descriptive", claw["description"])
+        charm = acts["charm"]
+        self.assertEqual(charm["kind"], "save_effect")
+        self.assertEqual(charm["name"], "Charm")
+        self.assertEqual(charm["range_ft"], 30)
+        self.assertEqual(charm["save"], {"ability": "wis", "dc": 15})
+        self.assertIs(charm["magical"], True)
+        self.assertIs(charm["caster_sees_target"], True)
+        self.assertEqual(charm["target_creature_types"], ["humanoid"])
+        self.assertEqual(charm["control"], "command")
+        self.assertIs(charm["charm_command"], True)
+        self.assertEqual(charm["immune_on_success"], {"hours": 24, "scope": "same_source"})
+        self.assertEqual(charm["apply"], [{
+            "condition": "charmed",
+            "duration": {"kind": "rounds", "n": 14400},
+            "repeat_save": "on_damage",
+        }])
+        self.assertNotIn("area", charm)
+        self.assertNotIn("drain_max_hp", charm)
+        self.assertIn("DC 15 Wisdom", charm["description"])
+        self.assertIn("1 day", charm["description"])
+        self.assertIn("not expressible", charm["description"])
+        self.assertIn("No new hash tag", charm["description"])
+        kiss = acts["draining_kiss"]
+        self.assertEqual(kiss["kind"], "save_effect")
+        self.assertEqual(kiss["name"], "Draining Kiss")
+        self.assertEqual(kiss["range_ft"], 5)
+        self.assertEqual(kiss["save"], {"ability": "con", "dc": 15})
+        self.assertIs(kiss["magical"], True)
+        self.assertEqual(kiss["on_success"], "half")
+        self.assertEqual(kiss["damage"], [{"dice": "5d10+5", "type": "psychic"}])
+        self.assertIs(kiss["drain_max_hp"], True)
+        self.assertEqual(kiss["target_requires_any"], ["charmed_by_self", "willing"])
+        self.assertNotIn("charm_command", kiss)
+        self.assertNotIn("area", kiss)
+        self.assertIn("hit point maximum", kiss["description"])
+        self.assertIn("hostile willing creature is not this gate", kiss["description"])
+        self.assertIn("No new hash tag", kiss["description"])
+        eth = acts["etherealness"]
+        self.assertEqual(eth["kind"], "special")
+        self.assertNotEqual(eth["kind"], "etherealness")
+        self.assertEqual(set(eth), {"id", "name", "kind", "description"})
+        self.assertEqual(eth["name"], "Etherealness")
+        self.assertIn("Ethereal Plane from the Material Plane", eth["description"])
+        self.assertIn("Descriptive only", eth["description"])
+        self.assertIn("not kind etherealness", eth["description"])
+        self.assertIn("§51", eth["description"])
+        self.assertIn("no Border", eth["description"])
+        self.assertNotIn("effect", eth)
+        self.assertFalse((PACK / "monsters" / "succubus_incubus.json").exists())
+        self.assertEqual([a["name"] for a in TABLE["succubus"]["attacks"]], ["Claw (Fiend Form Only)"])
+
+    def test_ghost(self):
+        # Horrifying Visage is the §49 save_effect. Etherealness is kind etherealness (§51),
+        # not the succubus special. Withering Touch is the printed melee attack. Possession,
+        # Ethereal Sight, and Incorporeal Movement stay description only. a6212be index ghost.
+        g = load("ghost")
+        self.assertEqual((g["$schema"], g["derive"], g["id"]),
+                         ("monster@5", True, "srd51.monster.ghost"))
+        self.assertEqual(g["name"], "Ghost")
+        self.assertEqual((g["size"], g["type"], g["alignment"], g["hands"]),
+                         ("medium", "undead", "any alignment", 0))
+        self.assertNotIn("natural_armor", g)
+        self.assertEqual(g["armor_class"], {"value": 11})
+        self.assertEqual(g["hit_points"], {"average": 45, "formula": "10d8"})
+        self.assertEqual(g["speed"], {"walk": 0, "fly": 40, "hover": True})
+        self.assertEqual(g["abilities"], {"str": 7, "dex": 13, "con": 10, "int": 10, "wis": 12, "cha": 17})
+        self.assertNotIn("skills", g)
+        self.assertNotIn("saving_throws", g)
+        self.assertEqual(g["damage_resistances"], ["acid", "fire", "lightning", "thunder"])
+        self.assertNotIn("cold", g["damage_resistances"])
+        self.assertEqual(g["damage_immunities"], ["cold", "necrotic", "poison"])
+        self.assertNotIn("damage_vulnerabilities", g)
+        self.assertEqual(g["condition_immunities"], [
+            "charmed", "exhaustion", "frightened", "grappled", "paralyzed",
+            "petrified", "poisoned", "prone", "restrained",
+        ])
+        self.assertNotIn("unconscious", g["condition_immunities"])
+        self.assertNotIn("spellcasting", g)
+        self.assertNotIn("visual", g)
+        self.assertNotIn("presentation", g)
+        self.assertEqual(g["senses"], {"darkvision": 60, "passive_perception": 11})
+        self.assertNotIn("passive_perception_reason", g)
+        self.assertEqual(g["languages"], ["any languages it knew in life"])
+        self.assertEqual(g["challenge"], {"rating": "4", "xp": 1100})
+        self.assertEqual(g["proficiency_bonus"], 2)
+        self.assertNotIn("ghost", DEFERRED)
+        traits = {t["id"]: t for t in g["traits"]}
+        self.assertEqual(set(traits), {
+            "damage_resistances_nonmagical", "ethereal_sight", "incorporeal_movement",
+        })
+        self.assertEqual(traits["damage_resistances_nonmagical"]["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        sight = traits["ethereal_sight"]
+        self.assertEqual(sight["name"], "Ethereal Sight")
+        self.assertNotIn("effect", sight)
+        self.assertIn("60 ft.", sight["description"])
+        self.assertIn("Descriptive only", sight["description"])
+        self.assertIn("Not kind etherealness", sight["description"])
+        self.assertIn("§51", sight["description"])
+        move = traits["incorporeal_movement"]
+        self.assertEqual(move["name"], "Incorporeal Movement")
+        self.assertNotIn("effect", move)
+        self.assertIn("difficult terrain", move["description"])
+        self.assertIn("1d10", move["description"])
+        self.assertIn("Descriptive only", move["description"])
+        self.assertIn("Not kind etherealness", move["description"])
+        self.assertFalse(any(t.get("effect", {}).get("kind") == "multiattack" for t in g["traits"]))
+        acts = {a["id"]: a for a in g["actions"]}
+        self.assertEqual(list(acts), ["withering_touch", "etherealness", "horrifying_visage", "possession"])
+        touch = acts["withering_touch"]
+        self.assertEqual(touch["kind"], "melee_weapon_attack")
+        self.assertEqual(touch["name"], "Withering Touch")
+        self.assertEqual(touch["natural"], {"dice": "4d6", "ability": "dex"})
+        self.assertEqual(touch["ability"], "none")
+        self.assertEqual(touch["attack_bonus"]["value"], 5)
+        self.assertIn("Cha 17", touch["attack_bonus"]["reason"])
+        self.assertEqual(touch["damage_override"]["dice"], "4d6+3")
+        self.assertIn("4d6 + 3", touch["damage_override"]["reason"])
+        self.assertEqual((touch["to_hit"], touch["reach"], touch["targets"], touch["damage"]),
+                         (5, 5, 1, [{"dice": "4d6+3", "type": "necrotic"}]))
+        self.assertNotIn("drain", touch)
+        self.assertNotIn("on_hit", touch)
+        self.assertIn("Not a live Charisma term", touch["description"])
+        eth = acts["etherealness"]
+        self.assertEqual(eth["kind"], "etherealness")
+        self.assertNotEqual(eth["kind"], "special")
+        self.assertEqual(set(eth), {"id", "name", "kind", "description"})
+        self.assertEqual(eth["name"], "Etherealness")
+        self.assertIn("Border Ethereal", eth["description"])
+        self.assertIn("can't affect or be affected", eth["description"])
+        self.assertIn("Deep Ethereal is not a value", eth["description"])
+        self.assertIn("0xE6", eth["description"])
+        self.assertIn("built-in AI does not use it", eth["description"])
+        self.assertIn("Not the succubus sentence", eth["description"])
+        self.assertNotIn("effect", eth)
+        visage = acts["horrifying_visage"]
+        self.assertEqual(visage["kind"], "save_effect")
+        self.assertEqual(visage["name"], "Horrifying Visage")
+        self.assertEqual(visage["origin"], "self")
+        self.assertEqual(visage["area"], {"shape": "sphere", "size_ft": 60})
+        self.assertEqual(visage["save"], {"ability": "wis", "dc": 13})
+        self.assertIs(visage["target_must_see_source"], True)
+        self.assertEqual(visage["exclude_creature_types"], ["undead"])
+        self.assertEqual(visage["immune_on_success"], {"hours": 24, "scope": "same_source"})
+        self.assertIs(visage["immune_on_end"], True)
+        self.assertEqual(visage["age_on_fail_by"], {"margin": 5, "dice": "1d4", "years_per": 10})
+        self.assertEqual(visage["apply"], [{
+            "condition": "frightened",
+            "duration": {"kind": "rounds", "n": 10},
+            "repeat_save": "end_of_turn",
+        }])
+        self.assertNotIn("magical", visage)
+        self.assertNotIn("control", visage)
+        self.assertNotIn("charm_command", visage)
+        self.assertIn("greater restoration", visage["description"])
+        self.assertIn("does not reverse the years", visage["description"])
+        self.assertIn("No ability-score aging", visage["description"])
+        self.assertIn("aged_years is not hashed", visage["description"])
+        self.assertIn("0xE1", visage["description"])
+        poss = acts["possession"]
+        self.assertEqual(poss["kind"], "special")
+        self.assertEqual(set(poss), {"id", "name", "kind", "description"})
+        self.assertEqual(poss["name"], "Possession")
+        self.assertIn("HOLD", poss["description"])
+        self.assertIn("Descriptive only", poss["description"])
+        self.assertIn("DC 13 Charisma", poss["description"])
+        self.assertIn("Recharge 6 is not wired", poss["description"])
+        self.assertIn("Not succubus charm_command", poss["description"])
+        self.assertNotIn("save", poss)
+        self.assertNotIn("usage", poss)
+        self.assertNotIn("control", poss)
+        self.assertNotIn("effect", poss)
+        self.assertEqual([a["name"] for a in TABLE["ghost"]["attacks"]], ["Withering Touch"])
+
+    def test_shield_guardian(self):
+        # Bound is the damage sentence only (CONTENT_CONVENTIONS §50). Shield is the
+        # ally_attacked reaction (CONTENT_CONVENTIONS §54). Regeneration is regain
+        # (CONTENT_CONVENTIONS §55), not troll regen. Multiattack is two fists. Spell
+        # Storing stays HOLD. Same plane, the telepathic call, and distance and direction
+        # stay descriptive. a6212be index shield-guardian. Fist reach is 5 ft.
+        g = load("shield-guardian")
+        self.assertEqual((g["$schema"], g["derive"], g["id"]),
+                         ("monster@5", True, "srd51.monster.shield_guardian"))
+        self.assertEqual(g["name"], "Shield Guardian")
+        self.assertEqual((g["size"], g["type"], g["alignment"], g["hands"]),
+                         ("large", "construct", "unaligned", 0))
+        self.assertEqual(g["natural_armor"], {"base": 18, "dex": True})
+        self.assertEqual(g["armor_class"], {"value": 17, "note": "natural armor"})
+        self.assertNotIn("shield", g["armor_class"]["note"])
+        self.assertEqual(g["hit_points"], {"average": 142, "formula": "15d10+60"})
+        self.assertEqual(g["speed"], {"walk": 30})
+        self.assertNotIn("fly", g["speed"])
+        self.assertEqual(g["abilities"], {"str": 18, "dex": 8, "con": 18, "int": 7, "wis": 10, "cha": 3})
+        self.assertNotIn("skills", g)
+        self.assertNotIn("saving_throws", g)
+        self.assertNotIn("damage_resistances", g)
+        self.assertNotIn("damage_vulnerabilities", g)
+        self.assertEqual(g["damage_immunities"], ["poison"])
+        self.assertNotIn("psychic", g["damage_immunities"])
+        self.assertEqual(g["condition_immunities"], [
+            "charmed", "exhaustion", "frightened", "paralyzed", "poisoned",
+        ])
+        self.assertNotIn("spellcasting", g)
+        self.assertNotIn("visual", g)
+        self.assertNotIn("presentation", g)
+        self.assertNotIn("equipment", g)
+        self.assertEqual(g["senses"], {"blindsight": 10, "darkvision": 60, "passive_perception": 10})
+        self.assertNotIn("passive_perception_reason", g)
+        self.assertEqual(g["languages"], ["understands commands given in any language but can't speak"])
+        self.assertEqual(g["challenge"], {"rating": "7", "xp": 2900})
+        self.assertEqual(g["proficiency_bonus"], 3)
+        self.assertNotIn("shield-guardian", DEFERRED)
+        traits = {t["id"]: t for t in g["traits"]}
+        self.assertEqual(list(traits), ["bound", "regeneration", "spell_storing", "multiattack"])
+        bound = traits["bound"]
+        self.assertEqual(bound["name"], "Bound")
+        self.assertEqual(bound["effect"], {"kind": "bound", "radius_ft": 60})
+        self.assertIn("half of any damage the wearer takes (rounded up)", bound["description"])
+        self.assertIn("same plane of existence", bound["description"])
+        self.assertIn("telepathically call", bound["description"])
+        self.assertIn("distance and direction", bound["description"])
+        self.assertIn("descriptive only", bound["description"])
+        self.assertIn("not an amulet item", bound["description"])
+        self.assertIn("0xE5", bound["description"])
+        self.assertIn("No new hash tag", bound["description"])
+        regen = traits["regeneration"]
+        self.assertEqual(regen["name"], "Regeneration")
+        self.assertEqual(regen["effect"], {"kind": "regain", "amount": 10})
+        self.assertNotEqual(regen["effect"]["kind"], "regen")
+        self.assertIn("at least 1 hit point", regen["description"])
+        self.assertNotIn("hit. point", regen["description"].split("(Regeneration")[0])
+        self.assertIn("1 hit. point", regen["description"])
+        self.assertIn("mirror typo", regen["description"])
+        self.assertIn("Not troll regen", regen["description"])
+        self.assertIn("No new hash tag", regen["description"])
+        stored = traits["spell_storing"]
+        self.assertEqual(stored["name"], "Spell Storing")
+        self.assertNotIn("effect", stored)
+        self.assertEqual(set(stored), {"id", "name", "description"})
+        self.assertIn("HOLD", stored["description"])
+        self.assertIn("Descriptive only", stored["description"])
+        self.assertIn("4th level or lower", stored["description"])
+        self.assertIn("no stored spell", stored["description"])
+        self.assertIn("does not implement Spell Storing", stored["description"])
+        self.assertEqual(
+            {o["id"]: o["attacks"] for o in traits["multiattack"]["effect"]["options"]},
+            {"fist_x2": ["fist", "fist"]},
+        )
+        self.assertEqual(traits["multiattack"]["description"], "The guardian makes two fist attacks.")
+        self.assertEqual(len(g["actions"]), 1)
+        fist = g["actions"][0]
+        self.assertEqual(fist["id"], "fist")
+        self.assertEqual(fist["kind"], "melee_weapon_attack")
+        self.assertEqual(fist["name"], "Fist")
+        self.assertEqual(fist["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual(fist["ability"], "str")
+        self.assertNotIn("attack_bonus", fist)
+        self.assertNotIn("damage_override", fist)
+        self.assertEqual((fist["to_hit"], fist["reach"], fist["targets"], fist["damage"]),
+                         (7, 5, 1, [{"dice": "2d6+4", "type": "bludgeoning"}]))
+        self.assertIn("reach 5 ft.", fist["description"])
+        self.assertIn("2d6 + 4", fist["description"])
+        self.assertEqual(len(g["reactions"]), 1)
+        shield = g["reactions"][0]
+        self.assertEqual(shield["id"], "shield")
+        self.assertEqual(shield["name"], "Shield")
+        self.assertEqual(shield["window"], {"kind": "ally_attacked"})
+        self.assertEqual(shield["effect"], {"kind": "ac_bonus", "bonus": 2})
+        self.assertNotIn("usage", shield)
+        self.assertNotIn("source", shield["window"])
+        self.assertIn("+2 bonus", shield["description"])
+        self.assertIn("within 5 feet", shield["description"])
+        self.assertIn("Before the attack roll", shield["description"])
+        self.assertIn("Not the Shield spell", shield["description"])
+        self.assertIn("2 or 0", shield["description"])
+        self.assertIn("not an amulet item", shield["description"])
+        self.assertIn("No new hash tag", shield["description"])
+        self.assertFalse(any(t.get("effect", {}).get("kind") == "regen" for t in g["traits"]))
+        self.assertEqual([a["name"] for a in TABLE["shield-guardian"]["attacks"]], ["Fist"])
 
     def test_authored_and_deferred_split(self):
         have = sorted(p.stem for p in (PACK / "monsters").glob("*.json"))
-        self.assertEqual((len(AUTHORED), len(DEFERRED)), (159, 4))
+        self.assertEqual((len(AUTHORED), len(DEFERRED)), (206, 4))
         self.assertEqual(have, sorted([i.replace("-", "_") for i in AUTHORED] + ["goblin"]))
         for idx in DEFERRED:
             self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)

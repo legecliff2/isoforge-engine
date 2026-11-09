@@ -487,7 +487,7 @@ GRAPPLE_CASES = [
     ("grapple_escape_dc_float", CRAB, [(GR + ["escape_dc"], 11.0)], [], "grapple escape_dc must be an integer 0..30, got 11.0"),
     ("grapple_escape_dc_string", CRAB, [(GR + ["escape_dc"], "11")], [], "is not of type 'integer'"),
     ("grapple_escape_dc_bool", CRAB, [(GR + ["escape_dc"], True)], [], "is not of type 'integer'"),
-    ("grapple_extra_field", CRAB, [(GR + ["condition"], "restrained")], [], "'condition' is not one of ['kind', 'escape_dc', 'when', 'restrains', 'exclusive', 'max_grapples', 'instead_of_damage']"),
+    ("grapple_extra_field", CRAB, [(GR + ["condition"], "restrained")], [], "'condition' is not one of ['kind', 'escape_dc', 'when', 'restrains', 'exclusive', 'max_grapples', 'instead_of_damage', 'no_damage', 'max_size']"),
     ("grapple_escape_dc_on_other_rider", CRAB, [(["actions", 1, "on_hit", 1, "escape_dc"], 12)], [], "'escape_dc' is not one of ['kind', 'damage', 'scale', 'when']"),
     ("grapple_in_on_event_effects", CRAB, [(["traits"], [{"id": "hold", "name": "Hold", "description": "x",
                                                           "effect": {"kind": "on_event", "on": "hit", "effects": [{"kind": "grapple", "escape_dc": 11}]}}])],
@@ -613,6 +613,112 @@ class RG8GrappleRider(unittest.TestCase):
         errs, warns = checks_v4.check_grapple_rider(doc("monster@5", ok, [extra_r]))
         self.assertEqual(errs, [])
         self.assertTrue(any("other on_hit riders" in w for w in warns), warns)
+
+    def test_grapple_no_damage(self):
+        # B5: monster@5 only; not the instead_of_damage choice; the attack lists no damage.
+        def doc(schema, rider, damage=None):
+            act = {"kind": "melee_weapon_attack", "id": "tendril", "name": "Tendril", "to_hit": 7, "reach": 50,
+                   "on_hit": [rider]}
+            if damage is not None:
+                act["damage"] = damage
+            return {"$schema": schema, "actions": [act]}
+        ok = {"kind": "grapple", "escape_dc": 15, "restrains": True, "no_damage": True}
+        self.assertEqual(checks_v4.check_grapple_rider(doc("monster@5", ok)), ([], []))
+        errs, _ = checks_v4.check_grapple_rider(doc("monster@4", ok))
+        self.assertTrue(any("no_damage need monster@5" in e for e in errs), errs)
+        errs, _ = checks_v4.check_grapple_rider(doc("monster@5", {**ok, "instead_of_damage": True}))
+        self.assertTrue(any("can't be combined with instead_of_damage" in e for e in errs), errs)
+        errs, _ = checks_v4.check_grapple_rider(doc("monster@5", ok, [{"dice": "1d4", "type": "piercing"}]))
+        self.assertTrue(any("can't list damage" in e for e in errs), errs)
+
+    def test_pull_action(self):
+        def doc(schema="monster@5", **extra):
+            act = {"id": "reel", "name": "Reel", "kind": "pull", "feet": 25,
+                   "target_requires_any": ["grappled_by_self"]}
+            act.update(extra)
+            return {"$schema": schema, "actions": [act]}
+        errs: list[str] = []
+        checks_v4.check_pull_actions(doc(), errs)
+        self.assertEqual(errs, [])
+        self.assertEqual(checks_v4.check_batch3_actions(doc(), "monster@5"), [])
+        errs = []
+        checks_v4.check_pull_actions(doc(feet=100), errs)
+        self.assertTrue(any("feet must be 5..60" in e for e in errs), errs)
+        errs = []
+        checks_v4.check_pull_actions(doc("monster@4"), errs)
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        errs = []
+        checks_v4.check_pull_actions(doc(target_requires_any=["restrained"]), errs)
+        self.assertTrue(any("grappled_by_self only" in e for e in errs), errs)
+
+    def test_engulf_both_hits(self):
+        # B7: Shambling Mound. Both slams hit the same creature and the cube's contain applies.
+        spec = {"max_size": "medium", "escape_dc": 14, "while": "blinded",
+                "damage": {"dice": "2d8+4", "type": "bludgeoning"}}
+
+        def doc(schema="monster@5", **opt):
+            option = {"id": "slams", "attacks": ["slam", "slam"], "engulf_both_hits": spec}
+            option.update(opt)
+            return {"$schema": schema, "id": "srd51.monster.shambling_mound",
+                    "traits": [{"id": "multiattack", "name": "Multiattack", "description": "x",
+                                "effect": {"kind": "multiattack", "options": [option]}}]}
+        self.assertEqual(checks_v4.check_engulf_both_hits(doc(), "monster@5"), [])
+        errs = checks_v4.check_engulf_both_hits(doc("monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        errs = checks_v4.check_engulf_both_hits(doc(free_rider="slam"), "monster@5")
+        self.assertTrue(any("can't be combined with free_rider" in e for e in errs), errs)
+        errs = checks_v4.check_engulf_both_hits(doc(count_dice="1d4", attacks=["slam"]), "monster@5")
+        self.assertTrue(any("can't be combined with count_dice" in e for e in errs), errs)
+        one = doc()
+        one["traits"][0]["effect"]["options"][0]["attacks"] = ["slam"]
+        errs = checks_v4.check_engulf_both_hits(one, "monster@5")
+        self.assertTrue(any("at least two attacks" in e for e in errs), errs)
+        bad = doc()
+        bad_spec = dict(spec)
+        bad_spec["while"] = "restrained"
+        bad["traits"][0]["effect"]["options"][0]["engulf_both_hits"] = bad_spec
+        errs = checks_v4.check_engulf_both_hits(bad, "monster@5")
+        self.assertTrue(any("while must be blinded" in e for e in errs), errs)
+
+    def test_disease_schedule(self):
+        # B6: the otyugh / death dog bite. Schema allows the object; these are the loader's cross-field refusals.
+        def doc(schema="monster@5", **extra):
+            rider = {"kind": "save_condition", "save": {"ability": "con", "dc": 15},
+                     "apply": [{"condition": "poisoned", "duration": {"kind": "until_cured"}}],
+                     "disease": {"every_hours": 24, "hp_max": "1d10"}}
+            rider.update(extra)
+            return {"$schema": schema, "actions": [{"kind": "melee_weapon_attack", "id": "bite", "name": "Bite",
+                                                     "to_hit": 6, "reach": 5,
+                                                     "damage": [{"dice": "2d8+3", "type": "piercing"}],
+                                                     "on_hit": [rider]}]}
+        self.assertEqual(checks_v4.check_disease(doc(), "monster@5"), [])
+        errs = checks_v4.check_disease(doc("monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        bad_save = doc()
+        bad_save["actions"][0]["on_hit"][0]["save"]["ability"] = "str"
+        errs = checks_v4.check_disease(bad_save, "monster@5")
+        self.assertTrue(any("Constitution save" in e for e in errs), errs)
+        bad_apply = doc()
+        bad_apply["actions"][0]["on_hit"][0]["apply"] = [{"condition": "blinded", "duration": {"kind": "until_cured"}}]
+        errs = checks_v4.check_disease(bad_apply, "monster@5")
+        self.assertTrue(any("until_cured poisoned" in e for e in errs), errs)
+        on_event = {"$schema": "monster@5", "traits": [{"id": "bite", "name": "Bite", "description": "x",
+            "effect": {"kind": "on_event", "on": "hit", "effects": [
+                {"kind": "save_condition", "save": {"ability": "con", "dc": 15},
+                 "apply": [{"condition": "poisoned", "duration": {"kind": "until_cured"}}],
+                 "disease": {"every_hours": 24, "hp_max": "1d10"}}]}}]}
+        errs = checks_v4.check_disease(on_event, "monster@5")
+        self.assertTrue(any("on_hit save_condition" in e for e in errs), errs)
+
+    def test_grapple_max_size(self):
+        # Chuul pincer / Otyugh tentacle: monster@5 only. A larger creature is not grappled.
+        def doc(schema, rider):
+            return {"$schema": schema, "actions": [{"kind": "attack", "id": "pincer", "name": "Pincer", "to_hit": 6, "reach": 10,
+                                                     "damage": [{"dice": "2d6+4", "type": "bludgeoning"}], "on_hit": [rider]}]}
+        ok = {"kind": "grapple", "escape_dc": 14, "max_size": "large"}
+        self.assertEqual(checks_v4.check_grapple_rider(doc("monster@5", ok)), ([], []))
+        errs, _ = checks_v4.check_grapple_rider(doc("monster@4", ok))
+        self.assertTrue(any("max_size need monster@5" in e for e in errs), errs)
 
     def test_grapple_is_a_rider_kind_only_in_common2(self):
         import json
@@ -1002,12 +1108,209 @@ class BardFollowups214(unittest.TestCase):
         self.assertEqual(checks_v4.check_bard_hooks(d), [])
 
 
+class InnateInvisibility(unittest.TestCase):
+    """B14: monster@5 trait innate_invisibility. No parameters. A second declaration warns."""
+
+    def doc(self, schema="monster@5", effects=None):
+        if effects is None:
+            effects = [{"kind": "innate_invisibility"}]
+        return {"$schema": schema, "id": "t.stalker",
+                "traits": [{"id": f"invis_{i}", "name": "Invisibility", "description": "x", "effect": e}
+                           for i, e in enumerate(effects)]}
+
+    def test_ok_and_refusals(self):
+        self.assertEqual(checks_v4.check_innate_invisibility(self.doc(), "monster@5"), ([], []))
+        errs, warns = checks_v4.check_innate_invisibility(
+            self.doc(effects=[{"kind": "innate_invisibility"}, {"kind": "innate_invisibility"}]), "monster@6")
+        self.assertEqual(errs, [])
+        self.assertTrue(any("duplicate innate_invisibility" in w for w in warns), warns)
+        errs, _ = checks_v4.check_innate_invisibility(self.doc("monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        errs, _ = checks_v4.check_innate_invisibility(
+            self.doc(effects=[{"kind": "innate_invisibility", "note": 1}]), "monster@5")
+        self.assertTrue(any("unknown key 'note'" in e for e in errs), errs)
+
+
+class HorrificAppearance(unittest.TestCase):
+    """B15: monster@5 trait horrific_appearance. An identical second declaration warns."""
+
+    def doc(self, schema="monster@5", effects=None):
+        if effects is None:
+            effects = [{"kind": "horrific_appearance", "radius_ft": 30,
+                        "save": {"ability": "wis", "dc": 11}, "immunity_hours": 24}]
+        return {"$schema": schema, "id": "t.hag",
+                "traits": [{"id": f"ha_{i}", "name": "Horrific Appearance", "description": "x", "effect": e}
+                           for i, e in enumerate(effects)]}
+
+    def test_ok_and_refusals(self):
+        self.assertEqual(checks_v4.check_horrific_appearance(self.doc(), "monster@5"), ([], []))
+        same = {"kind": "horrific_appearance", "radius_ft": 30,
+                "save": {"ability": "wis", "dc": 11}, "immunity_hours": 24}
+        errs, warns = checks_v4.check_horrific_appearance(self.doc(effects=[same, dict(same)]), "monster@6")
+        self.assertEqual(errs, [])
+        self.assertTrue(any("duplicate horrific_appearance" in w for w in warns), warns)
+        other = dict(same)
+        other["radius_ft"] = 20
+        errs, _ = checks_v4.check_horrific_appearance(self.doc(effects=[same, other]), "monster@5")
+        self.assertTrue(any("one horrific appearance" in e for e in errs), errs)
+        errs, _ = checks_v4.check_horrific_appearance(self.doc("monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        bad = dict(same)
+        bad["note"] = 1
+        errs, _ = checks_v4.check_horrific_appearance(self.doc(effects=[bad]), "monster@5")
+        self.assertTrue(any("unknown key 'note'" in e for e in errs), errs)
+
+    def test_death_glare(self):
+        act = {"kind": "save_effect", "id": "death_glare", "name": "Death Glare", "range_ft": 30,
+               "save": {"ability": "wis", "dc": 11}, "magical": True, "target_must_see_source": True,
+               "caster_sees_target": True, "target_has_condition": "frightened", "drop_to_zero": True}
+        doc = {"$schema": "monster@5", "id": "t.hag", "actions": [act]}
+        self.assertEqual(checks_v4.check_death_glare(doc, "monster@5"), ([], []))
+        bad = dict(act)
+        bad["target_has_condition"] = "poisoned"
+        errs, _ = checks_v4.check_death_glare({"$schema": "monster@5", "id": "t.hag", "actions": [bad]}, "monster@5")
+        self.assertTrue(any("must be frightened" in e for e in errs), errs)
+        bad = dict(act)
+        bad["drop_to_zero"] = False
+        errs, _ = checks_v4.check_death_glare({"$schema": "monster@5", "id": "t.hag", "actions": [bad]}, "monster@5")
+        self.assertTrue(any("drop_to_zero must be true" in e for e in errs), errs)
+
+    def test_charm_and_draining_kiss(self):
+        charm = {"kind": "save_effect", "id": "charm", "name": "Charm", "range_ft": 30,
+                 "save": {"ability": "wis", "dc": 15}, "magical": True, "caster_sees_target": True,
+                 "target_creature_types": ["humanoid"], "control": "command", "charm_command": True,
+                 "immune_on_success": {"hours": 24, "scope": "same_source"},
+                 "apply": [{"condition": "charmed", "duration": {"kind": "rounds", "n": 14400},
+                            "repeat_save": "on_damage"}]}
+        kiss = {"kind": "save_effect", "id": "draining_kiss", "name": "Draining Kiss", "range_ft": 5,
+                "save": {"ability": "con", "dc": 15}, "magical": True, "on_success": "half",
+                "damage": [{"dice": "5d10+5", "type": "psychic"}], "drain_max_hp": True,
+                "target_requires_any": ["charmed_by_self", "willing"]}
+        doc = {"$schema": "monster@5", "id": "t.fiend", "actions": [charm, kiss]}
+        self.assertEqual(checks_v4.check_charm_command(doc, "monster@5"), ([], []))
+        self.assertEqual(checks_v4.check_drain_max_hp(doc, "monster@5"), ([], []))
+        self.assertEqual(checks_v4.check_batch3_actions(doc, "monster@5"), [])
+        self.assertEqual(checks_v4.check_class_hooks(doc), [])
+        bare_cmd = dict(charm)
+        bare_cmd.pop("charm_command")
+        errs = checks_v4.check_class_hooks({"$schema": "monster@5", "id": "t.fiend", "actions": [bare_cmd]})
+        self.assertTrue(any("control command needs a spell" in e for e in errs), errs)
+        bad = dict(charm)
+        bad["charm_command"] = False
+        errs, _ = checks_v4.check_charm_command({"$schema": "monster@5", "id": "t.fiend", "actions": [bad]}, "monster@5")
+        self.assertTrue(any("charm_command must be true" in e for e in errs), errs)
+        bare = {"kind": "save_effect", "id": "kiss", "name": "Kiss", "drain_max_hp": True,
+                "save": {"ability": "con", "dc": 15}}
+        errs, _ = checks_v4.check_drain_max_hp({"$schema": "monster@5", "id": "t.fiend", "actions": [bare]}, "monster@5")
+        self.assertTrue(any("drain_max_hp needs damage" in e for e in errs), errs)
+
+
+class BoundTrait(unittest.TestCase):
+    """B18: monster@5 trait bound. An identical second declaration warns."""
+
+    def doc(self, schema="monster@5", effects=None):
+        if effects is None:
+            effects = [{"kind": "bound", "radius_ft": 60}]
+        return {"$schema": schema, "id": "t.guard",
+                "traits": [{"id": f"bound_{i}", "name": "Bound", "description": "x", "effect": e}
+                           for i, e in enumerate(effects)]}
+
+    def test_ok_and_refusals(self):
+        self.assertEqual(checks_v4.check_bound(self.doc(), "monster@5"), ([], []))
+        same = {"kind": "bound", "radius_ft": 60}
+        errs, warns = checks_v4.check_bound(self.doc(effects=[same, dict(same)]), "monster@6")
+        self.assertEqual(errs, [])
+        self.assertTrue(any("duplicate bound" in w for w in warns), warns)
+        errs, _ = checks_v4.check_bound(self.doc(effects=[same, {"kind": "bound", "radius_ft": 30}]), "monster@5")
+        self.assertTrue(any("a creature has one bound" in e for e in errs), errs)
+        errs, _ = checks_v4.check_bound(self.doc("monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        errs, _ = checks_v4.check_bound(self.doc(effects=[{"kind": "bound", "radius_ft": 7}]), "monster@5")
+        self.assertTrue(any("radius_ft must be a multiple of 5" in e for e in errs), errs)
+        errs, _ = checks_v4.check_bound(self.doc(effects=[{"kind": "bound", "radius_ft": 60, "note": 1}]), "monster@5")
+        self.assertTrue(any("unknown key 'note'" in e for e in errs), errs)
+
+
+class ShieldReaction(unittest.TestCase):
+    """Shield Guardian Shield (CONTENT_CONVENTIONS §54). ally_attacked + ac_bonus 2 needs bound on monster@5."""
+
+    def reaction(self, bonus=2, window="ally_attacked", rid="shield"):
+        return {"id": rid, "name": "Shield", "window": {"kind": window},
+                "effect": {"kind": "ac_bonus", "bonus": bonus}}
+
+    def doc(self, schema="monster@5", bound=True, reactions=None):
+        traits = []
+        if bound:
+            traits.append({"id": "bound", "name": "Bound", "description": "x",
+                           "effect": {"kind": "bound", "radius_ft": 60}})
+        if reactions is None:
+            reactions = [self.reaction()]
+        return {"$schema": schema, "id": "t.guard", "traits": traits, "reactions": reactions}
+
+    def test_ok_and_refusals(self):
+        self.assertEqual(checks_v4.check_shield_reaction(self.doc(), "monster@5"), ([], []))
+        self.assertEqual(checks_v4.check_shield_reaction(self.doc(schema="monster@6"), "monster@6"), ([], []))
+        errs, _ = checks_v4.check_shield_reaction(self.doc(bound=False), "monster@5")
+        self.assertTrue(any("needs the bound trait" in e for e in errs), errs)
+        errs, _ = checks_v4.check_shield_reaction(self.doc(reactions=[self.reaction(bonus=5)]), "monster@5")
+        self.assertTrue(any("bonus must be 2" in e for e in errs), errs)
+        errs, _ = checks_v4.check_shield_reaction(self.doc(schema="monster@4"), "monster@4")
+        self.assertTrue(any("shield reaction needs a monster@5 file" in e for e in errs), errs)
+        errs, _ = checks_v4.check_shield_reaction(self.doc(schema="character@5"), "character@5")
+        self.assertTrue(any("only valid on monsters" in e for e in errs), errs)
+        errs, _ = checks_v4.check_shield_reaction(
+            self.doc(reactions=[self.reaction(), self.reaction(rid="shield_2")]), "monster@5")
+        self.assertTrue(any("a creature has one shield" in e for e in errs), errs)
+        # being_hit ac_bonus is the uncompiled Shield spell / Parry path, not this reaction.
+        self.assertEqual(
+            checks_v4.check_shield_reaction(self.doc(reactions=[self.reaction(window="being_hit")]), "monster@5"),
+            ([], []))
+
+
+class RegainTrait(unittest.TestCase):
+    """Shield Guardian Regeneration (CONTENT_CONVENTIONS §55). Not troll regen."""
+
+    def doc(self, schema="monster@5", effects=None):
+        if effects is None:
+            effects = [{"kind": "regain", "amount": 10}]
+        return {"$schema": schema, "id": "t.guard",
+                "traits": [{"id": f"regain_{i}", "name": "Regeneration", "description": "x", "effect": e}
+                           for i, e in enumerate(effects)]}
+
+    def test_ok_and_refusals(self):
+        self.assertEqual(checks_v4.check_regain(self.doc(), "monster@5"), ([], []))
+        same = {"kind": "regain", "amount": 10}
+        errs, warns = checks_v4.check_regain(self.doc(effects=[same, dict(same)]), "monster@6")
+        self.assertEqual(errs, [])
+        self.assertTrue(any("duplicate regain" in w for w in warns), warns)
+        errs, _ = checks_v4.check_regain(self.doc(effects=[same, {"kind": "regain", "amount": 8}]), "monster@5")
+        self.assertTrue(any("a creature has one regain" in e for e in errs), errs)
+        errs, _ = checks_v4.check_regain(self.doc(schema="monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        errs, _ = checks_v4.check_regain(self.doc(schema="character@5"), "character@5")
+        self.assertTrue(any("only valid on monsters" in e for e in errs), errs)
+        errs, _ = checks_v4.check_regain(self.doc(effects=[{"kind": "regain", "amount": 0}]), "monster@5")
+        self.assertTrue(any("amount must be an integer 1..32767" in e for e in errs), errs)
+        errs, _ = checks_v4.check_regain(self.doc(effects=[{"kind": "regain", "amount": 10, "note": 1}]), "monster@5")
+        self.assertTrue(any("unknown key 'note'" in e for e in errs), errs)
+
+
 class LoaderValidatorStrings(unittest.TestCase):
     """fix/rules-loader-validator-strings: each loader / validator error pair of #214 / #218 carries one identical string."""
     PAIRS = ["pick_one needs choice ask on a hit or crit trigger",
              "attack_from_feature names unknown feature '",
              "' is not a bonus-attack feature of this document",
              "spell_mod: not valid on monsters",
+             "etherealness needs a monster@5 file",
+             "etherealness: only valid on monsters",
+             "etherealness: unknown key '",
+             "illusory appearance needs a monster@5 file",
+             "illusory appearance: only valid on monsters",
+             "illusory appearance: unknown key '",
+             "illusory appearance: dc must be 1..30",
+             "invisible passage needs a monster@5 file",
+             "invisible passage: only valid on monsters",
+             "invisible passage: unknown key '",
              "' is not one of the document's classes"]
 
     def test_loader_and_validator_share_strings(self):

@@ -17,6 +17,16 @@ struct Sprite {
     Color tint{1.f, 1.f, 1.f, 1.f};
 };
 
+// Quad corner order used by SpriteBatch: 0 top-left, 1 top-right, 2 bottom-right, 3 bottom-left.
+// The left edge samples u0 and the right edge samples u1. An H-flip is u0/u1 swapped (u0 > u1).
+// The sprite shader copies uv through; it does not mirror on its own.
+inline void sprite_corner_uv(float u0, float v0, float u1, float v1, float u[4], float v[4]) noexcept {
+    u[0] = u0; v[0] = v0;
+    u[1] = u1; v[1] = v0;
+    u[2] = u1; v[2] = v1;
+    u[3] = u0; v[3] = v1;
+}
+
 struct Camera {
     Vec2f position;          // world px at the top-left of the viewport
     uint32_t viewport_w = 1280, viewport_h = 720;

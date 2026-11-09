@@ -60,6 +60,25 @@ TEST_CASE("v3: TileMoved after the request's rules events still lands on the rig
     CHECK(st.log[2] == "FIGHTER HITS GOBLIN (17)");
 }
 
+TEST_CASE("facing: last move and aim set the 4 iso facings, including west") {
+    FeedState st;
+    st.tiles[1] = {10, 15};
+    std::vector<SimEvent> step = {moved(1, {10, 16})};
+    slice::apply_events(step, st, nm);
+    CHECK(st.facing[1] == slice::Facing::SouthWest);   // +y is screen down-left; equip mirrors SW
+    step = {moved(1, {9, 16})};
+    slice::apply_events(step, st, nm);
+    CHECK(st.facing[1] == slice::Facing::NorthWest);   // -x is the other west facing
+    slice::note_aim_facing(st, 1, {9, 16}, {9, 14});
+    CHECK(st.facing[1] == slice::Facing::NorthEast);
+    slice::note_aim_facing(st, 1, {9, 16}, {12, 16});
+    CHECK(st.facing[1] == slice::Facing::SouthEast);
+    slice::note_aim_facing(st, 1, {1, 1}, {1, 1});
+    CHECK(st.facing[1] == slice::Facing::SouthEast);   // a zero step keeps the last facing
+    CHECK(slice::facing_from_delta(1, 0) == slice::Facing::SouthEast);
+    CHECK(slice::facing_from_delta(0, 1) == slice::Facing::SouthWest);
+}
+
 TEST_CASE("v4 spell kinds 35-38 are known and logged") {
     static_assert(sim::kSimEventSchemaVersion >= 7);
     std::vector<SimEvent> evs;

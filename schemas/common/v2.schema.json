@@ -141,6 +141,10 @@
             "on_damage"
           ]
         },
+        "while": {
+          "$ref": "../common/v1.schema.json#/$defs/condition",
+          "description": "B3b (monster@5 save_effect, first apply[] entry only): a second condition held for as long as this effect lasts (chuul Tentacles: poisoned, while paralyzed). Ending the effect ends both. Not applied when the target is immune to the primary condition. Differs from also_on_fail_by. condition and while must differ. Needs a tracked primary condition. No area, no also_on_fail_by, no control."
+        },
         "escape": {
           "type": "object",
           "additionalProperties": false,
@@ -1087,6 +1091,22 @@
           "default": false,
           "description": "grapple (Tier-A CONTENT_CONVENTIONS §27, monster@5 only): SRD \"Instead of dealing damage, the X can grapple the target\" (vampire spawn Claws). The attacker chooses per hit (ActionRequest::grapple_instead): a hit with the choice deals no damage and grapples; without it, it deals damage and does not grapple. Can't be combined with restrains."
         },
+        "no_damage": {
+          "type": "boolean",
+          "default": false,
+          "description": "grapple (B5, monster@5 only): the hit always deals no damage and grapples (SRD roper Tendril). Not a choice. Can combine with restrains. Can't combine with instead_of_damage. The attack lists no damage array. Not hashed; not ActionRequest::grapple_instead."
+        },
+        "max_size": {
+          "enum": [
+            "tiny",
+            "small",
+            "medium",
+            "large",
+            "huge",
+            "gargantuan"
+          ],
+          "description": "grapple (monster@5 only): the largest creature this hit grapples (Chuul pincer: large; Otyugh tentacle: medium). A larger target takes the attack's damage and is not grappled. Omit for no cap beyond the one-size-larger rule."
+        },
         "when": {
           "type": "array",
           "minItems": 1,
@@ -1130,6 +1150,16 @@
             }
           },
           "description": "save_effect / save_condition (sim #174): when the damage drops the target to 0 hit points it is stable and gains condition for duration.n rounds (600 = 1 hour, outlasts healing) and while for as long as that lasts (giant spider bite: poisoned 600 rounds, paralyzed while poisoned). Needs damage; condition and while must differ."
+        },
+        "disease": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["every_hours", "hp_max"],
+          "properties": {
+            "every_hours": {"const": 24},
+            "hp_max": {"$ref": "../common/v1.schema.json#/$defs/dice"}
+          },
+          "description": "B6 (monster@5 save_condition on_hit only; CONTENT_CONVENTIONS §36): SRD 5.1 otyugh and death dog bite disease. A failed Constitution save applies the until_cured poisoned condition and schedules that same save every 24 hours. A failed repeat reduces hit point maximum by hp_max (the dice, not the printed average). A successful repeat cures this disease. Hit point maximum 0 kills. The reduction lasts until the disease is cured, not until a rest. SIM_EVENTS 0xE3."
         },
         "amount_from": {
           "type": "object",
@@ -1239,7 +1269,8 @@
                 "damage",
                 "on_success",
                 "when",
-                "zero_hp"
+                "zero_hp",
+                "disease"
               ]
             }
           }
@@ -1463,7 +1494,9 @@
                 "restrains",
                 "exclusive",
                 "max_grapples",
-                "instead_of_damage"
+                "instead_of_damage",
+                "no_damage",
+                "max_size"
               ]
             }
           }

@@ -4,7 +4,9 @@
 // Plain-data snapshot of what the vertical slice shows. The renderer (SliceView) only ever
 // sees this: no sim/world/rules types, no game state lives on the render side.
 #include <array>
+#include <cstdlib>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,7 +39,17 @@ struct EquipVisual {
     std::string content_id;          // "srd51.item.longsword": picks placeholder art (render side)
 };
 // Presentation facing of a sprite (iso screen directions). East facings hold the main hand on the camera side.
+// Art authors 8 facings. M0 keeps these 4. SouthWest and NorthWest are the west mirror.
 enum class Facing : uint8_t { SouthEast, SouthWest, NorthEast, NorthWest };
+
+// Tile step -> the 4 iso facings. +x is screen down-right (SouthEast), +y is screen down-left
+// (SouthWest). Equal |dx| and |dy| follow x. A zero step returns nullopt (the caller keeps the last facing).
+// Presentation only: nothing here is written into sim.
+inline std::optional<Facing> facing_from_delta(int dx, int dy) {
+    if (dx == 0 && dy == 0) return std::nullopt;
+    if (std::abs(dx) >= std::abs(dy)) return dx > 0 ? Facing::SouthEast : Facing::NorthWest;
+    return dy > 0 ? Facing::SouthWest : Facing::NorthEast;
+}
 
 struct ActorView {
     uint32_t    id = 0;        // stable id (sort key tie-break)
@@ -53,7 +65,28 @@ struct ActorView {
     bool        outlined = false;   // Faerie Fire / ModStat::Outlined (presentation ring)
     bool        invisible = false;  // Condition::Invisible (ghost when still drawn)
     Facing      facing = Facing::SouthEast;
+    // Core M0 visual{kind,kit,standin_bin,art_root,size_short}. Copied from the archetype.
+    // kit is visual.kit, else presentation.sprite, else "paperdoll" or "standin.<standin_bin>".
+    // Empty kit when M0 has no bin (huge / gargantuan). Not written into sim.
+    // size_short is stored and not applied. clip is the clip-clock request (Render).
+    // There is no hard_land field: that name is only a registry alias.
+    std::string visual_kind;   // "paperdoll", "standin", or "unbinned"
+    std::string kit;
+    std::string standin_bin;   // tiny | small | medium | large; empty otherwise
+    std::string art_root;      // pack-relative; empty when the stat block names none
+    bool        size_short = false;   // authored; M0 does not apply plates or scale
+    std::string clip;
     std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)
+    // Visible figure (CONTENT_CONVENTIONS §52). Body art stays the true form: kit / visual_kind /
+    // standin_bin / name are not replaced. covered_equipment lists instance ids the illusion covered
+    // at activation; equip_layers does not draw those true items. illusion_discerned is this camera
+    // viewer's persistent record and does not change the figure.
+    bool illusory_figure = false;
+    uint8_t figure_shape = 0;             // rules5e::FigureShape, 1 = humanoid shape
+    uint8_t figure_size = 0;              // rules5e::Size copied at activation
+    uint32_t covered_armor_def = 0;       // worn armor def at activation; armor has no instance and is not a quad
+    std::vector<uint32_t> covered_equipment;
+    bool illusion_discerned = false;
     // Sight cues for the fog-team camera combatant (presentation only; never written back into sim).
     // Defaults match an empty EncounterHooks::sight_facts: everyone sees everyone, so no cue is drawn.
     // seen_by_viewer false = unseen target (attacking-visible: !can_see, or hidden from the viewer).

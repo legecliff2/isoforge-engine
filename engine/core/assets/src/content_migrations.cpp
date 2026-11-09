@@ -154,6 +154,9 @@ void register_content_schemas(SchemaRegistry& reg) {
     reg.register_migration("item", 1, 2, identity);
     reg.register_migration("monster", 4, 5, identity);
     reg.register_migration("character", 4, 5, identity);
+    // M0 visual is optional presentation. 5 -> 6 does not write a visual block (absent keeps the load-time default).
+    reg.register_migration("monster", 5, 6, identity);
+    reg.register_migration("character", 5, 6, identity);
 }
 
 std::optional<std::string> behavior_ai_script(const Json& doc) {

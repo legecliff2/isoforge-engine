@@ -1,0 +1,23 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.geas",
+  "name": "Geas",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "description": "A creature you can see must make a Wisdom save or be charmed for 30 days (720 hours). Casting time is 1 minute, so an encounter cast is refused (casting time too long for an encounter). The 30-day timer does not fit the round counter, so there is no round expiry. SRD 5.1 Geas has no clause that ends it when the caster or their companions damage the target; that clause is Charm Person and Suggestion. Greater Restoration ends it (ends_on_restoration). 5d10 psychic damage on disobedience, language, a suicidal command ending the spell, dismiss, remove curse, wish, and the upcast durations are deferred.",
+  "level": 5,
+  "school": "enchantment",
+  "classes": ["bard", "cleric", "druid", "paladin", "wizard"],
+  "casting_time": { "kind": "minute", "amount": 1 },
+  "range": { "kind": "ranged", "feet": 60 },
+  "components": { "v": true },
+  "duration": { "kind": "hours", "amount": 720 },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "wis",
+      "condition": "charmed",
+      "ends_on_restoration": true,
+      "caster_sees_target": true
+    }
+  ]
+}

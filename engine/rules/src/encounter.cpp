@@ -22,6 +22,9 @@ namespace rules5e {
 
 namespace {
 
+// Set for the duration of a step to the pre-step state (sight reads that). Declared here so repeat saves can see it.
+thread_local const EncounterState* g_sight_base = nullptr;
+
 Combatant* find_mut(EncounterState& s, CombatantId id) {
     for (auto& c : s.combatants) if (c.id == id) return &c;
     return nullptr;
@@ -221,6 +224,14 @@ SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int 
     return r;
 }
 
+// B8: Strength or Dexterity, the target's choice. Automated: the higher save_modifier (ability modifier plus
+// proficiency in that save). Tie: the first listed ability (save_ability). Cover, advantage, and flat bonuses
+// apply to the chosen ability afterwards; they are not part of the choice.
+Ability leap_save_ability(const Combatant& t, const SpellDef& def) {
+    if (!def.has_save_choice) return def.save_ability;
+    return save_modifier(t, def.save_alt) > save_modifier(t, def.save_ability) ? def.save_alt : def.save_ability;
+}
+
 // d20 saving throw with modifiers: modes merge, then flat bonus and dice (drawn after the d20, only if a die exists).
 // Row 13, Legendary Resistance: a failed save turns into a success by spending 1 from Combatant::legendary_pool
 // (ResourceSpent is emitted before the caller's SavingThrowRolled, which then reports success).
@@ -258,10 +269,7 @@ void note_source(EncounterState& s, Condition c, CombatantId source, CombatantId
     for (auto& e : s.sourced) if (e.condition == c && e.target == target && e.source == source) return;
     s.sourced.push_back(SourcedCondition{c, target, source, 0});
 }
-bool charmed_by(const EncounterState& s, CombatantId actor, CombatantId other) {
-    for (const auto& e : s.sourced) if (e.condition == Condition::Charmed && e.target == actor && e.source == other) return true;
-    return false;
-}
+// charmed_by is public (encounter.hpp): the driver and the kiss gate both read it.
 
 // R-G12 PR 2: summon `c` ends (reason 1 concentration, 3 0 HP, 5 encounter ended): SummonEnded, then it is dead and gone (no
 // CombatantDied of its own; a form it wears ends silently with it).
@@ -312,10 +320,14 @@ void set_contain(ActiveSpellEffect& e, const SpellDef& def, Combatant& t, std::v
 // 7.2w: `t` can't receive this containing condition from `a`: too large, formless (Net), or `a` already holds a swallowed
 // creature (SRD: one at a time).
 bool contain_refused(const EncounterState& s, const Combatant& a, const Combatant& t, const SpellDef& def) {
+    if (!plane_affect_refusal(a, t).empty()) return true;   // B19: a contain does not cross planes (no save)
     if (def.condition_max_size >= 0 && int(t.size) > int(def.condition_max_size)) return true;
     if (def.excludes_formless && t.formless) return true;
     if (def.contain == 2)
         for (const auto& e : s.effects) if (e.contain == 2 && e.caster == a.id) return true;
+    // B7: Shambling Mound Engulf holds one creature. Any contain this user already has blocks another.
+    if (def.contain_one)
+        for (const auto& e : s.effects) if (e.contain != 0 && e.caster == a.id) return true;
     return false;
 }
 
@@ -442,20 +454,95 @@ void after_damage(Combatant& t, const DamageApplied& d, bool critical, std::vect
     }
 }
 
+// B15 Death Glare: hit points become 0. Not a damage packet: no DamageDealt, no damage type, no resistance,
+// no DropToZero trigger (Undead Fortitude is damage). Temporary hit points are cleared so the creature is in the
+// existing downed state. A Polymorph / Wild Shape form reverts with no overflow (there is no damage to carry).
+void drop_to_zero_hp(EncounterState& s, Combatant& t, std::vector<Event>& ev) {
+    if (t.dead || t.hp <= 0) return;
+    if (t.form == FormKind::Polymorph || t.form == FormKind::WildShape) {
+        form_reverted(t, 2, 0, ev);
+        return;
+    }
+    t.hp = 0;
+    t.temp_hp = 0;
+    if (!t.uses_death_saves && t.regeneration.amount > 0) {
+        t.regen_down = true;
+        emit(ev, EventKind::CombatantDowned, t.id);
+    } else if (!t.uses_death_saves) {
+        kill(t, ev);
+    } else {
+        emit(ev, EventKind::CombatantDowned, t.id);
+        t.death = DeathSaves{};
+        for (Condition k : {Condition::Unconscious, Condition::Prone}) {
+            if (!t.has(k)) {
+                add_condition(t, k);
+                if (t.has(k)) emit(ev, EventKind::ConditionAdded, t.id, 0, int32_t(k));
+            }
+        }
+    }
+    if (t.dead || t.hp <= 0) end_concentration(s, t.id, ev);
+}
+
 // ---- Lasting spell effects and concentration ----
+
+// 7.2zj: a Calm Emotions effect ending lets suppressed charmed / frightened resume when a holder is still live.
+void resume_suppressed(EncounterState& s, const ActiveSpellEffect& calm, std::vector<Event>& ev) {
+    if (calm.suppress_mask == 0) return;
+    auto dec = [](uint8_t& n) { if (n > 0) --n; };
+    for (auto& o : s.effects) {
+        if (o.target != calm.target || o.no_condition) continue;
+        if ((calm.suppress_mask & bit(o.condition)) == 0) continue;
+        dec(o.suppress_count);
+    }
+    for (auto& sc : s.sourced) {
+        if (sc.target != calm.target || (calm.suppress_mask & bit(sc.condition)) == 0) continue;
+        dec(sc.suppress_count);
+    }
+    Combatant* t = find_mut(s, calm.target);
+    if (!t) return;
+    for (Condition k : {Condition::Charmed, Condition::Frightened}) {
+        if ((calm.suppress_mask & bit(k)) == 0) continue;
+        bool still = false;
+        for (const auto& o : s.effects)
+            if (o.target == calm.target && (o.suppress_mask & bit(k)) != 0) still = true;
+        bool live = (calm.suppress_untracked & bit(k)) != 0 && !still;
+        for (const auto& o : s.effects)
+            if (o.target == calm.target && !o.no_condition && o.condition == k && o.suppress_count == 0) live = true;
+        for (const auto& sc : s.sourced)
+            if (sc.target == calm.target && sc.condition == k && sc.suppress_count == 0) live = true;
+        if (live && !t->has(k)) {
+            add_condition(*t, k);
+            if (t->has(k)) emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(k));
+        }
+    }
+}
 
 // Removes effect `i`; its condition ends unless another effect still imposes it.
 void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
     const ActiveSpellEffect e = s.effects[i];
     s.effects.erase(s.effects.begin() + std::ptrdiff_t(i));
+    if (e.granted_fly != 0) revoke_fly(s, e.target, e.spell_id, ev);   // 7.2zj Fly: aloft creatures fall unless they still fly
+    if (!e.no_condition && (e.condition == Condition::Charmed || e.condition == Condition::Frightened)) {
+        const bool other = std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+            return o.target == e.target && o.caster == e.caster && !o.no_condition && o.condition == e.condition; });
+        if (!other) {
+            for (std::size_t k = 0; k < s.sourced.size();)
+                if (s.sourced[k].target == e.target && s.sourced[k].source == e.caster && s.sourced[k].condition == e.condition)
+                    s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(k));
+                else ++k;
+        }
+    }
+    if (e.suppress_mask != 0) resume_suppressed(s, e, ev);
     Combatant* t = find_mut(s, e.target);
     if (!t) return;
     if (e.max_hp_bonus > 0) {   // 7.2zd Aid: the maximum drops back; current hit points clamp to it
         t->hp_max = int16_t(std::max(1, int(t->hp_max) - int(e.max_hp_bonus)));
         if (t->hp > t->hp_max) t->hp = t->hp_max;
     }
-    // EC spider follow-up (flagged): an effect's `also` condition holds the condition too, and ends with its effect
+    // EC spider follow-up (flagged): an effect's `also` condition holds the condition too, and ends with its effect.
+    // B14: an innate-invisibility trait holds Invisible. The spell effect still ends; the bit does not.
     auto held = [&](Condition k) {
+        if (k == Condition::Invisible && t->innate_invisible) return true;
         return std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
             return o.target == e.target && ((!o.no_condition && o.condition == k) || (o.has_also && o.also == k)); }) ||
                // Lich ruling (Stench expiry is per source): a sourced instance (R-G8) of the same condition from ANOTHER
@@ -476,6 +563,15 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
     } else {
         emit(ev, EventKind::SpellEffectEnded, t->id, 0, int32_t(e.spell_id), -1);
     }
+    // B15: a success is recorded at the save. Ending the effect (repeat success or the minute) grants the same
+    // per-source aura immunity. A dead creature is not recorded.
+    if (e.immunity_on_end_hours > 0 && !t->dead)
+        s.aura_immunities.push_back(AuraImmunity{e.target, e.caster, e.spell_id,
+                                                 uint32_t(s.round) + uint32_t(e.immunity_on_end_hours) * 600u});
+    // B16 Charm: ending the effect (a repeat save, the day, or a new charm) grants the same action immunity as a success.
+    if (e.action_immunity_on_end_hours > 0 && !t->dead)
+        s.action_immunities.push_back(ActionImmunity{e.target, e.action_immunity_on_end_scope == 1 ? e.caster : CombatantId(0),
+                                                     e.spell_id, uint32_t(s.round) + uint32_t(e.action_immunity_on_end_hours) * 600u});
 }
 
 // ---- R-G11 zones: lifetime (triggers are further down, after damage_creature) ----
@@ -516,6 +612,19 @@ ActiveZone* find_zone_mut(EncounterState& s, uint32_t id) {
 // A live zone of `owner`'s spell (keeps its concentration alive like a remaining effect).
 bool zone_alive(const EncounterState& s, CombatantId owner, uint32_t spell) {
     return std::any_of(s.zones.begin(), s.zones.end(), [&](const ActiveZone& z) { return z.owner == owner && z.spell_id == spell; });
+}
+
+// 7.2zj: a concentration spell with no effects, modifiers, or zones left ends (one target of an upcast charm ends alone).
+bool concentration_still_held(const EncounterState& s, CombatantId caster, uint32_t spell) {
+    if (zone_alive(s, caster, spell)) return true;
+    for (const auto& e : s.effects) if (e.spell_id == spell && e.caster == caster) return true;
+    for (const auto& m : s.modifiers) if (m.spec.source == spell && m.caster == caster) return true;
+    return false;
+}
+void end_concentration_if_empty(EncounterState& s, CombatantId caster, uint32_t spell, std::vector<Event>& ev) {
+    const Combatant* c = find(s, caster);
+    if (!c || c->concentration_spell != spell || concentration_still_held(s, caster, spell)) return;
+    end_concentration(s, caster, ev);
 }
 
 // Ends the "while in the zone" effects of zone `zone_id` (on `who` only, or on everyone when 0), in application order.
@@ -582,10 +691,7 @@ void end_on_own_action(EncounterState& s, CombatantId who, uint8_t bitv, std::ve
     for (const auto& k : ended) {
         Combatant* c = find_mut(s, k.second);
         if (!c || c->concentration_spell != k.first) continue;
-        bool left = zone_alive(s, k.second, k.first);
-        for (const auto& e : s.effects) left = left || (e.spell_id == k.first && e.caster == k.second);
-        for (const auto& m : s.modifiers) left = left || (m.spec.source == k.first && m.caster == k.second);
-        if (!left) end_concentration(s, k.second, ev);
+        end_concentration_if_empty(s, k.second, k.first, ev);
     }
 }
 
@@ -643,9 +749,20 @@ void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::ve
         auto it = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
             return o.spell_id == e.spell_id && o.caster == e.caster && o.target == e.target; });
         if (it == s.effects.end()) continue;
-        const SaveSource ssrc{true, 0, 0};
-        const RollMode rm = timing == RepeatSave::OnDamage && e.repeat_save == RepeatSave::EndOfTurnOrDamageAdv
-                                ? RollMode::Advantage : RollMode::Normal;   // Hideous Laughter: advantage when damage triggers it
+        const SaveSource ssrc{it->repeat_save_magical, 0, 0};   // B17: a visage repeat follows the action; every other effect stays magical
+        RollMode rm = timing == RepeatSave::OnDamage && e.repeat_save == RepeatSave::EndOfTurnOrDamageAdv
+                          ? RollMode::Advantage : RollMode::Normal;   // Hideous Laughter: advantage when damage triggers it
+        if (e.repeat_los_disadvantage && timing == RepeatSave::EndOfTurn) {   // B15: disadvantage while the source is in line of sight
+            bool los = true;   // no sight hook: within line of sight (Fear's no-hook = seen)
+            const Combatant* caster = find(s, e.caster);
+            if (s.hooks.sight_facts && caster) {
+                const EncounterState* b = g_sight_base ? g_sight_base : &s;
+                const Combatant* vv = find(*b, cid);
+                const Combatant* cc = find(*b, caster->id);
+                if (vv && cc) los = s.hooks.sight_facts(*b, *vv, *cc).line_of_sight;
+            }
+            if (los) rm = rm == RollMode::Advantage ? RollMode::Normal : RollMode::Disadvantage;
+        }
         auto r = save_roll(s, *c, e.save_ability, e.dc, rm, ev, &ssrc);   // an ongoing spell effect
         emit(ev, EventKind::SavingThrowRolled, cid, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
         if (!r.success) {
@@ -723,6 +840,7 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
 void deal_effect_damage(EncounterState& s, const ActiveSpellEffect& e, std::vector<Event>& ev) {
     Combatant* t = find_mut(s, e.target);
     if (!t || t->dead) return;
+    if (const Combatant* src = find(s, e.caster); src && !plane_affect_refusal(*src, *t).empty()) return;   // B19: no roll
     const int dmg = std::max(0, roll_dice(s.rng, e.damage));
     damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dmg), e.damage_type, e.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, ev, nullptr, nullptr);
 }
@@ -782,6 +900,21 @@ void tick_effects_turn_end(EncounterState& s, CombatantId cid, std::vector<Event
         }
     for (const auto& e : due) deal_effect_damage(s, e, ev);
     expire_effects(s, gone, ev);
+    // 7.2zj Ice Storm: a zone timed until the end of the caster's next turn. Existing zones use Expiry::Rounds
+    // and tick only at round start, so this does not move them. The zone is not concentration.
+    if (!s.zones.empty()) {
+        std::vector<uint32_t> out;
+        for (auto& z : s.zones)
+            if (z.owner == cid && z.timed.kind == Expiry::EndOfCasterNextTurn && z.timed.rounds_left > 0 && --z.timed.rounds_left == 0)
+                out.push_back(z.zone_id);
+        for (uint32_t id : out) {
+            for (std::size_t i = 0; i < s.zones.size(); ++i) {
+                if (s.zones[i].zone_id != id) continue;
+                end_zone(s, i, 0, ev);
+                break;
+            }
+        }
+    }
     tick_modifiers_turn_end(s, cid, ev);
     if (!s.modifiers.empty()) tick_caster_turn_end(s, cid, ev);
 }
@@ -855,6 +988,7 @@ bool zone_suppressed(const EncounterState& s, const ActiveZone& z, const SpellDe
 // the owner's team only when aura_allies_only.
 bool in_aura(const EncounterState& s, const ActiveZone& z, const SpellDef& def, const Combatant& c) {
     if (c.dead || zone_suppressed(s, z, def)) return false;
+    if (const Combatant* o = find(s, z.owner); o && !plane_affect_refusal(*o, c).empty()) return false;   // B19
     if (def.zone.aura_allies_only) {
         const Combatant* o = find(s, z.owner);
         if (!o || o->team != c.team) return false;
@@ -1018,6 +1152,66 @@ void zone_membership(EncounterState& s, Ctx* ctx, CombatantId who, const std::ve
                      const std::vector<uint32_t>& left, const std::vector<uint32_t>& within, std::vector<Event>& ev);
 void zone_changes(EncounterState& s, Ctx* ctx, const std::vector<ZoneChange>& changes, std::vector<Event>& ev);
 
+// B11: the crush effect lasts while the Whelm grapple does. contain stays 0 (this is a grapple, not an engulf).
+void end_whelm_crush(EncounterState& s, CombatantId source, CombatantId target, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.effects.size();) {
+        const ActiveSpellEffect& e = s.effects[i];
+        if (e.damage_when == 3 && e.contain == 0 && e.caster == source && e.target == target) {
+            const SpellDef* d = spell_def(s, e.spell_id);
+            if (d && d->whelm) { end_effect(s, i, ev); continue; }
+        }
+        ++i;
+    }
+}
+
+bool whelm_holds(const EncounterState& s, CombatantId grappler, CombatantId target) {
+    for (const auto& e : s.sourced)
+        if (e.condition == Condition::Grappled && e.source == grappler && e.target == target && e.via_attack == kWhelmGrapple)
+            return true;
+    return false;
+}
+
+// One Large, or up to two Medium or smaller. A creature this action already holds is a refresh, not a new slot.
+// Anything Large or bigger takes the single Large slot. Named-target order is the order the cast listed.
+bool whelm_has_room(const EncounterState& s, CombatantId grappler, const Combatant& incoming) {
+    if (whelm_holds(s, grappler, incoming.id)) return true;
+    int large = 0, smaller = 0;
+    for (const auto& e : s.sourced) {
+        if (e.condition != Condition::Grappled || e.source != grappler || e.via_attack != kWhelmGrapple) continue;
+        if (e.target == incoming.id) continue;
+        const Combatant* t = find(s, e.target);
+        if (!t) continue;
+        if (int(t->size) >= int(Size::Large)) ++large;
+        else ++smaller;
+    }
+    if (int(incoming.size) >= int(Size::Large)) return large == 0 && smaller == 0;
+    return large == 0 && smaller < 2;
+}
+
+void ensure_whelm_crush(EncounterState& s, const Combatant& user, const Combatant& target, const SpellDef& def) {
+    for (const auto& e : s.effects)
+        if (e.spell_id == def.id && e.caster == user.id && e.target == target.id && e.damage_when == 3 && e.contain == 0)
+            return;
+    ActiveSpellEffect x{def.id, user.id, target.id, Condition::Paralyzed, Ability::Str, 0, RepeatSave::None, false};
+    x.no_condition = true;
+    x.damage_when = 3;
+    x.damage = def.whelm_crush;
+    x.damage_type = def.whelm_crush_type;
+    x.magical = false;
+    s.effects.push_back(x);
+}
+
+void apply_whelm_grapple(EncounterState& s, Combatant& user, Combatant& target, const SpellDef& def, std::vector<Event>& ev) {
+    if (def.whelm_max_size >= 0 && int(target.size) > int(def.whelm_max_size)) return;
+    if (!whelm_has_room(s, user.id, target)) return;
+    GrappleRider g;
+    g.escape_dc = def.whelm_escape_dc;
+    g.restrains = true;
+    g.max_size = def.whelm_max_size;
+    if (!grapple(s, user.id, target.id, g, kWhelmGrapple, ev)) return;
+    ensure_whelm_crush(s, user, target, def);
+}
+
 // R-G9: ends the grapple between `x` and `y` (either way round) after a forced move left them out of reach: the sourced entries
 // go, and Grappled goes from a creature no other grappler still holds (ConditionRemoved).
 void end_grapple_pair(EncounterState& s, CombatantId x, CombatantId y, std::vector<Event>& ev) {
@@ -1029,6 +1223,7 @@ void end_grapple_pair(EncounterState& s, CombatantId x, CombatantId y, std::vect
             const SourcedCondition gone = e;
             s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
             release_grapple_restraint(s, gone, ev);
+            if (gone.via_attack == kWhelmGrapple) end_whelm_crush(s, gone.source, gone.target, ev);
         } else ++i;
     }
     for (CombatantId id : freed) {
@@ -1057,6 +1252,50 @@ void defer_forced(EncounterState& s, Ctx& ctx, std::vector<Event>& ev, int32_t s
         m.step_seq = uint32_t(ctx.forced_deferred.size());
         ctx.forced_deferred.push_back(Ctx::Deferred{m, flags, group});
         emit(ev, EventKind::Moved, m.mover, m.source, int32_t(m.feet), 0, flags);
+    }
+}
+
+// B10: a Whirlwind fling that the hook says struck something. feet_moved / impact_per_ft is the number of times
+// impact_die is rolled (a flat die's bonus is multiplied, and draws no rng). An object damages the mover. A creature
+// saves first; a failure takes that same packet and falls prone. A success takes nothing. No reaction window on the
+// damage (the fall peer: ctx is null). The save still spends Legendary Resistance.
+void whirl_impact(EncounterState& s, const ForcedMoveQuery& q, const ForcedMoveResult& res, std::vector<Event>& ev) {
+    if (q.impact_per_ft == 0 || (!res.struck_object && res.struck == 0)) return;
+    const int dice_n = int(res.feet_moved) / int(q.impact_per_ft);
+    auto packet = [&](Combatant& who) {
+        if (dice_n <= 0 || who.dead) return;
+        DiceExpr e = q.impact_die;
+        const int count = int(e.count) * dice_n;
+        e.count = uint8_t(std::min(count, 255));
+        const int bonus = int(q.impact_die.bonus) * dice_n;
+        e.bonus = int16_t(std::clamp(bonus, -32768, 32767));
+        const int rolled = e.count == 0 ? e.bonus : roll_dice(s.rng, e);
+        if (rolled <= 0) return;
+        Combatant* src = find_mut(s, q.source);
+        TrigSrc ts{src && !src->dead ? src : nullptr, nullptr, false};
+        damage_creature(s, who, zone_apply_damage(s, who, int16_t(rolled), q.impact_type, 0), false, ev,
+                        ts.who ? &ts : nullptr, nullptr);
+    };
+    if (res.struck_object) {
+        if (Combatant* m = find_mut(s, q.mover)) packet(*m);
+        return;
+    }
+    if (res.struck == q.mover) return;
+    Combatant* other = find_mut(s, res.struck);
+    if (!other || other->dead) return;
+    SaveFromGuard guard(q.source);
+    const SaveSource src{false, bit(Condition::Prone), bit(q.impact_type)};
+    const SaveResult r = save_roll(s, *other, q.impact_save, q.impact_dc, RollMode::Normal, ev, &src, 0);
+    emit(ev, EventKind::SavingThrowRolled, other->id, CombatantId(q.impact_save), r.roll.natural, r.roll.total,
+         int32_t(r.success));
+    if (r.success) return;
+    other = find_mut(s, res.struck);
+    if (!other || other->dead) return;
+    packet(*other);
+    Combatant* t = find_mut(s, res.struck);
+    if (t && !t->dead && !t->has(Condition::Prone) && !immune_to(s, *t, Condition::Prone)) {
+        add_condition(*t, Condition::Prone);
+        emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(Condition::Prone));
     }
 }
 
@@ -1122,6 +1361,13 @@ void finalize_forced(EncounterState& s, Ctx& ctx, std::vector<Event>& events) {
             if (rec || (m && !m->dead && s.hooks.forced_move)) ctx.forced_results.emplace_back(d.q.step_seq, res);
             std::vector<Event> tail;
             emit(tail, EventKind::Moved, d.q.mover, d.q.source, int32_t(res.feet_moved), 0, d.flags);
+            // B8: a successful Deadly Leap save that cannot leave the space falls prone there. Half damage already landed.
+            if (d.q.prone_if_blocked && res.feet_moved == 0 && m && !m->dead && !m->has(Condition::Prone) &&
+                !immune_to(s, *m, Condition::Prone)) {
+                add_condition(*m, Condition::Prone);
+                emit(tail, EventKind::ConditionAdded, m->id, 0, int32_t(Condition::Prone));
+            }
+            if (d.q.impact_per_ft > 0) whirl_impact(s, d.q, res, tail);   // B10: object impact, or the Dexterity save
             if (res.fell_ft > 0 && m && !m->dead) land_fall(s, d.q.mover, int(res.fell_ft), tail, true);   // altitude PR4
             for (CombatantId other : res.out_of_reach_of) end_grapple_pair(s, d.q.mover, other, tail);
             const uint8_t saved_depth = ctx.depth;
@@ -1195,12 +1441,12 @@ std::vector<CombatantId> initiative_ids(const EncounterState& s) {
 
 // 7.2v control conditions: the reason `req` is refused for actor `a`, or nullptr. Rules restricts the legal actions; sim
 // picks the path (away from the caster, toward it for Approach). Not-turn requests (ReactionDecision, Heal, AbilityCheck,
-// GazeResponse) are never refused.
+// EndConcentration, GazeResponse) are never refused.
 const char* control_refuses(const EncounterState& s, const Combatant& a, const ActionRequest& req) {
     if (s.effects.empty()) return nullptr;
     const ActionKind k = req.kind;
     if (k == ActionKind::ReactionDecision || k == ActionKind::Heal || k == ActionKind::AbilityCheck ||
-        k == ActionKind::GazeResponse || k == ActionKind::EndTurn) return nullptr;
+        k == ActionKind::EndConcentration || k == ActionKind::GazeResponse || k == ActionKind::EndTurn) return nullptr;
     const bool moving = k == ActionKind::Move || k == ActionKind::Dash || k == ActionKind::StandUp;
     for (const auto& e : s.effects) {
         if (e.target != a.id || e.control == 0) continue;
@@ -1287,7 +1533,7 @@ bool evaluate_hit(const D20Roll& roll, const Combatant& t, const AttackContext& 
     crit = false;
     if (roll.natural == 20) { crit = true; return true; }
     if (roll.natural == 1) return false;
-    const bool hit = roll.total >= int(t.ac) + int(ctx.cover_ac_bonus) + int(t.reaction_ac_bonus);
+    const bool hit = roll.total >= attack_target_ac(t, ctx);
     crit = hit && roll.natural >= std::max(2, crit_min);
     return hit;
 }
@@ -1532,7 +1778,15 @@ std::vector<Combatant*> area_save_targets(EncounterState& s, const Combatant& ow
 
 // Death triggers (Death Burst) of creatures that died during this step, after all the step's events: queued so a
 // reaction window cannot nest inside a death. A burst that kills another trigger owner is handled on the next pass.
+void sweep_dead_figures(EncounterState& s) {
+    std::erase_if(s.figures, [&](const VisibleFigure& f) {
+        for (const auto& c : s.combatants) if (c.id == f.bearer) return c.dead;
+        return true;
+    });
+}
+
 void process_deaths(EncounterState& s, std::vector<Event>& ev, Ctx* ctx = nullptr) {
+    sweep_dead_figures(s);   // a figure ends when its bearer dies. Discernment stays.
     for (std::size_t pass = 0; pass < s.combatants.size(); ++pass) {
         bool any = false;
         for (std::size_t i = 0; i < s.combatants.size(); ++i) {
@@ -1567,20 +1821,11 @@ void life_drain(EncounterState& s, Combatant& t, int taken, int dc, CombatantId 
     if (cap <= 0) { kill(t, ev); check_end(s, ev); }
 }
 
-// Batch 3 (vampire spawn Bite): an attack with target_requires_any needs one of: a willing target (the request says so and it
-// is on the attacker's team), grappled by the attacker, incapacitated, restrained. Empty = allowed.
-static std::string_view target_gate_refusal(const EncounterState& s, const Combatant& a, const Combatant& t, const Attack& atk, bool willing) {
-    const uint8_t g = atk.target_requires_any;
-    if (g == 0) return {};
-    if ((g & kTargetGateWilling) && willing && t.team == a.team) return {};
-    if ((g & kTargetGateGrappledBySelf) && t.has(Condition::Grappled) && condition_source(s, t.id, Condition::Grappled) == a.id) return {};
-    if ((g & kTargetGateIncapacitated) && is_incapacitated(t)) return {};
-    if ((g & kTargetGateRestrained) && t.has(Condition::Restrained)) return {};
-    return "target must be willing, grappled by the attacker, incapacitated, or restrained";
+// The body is target_gate_reason (public). Kept as a name the cast path already uses.
+static std::string_view target_gate_refusal(const EncounterState& s, const Combatant& a, const Combatant& t, uint8_t g, bool willing) {
+    return target_gate_reason(s, a, t, g, willing);
 }
-
-// 7.2x: the start-of-step state the sight hook is asked about during a step (set by attempt while the hook exists).
-thread_local const EncounterState* g_sight_base = nullptr;
+// g_sight_base is declared at the top of this namespace (7.2x: the start-of-step state sight reads during a step).
 
 // 7.2y: is `atk` the weapon a wielded-scope modifier is bound to?
 // 7.2z: scope_ability's code for the ability an attack uses (rules5e::attack_ability): 1 Str, 2 Dex, 0 other.
@@ -1772,6 +2017,8 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
             if (((rx.applies ? rx.applies : kRollAttack) & (w.roll_kind ? w.roll_kind : kRollAttack)) == 0) continue;   // 7.2za
             if (rx.pool != 0 && !can_spend(s, r.id, rx.pool, rx.pool_cost ? rx.pool_cost : uint16_t(1))) continue;
             o.kind = ReactionOptionKind::SubtractRoll; o.dice = rx.dice; break;
+        case ReactionEffectKind::WearerAc:
+            continue;   // §54: wearer_shield_window offers it. The disadvantage poll does not.
         }
         out.push_back(o);
     }
@@ -1827,6 +2074,68 @@ bool ally_attacked_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& 
         if (o.kind == ReactionOptionKind::ImposeDisadvantage) return true;   // disadvantage does not stack
     }
     return false;
+}
+
+// Options the Shield reaction (CONTENT_CONVENTIONS §54) offers. Not the generic AllyAttacked list: that list is
+// disadvantage, and taking it returns before a later reactor. This reaction grants AC instead.
+std::vector<ReactionOption> wearer_ac_options(const EncounterState& s, const Combatant& r, CombatantId attacker, bool ranged) {
+    std::vector<ReactionOption> out;
+    for (const Reaction& rx : r.reactions) {
+        if (rx.kind != ReactionEffectKind::WearerAc || rx.window != ReactionTrigger::AllyAttacked) continue;
+        if ((rx.melee_only && ranged) || (rx.ranged_only && !ranged)) continue;
+        if (rx.requires_sight && (attacker == 0 || !sight(s, r.id, attacker).can_see)) continue;
+        ReactionOption o{};
+        o.kind = ReactionOptionKind::AcBonus; o.ac_bonus = rx.ac_bonus; o.option_id = rx.id; o.uses_reaction = true;
+        out.push_back(o);
+    }
+    return out;
+}
+
+// Shield Guardian Shield (CONTENT_CONVENTIONS §54). Before the attack roll: "when a creature makes an attack"
+// against the bound wearer, not "when the wearer is hit". The sentence does not exclude the guardian's own attack.
+// Each guardian with WearerAc, whose bound.wearer is `t`, and who is within 5 feet may spend its reaction.
+// Product choice (not the SRD sentence): the first guardian who grants the bonus ends the offer. Later guardians
+// are not asked and do not spend. The one bonus is AttackContext::wearer_ac_bonus for this attack only.
+// No sight hook: the distance is unknown, so nobody is within 5 feet. Not the in_range hook. Not team.
+// A natural 20 still hits; this function does not write reaction_ac_bonus and does not emit AcBonus.
+int wearer_shield_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, bool ranged, std::vector<Event>& ev) {
+    ReactionWindow w = new_window(s, ctx, ReactionTrigger::AllyAttacked, a.id);
+    w.target = t.id; w.ranged = ranged;
+    if (!may_open(s, w)) return 0;
+    auto within_5 = [&](const Combatant& r) {
+        if (!s.hooks.sight_facts) return false;
+        return s.hooks.sight_facts(s, r, t).distance_ft <= 5;
+    };
+    auto eligible = [&](const Combatant& r) {
+        // The wearer is the target, so the reactor is not `t`. The attacker is not excluded: the sentence
+        // is any creature's attack, including the guardian's own, and a reaction can be taken on one's own turn.
+        return r.id != t.id && r.bound.radius_ft != 0 && r.bound.wearer == t.id &&
+               may_react(s, r, w.trigger) && within_5(r) && !wearer_ac_options(s, r, a.id, ranged).empty();
+    };
+    bool any = false;
+    for (const auto& c : s.combatants) { if (eligible(c)) { any = true; break; } }
+    if (!any) return 0;
+    std::vector<CombatantId> cands;
+    for (CombatantId id : initiative_ids(s)) if (eligible(*find_mut(s, id))) cands.push_back(id);
+    bool opened = false;
+    int bonus = 0;
+    for (CombatantId rid : poll_order(s, cands)) {
+        Combatant& r = *find_mut(s, rid);
+        if (!eligible(r)) continue;
+        auto opts = wearer_ac_options(s, r, a.id, ranged);
+        if (opts.empty()) continue;
+        if (!opened) {
+            opened = true; ++s.next_window_seq;
+            emit(ev, EventKind::ReactionWindowOpened, a.id, t.id, int32_t(w.trigger), int32_t(w.seq));
+        }
+        auto d = poll(s, ctx, w, r, opts, ev);
+        if (!d.react) continue;
+        const ReactionOption o = opts[d.option];
+        if (o.uses_reaction) r.reaction_used = true;
+        if (o.kind == ReactionOptionKind::AcBonus) bonus = std::min(int(o.ac_bonus), 2);
+        break;   // product choice: one grant. Later guardians are not offered and do not spend.
+    }
+    return bonus;
 }
 
 // AttackRolled (R-G7, widened 7.2za): after a roll (attack: not a natural 1 or 20; save: not an automatic failure) and before
@@ -1952,6 +2261,37 @@ void end_recast_bonds(EncounterState& s, const SpellDef& def, CombatantId neu, s
     for (const auto& p : srcs) end_linked_source(s, p.first, p.second, 2, ev);
 }
 thread_local std::vector<CombatantId> g_share_stack;
+// B18 Bound (CONTENT_CONVENTIONS §50). Not share_damage: the link stays past 60 feet, and the half rounded up
+// is removed from the wearer. A creature already on this stack does not take a further transfer (a cycle stops).
+thread_local std::vector<CombatantId> g_bound_stack;
+bool bound_in_range(const EncounterState& s, const Combatant& guardian, const Combatant& wearer) {
+    if (guardian.bound.radius_ft == 0 || !s.hooks.sight_facts) return false;
+    return s.hooks.sight_facts(s, guardian, wearer).distance_ft <= guardian.bound.radius_ft;
+}
+void transfer_bound_damage(EncounterState& s, Combatant& victim, DamageApplied& applied, std::vector<Event>& ev, Ctx* ctx) {
+    if (applied.dealt <= 0) return;
+    if (std::find(g_bound_stack.begin(), g_bound_stack.end(), victim.id) != g_bound_stack.end()) return;
+    bool any = false;
+    for (const auto& g : s.combatants)
+        if (g.bound.radius_ft != 0 && g.bound.wearer == victim.id && g.id != victim.id && !g.dead) any = true;
+    if (!any) return;
+    g_bound_stack.push_back(victim.id);
+    struct Pop { ~Pop() { if (!g_bound_stack.empty()) g_bound_stack.pop_back(); } } pop;
+    const CombatantId wearer_id = victim.id;
+    for (std::size_t i = 0; i < s.combatants.size() && applied.dealt > 0; ++i) {
+        const CombatantId gid = s.combatants[i].id;
+        const Combatant* g = find(s, gid);
+        if (!g || g->dead || g->id == wearer_id || g->bound.radius_ft == 0 || g->bound.wearer != wearer_id) continue;
+        if (std::find(g_bound_stack.begin(), g_bound_stack.end(), gid) != g_bound_stack.end()) continue;
+        Combatant* wearer = find_mut(s, wearer_id);
+        if (!wearer || !bound_in_range(s, *g, *wearer)) continue;
+        const int transfer = (int(applied.dealt) + 1) / 2;
+        applied = reduce_applied(*wearer, applied, transfer);
+        Combatant* guard = find_mut(s, gid);
+        if (!guard || guard->dead) continue;
+        damage_creature(s, *guard, apply_damage_fixed(*guard, int16_t(transfer)), false, ev, nullptr, ctx);
+    }
+}
 void share_ward_damage(EncounterState& s, Combatant& victim, const DamageApplied& applied, std::vector<Event>& ev, Ctx* ctx) {
     if (applied.dealt <= 0 || s.modifiers.empty()) return;
     if (std::find(g_share_stack.begin(), g_share_stack.end(), victim.id) != g_share_stack.end()) return;
@@ -2006,6 +2346,7 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
             }
         }
     }
+    transfer_bound_damage(s, t, applied, ev, ctx);   // B18 Bound: half of damage taken, rounded up, before the drop is committed
     if (!t.triggers.empty() && applied.dropped_to_zero && !applied.instant_death) {   // Undead Fortitude: before the drop applies
         TrigCtx x; x.atk = src ? src->atk : nullptr; x.is_spell = src && src->is_spell; x.crit = critical;
         x.types = applied.types_dealt; x.dmg = applied.dealt;
@@ -2026,7 +2367,43 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         }
     }
     after_damage(t, applied, critical, ev);
-    share_ward_damage(s, t, applied, ev, ctx);   // 7.2zi Warding Bond: the caster takes applied.dealt, untyped
+    if (!t.dead && t.freeze.by != 0 && t.freeze.speed_sub != 0 && (applied.types_dealt & t.freeze.by)) {
+        // B12 Freeze: one Speed row, refreshed (stack is false). EndOfTargetNextTurn: the acting creature's current
+        // turn does not count. types_dealt is the regeneration signal (above 0 after mitigation, before temp HP).
+        ModifierSpec spec;
+        spec.id = t.freeze.modifier_id;
+        spec.source = t.freeze.modifier_id;
+        spec.stat = ModStat::Speed;
+        spec.speed_num = 1;
+        spec.speed_den = 1;
+        spec.speed_sub = t.freeze.speed_sub;
+        spec.expiry = uint8_t(Expiry::EndOfTargetNextTurn);
+        apply_modifier(s, t.id, t.id, spec, ev);
+    }
+    if (!t.dead && applied.absorbed_heal > 0) {
+        // B13 Lightning Absorption: the listed type was not part of this hit. Regain that amount on the existing
+        // heal path (NoHealing, no_regain_hp, the maximum, and a dead creature). A killing blow from another type
+        // in the same hit has already set dead; this does not bring the creature back. Pure lightning leaves
+        // dealt at 0, so the concentration check below does not run.
+        auto h = heal_hp(s, t, applied.absorbed_heal);
+        commit_healing(t, h);
+        emit(ev, EventKind::Healed, t.id, t.id, h.healed, h.hp_after, h.from_zero);
+    }
+    if (applied.dealt > 0 && attacker && s.hooks.spells) {   // 7.2zj: damage from the caster's team ends the charm on this creature
+        std::vector<std::pair<uint32_t, CombatantId>> ended;
+        for (std::size_t i = 0; i < s.effects.size();) {
+            const ActiveSpellEffect& e = s.effects[i];
+            if (e.target != t.id) { ++i; continue; }
+            const SpellDef* spell = spell_def(s, e.spell_id);
+            if (!spell || !spell->ends_on_ally_harm) { ++i; continue; }
+            const Combatant* caster = find(s, e.caster);
+            if (!caster || caster->team != attacker->team) { ++i; continue; }
+            ended.push_back({e.spell_id, e.caster});
+            end_effect(s, i, ev);
+        }
+        for (const auto& k : ended) end_concentration_if_empty(s, k.second, k.first, ev);
+    }
+    share_ward_damage(s, t, applied, ev, ctx);   // 7.2zi Warding Bond: the caster takes applied.dealt (after Bound, when that transfer ran)
     end_caster_zero_bonds(s, t, ev);             // 7.2zi: the caster (not the warded creature) at 0 HP ends the bond
     if (applied.dealt > 0 && !s.modifiers.empty()) consume_modifiers(s, 3, t.id, 4, ev);   // "until damaged"
     if (applied.dealt > 0 && !s.modifiers.empty()) mark_fought(s, t.id);   // 7.2z ends_early: took damage
@@ -2352,6 +2729,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     const bool protected_by_ally = ally_attacked_window(s, ctx, a, t, atk.ranged, spell_id, ev);   // Protection-style reactions
+    actx.wearer_ac_bonus = int8_t(std::clamp(wearer_shield_window(s, ctx, a, t, atk.ranged, ev), 0, 2));   // §54, this attack only, at most +2
     const bool heat_dis = while_held_disadvantage(s, a.id);   // 7.2zh Heat Metal: attack rolls, weapon and spell
     actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis || a.squeezing || unseen_target || heat_dis;   // combined with conditions in one place
     if (!s.modifiers.empty()) {   // timed modifiers (row 12): sources merged into the one advantage/disadvantage resolution
@@ -2409,7 +2787,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     }
     bool crit = false;
     if (roll.natural != 20 && roll.natural != 1) {   // Cutting Words-style subtraction, before hit or miss
-        const int tac = int(t.ac) + int(actx.cover_ac_bonus) + int(t.reaction_ac_bonus);
+        const int tac = attack_target_ac(t, actx);
         if (const int chg = roll_window(s, ctx, a, t.id, kRollAttack, roll.total, tac, atk.ranged, spell_id, ev)) roll.total = int16_t(roll.total + chg);
     }
     const int crit_min = spell_id != 0 ? 20 : int(a.crit_min);   // Improved Critical: weapon attacks only
@@ -2418,7 +2796,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     if (hit) {
         ReactionWindow w = new_window(s, ctx, ReactionTrigger::BeingHit, a.id);
         w.target = t.id; w.attack_total = roll.total; w.attack_natural = roll.natural;
-        w.target_ac = int16_t(int(t.ac) + int(actx.cover_ac_bonus) + int(t.reaction_ac_bonus));
+        w.target_ac = int16_t(attack_target_ac(t, actx));
         w.spell_id = spell_id;
         // Auto only spends the reaction when option 0 would turn the hit into a miss.
         auto would_miss = [&](const ReactionOption& o) {
@@ -2435,9 +2813,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 smite_piece = DamagePiece{int16_t(std::max(0, roll_dice(s.rng, e.damage, crit))), e.damage_type};
                 break;
             }
-    const bool grab_only = hit && ctx.grapple_instead && spell_id == 0;   // Tier-A §27: c bit 3 (8)
+    const bool chose_grab = hit && ctx.grapple_instead && spell_id == 0;   // Tier-A §27: c bit 3 (8), the choice
+    const bool grab_only = chose_grab || (hit && spell_id == 0 && atk.grapple_no_damage);   // B5: always, no choice bit
     emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,
-         int32_t(hit) | (int32_t(crit) << 1) | (int32_t(grab_only) << 3));
+         int32_t(hit) | (int32_t(crit) << 1) | (int32_t(chose_grab) << 3));
     if (t.team != a.team && !s.modifiers.empty()) mark_fought(s, a.id);   // 7.2z ends_early: attacked a hostile
     if (spell_id != 0) {   // 7.2zi hit_only: the roll and the hit stand; no damage dice and no hit points (riders still see the hit)
         if (const SpellDef* sd = spell_def(s, spell_id); sd && sd->hit_only) {
@@ -2445,7 +2824,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             return hit;
         }
     }
-    if (grab_only) {   // Tier-A §27: no damage roll (a crit too), no damage, no concentration save; the sim grapples on c & 8.
+    if (grab_only) {   // Tier-A §27 / B5: no damage roll (a crit too), no damage, no concentration save. The choice sets c & 8;
+                       // no_damage does not. The sim grapples a no_damage hit on the hit bit; a choice only when c & 8.
         // On-hit riders that do not deal damage still fire (save / apply condition); damage-keyed ones (drain, curse, Strength
         // Drain, smite) do not.
         const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, false, atk_mode, ally_near_target, crit, roll, ev);
@@ -2590,7 +2970,8 @@ bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, const A
     };
     auto eligible = [&](const Combatant& r) {
         return r.id != mover.id && r.team != mover.team && may_react(s, r, w.trigger) && in_range(s, w, r) &&
-               !options_for(r).empty() && cover_of(s, r.id, mover.id, false, 0) != Cover::Total;   // 7.2t: not offered
+               !options_for(r).empty() && cover_of(s, r.id, mover.id, false, 0) != Cover::Total &&   // 7.2t: not offered
+               plane_affect_refusal(r, mover).empty();   // B19: an opportunity attack does not cross planes
     };
     std::vector<CombatantId> cands;
     for (CombatantId id : initiative_ids(s)) if (eligible(*find_mut(s, id))) cands.push_back(id);
@@ -2704,7 +3085,7 @@ bool zone_affects(const ActiveZone& z, const SpellDef& def, const Combatant& c) 
 // damage and condition exactly as a Save / ApplyCondition effect would. Nothing is copied by pointer: damage can end the
 // owner's concentration and with it the zone.
 void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_index, CombatantId who, bool hook_membership,
-              std::vector<Event>& ev) {
+              std::vector<Event>& ev, bool explicit_look = false) {
     const ActiveZone* zp = find_zone(s, zone_id);
     const SpellDef* def = zp ? spell_def(s, zp->spell_id) : nullptr;
     Combatant* t = find_mut(s, who);
@@ -2726,6 +3107,19 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
     if (row.success_immunity_hours != 0)   // batch 3 ghast Stench: immune to THIS owner's aura after a success (per source)
         for (const auto& im : s.aura_immunities)
             if (im.creature == who && im.source == z.owner && im.spell_id == z.spell_id && s.round < im.until_round) return;
+    // B15 Horrific Appearance. These return before the once-per-turn mark, so a deferred avert row can still resolve
+    // when AppearanceResponse looks. A creature already carrying this owner's effect is not saved again.
+    if (row.creature_types != 0 && (row.creature_types & bit(t->creature_type)) == 0) return;
+    if (const Combatant* owner_now = find(s, z.owner); owner_now && !plane_affect_refusal(*owner_now, *t).empty())
+        return;   // B19: an aura does not reach the other plane (no save, no damage roll)
+    if (row.must_see_source) {
+        const Sight seen = sight(s, who, z.owner);
+        if (!seen.can_see || seen.sense != Sense::Sight) return;
+    }
+    if (row.avert_eyes && std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+            return o.spell_id == z.spell_id && o.caster == z.owner && o.target == who; }))
+        return;
+    if (row.avert_eyes && !explicit_look) return;
     if (row.group != 0) {   // once per creature per zone per turn, per group (D2)
         const uint32_t now = turn_stamp(s);
         ActiveZone* zm = find_zone_mut(s, zone_id);
@@ -2782,10 +3176,18 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
             add_condition(*t, e.condition);
             emit(ev, EventKind::ConditionAdded, who, 0, int32_t(e.condition));
         }
+        note_source(s, e.condition, z.owner, who);
         if (row.while_in_zone && find_zone(s, zone_id)) {   // lasts while in the zone (Web): ends on leaving, escape, zone end
             ActiveSpellEffect x{z.spell_id, z.owner, who, e.condition, e.save_ability, z.dc, RepeatSave::None, z.concentration,
                                 Timed{}, z.slot_level, false};
             x.zone_id = zone_id;
+            s.effects.push_back(x);
+        } else if (row.condition_rounds > 0) {   // B15: frightened for 1 minute (10 rounds), repeat save on the effect
+            ActiveSpellEffect x{z.spell_id, z.owner, who, e.condition, e.save_ability, z.dc, e.repeat_save, false,
+                                make_timed(Expiry::Rounds, row.condition_rounds, false), z.slot_level, false};
+            x.no_condition = untracked_prior;
+            x.repeat_los_disadvantage = row.repeat_los_disadvantage;
+            x.immunity_on_end_hours = row.immunity_on_end ? row.success_immunity_hours : uint16_t(0);
             s.effects.push_back(x);
         } else if (row.condition_until == 1) {   // batch 3 ghast Stench: "poisoned until the start of its next turn"
             ActiveSpellEffect x{z.spell_id, z.owner, who, e.condition, e.save_ability, z.dc, RepeatSave::None, false,
@@ -2894,6 +3296,122 @@ bool gaze_applies(const EncounterState& s, const Combatant& c) {
     return false;
 }
 
+// B6: a failed disease save registers one row. The same rider on the same creature does not stack or reset the clock.
+// The initial success does not cure a disease already contracted.
+void contract_disease(EncounterState& s, Combatant& t, const SpellDef& def, CombatantId source, int dc) {
+    if (!def.disease || def.disease_hours == 0 || t.dead) return;
+    for (const Disease& d : s.diseases)
+        if (d.target == t.id && d.spell_id == def.id) return;
+    Disease d;
+    d.target = t.id;
+    d.spell_id = def.id;
+    d.source = source;
+    d.save_ability = def.save_ability;
+    d.dc = int16_t(dc);
+    d.dice = def.disease_dice;
+    d.condition = def.applies_condition ? def.condition : Condition::Poisoned;
+    d.interval_rounds = uint32_t(def.disease_hours) * 600u;
+    d.next_round = uint32_t(s.round) + d.interval_rounds;
+    s.diseases.push_back(d);
+}
+
+// Put this disease's hit point maximum back. Current hit points stay where they are. Poisoned ends only when no other
+// disease and no tracked effect still applies that condition (one condition bit).
+void cure_disease_at(EncounterState& s, std::size_t index, std::vector<Event>& ev) {
+    const Disease d = s.diseases[index];
+    s.diseases.erase(s.diseases.begin() + static_cast<std::ptrdiff_t>(index));
+    Combatant* t = find_mut(s, d.target);
+    if (!t) return;
+    const int back = std::min(int(d.reduction), int(t->disease_hp_max_reduction));
+    t->disease_hp_max_reduction = int16_t(int(t->disease_hp_max_reduction) - back);
+    if (back > 0)
+        emit(ev, EventKind::ModifierApplied, d.source, t->id, 0, int32_t(ModStat::MaxHp), back);
+    bool held = false;
+    for (const Disease& o : s.diseases)
+        if (o.target == t->id && o.condition == d.condition) held = true;
+    if (!held)
+        for (const auto& e : s.effects)
+            if (e.target == t->id && !e.no_condition && e.condition == d.condition) held = true;
+    if (!held && t->has(d.condition)) {
+        remove_condition(*t, d.condition);
+        emit(ev, EventKind::ConditionRemoved, t->id, 0, int32_t(d.condition));
+    }
+}
+
+void disease_reduce(EncounterState& s, Combatant& t, Disease& d, int roll, std::vector<Event>& ev) {
+    if (roll <= 0 || t.dead) return;
+    const int room = std::min(32767 - int(d.reduction), 32767 - int(t.disease_hp_max_reduction));
+    const int applied = std::min(roll, std::max(0, room));
+    if (applied <= 0) return;
+    d.reduction = int16_t(int(d.reduction) + applied);
+    t.disease_hp_max_reduction = int16_t(int(t.disease_hp_max_reduction) + applied);
+    emit(ev, EventKind::ModifierApplied, d.source, t.id, 0, int32_t(ModStat::MaxHp), -applied);
+    const int cap = effective_hp_max(t);
+    if (t.hp > cap) t.hp = int16_t(cap);
+    if (cap <= 0) { kill(t, ev); check_end(s, ev); }
+}
+
+// "Every 24 hours that elapse": on the diseased creature's turn, once the round clock has reached next_round.
+void disease_checks(EncounterState& s, Combatant& c, std::vector<Event>& ev) {
+    if (c.dead || s.diseases.empty()) return;
+    for (std::size_t i = 0; i < s.diseases.size();) {
+        Disease& d = s.diseases[i];
+        if (d.target != c.id || uint32_t(s.round) < d.next_round) { ++i; continue; }
+        const SaveSource src{false, bit(d.condition), 0};
+        auto r = save_roll(s, c, d.save_ability, d.dc, RollMode::Normal, ev, &src);
+        emit(ev, EventKind::SavingThrowRolled, c.id, CombatantId(d.save_ability), r.roll.natural, r.roll.total,
+             int32_t(r.success));
+        if (r.success) {
+            cure_disease_at(s, i, ev);
+            if (c.dead) return;
+            continue;
+        }
+        const int roll = std::max(0, roll_dice(s.rng, d.dice));
+        disease_reduce(s, c, d, roll, ev);
+        if (c.dead) return;
+        d.next_round = uint32_t(s.round) + d.interval_rounds;
+        ++i;
+    }
+}
+
+// B15: one Horrific Appearance row that would force a save at the start of `who`'s turn. Range is the feature
+// aura (zone membership). Seeing the owner is can_see and Sense::Sight. Already frightened by this owner, or
+// immune to this owner's aura, is not asked again.
+struct AppearanceHit { uint32_t zone_id; std::size_t row; CombatantId owner; uint32_t spell_id; };
+std::vector<AppearanceHit> appearance_hits(const EncounterState& s, CombatantId who) {
+    std::vector<AppearanceHit> out;
+    const Combatant* t = find(s, who);
+    if (!t || t->dead || t->hp <= 0 || !s.hooks.zone_contains) return out;
+    std::vector<uint32_t> ids;
+    for (const auto& z : s.zones) ids.push_back(z.zone_id);
+    std::sort(ids.begin(), ids.end());
+    for (uint32_t id : ids) {
+        const ActiveZone* z = find_zone(s, id);
+        const SpellDef* def = z ? spell_def(s, z->spell_id) : nullptr;
+        if (!z || !def || zone_suppressed(s, *z, *def)) continue;
+        if (!zone_affects(*z, *def, *t)) continue;
+        const Combatant* owner = find(s, z->owner);
+        if (!owner || owner->dead) continue;
+        for (std::size_t i = 0; i < def->zone.triggers.size(); ++i) {
+            const ZoneTriggerRow& row = def->zone.triggers[i];
+            if (!row.avert_eyes || row.on != ZoneTrigger::StartTurn) continue;
+            if (row.creature_types != 0 && (row.creature_types & bit(t->creature_type)) == 0) continue;
+            if (!s.hooks.zone_contains(s, id, who, row.completely_within)) continue;
+            if (row.success_immunity_hours != 0 && std::any_of(s.aura_immunities.begin(), s.aura_immunities.end(),
+                    [&](const AuraImmunity& im) { return im.creature == who && im.source == z->owner && im.spell_id == z->spell_id &&
+                                                         s.round < im.until_round; }))
+                continue;
+            if (std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& e) {
+                    return e.spell_id == z->spell_id && e.caster == z->owner && e.target == who; }))
+                continue;
+            const Sight seen = sight(s, who, owner->id);
+            if (!seen.can_see || seen.sense != Sense::Sight) continue;
+            out.push_back(AppearanceHit{id, i, z->owner, z->spell_id});
+        }
+    }
+    return out;
+}
+
 void start_turn(EncounterState& s, std::vector<Event>& ev) {
     Combatant& c = *find_mut(s, s.order[s.turn_index].id);
     c.reaction_used = false;
@@ -2913,6 +3431,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         emit(ev, EventKind::ReadyExpired, c.id);
     }
     emit(ev, EventKind::TurnStarted, c.id, 0, s.round);
+    if (!c.dead) disease_checks(s, c, ev);   // B6: the 24-hour disease save, before the rest of the turn
     for (auto& e : s.effects)   // 7.2zh Heat Metal: disadvantage lasts until the start of the caster's next turn
         if (e.caster == c.id) e.while_held = false;
     if (c.form != FormKind::None && c.form_end_round != 0 && s.round >= c.form_end_round) form_reverted(c, 0, 0, ev);   // R-G12
@@ -2963,9 +3482,23 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
             emit(ev, EventKind::ConditionAdded, c.id, 0, int32_t(Condition::Prone));
         }
     if (!s.effects.empty()) release_contained(s, ev);   // 7.2w: a container that died out of a step (sim) frees first
-    if (!c.dead && !s.effects.empty()) {   // 7.2w: what it has engulfed / swallowed takes its acid now
+    if (!c.dead && !s.effects.empty()) {   // 7.2w: what it has engulfed / swallowed takes its acid now. B11: a Whelm grapple's crush.
         std::vector<ActiveSpellEffect> inside;
-        for (const auto& e : s.effects) if (e.contain != 0 && e.caster == c.id && e.damage_when == 3) inside.push_back(e);
+        std::vector<std::size_t> stale;
+        for (std::size_t i = 0; i < s.effects.size(); ++i) {
+            const auto& e = s.effects[i];
+            if (e.caster != c.id || e.damage_when != 3) continue;
+            if (e.contain != 0) { inside.push_back(e); continue; }
+            const SpellDef* d = spell_def(s, e.spell_id);
+            if (!d || !d->whelm) continue;
+            bool held = false;
+            for (const auto& sc : s.sourced)
+                if (sc.condition == Condition::Grappled && sc.source == c.id && sc.target == e.target && sc.via_attack == kWhelmGrapple)
+                    held = true;
+            if (held) inside.push_back(e);
+            else stale.push_back(i);
+        }
+        for (auto it = stale.rbegin(); it != stale.rend(); ++it) end_effect(s, *it, ev);
         for (const auto& e : inside) deal_effect_damage(s, e, ev);
     }
     if (dies_of_exhaustion(c) && !c.dead) kill(c, ev);
@@ -2980,6 +3513,12 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
             commit_healing(c, h);
             emit(ev, EventKind::Healed, c.id, c.id, h.healed, h.hp_after, h.from_zero);
         }
+    }
+    // §55: regain hit points only while already at 1 or more. A creature at 0 is not kept in the fight.
+    if (!c.dead && c.hp >= 1 && c.regain > 0 && c.hp < effective_hp_max(c)) {
+        auto h = heal_hp(s, c, c.regain);
+        commit_healing(c, h);
+        if (h.healed > 0) emit(ev, EventKind::Healed, c.id, c.id, h.healed, h.hp_after, h.from_zero);
     }
     if (!c.dead) {   // Recharge: one d6 per expended recharge action of this creature (draws only when one exists)
         for (auto& u : s.action_uses) {
@@ -3038,6 +3577,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         s.budget.haste_action = true;
     }
     s.budget.gaze_pending = gaze_applies(s, c);   // Petrifying Gaze: answered by GazeResponse before anything else
+    s.budget.appearance_pending = !appearance_hits(s, c.id).empty();   // B15: after gaze; AppearanceResponse before anything else
     check_end(s, ev);
 }
 
@@ -3068,6 +3608,10 @@ void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
             if (!a || !may_react(s, *a, w.trigger) || !may_open(s, w) || !s.hooks.ready_trigger(s, r, e)) { ++k; continue; }
             // 7.2t: a readied attack at a target with total cover is not offered (the readied action is kept)
             if (r.response.kind == ActionKind::Attack && cover_of(s, a->id, r.response.target, false, 0) == Cover::Total) { ++k; continue; }
+            if (r.response.kind == ActionKind::Attack) {   // B19: not offered across planes (the readied action is kept)
+                const Combatant* rt = find(s, r.response.target);
+                if (rt && !plane_affect_refusal(*a, *rt).empty()) { ++k; continue; }
+            }
             ++s.next_window_seq;
             emit(ev, EventKind::ReactionWindowOpened, e.actor, a->id, int32_t(w.trigger), int32_t(w.seq));
             const ReactionOption fire{r.response.attack_index, ReactionOptionKind::FireReady, 0, r.trigger_id};
@@ -3197,9 +3741,11 @@ bool spend_action(TurnBudget& b, const Combatant& c, ActionKind k, bool bonus, b
     if (!b.action) {
         if (b.extra_actions == 0) return false;   // Action Surge: an extra action stands in for the spent one
         --b.extra_actions;
+        b.free_rider = 0;   // B3b: a new action closes an unused multiattack rider
         return true;
     }
     b.action = false;
+    b.free_rider = 0;
     return true;
 }
 
@@ -3321,9 +3867,84 @@ void heat_metal_rider(EncounterState& s, Combatant& caster, Combatant& target, A
     e.while_held = !dropped;
 }
 
+// 7.2zj Greater Restoration: the chosen option has something to undo on `t`.
+bool restore_option_applies(const EncounterState& s, const Combatant& t, RestoreOption opt) {
+    switch (opt) {
+    case RestoreOption::Exhaustion: return t.exhaustion_level > 0;
+    case RestoreOption::Charmed:
+        if (t.has(Condition::Charmed)) return true;
+        for (const auto& e : s.effects)
+            if (e.target == t.id && !e.no_condition && e.condition == Condition::Charmed) return true;
+        return false;
+    case RestoreOption::Petrified:
+        if (t.has(Condition::Petrified)) return true;
+        for (const auto& e : s.effects)
+            if (e.target == t.id && !e.no_condition && e.condition == Condition::Petrified) return true;
+        return false;
+    case RestoreOption::AbilityStr: case RestoreOption::AbilityDex: case RestoreOption::AbilityCon:
+    case RestoreOption::AbilityInt: case RestoreOption::AbilityWis: case RestoreOption::AbilityCha:
+        return t.ability_reduction[std::size_t(int(opt) - int(RestoreOption::AbilityStr))] != 0;
+    case RestoreOption::HitPointMaximum: return t.hp_max_reduction != 0;
+    }
+    return false;
+}
+
+// One option, then every effect on the target with ends_on_restoration (Geas ends whichever option was chosen).
+void apply_one_restore(EncounterState& s, Combatant& t, RestoreOption opt, std::vector<Event>& ev) {
+    switch (opt) {
+    case RestoreOption::Exhaustion:
+        if (t.exhaustion_level > 0) t.exhaustion_level = uint8_t(t.exhaustion_level - 1);
+        if (t.exhaustion_level == 0 && t.has(Condition::Exhaustion)) {
+            remove_condition(t, Condition::Exhaustion);
+            emit(ev, EventKind::ConditionRemoved, t.id, 0, int32_t(Condition::Exhaustion));
+        }
+        break;
+    case RestoreOption::Charmed:
+    case RestoreOption::Petrified: {
+        const Condition c = opt == RestoreOption::Charmed ? Condition::Charmed : Condition::Petrified;
+        bool ended = false;
+        uint32_t sp = 0;
+        CombatantId caster = 0;
+        for (std::size_t i = 0; i < s.effects.size(); ++i) {
+            if (s.effects[i].target != t.id || s.effects[i].no_condition || s.effects[i].condition != c) continue;
+            sp = s.effects[i].spell_id; caster = s.effects[i].caster;
+            end_effect(s, i, ev);
+            ended = true;
+            break;
+        }
+        if (ended) end_concentration_if_empty(s, caster, sp, ev);
+        else if (t.has(c)) {
+            remove_condition(t, c);
+            emit(ev, EventKind::ConditionRemoved, t.id, 0, int32_t(c));
+        }
+        break;
+    }
+    case RestoreOption::AbilityStr: case RestoreOption::AbilityDex: case RestoreOption::AbilityCon:
+    case RestoreOption::AbilityInt: case RestoreOption::AbilityWis: case RestoreOption::AbilityCha: {
+        const std::size_t i = std::size_t(int(opt) - int(RestoreOption::AbilityStr));
+        const int red = t.ability_reduction[i];
+        t.abilities.score[i] = int8_t(std::min(127, int(t.abilities.score[i]) + red));
+        t.ability_reduction[i] = 0;
+        break;
+    }
+    case RestoreOption::HitPointMaximum:
+        t.hp_max_reduction = 0;
+        break;
+    }
+    std::vector<std::pair<uint32_t, CombatantId>> ended;
+    for (std::size_t i = 0; i < s.effects.size();) {
+        if (s.effects[i].target == t.id && s.effects[i].ends_on_restoration) {
+            ended.push_back({s.effects[i].spell_id, s.effects[i].caster});
+            end_effect(s, i, ev);
+        } else ++i;
+    }
+    for (const auto& k : ended) end_concentration_if_empty(s, k.second, k.first, ev);
+}
+
 std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
                                        const std::vector<Combatant*>& T, bool within_5ft, std::vector<Event>& ev) {
     std::vector<Combatant*> affected;
+    if (def.ethereal_toggle || def.illusory_appearance || def.invisible_passage) return affected;   // the action returned before resolve_effect
     switch (def.kind) {
     case SpellEffectKind::SpellAttack: {
         Attack atk{def.content_id, int8_t(spell_attack_bonus(a, def)), scaled_dice(def, lvl, a.caster_level),
@@ -3393,9 +4014,14 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         const int dc = spell_save_dc(a, def);
         const uint8_t dq = def.magical ? kAttackMagical : 0;
         const DiceExpr sdice = scaled_dice(def, lvl, a.caster_level);
-        const int dmg = def.dice.count > 0 || def.dice.bonus > 0
-                            ? std::max(0, ctx.empower > 0 ? roll_empowered(s.rng, sdice, false, ctx.empower)
-                                                          : roll_dice(s.rng, sdice)) : 0;   // one roll for all targets
+        // B10: an empty Whirlwind names nobody, so it draws no damage dice. A named target still shares one roll.
+        const bool whirl_quiet = T.empty() && is_space_save(def);
+        const bool roll_dmg = !whirl_quiet && (def.dice.count > 0 || def.dice.bonus > 0);
+        const int dmg = roll_dmg ? std::max(0, ctx.empower > 0 ? roll_empowered(s.rng, sdice, false, ctx.empower)
+                                                                : roll_dice(s.rng, sdice))
+                                 : 0;   // one roll for all targets
+        const bool roll_also = !whirl_quiet && def.has_also_damage && (def.also_dice.count > 0 || def.also_dice.bonus > 0);
+        const int also_dmg = roll_also ? std::max(0, roll_dice(s.rng, def.also_dice)) : 0;   // 7.2zj: second packet, not upcast, not empowered
         bool applied = false;
         const bool area = def.area != AreaShape::None;
         for (Combatant* t : T) {
@@ -3410,9 +4036,15 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 continue;   // 7.2w: too large / already holding one: no save (also a size-gated save_condition rider: Shield Bash)
             if (!def.is_spell && def.target_types != 0 && !valid_target_type(def, *t))
                 continue;   // 7.2y target_creature_types (Turn Undead: undead): others are not affected and make no save
-            if ((def.control == ControlKind::Turned || def.control == ControlKind::Command) && s.hooks.sight_facts &&
+            if (!def.is_spell && (def.excluded_types & bit(t->creature_type)) != 0)
+                continue;   // B17 exclude_creature_types (Horrifying Visage: undead): no save, no immunity, no aging
+            if ((def.control == ControlKind::Turned || (def.control == ControlKind::Command && !def.charm_command)) && s.hooks.sight_facts &&
                 !sight(s, t->id, a.id).perceives)
-                continue;   // 7.2x: Turn Undead / Command need the target to see or hear the user (no hook: sim's target list)
+                continue;   // 7.2x: Turn Undead / Command need the target to see or hear the user. Charm is telepathic (no perceive gate).
+            if (def.charm_immune && (immune_to(s, *t, Condition::Charmed) || immune_from(s, *t, Condition::Charmed, a.id)))
+                continue;   // 7.2zj Suggestion: immune to the charmed condition, so immune to the effect (no save)
+            if (def.requires_hearing && t->has(Condition::Deafened))
+                continue;   // 7.2zj: a deafened creature is unaffected (no save)
             if (def.target_sees_source && (t->has(Condition::Blinded) || (s.hooks.sight_facts && !sight(s, t->id, a.id).can_see))) {
                 // Tier-A §26 (Dreadful Glare "that can see the mummy"): no save, no immunity
                 emit(ev, EventKind::FeatureTriggered, a.id, t->id, int32_t(def.id), 0, 3);
@@ -3422,33 +4054,113 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     [&](const ActionImmunity& im) { return im.creature == t->id && im.spell_id == def.id &&
                                                            (im.source == 0 || im.source == a.id) && uint32_t(s.round) < im.until_round; }))
                 continue;   // Tier-A §26: immune after a success (no roll, no event, like the ghast Stench)
-            SaveSource src{def.magical, def.applies_condition ? bit(def.condition) : 0u,
-                           (def.dice.count > 0 || def.dice.bonus > 0) ? bit(def.damage_type) : 0u};
+            uint32_t dmg_types = 0;
+            if (def.dice.count > 0 || def.dice.bonus > 0) dmg_types |= bit(def.damage_type);
+            if (def.has_also_damage) dmg_types |= bit(def.also_damage_type);
+            SaveSource src{def.magical, def.applies_condition ? bit(def.condition) : 0u, dmg_types};
             const bool spared = ctx.spared && std::find(ctx.spared->begin(), ctx.spared->end(), t->id) != ctx.spared->end();
             SaveResult r{};
+            RollMode mode = RollMode::Normal;
+            if (ctx.heighten == t->id) mode = RollMode::Disadvantage;
+            if (def.hostile_save_advantage && t->team != a.team) {   // 7.2zj: fighting the caster's side; Heightened cancels it
+                mode = mode == RollMode::Disadvantage ? RollMode::Normal : RollMode::Advantage;
+            }
+            const Ability ab = leap_save_ability(*t, def);   // B8: Str or Dex, the higher save bonus (tie: the first)
             if (spared) {   // R-G14 Careful / Sculpt Spells: automatic success, no roll (natural 0, total 0)
                 r.success = true;
             } else {
-                r = save_roll(s, *t, def.save_ability, dc, ctx.heighten == t->id ? RollMode::Disadvantage : RollMode::Normal,
-                              ev, &src, cover_bonus_for(cov, &def));
+                r = save_roll(s, *t, ab, dc, mode, ev, &src, cover_bonus_for(cov, &def));
             }
-            emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
+            emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(ab), r.roll.natural, r.roll.total,
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
             if (spared && ctx.spared_no_damage) dealt = 0;
-            if (t->evasion && def.save_ability == Ability::Dex && def.on_save == OnSave::Half) dealt = r.success ? 0 : dmg / 2;   // Evasion
+            if (t->evasion && ab == Ability::Dex && def.on_save == OnSave::Half) dealt = r.success ? 0 : dmg / 2;   // Evasion
             const int16_t hp_before = t->hp;
-            if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dealt), def.damage_type, dq), false, ev, &ts, &ctx); }
+            int drained = 0;   // B16: the mitigated packet, before temporary hit points and before a reduce-damage reaction
+            if (dealt > 0) {
+                const DamageApplied preview = zone_apply_damage(s, *t, int16_t(std::min(dealt, 32767)), def.damage_type, dq);
+                drained = preview.dealt;
+                const TrigSrc ts{&a, nullptr, true};
+                damage_creature(s, *t, preview, false, ev, &ts, &ctx);
+            }
+            if (def.save_drain_max_hp && drained > 0 && !t->dead) life_drain(s, *t, drained, 0, a.id, ev);
+            if (def.has_also_damage && !t->dead) {   // 7.2zj Ice Storm: the cold packet uses the same save, half, and Evasion
+                int extra = r.success ? (def.on_save == OnSave::Half ? also_dmg / 2 : 0) : also_dmg;
+                if (spared && ctx.spared_no_damage) extra = 0;
+                if (t->evasion && ab == Ability::Dex && def.on_save == OnSave::Half) extra = r.success ? 0 : also_dmg / 2;
+                if (extra > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(extra), def.also_damage_type, dq), false, ev, &ts, &ctx); }
+            }
             if (def.zero_hp_rounds > 0 && dealt > 0 && hp_before > 0 && t->hp <= 0 && !t->dead)   // EC spider follow-up (flagged)
                 zero_hp_clause(s, a, *t, def, ev);
             if (!r.success) affected.push_back(t);
+            // B10: queue the fling before the untracked-prone `continue` below. Face 1 is +x; the eight faces go
+            // clockwise. The d8 is drawn only on a failure, after the save, in named-target order. A dead target is not moved.
+            if (!r.success && def.whirl_ft > 0 && !t->dead) {
+                static constexpr int8_t kDx[8] = {1, 1, 0, -1, -1, -1, 0, 1};
+                static constexpr int8_t kDy[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+                const int face = s.rng.d(8);
+                ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = 1; q.feet = def.whirl_ft;
+                q.dir_x = kDx[face - 1]; q.dir_y = kDy[face - 1];
+                q.impact_per_ft = def.impact_per_ft; q.impact_die = def.impact_die; q.impact_type = def.impact_type;
+                q.impact_save = def.impact_save; q.impact_dc = def.impact_dc;
+                ctx.forced_queue.push_back(q);
+            }
+            // B11: the failure damage already landed. Large or smaller, and only while the cap has room.
+            // A success takes none of it (on_save is None) and is pushed below.
+            if (!r.success && def.whelm && !t->dead) apply_whelm_grapple(s, a, *t, def, ev);
+            if (!r.success && def.drop_to_zero && !t->dead) drop_to_zero_hp(s, *t, ev);   // B15 Death Glare
             if (r.success && def.success_immunity_hours > 0 && !t->dead)   // Tier-A §26: "immune to ... for the next 24 hours"
                 s.action_immunities.push_back(ActionImmunity{t->id, def.success_immunity_scope == 1 ? a.id : CombatantId(0), def.id,
                                                              uint32_t(s.round) + uint32_t(def.success_immunity_hours) * 600u});
+            // B17: fail by age_margin or more ages, even when the primary condition is not applied. Not a second condition.
+            if (def.age_margin > 0 && !r.success && !t->dead && int(r.roll.total) <= dc - int(def.age_margin)) {
+                const int rolled = std::max(0, roll_dice(s.rng, def.age_dice));
+                const int years = rolled * int(def.age_years_per);
+                if (years > 0)
+                    t->aged_years = uint16_t(std::min(65535, int(t->aged_years) + years));
+            }
+            if (!r.success && !t->dead && def.disease)   // B6: the failed disease save. Immunity to the condition does not skip it.
+                contract_disease(s, *t, def, a.id, dc);
             if (r.success && def.contain == 1 && !t->dead) s.contain_exits.push_back({a.id, t->id, 3});   // 7.2w: sim pushes it 5 ft
             if (!r.success && !t->dead && def.destroy_cr8_max > 0 && t->creature_type == CreatureType::Undead && t->cr8 >= 0 &&
                 t->cr8 <= int(def.destroy_cr8_max)) {   // 7.2v Destroy Undead: destroyed instead of turned
                 kill(*t, ev);
+                continue;
+            }
+            if (def.suppress_conditions != 0 && !r.success && !t->dead) {   // 7.2zj Calm Emotions: suppress, do not apply a condition
+                ActiveSpellEffect x{def.id, a.id, t->id, Condition::Paralyzed, def.save_ability, int16_t(dc),
+                                    RepeatSave::None, def.concentration, effect_timed(s, def, a.id, t->id), lvl, false};
+                x.no_condition = true;
+                x.suppress_mask = def.suppress_conditions;
+                for (auto& o : s.effects) {
+                    if (o.target != t->id || o.no_condition) continue;
+                    if ((def.suppress_conditions & bit(o.condition)) == 0) continue;
+                    if (o.suppress_count < 255) ++o.suppress_count;
+                }
+                for (auto& sc : s.sourced) {
+                    if (sc.target != t->id || (def.suppress_conditions & bit(sc.condition)) == 0) continue;
+                    if (sc.suppress_count < 255) ++sc.suppress_count;
+                }
+                for (Condition k : {Condition::Charmed, Condition::Frightened}) {
+                    if ((def.suppress_conditions & bit(k)) == 0) continue;
+                    bool holder = false;
+                    for (const auto& o : s.effects)
+                        if (o.target == t->id && !o.no_condition && o.condition == k && o.suppress_count == 0) holder = true;
+                    for (const auto& sc : s.sourced)
+                        if (sc.target == t->id && sc.condition == k && sc.suppress_count == 0) holder = true;
+                    if (holder || !t->has(k)) continue;
+                    bool tracked = false;
+                    for (const auto& o : s.effects)
+                        if (o.target == t->id && !o.no_condition && o.condition == k) tracked = true;
+                    for (const auto& sc : s.sourced)
+                        if (sc.target == t->id && sc.condition == k) tracked = true;
+                    if (!tracked) x.suppress_untracked |= bit(k);
+                    remove_condition(*t, k);
+                    emit(ev, EventKind::ConditionRemoved, t->id, 0, int32_t(k));
+                }
+                s.effects.push_back(x);
+                applied = true;
                 continue;
             }
             if (def.control != ControlKind::None && !def.applies_condition && !r.success && !t->dead) {   // Turned / Command
@@ -3482,6 +4194,15 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 continue;
             }
             if (def.applies_condition && !r.success && !t->dead && !immune_to(s, *t, cond) && !immune_from(s, *t, cond, a.id)) {
+                if (def.charm_command) {   // one charmed target: the previous effect ends (and that ending grants the immunity)
+                    for (;;) {
+                        auto old = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+                            return o.spell_id == def.id && o.caster == a.id && o.target != t->id &&
+                                   o.control == uint8_t(ControlKind::Command); });
+                        if (old == s.effects.end()) break;
+                        end_effect(s, std::size_t(old - s.effects.begin()), ev);
+                    }
+                }
                 if (!t->has(cond)) {
                     add_condition(*t, cond);
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(cond));
@@ -3494,8 +4215,18 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                                                       at_once ? Timed{} : effect_timed(s, def, a.id, t->id),
                                                       lvl, (def.ends_on & kEndsOnDamage) != 0});   // 7.2zg Hypnotic Pattern
                 s.effects.back().ends_on = def.ends_on;
+                s.effects.back().ends_on_restoration = def.ends_on_restoration;   // 7.2zj Geas
                 if (def.escalates && !at_once) { s.effects.back().escalates = true; s.effects.back().escalate_to = def.escalate_to; }
                 s.effects.back().control = uint8_t(def.control);
+                if (def.charm_command && def.success_immunity_hours > 0) {   // B16: the effect ending grants the same immunity as a success
+                    s.effects.back().action_immunity_on_end_hours = def.success_immunity_hours;
+                    s.effects.back().action_immunity_on_end_scope = def.success_immunity_scope;
+                }
+                if (def.immune_on_effect_end && def.success_immunity_hours > 0) {   // B17: the fright ending grants the same immunity
+                    s.effects.back().action_immunity_on_end_hours = def.success_immunity_hours;
+                    s.effects.back().action_immunity_on_end_scope = def.success_immunity_scope;
+                    s.effects.back().repeat_save_magical = def.magical;
+                }
                 // 7.2v: prone and incapacitated. Incapacitated is this effect's own only if it added it, so ending the
                 // laughter never strips an Incapacitated from another source.
                 if (def.control == ControlKind::Laughter && !t->has(Condition::Incapacitated)) {
@@ -3509,9 +4240,45 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.also_condition));
                     note_source(s, def.also_condition, a.id, t->id);
                 }
+                // B3b: paralyzed while poisoned. Only when the primary condition was applied (immunity to it skips this
+                // block). One entry, so a successful repeat save or the timer ends both.
+                if (def.has_while && !s.effects.back().has_also &&
+                    !immune_to(s, *t, def.while_condition) && !immune_from(s, *t, def.while_condition, a.id)) {
+                    s.effects.back().has_also = true; s.effects.back().also = def.while_condition;
+                    if (!t->has(def.while_condition)) {
+                        add_condition(*t, def.while_condition);
+                        emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.while_condition));
+                    }
+                    note_source(s, def.while_condition, a.id, t->id);
+                }
                 if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // 7.2w: Engulf
                 set_contain(s.effects.back(), def, *t, ev);
             }
+            // B8: a successful save is pushed out of the leaper's space. The push is queued with the spell's other
+            // forced moves and resolved in finalize_forced. Zero feet (the hook found no space) knocks the creature prone.
+            if (r.success && def.leap_push_ft > 0 && !t->dead) {
+                ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = 1; q.feet = def.leap_push_ft;
+                q.prone_if_blocked = true;
+                ctx.forced_queue.push_back(q);
+            }
+            // B11: pushed out of the user's space. No damage on this success, and not prone if the walk stops short.
+            if (r.success && def.whelm && !t->dead) {
+                ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = 1; q.feet = kWhelmPushCapFt;
+                q.clear_of_source = true;
+                ctx.forced_queue.push_back(q);
+            }
+        }
+        if (def.difficult_until == 1 && def.area != AreaShape::None) {   // 7.2zj Ice Storm: difficult terrain even if every save succeeds
+            ActiveZone z;
+            z.zone_id = s.next_zone_id++;
+            z.spell_id = def.id; z.owner = a.id; z.slot_level = lvl; z.dc = int16_t(dc);
+            z.concentration = false;
+            z.timed = make_timed(Expiry::EndOfCasterNextTurn, 1, current_actor(s) == a.id);
+            if (ctx.has_area_origin) { z.has_anchor_tile = true; z.anchor_x = ctx.area_x; z.anchor_y = ctx.area_y; }
+            z.size_ft = def.area_size_ft;
+            const uint32_t id = z.zone_id;
+            s.zones.push_back(std::move(z));
+            emit(ev, EventKind::ZoneCreated, a.id, 0, int32_t(id), int32_t(def.id), int32_t(def.zone.flags));
         }
         if (def.concentration && applied) a.concentration_spell = def.id;
         ctx.heighten = 0;   // R-G14: Heightened covers only the first save against the spell
@@ -3564,6 +4331,17 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     w.object_vulnerable = def.object_vulnerable; w.object_immune = def.object_immune;
                 }
                 set_contain(s.effects.back(), def, *t, ev);   // 7.2w: Swallow (a rider of the bite)
+                // B7: blinded while restrained (Shambling Mound Engulf). Same one-entry rule as the Save path's `while`.
+                // Swallow (contain 2) already set has_also, so this does not add a second blindness.
+                if (def.has_while && !s.effects.back().has_also &&
+                    !immune_to(s, *t, def.while_condition) && !immune_from(s, *t, def.while_condition, a.id)) {
+                    s.effects.back().has_also = true; s.effects.back().also = def.while_condition;
+                    if (!t->has(def.while_condition)) {
+                        add_condition(*t, def.while_condition);
+                        emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.while_condition));
+                    }
+                    note_source(s, def.while_condition, a.id, t->id);
+                }
             }
             affected.push_back(t);
             applied = true;
@@ -3668,6 +4446,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 for (const auto& o : list) if (o.spell == sp && o.caster == caster) return;
                 const SpellDef* d = spell_def(s, sp);
                 if (!d && slot == 0) return;   // not a spell (a feature's modifier): not dispellable
+                if (d && d->invisible_passage) return;   // §53: no spell level. Not dispellable.
                 list.push_back({sp, caster, slot ? int(slot) : int(d->level)});
             };
             for (const auto& e : s.effects) if (e.target == t->id) note(e.spell_id, e.caster, e.slot_level);
@@ -3976,6 +4755,32 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (def.concentration) a.concentration_spell = def.id;
         break;
     }
+    case SpellEffectKind::GrantFly: {   // 7.2zj Fly: willing is the caster's team, including the caster
+        bool applied = false;
+        for (Combatant* t : T) {
+            if (t->dead || (t->team != a.team && t->id != a.id)) continue;
+            if (def.fly_ft == 0 || !grant_fly(s, t->id, def.fly_ft, def.id)) continue;
+            ActiveSpellEffect x{def.id, a.id, t->id, Condition::Paralyzed, Ability::Wis, 0, RepeatSave::None,
+                                def.concentration, effect_timed(s, def, a.id, t->id), lvl, false};
+            x.no_condition = true;
+            x.granted_fly = def.fly_ft;
+            s.effects.push_back(x);
+            affected.push_back(t);
+            applied = true;
+        }
+        if (def.concentration && applied) a.concentration_spell = def.id;
+        break;
+    }
+    case SpellEffectKind::Restore: {   // 7.2zj Greater Restoration: cast_spell narrowed restore_options to the chosen one
+        if (def.restore_options.size() != 1) break;
+        const RestoreOption opt = def.restore_options.front();
+        for (Combatant* t : T) {
+            if (t->dead || !restore_option_applies(s, *t, opt)) continue;
+            apply_one_restore(s, *t, opt, ev);
+            affected.push_back(t);
+        }
+        break;
+    }
     case SpellEffectKind::Descriptive: break;   // text-only: no roll, no state, no event
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter: break;   // reactions only
     }
@@ -4072,8 +4877,104 @@ std::string_view spell_cast_resource_refusal(const EncounterState& s, const Comb
     return {};
 }
 
+VisibleFigure* find_figure(EncounterState& s, CombatantId bearer) {
+    for (auto& f : s.figures) if (f.bearer == bearer) return &f;
+    return nullptr;
+}
+const VisibleFigure* find_figure(const EncounterState& s, CombatantId bearer) {
+    for (const auto& f : s.figures) if (f.bearer == bearer) return &f;
+    return nullptr;
+}
+void snapshot_covered(const EncounterState& s, CombatantId id, VisibleFigure& fig) {
+    if (!s.hooks.loadout_of) return;
+    const LoadoutView* v = s.hooks.loadout_of(s, id);
+    if (!v) return;
+    fig.armor_def = v->armor_def;
+    auto add = [&](const HeldItem& h) {
+        if (h.instance == 0) return;
+        if (std::find(fig.covered_items.begin(), fig.covered_items.end(), h.instance) == fig.covered_items.end())
+            fig.covered_items.push_back(h.instance);
+    };
+    add(v->main);
+    add(v->off);
+    for (const HeldItem& h : v->carried) add(h);
+    std::sort(fig.covered_items.begin(), fig.covered_items.end());
+}
+bool already_discerned(const EncounterState& s, CombatantId observer, CombatantId subject) {
+    for (const auto& d : s.figure_discerned)
+        if (d.observer == observer && d.subject == subject) return true;
+    return false;
+}
+
 StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
                            const ActionRequest& req, int meta_cost) {
+    if (def.illusory_appearance) {   // visible figure. Not a spell, not a form.
+        if (req.sustain || req.innate) return fail("illusory appearance: an action");
+        if ((req.target != 0 && req.target != a.id) || !req.targets.empty()) return fail("illusory appearance: no target");
+        if (req.as_bonus_action) {   // printed: a bonus action ends it
+            if (!find_figure(s, a.id)) return fail("illusory appearance: no illusion");   // bonus action not spent
+            if (!b.bonus_action) return fail("no bonus action available");
+            b.bonus_action = false;
+            s.budget = b;
+            std::erase_if(s.figures, [&](const VisibleFigure& f) { return f.bearer == a.id; });
+            StepResult out{true, {}, {}};
+            emit(out.events, EventKind::ActionUsed, a.id, a.id, int32_t(def.id), 1, def.usage_kind);
+            return out;
+        }
+        // PRODUCT CHOICE: a second start while a figure is up is refused and does not spend the action.
+        if (find_figure(s, a.id)) return fail("illusory appearance: already disguised");
+        if (const std::string_view why = spell_cast_resource_refusal(s, a, def, false, req.spell_level); !why.empty())
+            return fail(why);
+        if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
+        s.budget = b;
+        VisibleFigure fig;
+        fig.instance = s.next_figure_instance++;
+        fig.bearer = a.id;
+        fig.spell_id = def.id;
+        fig.shape = FigureShape::Humanoid;
+        fig.size = a.size;
+        fig.dc = def.fixed_dc;
+        snapshot_covered(s, a.id, fig);
+        s.figures.push_back(std::move(fig));
+        StepResult out{true, {}, {}};
+        emit(out.events, EventKind::ActionUsed, a.id, a.id, int32_t(def.id), 0, def.usage_kind);
+        return out;
+    }
+    if (def.invisible_passage) {   // §53: an action. Invisible until attack, cast, or concentration ends. Not a spell.
+        if (req.as_bonus_action || req.sustain || req.innate) return fail("invisible passage: an action");
+        if ((req.target != 0 && req.target != a.id) || !req.targets.empty()) return fail("invisible passage: no target");
+        if (const std::string_view why = spell_cast_resource_refusal(s, a, def, req.innate, req.spell_level); !why.empty())
+            return fail(why);
+        if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
+        s.budget = b;
+        StepResult out{true, {}, {}};
+        if (!immune_to(s, a, Condition::Invisible)) {
+            if (a.concentration_spell != 0) end_concentration(s, a.id, out.events);   // one concentration channel
+            if (!a.has(Condition::Invisible)) {
+                add_condition(a, Condition::Invisible);
+                emit(out.events, EventKind::ConditionAdded, a.id, 0, int32_t(Condition::Invisible));
+            }
+            s.effects.push_back(ActiveSpellEffect{def.id, a.id, a.id, Condition::Invisible, Ability::Wis, 0, RepeatSave::None,
+                                                  true, Timed{}, 0, false});
+            s.effects.back().ends_on = uint8_t(kEndsOnAttack | kEndsOnCast);
+            a.concentration_spell = def.id;
+        }
+        emit(out.events, EventKind::ActionUsed, a.id, a.id, int32_t(def.id), 0, def.usage_kind);
+        check_end(s, out.events);
+        return out;
+    }
+    if (def.ethereal_toggle) {   // B19: an action, no target, no roll. Material ↔ Border Ethereal.
+        if (req.as_bonus_action || req.sustain) return fail("etherealness: an action");
+        if ((req.target != 0 && req.target != a.id) || !req.targets.empty()) return fail("etherealness: no target");
+        if (const std::string_view why = spell_cast_resource_refusal(s, a, def, req.innate, req.spell_level); !why.empty())
+            return fail(why);
+        if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
+        s.budget = b;
+        a.plane = a.plane == Plane::Material ? Plane::BorderEthereal : Plane::Material;
+        StepResult out{true, {}, {}};
+        emit(out.events, EventKind::ActionUsed, a.id, a.id, int32_t(def.id), 0, def.usage_kind);
+        return out;
+    }
     if (def.kind == SpellEffectKind::Descriptive) return fail("descriptive spells cannot be cast");
     if (req.zone_move != 0) {   // R-G11: move the actor's zone (Moonbeam); no slot, no SpellCast window
         if (req.sustain) return fail("zone_move: not with sustain");
@@ -4173,11 +5074,23 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     std::vector<CombatantId> ids = req.targets;
     if (ids.empty() && req.target != 0) ids.push_back(req.target);
     if (ids.empty() && (def.kind == SpellEffectKind::Teleport || def.kind == SpellEffectKind::Zone)) ids.push_back(a.id);   // R-G9 / R-G11: self
-    if (ids.empty()) return fail("target required");
+    const bool whirl_empty = ids.empty() && is_space_save(def);   // B10 / B11: no creature in the space. The action still happens.
+    if (ids.empty() && !whirl_empty) return fail("target required");
     std::vector<Combatant*> T;
     for (CombatantId id : ids) {
         Combatant* t = find_mut(s, id);
         if (!t || (t->dead && def.kind != SpellEffectKind::Revive)) return fail("bad target");
+        // B19: an area skips the other plane (no roll, the cast still happens). A named target is refused
+        // before the action is spent. Not a miss. Same plane, including ethereal with ethereal, is unaffected.
+        if (t != &a && !plane_affect_refusal(a, *t).empty()) {
+            if (def.area != AreaShape::None) continue;
+            return fail(plane_affect_refusal(a, *t));
+        }
+        // B17: an area save skips an excluded type (the cast still happens). A single-target save that names one is refused.
+        if (!def.is_spell && def.kind == SpellEffectKind::Save && (def.excluded_types & bit(t->creature_type)) != 0) {
+            if (def.area != AreaShape::None) continue;
+            return fail("invalid creature type for this spell");
+        }
         if (def.kind == SpellEffectKind::Revive) {
             if (!t->dead) return fail("target is not dead");
             if (t->died_round == 0 || int(s.round) - int(t->died_round) > int(def.revive_within_rounds)) return fail("dead too long");
@@ -4186,7 +5099,9 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, def, *t)) return fail("invalid spell target");
         // 7.2t: a creature with total cover can't be targeted directly (an area skips it at resolution instead)
         if (req.has_area_origin && def.area == AreaShape::None) return fail("area_origin: area spells only");
-        if (def.control == ControlKind::Command ? (req.command_word < 1 || req.command_word > 5) : req.command_word != 0)
+        if (def.charm_command) {
+            if (req.command_word > uint8_t(CommandWord::Suicidal)) return fail("command_word: 0..6 for a Charm");
+        } else if (def.control == ControlKind::Command ? (req.command_word < 1 || req.command_word > 5) : req.command_word != 0)
             return fail("command_word: 1..5 for a Command spell only");
         if (def.area == AreaShape::None && t != &a) {
             const bool sw = def.kind == SpellEffectKind::SummonWeapon && !req.summon_tiles.empty();   // from the spawn tile
@@ -4290,6 +5205,16 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     case SpellEffectKind::WeaponSmite:   // 7.2zh Branding Smite: the caster only
         if (T.size() != 1 || T[0] != &a) return fail("weapon_smite: self only");
         break;
+    case SpellEffectKind::GrantFly:   // 7.2zj Fly: willing is the caster's team, including the caster
+        if (T.empty() || (def.area == AreaShape::None && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
+            return fail("too many targets");
+        for (Combatant* t : T)
+            if (t->team != a.team && t->id != a.id) return fail("fly: the target is not willing");
+        break;
+    case SpellEffectKind::Restore:   // 7.2zj Greater Restoration: one creature; the choice was checked in cast_spell
+        if (def.restore_options.size() != 1) return fail("bad restoration choice");
+        if (T.size() != 1) return fail("restore: one creature");
+        break;
     case SpellEffectKind::Stabilize:   // 7.2zi Spare the Dying: touch, one dying creature, not the caster
         if (T.size() != 1 || T[0] == &a) return fail("stabilize: one living creature");
         if (!req.target_within_5ft) return fail("stabilize: touch range");
@@ -4324,6 +5249,25 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (x.kind == SpellEffectKind::WeaponSmite) return fail("weapon_smite: primary effect only");
     for (const SpellEffect& x : def.extra_effects)
         if (x.kind == SpellEffectKind::Stabilize) return fail("stabilize: primary effect only");
+    for (const SpellEffect& x : def.extra_effects)
+        if (x.kind == SpellEffectKind::GrantFly) return fail("grant_fly: primary effect only");
+    for (const SpellEffect& x : def.extra_effects)
+        if (x.kind == SpellEffectKind::Restore) return fail("restore: primary effect only");
+    if (def.requires_hearing && def.area == AreaShape::None) {   // 7.2zj Suggestion: a deafened target cannot hear
+        bool hears = false;
+        for (Combatant* t : T) if (!t->has(Condition::Deafened)) hears = true;
+        if (!hears) return fail("target cannot hear");
+    }
+    if (def.caster_sees_target && s.hooks.sight_facts) {   // no sight hook: the cast is allowed
+        for (Combatant* t : T)
+            if (!sight(s, a.id, t->id).can_see) return fail("caster cannot see the target");
+    }
+    if (def.target_requires_any != 0)   // Chuul Tentacles / Otyugh Tentacle Slam / B16 Draining Kiss: before the action is spent
+        for (Combatant* t : T)
+            if (const auto why = target_gate_refusal(s, a, *t, def.target_requires_any, req.target_willing); !why.empty()) return fail(why);
+    if (def.has_target_condition)   // B15 Death Glare: the named target must already be frightened. Action unspent.
+        for (Combatant* t : T)
+            if (!t->has(def.target_condition)) return fail("target is not frightened");
     if (!req.summon_archetypes.empty() && def.kind != SpellEffectKind::Summon) return fail("summon: not a summon spell");
     if (!req.summon_tiles.empty() && def.kind != SpellEffectKind::Summon && def.kind != SpellEffectKind::SummonWeapon)
         return fail("summon: not a summon spell");
@@ -4367,7 +5311,48 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
             return fail("ward_alternate: not a legal alternate target");
         ward_alt = find_mut(s, req.ward_alternate);
     }
-    if (def.casting_time == CastingTime::BonusAction) {
+    if (def.charm_command && T.size() == 1) {   // B16: an order does not spend the action and does not save again
+        ActiveSpellEffect* held = nullptr;
+        for (auto& e : s.effects)
+            if (e.spell_id == def.id && e.caster == a.id && e.target == T[0]->id && e.control == uint8_t(ControlKind::Command))
+                held = &e;
+        if (held) {
+            if (req.command_word < 1 || req.command_word > uint8_t(CommandWord::Suicidal))
+                return fail("command_word: 1..6 to command the charmed target");
+            StepResult out{true, {}, {}};
+            if (req.command_word == uint8_t(CommandWord::Suicidal)) {
+                const SaveSource ssrc{true, 0, 0};
+                auto r = save_roll(s, *T[0], held->save_ability, held->dc, RollMode::Normal, out.events, &ssrc);
+                emit(out.events, EventKind::SavingThrowRolled, T[0]->id, CombatantId(held->save_ability),
+                     r.roll.natural, r.roll.total, int32_t(r.success));
+                if (r.success) {
+                    const uint32_t sid = def.id;
+                    const CombatantId caster = a.id, target = T[0]->id;
+                    for (;;) {
+                        auto it = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+                            return o.spell_id == sid && o.caster == caster && o.target == target; });
+                        if (it == s.effects.end()) break;
+                        end_effect(s, std::size_t(it - s.effects.begin()), out.events);
+                    }
+                }
+            } else {
+                held->command_word = req.command_word;
+            }
+            check_end(s, out.events);
+            return out;
+        }
+        if (req.command_word != 0) return fail("command_word: a Charm cast takes no word");
+    }
+    if (def.requires_jumped_ft > 0) {   // B8 Deadly Leap: the jump already happened. The action is not spent when it did not.
+        if (s.budget.jumped_ft < def.requires_jumped_ft) return fail("has not jumped far enough");
+        for (Combatant* t : T) if (t == &a) return fail("bad target");
+    }
+    if (is_space_save(def))   // B10 / B11: the elemental is not a creature in its own space. Refused before the action is spent.
+        for (Combatant* t : T) if (t == &a) return fail("bad target");
+    if (def.rider_only) {   // B3b: the multiattack free rider. The gate above already refused a bad target without consuming it.
+        if (b.free_rider != def.id) return fail("only a multiattack rider");
+        b.free_rider = 0;
+    } else if (def.casting_time == CastingTime::BonusAction) {
         if (!b.bonus_action) return fail("no bonus action available");
         b.bonus_action = false;
     } else if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
@@ -4396,7 +5381,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     StepResult out{true, {}, {}};
     if (def.concentration && a.concentration_spell != 0) end_concentration(s, a.id, out.events);
     if (def.is_spell) emit(out.events, EventKind::SpellCast, a.id, ids[0], int32_t(def.id), lvl);
-    else emit(out.events, EventKind::ActionUsed, a.id, ids[0], int32_t(def.id), 0, def.usage_kind);   // not a spell: no SpellCast window
+    else emit(out.events, EventKind::ActionUsed, a.id, ids.empty() ? CombatantId(0) : ids[0], int32_t(def.id), 0, def.usage_kind);   // not a spell: no SpellCast window
     if (def.usage_kind == 3 && spend_pool(s, a.id, def.pool_id, pcost))
         emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(def.pool_id), pcost, find_pool(s, a.id, def.pool_id)->cur);
     if (meta_cost > 0 && spend_pool(s, a.id, a.sorcery_pool, uint16_t(meta_cost)))   // R-G14: sorcery points for Metamagic
@@ -4456,7 +5441,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.has_area_origin = false; ctx.area_x = 0; ctx.area_y = 0;
         defer_forced(s, ctx, out.events);   // R-G9: placeholders after every save and damage of the spell, before SpellResolved
     }
-    emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids[0], int32_t(def.id), lvl);
+    emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids.empty() ? CombatantId(0) : ids[0], int32_t(def.id), lvl);
     if (!ends_keys.empty()) end_on_own_action(s, a.id, kEndsOnCast, out.events, &ends_keys);   // 7.2zc: after the spell is cast
     if (harmful && !harm_keys.empty()) end_on_own_action(s, a.id, kEndsOnHarmfulCast, out.events, &harm_keys);   // 7.2zd Sanctuary
     check_end(s, out.events);
@@ -4466,10 +5451,25 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
 // R-G14: validates the per-cast options and resolves the spell as modified by them (a copy of `def`); no option = as before.
 StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def, const ActionRequest& req) {
     if (def.kind == SpellEffectKind::Descriptive) return fail("descriptive spells cannot be cast");
+    SpellDef base = def;
+    if (def.kind == SpellEffectKind::Restore) {   // before the !any return: choice 0 must still be refused
+        if (req.condition_choice == 0 || std::size_t(req.condition_choice) > def.restore_options.size())
+            return fail("bad restoration choice");
+        std::vector<CombatantId> ids = req.targets;
+        if (req.target != 0 && std::find(ids.begin(), ids.end(), req.target) == ids.end()) ids.insert(ids.begin(), req.target);
+        if (ids.empty()) return fail("bad target");
+        const RestoreOption opt = def.restore_options[std::size_t(req.condition_choice - 1)];
+        for (CombatantId id : ids) {
+            const Combatant* t = find(s, id);
+            if (!t || t->dead) return fail("bad target");
+            if (!restore_option_applies(s, *t, opt)) return fail("restore: nothing to restore");
+        }
+        base.restore_options = {opt};
+    }
     const bool any = req.metamagic != 0 || !req.spared.empty() || req.heighten_target != 0 || req.damage_choice != 0 ||
                      req.condition_choice != 0 || !def.damage_choices.empty() || !def.condition_choices.empty();
-    if (!any || req.sustain || req.zone_move != 0) return cast_spell_impl(s, ctx, a, b, def, req, 0);
-    SpellDef eff = def;
+    if (!any || req.sustain || req.zone_move != 0) return cast_spell_impl(s, ctx, a, b, base, req, 0);
+    SpellDef eff = base;
     const uint8_t lvl = req.spell_level;
     // Cast-time choices (Chromatic Orb, Blindness/Deafness).
     if (req.damage_choice != 0) {
@@ -4492,7 +5492,7 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
         for (CombatantId id : req.targets) if (!has_it(id)) return fail("target does not have the chosen condition");
         if (req.target == 0 && req.targets.empty()) return fail("target does not have the chosen condition");
         eff.ends_conditions = chosen;
-    } else if (req.condition_choice != 0) {
+    } else if (req.condition_choice != 0 && def.kind != SpellEffectKind::Restore) {
         if (std::size_t(req.condition_choice) > def.condition_choices.size()) return fail("bad condition choice");
         eff.condition = def.condition_choices[std::size_t(req.condition_choice - 1)];
     }
@@ -4831,6 +5831,12 @@ ActionRequest decision_request(const NeedsDecision& n, bool react, uint8_t optio
 
 StepResult step(EncounterState& s, const ActionRequest& req) {
     if (req.grapple_instead && req.kind != ActionKind::Attack) return fail("grapple_instead is only valid on an Attack");   // Tier-A §27: never an ignored, hashed flag
+    if (req.perception_senses != 0) {   // Keen Senses (§30): never an ignored flag on a non-Perception check
+        if (req.kind != ActionKind::AbilityCheck || req.skill != Skill::Perception)
+            return fail("perception_senses is only valid on a Wisdom (Perception) check");
+        if (req.perception_senses & ~uint8_t(kKeenSight | kKeenHearing | kKeenSmell))
+            return fail("perception_senses: only sight, hearing, smell");
+    }
     if (req.kind == ActionKind::ReactionDecision) {
         if (!s.pending) return fail("no pending reaction decision");
         const PendingDecision& p = *s.pending;
@@ -4955,6 +5961,7 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         t = find_mut(s, req.target);
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
+        if (const auto why = plane_affect_refusal(a, *t); !why.empty()) return fail(why);   // B19: before the contest
         if (charmed_by(s, a.id, t->id)) return fail("a charmed creature cannot attack its charmer");
         if (!req.target_within_5ft) return fail("target must be within 5 ft");
         if (!size_within_one(a.size, t->size)) return fail("target is more than one size larger");
@@ -5014,6 +6021,7 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
                     const SourcedCondition gone = s.sourced[i];
                     s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
                     release_grapple_restraint(s, gone, ev);
+                    if (gone.via_attack == kWhelmGrapple) end_whelm_crush(s, gone.source, gone.target, ev);
                 } else ++i;
             }
             bool still = false;
@@ -5091,6 +6099,66 @@ StepResult gaze_response(EncounterState& s, Combatant& a, const ActionRequest& r
     return out;
 }
 
+// B15 Horrific Appearance. Looking resolves each deferred StartTurn row (the save). Averting skips the save and puts
+// an AttackRoll disadvantage on the actor against that source until the start of the actor's next turn. Not gaze_averted.
+StepResult appearance_response(EncounterState& s, Combatant& a, const ActionRequest& req) {
+    if (!s.budget.appearance_pending) return fail("no appearance pending");
+    if (req.avert_gaze && a.surprised) return fail("surprised: cannot avert the eyes");
+    StepResult out{true, {}, {}};
+    s.budget.appearance_pending = false;
+    const std::vector<AppearanceHit> hits = appearance_hits(s, a.id);
+    if (req.avert_gaze) {
+        for (const AppearanceHit& h : hits) {
+            const SpellDef* d = spell_def(s, h.spell_id);
+            if (!d) continue;
+            ModifierSpec spec;
+            spec.id = spell_id_of(d->content_id + "#avert");
+            spec.source = d->id;
+            spec.stat = ModStat::AttackRoll;
+            spec.mode = RollMode::Disadvantage;
+            spec.mark_scope = 1;
+            spec.expiry = uint8_t(Expiry::StartOfTargetNextTurn);
+            spec.applies_to = ModAppliesTo::Target;
+            if (!apply_modifier(s, h.owner, a.id, spec, out.events)) continue;
+            for (auto& am : s.modifiers)
+                if (am.spec.id == spec.id && am.target == a.id && am.caster == h.owner) am.mark = h.owner;
+        }
+    } else {
+        for (const AppearanceHit& h : hits)
+            zone_row(s, nullptr, h.zone_id, h.row, a.id, true, out.events, true);
+    }
+    check_end(s, out.events);
+    return out;
+}
+
+// B7: one swing of a multiattack that carries engulf_both. A miss, or a hit on a different creature, spoils the engulf.
+void note_engulf_swing(TurnBudget& b, CombatantId target, bool hit) {
+    if (b.engulf_spell == 0) return;
+    if (!hit) { b.engulf_bad = true; return; }
+    if (b.engulf_hits == 0) b.engulf_hit_id = target;
+    else if (target != b.engulf_hit_id) b.engulf_bad = true;
+    if (b.engulf_hits < 255) ++b.engulf_hits;
+}
+
+// B7: the last attack of that multiattack just resolved. Both hits on one living creature apply the contain.
+// Anything else clears the window. No cast, no save, no action. The contain effect is the gelatinous-cube one.
+void finish_engulf_both(EncounterState& s, Ctx& ctx, Combatant& a, std::vector<Event>& ev) {
+    if (!s.budget.engulf_due) return;
+    const uint32_t spell = s.budget.engulf_spell;
+    const bool ok = !s.budget.engulf_bad && s.budget.engulf_hits >= 2 && s.budget.engulf_hit_id != 0;
+    const CombatantId tid = s.budget.engulf_hit_id;
+    s.budget.engulf_due = false;
+    s.budget.engulf_spell = 0;
+    s.budget.engulf_hits = 0;
+    s.budget.engulf_hit_id = 0;
+    s.budget.engulf_bad = false;
+    if (!ok) return;
+    const SpellDef* def = spell_def(s, spell);
+    Combatant* t = find_mut(s, tid);
+    if (!def || !t || t->dead) return;
+    resolve_spell(s, ctx, a, *def, 0, std::vector<Combatant*>{t}, true, ev);
+}
+
 // Small leftovers around the per-request core: Reckless Attack's declaration, Haste's extra action and Slow's limits.
 StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req);
 StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
@@ -5098,8 +6166,10 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     s.landed.clear();          // altitude PR4: the falls of this step only
     const bool own_turn = !s.ended && !s.order.empty() && req.actor == current_actor(s) &&
                           req.kind != ActionKind::Heal && req.kind != ActionKind::AbilityCheck &&
+                          req.kind != ActionKind::EndConcentration &&
                           req.kind != ActionKind::ReactionDecision && req.kind != ActionKind::OpportunityAttack;
     Combatant* a = own_turn ? find_mut(s, req.actor) : nullptr;
+    if (req.jump_ft != 0 && req.kind != ActionKind::Move) return fail("jump_ft: Move only");   // B8: never an ignored flag
     if ((req.forced_feet != 0 || req.teleport_feet != 0 || req.has_teleport_dest) && req.kind != ActionKind::CastSpell)
         return fail("forced_feet / teleport: CastSpell only");
     if ((req.has_zone_dest || req.zone_move != 0 || req.zone_move_ft != 0 || !req.zone_excluded.empty() || req.has_zone_end ||
@@ -5188,7 +6258,31 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         Combatant* c = find_mut(s, req.actor);
         if (!c || c->dead) return fail("bad combatant");
         StepResult out{true, {}, {}};
-        roll_check(s, *c, req.skill, req.dc, req.check_mode, out.events);
+        RollMode mode = req.check_mode;
+        if (req.skill == Skill::Perception && req.perception_senses != 0) {   // Keen Senses (§30)
+            uint8_t relies = req.perception_senses;
+            if (c->has(Condition::Deafened)) relies = uint8_t(relies & ~uint8_t(kKeenHearing));
+            int penalty = 0;
+            bool sight_works = (relies & kKeenSight) != 0;   // no subject: a named sight check is treated as sight working
+            if (req.target != 0) {
+                const Sight v = sight(s, c->id, req.target);   // no hook: Sight{} (everyone sees everyone)
+                penalty = passive_sight_penalty(v, c->sunlight_sensitive);
+                sight_works = v.sense == Sense::Sight;
+            }
+            const KeenPerception kp = keen_perception(c->keen_senses, relies, penalty, sight_works);
+            mode = combine_modes(mode == RollMode::Advantage || kp.mode == RollMode::Advantage,
+                                 mode == RollMode::Disadvantage || kp.mode == RollMode::Disadvantage);
+        }
+        roll_check(s, *c, req.skill, req.dc, mode, out.events);
+        return out;
+    }
+    if (req.kind == ActionKind::EndConcentration) {   // any time; no action, bonus action, or reaction (SRD concentration)
+        Combatant* c = find_mut(s, req.actor);
+        if (!c || c->dead) return fail("bad combatant");
+        if (c->concentration_spell == 0) return fail("not concentrating");
+        StepResult out{true, {}, {}};
+        end_concentration(s, c->id, out.events);
+        check_end(s, out.events);
         return out;
     }
     if (req.kind == ActionKind::ReactionDecision) return fail("no pending reaction decision");
@@ -5198,6 +6292,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     if ((a.dead || a.hp <= 0) && req.kind != ActionKind::EndTurn) return fail("actor is down");
     if (req.kind == ActionKind::GazeResponse) return gaze_response(s, a, req);   // Petrifying Gaze (7.2p): also while surprised
     if (s.budget.gaze_pending) return fail("gaze pending: answer with GazeResponse first");
+    if (req.kind == ActionKind::AppearanceResponse) return appearance_response(s, a, req);   // B15: also while surprised
+    if (s.budget.appearance_pending) return fail("appearance pending: answer with AppearanceResponse first");
     if (a.surprised && req.kind != ActionKind::EndTurn) return fail("surprised: can only end the turn");
     if (req.kind != ActionKind::CommandSummons && (req.command != 0 || !req.command_ids.empty()))
         return fail("command: CommandSummons only");
@@ -5246,6 +6342,11 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         int cost = req.move_ft * (a.has(Condition::Prone) ? 2 : 1);   // crawling
         if (drags_grappled(s, a)) cost *= 2;                           // SRD: half speed while moving a grappled creature
         if (req.move_mode > 4) return fail("bad move_mode");
+        if (req.jump_ft != 0) {   // B8: feet of this step that are a jump. Not a speed. The cost stays move_ft.
+            if (req.jump_ft % 5 != 0) return fail("jump_ft: a multiple of 5");
+            if (req.move_tiles == 0 || req.jump_ft > uint16_t(5 * req.move_tiles)) return fail("jump_ft exceeds this step");
+            if (a.has(Condition::Prone)) return fail("cannot jump while prone");
+        }
         if (req.move_mode != 0) {   // feat/move-modes: fly / swim / climb / burrow speed; the shared budget may go below 0
             const int allow = move_allowance(s, a, req.move_mode);
             if (allow < 0) return fail("no such speed");
@@ -5260,6 +6361,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         }
         b.movement_ft = int16_t(b.movement_ft - cost);
         b.moved_ft = uint16_t(b.moved_ft + 5 * req.move_tiles);   // only a completed move counts
+        if (req.jump_ft != 0)   // B8: only a completed own-turn jump. An interrupted move returned above.
+            b.jumped_ft = uint16_t(std::min(65535, int(b.jumped_ft) + int(req.jump_ft)));
         if (req.squeeze == 1) a.squeezing = true;    // SRD Squeezing (sim fact)
         else if (req.squeeze == 2) a.squeezing = false;
         s.budget = b;
@@ -5430,6 +6533,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         Combatant* t = find_mut(s, req.target);
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
+        if (const auto why = plane_affect_refusal(a, *t); !why.empty()) return fail(why);
         const SpellDef* def = spell_def(s, w->spell_id);
         if (!def) return fail("unknown spell");
         const uint8_t lvl = w->slot_level;
@@ -5562,10 +6666,11 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             Combatant* t = find_mut(s, req.target);
             if (!t || t == &a || t == f) return fail("bad target");
             if (t->dead) return fail("target is dead");
+            if (const auto why = plane_affect_refusal(*f, *t); !why.empty()) return fail(why);
             if (cover_of(s, f->id, t->id, false, 0) == Cover::Total) return fail("target has total cover");
             if (charmed_by(s, f->id, t->id)) return fail("a charmed creature cannot attack its charmer");
             if (req.attack_index >= f->attacks.size()) return fail("bad attack index");
-            if (const auto why = target_gate_refusal(s, *f, *t, f->attacks[req.attack_index], false); !why.empty()) return fail(why);
+            if (const auto why = target_gate_refusal(s, *f, *t, f->attacks[req.attack_index].target_requires_any, false); !why.empty()) return fail(why);
             if (b.attacks_remaining > 0) --b.attacks_remaining;
             else if (spend_action(b, a, req.kind, false)) {
                 b.loading_fired = 0;
@@ -5597,6 +6702,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         Combatant* t = find_mut(s, req.target);
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
+        if (const auto why = plane_affect_refusal(a, *t); !why.empty()) return fail(why);
         if (cover_of(s, a.id, t->id, false, 0) == Cover::Total) return fail("target has total cover");
         if (charmed_by(s, a.id, t->id)) return fail("a charmed creature cannot attack its charmer");
         if (is_hidden_from(s, t->id, a.id)) {   // 7.2x: its location is unknown: guess a tile
@@ -5604,7 +6710,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             ctx.guess_miss = s.hooks.guess_correct && !s.hooks.guess_correct(s, a, *t, req.guess_x, req.guess_y);
         }
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
-        if (const auto why = target_gate_refusal(s, a, *t, a.attacks[req.attack_index], req.target_willing); !why.empty()) return fail(why);
+        if (const auto why = target_gate_refusal(s, a, *t, a.attacks[req.attack_index].target_requires_any, req.target_willing); !why.empty()) return fail(why);
         if (attack_locked(s, a.id, req.attack_index, t->id)) return fail("that attack holds a grappled creature: it can't attack another target");
         if (req.grapple_instead && !a.attacks[req.attack_index].grapple_instead_ok) return fail("grapple_instead needs an instead_of_damage grapple rider");
         if (s.hooks.loadout_of) {   // EQUIPMENT.md 3: hands / ammunition (only creatures with a loadout view)
@@ -5641,8 +6747,13 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (b.sequence > a.multiattacks.size()) return fail("bad multiattack");
             const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos);
             if (next < 0 || req.attack_index != uint8_t(next)) return fail("attack out of multiattack sequence");
+            const auto& seq = a.multiattacks[std::size_t(b.sequence - 1)];
+            const uint32_t rider = seq.free_rider;   // B3b: arm after the last attack
             ++b.sequence_pos;
-            if (--b.attacks_remaining == 0) { b.sequence = 0; b.sequence_pos = 0; }
+            if (--b.attacks_remaining == 0) {
+                b.sequence = 0; b.sequence_pos = 0; b.free_rider = rider;
+                if (seq.engulf_both != 0) b.engulf_due = true;   // B7: this swing is the last; record it, then engulf
+            }
         } else if (req.multiattack != 0) {                                // start a declared multiattack
             if (b.attacks_remaining > 0) return fail("attack action already in progress");
             if (req.multiattack > a.multiattacks.size()) return fail("bad multiattack");
@@ -5658,6 +6769,11 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
                 n = std::size_t(std::clamp(roll_dice(s.rng, cd), 1, 255));   // "makes 1d4 ... attacks"
             b.attacks_remaining = uint8_t(n - 1);
             if (b.attacks_remaining > 0) { b.sequence = req.multiattack; b.sequence_pos = 1; }
+            else b.free_rider = a.multiattacks[std::size_t(req.multiattack - 1)].free_rider;   // B3b: the one attack was this one
+            // B7: arm both-hits Engulf only for a sequence of at least two attacks. A rolled count of one does not engulf.
+            b.engulf_hits = 0; b.engulf_hit_id = 0; b.engulf_bad = false; b.engulf_due = false; b.engulf_spell = 0;
+            if (n >= 2 && a.multiattacks[std::size_t(req.multiattack - 1)].engulf_both != 0)
+                b.engulf_spell = a.multiattacks[std::size_t(req.multiattack - 1)].engulf_both;
         } else if (b.attacks_remaining > 0) --b.attacks_remaining;       // Extra Attack
         else if (spend_action(b, a, req.kind, false)) {
             b.loading_fired = 0;
@@ -5673,16 +6789,23 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (pending_pool != 0 && spend_pool(s, a.id, pending_pool, pending_cost))
             emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(pending_pool), pending_cost, find_pool(s, a.id, pending_pool)->cur);
         if (warded && !ward_save(s, a, ward_index(s, *t, a.id), out.events)) {   // 7.2zd: a new target, or the attack is lost
-            if (!ward_alt) { check_end(s, out.events); return out; }
+            if (!ward_alt) {
+                note_engulf_swing(s.budget, t->id, false);   // B7: the swing was lost
+                finish_engulf_both(s, ctx, a, out.events);
+                check_end(s, out.events); return out;
+            }
             t = ward_alt;
         }
         ctx.bonus_attack_id = bopt ? bopt->id : 0;   // 7.2zb AttackFromFeature
         ctx.grapple_instead = req.grapple_instead;
-        do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
+        const CombatantId engulf_target = t->id;
+        const bool hit = do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
                   req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target,
                   bopt && bopt->has_damage ? &bopt->damage : nullptr, req.two_handed_grip);
         ctx.bonus_attack_id = 0;
         ctx.grapple_instead = false;
+        note_engulf_swing(s.budget, engulf_target, hit);   // B7
+        finish_engulf_both(s, ctx, a, out.events);
         check_end(s, out.events);
         return out;
     }
@@ -5737,7 +6860,10 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
                 if (o.id == a.id || o.dead || o.team == a.team) continue;
                 const Sight v = sight(s, o.id, a.id);
                 if (v.can_see) continue;   // can't hide from a creature that sees you
-                if (total >= passive_perception(o, passive_sight_penalty(v, o.sunlight_sensitive))) s.hidden.push_back({a.id, o.id, total});
+                // Keen Senses (§30): the better of the sight passive (penalty included; Keen Sight does not add +5 while
+                // unseen) and the keen hearing/smell passive (+5). No mask: the bonus is the sight penalty, as before.
+                const int bonus = unseen_perception_bonus(o.keen_senses, passive_sight_penalty(v, o.sunlight_sensitive), v.perceives);
+                if (total >= passive_perception(o, bonus)) s.hidden.push_back({a.id, o.id, total});
             }
         } else {
             a.stealth_total = total;
@@ -5787,7 +6913,25 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         return out;
     }
     case ActionKind::OpportunityAttack: case ActionKind::ReactionDecision:
-    case ActionKind::Heal: case ActionKind::AbilityCheck: case ActionKind::GazeResponse: break;  // handled above
+    case ActionKind::Heal: case ActionKind::AbilityCheck: case ActionKind::EndConcentration:
+    case ActionKind::GazeResponse:
+    case ActionKind::AppearanceResponse: break;  // handled above
+    case ActionKind::InspectFigure: {   // spends the action. A free AbilityCheck is not this.
+        Combatant* t = find_mut(s, req.target);
+        if (!t || t->dead) return fail("bad target");
+        if (!find_figure(s, t->id)) return fail("illusory appearance: no illusion");   // action not spent
+        const Sight seen = sight(s, a.id, t->id);
+        if (!seen.can_see || seen.sense != Sense::Sight) return fail("illusory appearance: cannot see the illusion");
+        if (!spend_action(b, a, req.kind, false)) return fail("no action available");
+        s.budget = b;
+        const int dc = find_figure(s, t->id)->dc;
+        const CheckResult rolled = roll_check(s, a, Skill::Investigation, dc, RollMode::Normal, out.events);
+        // A failure does not remove a record. PRODUCT CHOICE: the record is observer+subject, not this instance.
+        if (rolled.success && !already_discerned(s, a.id, t->id))
+            s.figure_discerned.push_back(FigureDiscernment{a.id, t->id});
+        emit(out.events, EventKind::ActionUsed, a.id, t->id, 0, int32_t(rolled.success));
+        return out;
+    }
     }
     return fail("unknown action");
 }
@@ -5821,12 +6965,43 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
     };
     auto creature_ok = [&](const Combatant& t) {
         if (!valid_target_type(d, t) || (d.excluded_types & bit(t.creature_type))) return false;
+        if (!plane_affect_refusal(a, t).empty()) return false;   // B19: not offered across planes
         if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, d, t)) return false;
         return true;
     };
+    if (d.invisible_passage) {   // §53: self. The built-in AI does not pick it.
+        r.target = a.id;
+        out.push_back(r);
+        return;
+    }
+    if (d.ethereal_toggle) {   // B19: self. The built-in AI does not pick it.
+        r.target = a.id;
+        out.push_back(r);
+        return;
+    }
+    if (d.illusory_appearance) {   // start while down; bonus-action end while up. The AI does not pick either.
+        r.target = a.id;
+        if (find_figure(s, a.id)) {
+            if (s.budget.bonus_action) { r.as_bonus_action = true; out.push_back(r); }
+        } else out.push_back(r);
+        return;
+    }
     if (d.kind == SpellEffectKind::Teleport || d.kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self; sim adds the destination
         r.target = a.id;
         push_zone_forms(out, r, d);
+        return;
+    }
+    if (is_space_save(d)) {   // B10 / B11: overlapping hostiles, or one empty cast when none are in the space
+        bool any = false;
+        for (const auto& t : s.combatants) {
+            if (t.dead || t.team == a.team || t.id == a.id || !creature_ok(t)) continue;
+            ActionRequest q = r;
+            q.target = t.id;
+            choices(q, d);
+            out.push_back(q);
+            any = true;
+        }
+        if (!any) { r.target = 0; choices(r, d); out.push_back(r); }
         return;
     }
     if (self_range_modifier(d)) {   // Blur, Expeditious Retreat: target = the caster (the hostile loop never offered self)
@@ -5836,13 +7011,36 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
         out.push_back(r);
         return;
     }
-    const bool heal = d.kind == SpellEffectKind::Heal ||
+    if (d.kind == SpellEffectKind::Restore) {   // 7.2zj: any living creature, one request per option that applies
+        for (const auto& t : s.combatants) {
+            if (t.dead || !creature_ok(t)) continue;
+            for (std::size_t i = 0; i < d.restore_options.size(); ++i) {
+                if (!restore_option_applies(s, t, d.restore_options[i])) continue;
+                ActionRequest q = r;
+                q.target = t.id;
+                q.condition_choice = uint8_t(i + 1);
+                out.push_back(q);
+            }
+        }
+        return;
+    }
+    const bool heal = d.kind == SpellEffectKind::Heal || d.kind == SpellEffectKind::GrantFly ||
                       (d.kind == SpellEffectKind::ApplyCondition && d.condition == Condition::Invisible);
     const bool heat = d.kind == SpellEffectKind::SustainedDamage && d.held_object;
     for (const auto& t : s.combatants) {
         if (t.dead) continue;
         if (heal ? t.team != a.team : (t.team == a.team || t.id == a.id)) continue;
         if (!creature_ok(t)) continue;
+        if (const auto why = target_gate_refusal(s, a, t, d.target_requires_any, false); !why.empty()) continue;
+        if (d.charm_command) {   // a creature this caster already charmed is ordered, not charmed again
+            bool held = false;
+            for (const auto& e : s.effects)
+                if (e.spell_id == d.id && e.caster == a.id && e.target == t.id && e.control == uint8_t(ControlKind::Command))
+                    held = true;
+            if (held) continue;
+        }
+        if (d.has_target_condition && !t.has(d.target_condition)) continue;   // B15: not offered when the cast would be refused
+        if (d.caster_sees_target && s.hooks.sight_facts && !sight(s, a.id, t.id).can_see) continue;
         if (heat) {   // one action per eligible worn or held metal item; none when submit would refuse the cast
             if (!s.hooks.loadout_of) continue;
             const LoadoutView* v = s.hooks.loadout_of(s, t.id);
@@ -5879,6 +7077,11 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         if (!a.surprised) { ActionRequest r{a.id, ActionKind::GazeResponse}; r.avert_gaze = true; out.push_back(r); }
         return out;
     }
+    if (b.appearance_pending) {   // B15 Horrific Appearance: look, or avert unless surprised
+        add(ActionKind::AppearanceResponse);
+        if (!a.surprised) { ActionRequest r{a.id, ActionKind::AppearanceResponse}; r.avert_gaze = true; out.push_back(r); }
+        return out;
+    }
     if (a.surprised) { add(ActionKind::EndTurn); return out; }   // R-G16
     if (awaits_command(a)) {   // R-G12 PR 2 (D4): Dodge until commanded
         if ((b.action || b.extra_actions > 0) && !is_incapacitated(a)) add(ActionKind::Dodge);
@@ -5894,6 +7097,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (!familiar && (can_act || b.attacks_remaining > 0)) {
         for (const auto& t : s.combatants) {
             if (t.dead || t.id == a.id || t.team == a.team) continue;
+            if (!plane_affect_refusal(a, t).empty()) continue;   // B19: not a legal attack
             if (const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos); next >= 0) {   // multiattack in progress: only the next declared attack
                 ActionRequest r{a.id, ActionKind::Attack, t.id, uint8_t(next)};
                 r.multiattack = b.sequence;
@@ -6007,9 +7211,10 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         for (uint32_t id : a.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
             if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon ||
-                      d->kind == SpellEffectKind::SummonWeapon || d->kind == SpellEffectKind::Descriptive)) continue;   // R-G12: sim builds Polymorph requests (form choice); descriptive is never cast
+                      d->kind == SpellEffectKind::SummonWeapon || d->kind == SpellEffectKind::Descriptive || d->rider_only)) continue;   // R-G12: sim builds Polymorph requests (form choice); descriptive is never cast; B3b rider_only is not a standalone action
             if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
+            if (d->requires_jumped_ft > 0 && b.jumped_ft < d->requires_jumped_ft) continue;   // B8: the jump is not done
             for (uint8_t L = d->level; L <= (d->level == 0 ? 0 : 9); ++L) {
                 if (!spell_cast_resource_refusal(s, a, *d, false, L).empty()) continue;
                 ActionRequest r{a.id, ActionKind::CastSpell};
@@ -6027,6 +7232,13 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (!spell_cast_resource_refusal(s, a, *d, true, d->level).empty()) continue;
             ActionRequest r{a.id, ActionKind::CastSpell};
             r.spell_id = d->id; r.spell_level = d->level; r.innate = true;
+            append_spell_targets(out, s, a, *d, r);
+        }
+    }
+    if (b.free_rider != 0 && s.hooks.spells && !is_incapacitated(a) && !no_casting) {   // B3b: after the pincers, one free rider, no action
+        if (const SpellDef* d = s.hooks.spells->find(b.free_rider)) {
+            ActionRequest r{a.id, ActionKind::CastSpell};
+            r.spell_id = d->id; r.spell_level = 0;
             append_spell_targets(out, s, a, *d, r);
         }
     }
@@ -6056,15 +7268,37 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             out.push_back(r);
         }
     add(ActionKind::EndTurn);
-    {   // 7.2v: a Command cast is listed once per word (step requires one)
+    if (s.hooks.spells && !is_incapacitated(a)) {   // B16: order the charmed creature. Does not spend the action.
+        for (const auto& e : s.effects) {
+            if (e.caster != a.id || e.control != uint8_t(ControlKind::Command)) continue;
+            const SpellDef* d = s.hooks.spells->find(e.spell_id);
+            if (!d || !d->charm_command) continue;
+            const Combatant* t = find(s, e.target);
+            if (!t || t->dead) continue;
+            for (uint8_t w = 1; w <= uint8_t(CommandWord::Suicidal); ++w) {
+                ActionRequest r{a.id, ActionKind::CastSpell, t->id};
+                r.spell_id = d->id;
+                r.command_word = w;
+                r.targets = {t->id};
+                out.push_back(r);
+            }
+        }
+    }
+    {   // 7.2v: a Command cast is listed once per word (step requires one). Charm lists word 0; the orders are above.
         std::vector<ActionRequest> x; x.reserve(out.size());
         for (auto& r : out) {
             const SpellDef* d = r.kind == ActionKind::CastSpell && r.zone_move == 0 && !r.sustain ? spell_def(s, r.spell_id) : nullptr;
-            if (d && d->control == ControlKind::Command && r.command_word == 0)
+            if (d && d->control == ControlKind::Command && !d->charm_command && r.command_word == 0)
                 for (uint8_t w = 1; w <= 5; ++w) { x.push_back(r); x.back().command_word = w; }
             else x.push_back(std::move(r));
         }
         out = std::move(x);
+    }
+    for (const auto& t : s.combatants) {   // visual inspect. Not offered when the viewer cannot see the figure.
+        if (t.dead || !find_figure(s, t.id)) continue;
+        const Sight seen = sight(s, a.id, t.id);
+        if (!seen.can_see || seen.sense != Sense::Sight) continue;
+        out.push_back({a.id, ActionKind::InspectFigure, t.id});
     }
     if (!s.effects.empty())   // 7.2v: drop what a control condition refuses
         std::erase_if(out, [&](const ActionRequest& r) { return control_refuses(s, a, r) != nullptr; });
@@ -6474,6 +7708,7 @@ bool apply_sourced_condition(EncounterState& s, CombatantId source, CombatantId 
     Combatant* t = find_mut(s, target);
     const Combatant* src = find(s, source);
     if (!t || !src || t->dead || t == src || immune_to(s, *t, c) || immune_from(s, *t, c, source)) return false;
+    if (!plane_affect_refusal(*src, *t).empty()) return false;   // B19: a grapple or other sourced condition does not cross planes
     if (c == Condition::Grappled && !size_within_one(src->size, t->size)) return false;
     if (!t->has(c)) {
         add_condition(*t, c);
@@ -6490,6 +7725,26 @@ CombatantId condition_source(const EncounterState& s, CombatantId target, Condit
     return 0;
 }
 
+bool charmed_by(const EncounterState& s, CombatantId actor, CombatantId other) {
+    for (const auto& e : s.sourced)
+        if (e.condition == Condition::Charmed && e.target == actor && e.source == other && e.suppress_count == 0) return true;
+    return false;
+}
+
+std::string_view target_gate_reason(const EncounterState& s, const Combatant& a, const Combatant& t, uint8_t g, bool willing) {
+    if (g == 0) return {};
+    if ((g & kTargetGateWilling) && willing && t.team == a.team) return {};
+    if ((g & kTargetGateGrappledBySelf) && t.has(Condition::Grappled) && condition_source(s, t.id, Condition::Grappled) == a.id) return {};
+    if ((g & kTargetGateIncapacitated) && is_incapacitated(t)) return {};
+    if ((g & kTargetGateRestrained) && t.has(Condition::Restrained)) return {};
+    if ((g & kTargetGateCharmedBySelf) && charmed_by(s, t.id, a.id)) return {};
+    if (g == kTargetGateGrappledBySelf) return "target must be grappled by the user";
+    if (g == kTargetGateCharmedBySelf) return "target must be charmed by the user";
+    if (g == kTargetGateWilling) return "target must be willing";
+    if (g == (kTargetGateCharmedBySelf | kTargetGateWilling)) return "target must be charmed by the user or willing";
+    return "target must be willing, grappled by the attacker, incapacitated, or restrained";
+}
+
 std::vector<CombatantId> grappled_by(const EncounterState& s, CombatantId g) {
     std::vector<CombatantId> out;
     for (const auto& e : s.sourced) if (e.condition == Condition::Grappled && e.source == g) out.push_back(e.target);
@@ -6504,14 +7759,17 @@ void prune_sourced(EncounterState& s, std::vector<Event>& ev) {
         const SourcedCondition e = s.sourced[i];
         const Combatant* t = find(s, e.target);
         const Combatant* src = find(s, e.source);
-        bool drop = !t || t->dead || !t->has(e.condition);
+        bool drop = !t || t->dead || (!t->has(e.condition) && e.suppress_count == 0);   // 7.2zj: a suppressed charm keeps its source
         if (!drop && e.condition == Condition::Grappled && (!src || src->dead || is_incapacitated(*src))) { drop = true; ended.push_back(e.target); }
         if (drop) {
             s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
             if (e.condition == Condition::Grappled) released.push_back(e);
         } else ++i;
     }
-    for (const SourcedCondition& e : released) release_grapple_restraint(s, e, ev);
+    for (const SourcedCondition& e : released) {
+        release_grapple_restraint(s, e, ev);
+        if (e.via_attack == kWhelmGrapple) end_whelm_crush(s, e.source, e.target, ev);
+    }
     for (CombatantId id : ended) {
         bool still = false;
         for (const auto& e : s.sourced) still = still || (e.condition == Condition::Grappled && e.target == id);
@@ -6521,6 +7779,12 @@ void prune_sourced(EncounterState& s, std::vector<Event>& ev) {
 }
 
 bool grapple(EncounterState& s, CombatantId grappler, CombatantId target, const GrappleRider& g, uint8_t attack_index, std::vector<Event>& ev) {
+    if (const Combatant* src = find(s, grappler))
+        if (const Combatant* t = find(s, target); t && !plane_affect_refusal(*src, *t).empty()) return false;
+    if (g.max_size >= 0) {   // Chuul pincer (Large) / Otyugh tentacle (Medium): a larger creature is not grappled
+        const Combatant* t = find(s, target);
+        if (!t || int(t->size) > int(g.max_size)) return false;
+    }
     if (!g.extended()) return grapple(s, grappler, target, g.escape_dc, ev);
     if (g.max_grapples != 0) {   // giant crab: each claw can grapple only one target; a hit past the limit only deals damage
         int held = 0;
@@ -6559,7 +7823,7 @@ void release_grapple_restraint(EncounterState& s, const SourcedCondition& ended,
     for (auto& e : s.sourced)
         if (e.condition == Condition::Grappled && e.target == ended.target && e.restrains) { e.owns_restrained = true; return; }
     for (const auto& e : s.effects)   // another live restraint (Web, a Swallow's contain, Entangle) keeps the condition
-        if (e.target == ended.target && e.condition == Condition::Restrained) return;
+        if (!e.no_condition && e.target == ended.target && e.condition == Condition::Restrained) return;
     Combatant* t = find_mut(s, ended.target);
     if (!t || !t->has(Condition::Restrained)) return;
     remove_condition(*t, Condition::Restrained);
@@ -6572,6 +7836,11 @@ uint64_t sourced_digest(const EncounterState& s, uint64_t h) {
     auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
     auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
     for (const auto& e : s.sourced) { byte(uint8_t(e.condition)); u32(e.target); u32(e.source); u32(uint32_t(uint16_t(e.escape_dc))); }
+    // 7.2zj: sub-byte 0x60 (not a registry tag) only when a calm is suppressing a sourced charm or fear.
+    if (std::any_of(s.sourced.begin(), s.sourced.end(), [](const SourcedCondition& e) { return e.suppress_count != 0; })) {
+        byte(0x60);
+        for (const auto& e : s.sourced) byte(e.suppress_count);
+    }
     return h;
 }
 
@@ -6584,7 +7853,7 @@ std::vector<CombatantId> surprised_by_stealth(const std::vector<Combatant>& cs, 
     for (const auto& c : cs) {
         if (c.dead) continue;
         bool any_enemy = false, noticed = false;
-        const int passive = passive_perception(c);
+        const int passive = passive_perception(c, keen_surprise_bonus(c.keen_senses, c.has(Condition::Deafened)));
         for (const auto& e : cs) {
             if (e.dead || e.team == c.team) continue;
             any_enemy = true;
@@ -6651,6 +7920,48 @@ Sight sight(const EncounterState& s, CombatantId viewer, CombatantId subject) {
     return derive_sight(*v, f);
 }
 
+VisibleFigureView visible_figure(const EncounterState& s, CombatantId viewer, CombatantId subject) {
+    VisibleFigureView v;
+    for (const auto& d : s.figure_discerned)
+        if (d.observer == viewer && d.subject == subject) v.discerned = true;
+    if (const VisibleFigure* f = find_figure(s, subject)) {
+        v.active = true;
+        v.instance = f->instance;
+        v.shape = f->shape;
+        v.size = f->size;
+        v.armor_def = f->armor_def;
+        v.covered_items = f->covered_items;
+    }
+    return v;
+}
+
+PhysicalMismatch physical_mismatch(const EncounterState& s, CombatantId subject) {
+    PhysicalMismatch m;
+    const Combatant* c = find(s, subject);
+    if (!c) return m;
+    m.true_size = c->size;
+    m.true_type = c->creature_type;
+    m.true_attack_count = uint8_t(std::min<std::size_t>(255, c->attacks.size()));
+    if (const VisibleFigure* f = find_figure(s, subject)) {
+        m.active = true;
+        m.presented_shape = f->shape;
+        m.presented_size = f->size;
+        m.armor_def = f->armor_def;
+        m.covered_items = f->covered_items;
+    }
+    return m;
+}
+
+TrackAnswer track_evidence(const EncounterState& s, CombatantId subject, TrackEvidence evidence) {
+    if (evidence != TrackEvidence::Physical) return TrackAnswer::Unanswered;
+    for (const auto& e : s.effects) {
+        if (e.target != subject) continue;
+        const SpellDef* d = spell_def(s, e.spell_id);
+        if (d && d->invisible_passage) return TrackAnswer::None;
+    }
+    return TrackAnswer::Unanswered;
+}
+
 bool is_hidden_from(const EncounterState& s, CombatantId who, CombatantId from) {
     return std::any_of(s.hidden.begin(), s.hidden.end(), [&](const EncounterState::Hidden& h) { return h.who == who && h.from == from; });
 }
@@ -6693,6 +8004,7 @@ FormStats own_stats(const Combatant& c) {
     f.bonus_attacks = c.bonus_attacks;
     f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.burrow_ft = c.burrow_ft; f.hover = c.hover;   // feat/move-modes
     f.ability_reduction = c.ability_reduction;   // batch 3 Strength Drain
+    f.keen_senses = c.keen_senses;   // Keen Senses (§30)
     return f;
 }
 void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_max
@@ -6705,6 +8017,7 @@ void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_m
     c.bonus_attacks = f.bonus_attacks;
     c.fly_ft = f.fly_ft; c.swim_ft = f.swim_ft; c.climb_ft = f.climb_ft; c.burrow_ft = f.burrow_ft; c.hover = f.hover;   // feat/move-modes
     c.ability_reduction = f.ability_reduction;   // batch 3 Strength Drain
+    c.keen_senses = f.keen_senses;   // Keen Senses (§30)
 }
 template <class T> void append_all(std::vector<T>& to, const std::vector<T>& from) { to.insert(to.end(), from.begin(), from.end()); }
 }  // namespace
@@ -6821,10 +8134,15 @@ uint64_t heat_metal_digest(const EncounterState& s, uint64_t h) {
     return h;
 }
 
+bool zj_effect_extra(const ActiveSpellEffect& e) {
+    return e.suppress_count != 0 || e.suppress_mask != 0 || e.suppress_untracked != 0 || e.granted_fly != 0 || e.ends_on_restoration;
+}
+
 bool has_leftover_state(const EncounterState& s) {
     return std::any_of(s.combatants.begin(), s.combatants.end(), [](const Combatant& c) {
                return c.hp_max_reduction != 0 || c.lethargy != 0 || c.reckless_active; }) ||
-           std::any_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.escalates || e.control != 0; });
+           std::any_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) {
+               return e.escalates || e.control != 0 || zj_effect_extra(e); });
 }
 
 uint64_t leftover_digest(const EncounterState& s, uint64_t h) {
@@ -6841,6 +8159,15 @@ uint64_t leftover_digest(const EncounterState& s, uint64_t h) {
         byte(0xFE);   // 7.2v control effects: only when one exists (older digests unchanged)
         for (const auto& e : s.effects)
             if (e.control != 0) { u32(e.spell_id); u32(e.caster); u32(e.target); byte(e.control); byte(e.command_word); }
+    }
+    if (std::any_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return zj_effect_extra(e); })) {
+        byte(0x60);   // 7.2zj: not a registry tag; omitted when every new field is zero
+        for (const auto& e : s.effects) {
+            if (!zj_effect_extra(e)) continue;
+            u32(e.spell_id); u32(e.caster); u32(e.target);
+            byte(e.suppress_count); u32(e.suppress_mask); u32(e.suppress_untracked);
+            byte(e.granted_fly); byte(uint8_t(e.ends_on_restoration));
+        }
     }
     return h;
 }
@@ -6904,6 +8231,7 @@ bool spell_harmful(const SpellDef& def) {
         case SpellEffectKind::ApplyCondition: return d.applies_condition && negative_condition(d.condition);
         case SpellEffectKind::ApplyModifier: return negative_modifier(d.modifier);
         case SpellEffectKind::Descriptive: return false;   // text-only: not a harmful cast
+        case SpellEffectKind::GrantFly: case SpellEffectKind::Restore: return false;   // 7.2zj: beneficial
         default: return false;
         }
     };

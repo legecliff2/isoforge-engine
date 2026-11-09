@@ -1,0 +1,13 @@
+scenario sample.fighter_vs_zombie
+seed 24
+end_condition teams
+round_cap 20
+outcome team_no_conscious
+round 4
+ended 1
+teams_down party
+pcs fighter:dying
+hp fighter=0 zombie=1
+surprised -
+digest e281835e3a015e45
+commands 16

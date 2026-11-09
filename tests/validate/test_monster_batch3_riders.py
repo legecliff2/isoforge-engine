@@ -285,5 +285,180 @@ class Aura(unittest.TestCase):
         self.assertTrue(e, e)
 
 
+class KeenSenses(unittest.TestCase):
+    """SRD 5.1 wolf: "The wolf has advantage on Wisdom (Perception) checks that rely on hearing or smell."
+    monster@5 keen_senses (CONTENT_CONVENTIONS §30)."""
+
+    def test_valid(self):
+        for senses in (["hearing", "smell"], ["sight"]):
+            e, w = run(with_trait({"kind": "keen_senses", "senses": senses}))
+            self.assertEqual(e, [], senses)
+            self.assertFalse([m for m in w if "keen_senses" in m], w)
+
+    def test_duplicate_warns_only_when_no_new_bit(self):
+        both = {"kind": "keen_senses", "senses": ["hearing", "smell"]}
+        _e, w = run(with_trait(both, copy.deepcopy(both)))
+        self.assertTrue([m for m in w if "duplicate keen_senses" in m], w)
+        _e, w = run(with_trait({"kind": "keen_senses", "senses": ["hearing"]},
+                              {"kind": "keen_senses", "senses": ["smell"]}))
+        self.assertFalse([m for m in w if "duplicate" in m], w)
+
+    def test_refused(self):
+        for eff in ({"kind": "keen_senses", "senses": []},
+                    {"kind": "keen_senses"},
+                    {"kind": "keen_senses", "senses": ["hearing", "hearing"]},
+                    {"kind": "keen_senses", "senses": ["taste"]},
+                    {"kind": "keen_senses", "senses": ["hearing"], "note": 1}):
+            e, _w = run(with_trait(eff))
+            self.assertTrue([m for m in e if "keen_senses" in m or "/effect" in m], (eff, e))
+
+    def test_needs_at5(self):
+        e, _w = run(with_trait({"kind": "keen_senses", "senses": ["smell"]}, schema="monster@4"))
+        self.assertTrue([m for m in e if "keen_senses" in m or "monster@5" in m or "/effect" in m], e)
+
+
+TROLL = {"kind": "regen", "amount": 10, "suppressed_by": ["acid", "fire"]}
+
+
+class Regen(unittest.TestCase):
+    """SRD 5.1 troll: regain 10 at the start of its turn unless it took acid or fire, and it dies only if it
+    starts its turn at 0 hit points and does not regenerate. monster@5 regen (CONTENT_CONVENTIONS §31)."""
+
+    def test_valid(self):
+        e, w = run(with_trait(dict(TROLL)))
+        self.assertEqual(e, [], e)
+        self.assertFalse([m for m in w if "regen" in m], w)
+        e, w = run(with_trait({"kind": "regen", "amount": 1, "suppressed_by": ["radiant"]}))
+        self.assertEqual(e, [], e)
+        self.assertFalse([m for m in w if "regen" in m], w)
+
+    def test_duplicate_warns_when_the_set_matches(self):
+        _e, w = run(with_trait(dict(TROLL), dict(TROLL)))
+        self.assertEqual(_e, [])
+        self.assertTrue([m for m in w if "duplicate regen" in m], w)
+        swapped = {"kind": "regen", "amount": 10, "suppressed_by": ["fire", "acid"]}
+        _e, w = run(with_trait(dict(TROLL), swapped))
+        self.assertEqual(_e, [])
+        self.assertTrue([m for m in w if "duplicate regen" in m], w)
+
+    def test_different_second_is_an_error(self):
+        other = {"kind": "regen", "amount": 5, "suppressed_by": ["acid", "fire"]}
+        e, _w = run(with_trait(dict(TROLL), other))
+        self.assertTrue([m for m in e if "one regeneration" in m], e)
+
+    def test_refused(self):
+        for eff in ({"kind": "regen", "amount": 0, "suppressed_by": ["fire"]},
+                    {"kind": "regen", "amount": 32768, "suppressed_by": ["fire"]},
+                    {"kind": "regen", "suppressed_by": ["fire"]},
+                    {"kind": "regen", "amount": 10, "suppressed_by": []},
+                    {"kind": "regen", "amount": 10, "suppressed_by": ["fire", "fire"]},
+                    {"kind": "regen", "amount": 10, "suppressed_by": ["holy"]},
+                    {"kind": "regen", "amount": 10, "suppressed_by": ["fire"], "note": 1},
+                    {"kind": "regen", "amount": True, "suppressed_by": ["fire"]}):
+            e, _w = run(with_trait(eff))
+            self.assertTrue([m for m in e if "regen" in m or "/effect" in m], (eff, e))
+
+    def test_needs_at5(self):
+        e, _w = run(with_trait(dict(TROLL), schema="monster@4"))
+        self.assertTrue([m for m in e if "regen" in m or "monster@5" in m or "/effect" in m], e)
+
+
+class AreaEffect(unittest.TestCase):
+    """monster@5 area_effect (AOE_MONSTER_ABILITIES PR2): cone, line, cube, sphere, recharge, save."""
+
+    def breath(self, schema="monster@5", **keys):
+        d = bugbear()
+        d["$schema"] = schema
+        act = {"id": "breath", "name": "Breath", "kind": "area_effect", "description": "x",
+               "save": {"ability": "dex", "dc": 14},
+               "area": {"shape": "cone", "size_ft": 30}, "origin": "self",
+               "damage": [{"dice": "6d6", "type": "fire"}], "on_success": "half",
+               "usage": {"kind": "recharge", "min": 5}}
+        act.update(keys)
+        d["actions"].append(act)
+        return d
+
+    def test_shapes_and_recharge(self):
+        for shape, area in (("cone", {"shape": "cone", "size_ft": 30}),
+                            ("line", {"shape": "line", "size_ft": 30, "width_ft": 5}),
+                            ("cube", {"shape": "cube", "size_ft": 15}),
+                            ("sphere", {"shape": "sphere", "size_ft": 5}),
+                            ("cylinder", {"shape": "cylinder", "size_ft": 10, "height_ft": 20})):
+            e, _w = run(self.breath(area=area, usage={"kind": "recharge", "min": 6}))
+            self.assertEqual(e, [], shape)
+        e, _w = run(self.breath(damage=[{"dice": "2d4", "type": "cold"}], on_success="half",
+                                usage={"kind": "recharge", "min": 6}, area={"shape": "cone", "size_ft": 15}))
+        self.assertEqual(e, [])
+        blind = self.breath()
+        del blind["actions"][-1]["damage"]
+        del blind["actions"][-1]["on_success"]
+        blind["actions"][-1]["apply"] = [{"condition": "blinded", "duration": {"kind": "rounds", "n": 10},
+                                          "repeat_save": "end_of_turn"}]
+        blind["actions"][-1]["usage"] = {"kind": "recharge", "min": 6}
+        e, _w = run(blind)
+        self.assertEqual(e, [], e)
+
+    def test_refused(self):
+        e, _w = run(self.breath(area={"shape": "cone", "size_ft": 15, "width_ft": 5}))
+        self.assertTrue(e, e)
+        line = self.breath(area={"shape": "line", "size_ft": 30})
+        e, _w = run(line)
+        self.assertTrue(e, e)
+        e, _w = run(self.breath(usage={"kind": "recharge", "min": 1}))
+        self.assertTrue(e, e)
+        d = self.breath()
+        d["actions"][-1]["range_ft"] = 30
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "range_ft" in m], e)
+        d = self.breath()
+        d["actions"].append(dict(d["actions"][-1]))
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "already used" in m], e)
+        e, _w = run(self.breath(schema="monster@4"))
+        self.assertTrue(e, e)
+        d = self.breath()
+        d["actions"][-1]["apply"] = [{"condition": "stunned", "duration": {"kind": "concentration"}}]
+        _e, w = run(d)
+        self.assertTrue([m for m in w if "area_effect: unsupported usage or condition duration" in m], w)
+
+
+class GrappledBySelfSave(unittest.TestCase):
+    """Chuul Tentacles / Otyugh Tentacle Slam: a save_effect may require grappled_by_self, and no other gate."""
+
+    def tentacles(self, **keys):
+        d = bugbear()
+        act = {"id": "tentacles", "name": "Tentacles", "kind": "save_effect",
+               "save": {"ability": "con", "dc": 13},
+               "target_requires_any": ["grappled_by_self"],
+               "apply": [{"condition": "poisoned", "duration": {"kind": "rounds", "n": 10},
+                          "repeat_save": "end_of_turn"}]}
+        act.update(keys)
+        d["actions"].append(act)
+        return d
+
+    def test_valid(self):
+        e, _w = run(self.tentacles())
+        self.assertEqual(e, [], e)
+        e, _w = run(self.tentacles(targets=2))
+        self.assertEqual(e, [], e)
+
+    def test_refused(self):
+        e, _w = run(self.tentacles(target_requires_any=["restrained"]))
+        self.assertTrue([m for m in e if "grappled_by_self, charmed_by_self, or willing" in m], e)
+        e, _w = run(self.tentacles(target_requires_any=["grappled_by_self", "restrained"]))
+        self.assertTrue([m for m in e if "grappled_by_self, charmed_by_self, or willing" in m], e)
+        e, _w = run(self.tentacles(target_requires_any=["charmed_by_self", "willing"]))
+        self.assertEqual(e, [], e)
+        e, _w = run(self.tentacles(area={"shape": "sphere", "size_ft": 5}))
+        self.assertTrue([m for m in e if "takes no area" in m or "area" in m], e)
+        e, _w = run(self.tentacles(targets=9))
+        self.assertTrue([m for m in e if "targets must be an integer 1..8" in m], e)
+        d = bugbear()
+        d["actions"].append({"id": "x", "name": "X", "kind": "special", "description": "x",
+                              "target_requires_any": ["grappled_by_self"]})
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
+
+
 if __name__ == "__main__":
     unittest.main()

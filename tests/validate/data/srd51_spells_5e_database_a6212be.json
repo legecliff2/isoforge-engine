@@ -1598,6 +1598,103 @@
     "wizard"
    ],
    "material": "A bit of fleece."
+  },
+  "calm-emotions": {
+   "name": "Calm Emotions",
+   "level": 2,
+   "range": "60 feet",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "enchantment",
+   "classes": [
+    "bard",
+    "cleric"
+   ],
+   "dc": {
+    "ability": "cha",
+    "success": "none"
+   },
+   "area_of_effect": {
+    "type": "sphere",
+    "size": 20
+   }
+  },
+  "charm-person": {
+   "name": "Charm Person",
+   "level": 1,
+   "range": "30 feet",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "1 hour",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "enchantment",
+   "classes": [
+    "bard",
+    "druid",
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ],
+   "dc": {
+    "ability": "wis",
+    "success": "none"
+   }
+  },
+  "fly": {
+   "name": "Fly",
+   "level": 3,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 10 minutes",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "transmutation",
+   "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ],
+   "material": "A wing feather from any bird."
+  },
+  "suggestion": {
+   "name": "Suggestion",
+   "level": 2,
+   "range": "30 feet",
+   "components": [
+    "V",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 8 hours",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "enchantment",
+   "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ],
+   "material": "A snake's tongue and either a bit of honeycomb or a drop of sweet oil.",
+   "dc": {
+    "ability": "wis",
+    "success": "none"
+   }
   }
  }
 }

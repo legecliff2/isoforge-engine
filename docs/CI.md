@@ -126,7 +126,9 @@ Windows and macOS jobs are not mirrored; use the `win-msvc` / `mac-clang-debug` 
 
 ## Workflow for PRs (minimising CI minutes)
 
-- **Run `tools/ci_local.sh` before marking a PR ready.** It mirrors both Linux jobs locally.
+- **`tools/ci_local.sh` is optional.** It mirrors both Linux jobs locally. Running it is
+  recommended for catching Linux failures early and saving CI minutes, but it is not required
+  before marking a PR ready. Hosted CI is the gate.
 - **Draft PRs don't run build/test jobs.** The `pull_request` trigger fires on `opened`,
   `synchronize`, `reopened` and `ready_for_review`. The `changes` job (which every build needs) is
   skipped when `github.event.pull_request.draft` is true. `ci-required` still runs and **fails**

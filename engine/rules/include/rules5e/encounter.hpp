@@ -51,8 +51,27 @@ struct TurnBudget {
     bool action_lost = false;
     // Petrifying Gaze (appended): the turn started with a gazer present; the actor must answer with GazeResponse first.
     bool gaze_pending = false;
+    // B15 Horrific Appearance: a humanoid who can see a hag's true form within the aura must answer before anything
+    // else (after a pending gaze). Not hashed (replay re-runs the turn start). Cleared by AppearanceResponse.
+    bool appearance_pending = false;
     // appended (SRD 5.1 movement modes, feat/move-modes): Dash actions taken this turn (a Dash grants each speed once more).
     uint8_t dashes = 0;
+    // Appended (B3b, chuul Tentacles): spell id of a multiattack free rider still available this turn (0 = none). Set when
+    // that option's attacks finish. Cleared when the rider is used or another action is spent. The next turn replaces the
+    // budget. Using it does not spend the action. Not hashed (the cast is the logged CastSpell; replay re-arms it).
+    uint32_t free_rider = 0;
+    // Appended (B7, Shambling Mound): both-hits Engulf window for the multiattack in progress. engulf_spell is the
+    // ApplyCondition to apply when the sequence finishes with every attack hitting engulf_hit_id. engulf_due is set on the
+    // last attack, before that swing is recorded. A miss or a second target sets engulf_bad. Cleared when the sequence
+    // resolves or the turn budget is replaced. Not hashed (replay re-runs the attacks; the contain effect folds under 0xAC).
+    uint32_t engulf_spell = 0;
+    uint8_t engulf_hits = 0;
+    CombatantId engulf_hit_id = 0;
+    bool engulf_bad = false;
+    bool engulf_due = false;
+    // Appended (B8, Bulette Deadly Leap): feet of completed own-turn Moves that were a jump
+    // (ActionRequest::jump_ft). Not moved_ft. Not hashed (replay re-runs the moves). Reset with the turn budget.
+    uint16_t jumped_ft = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -88,7 +107,11 @@ struct ActionRequest {
     Skill skill = Skill::Athletics;    // AbilityCheck: skill (actor = creature checking)
     int16_t dc = 0;                    // AbilityCheck
     RollMode check_mode = RollMode::Normal;  // AbilityCheck: extra roll-mode source
-    // appended (UseFeature): content feature id (opaque to rules; sim's feature registry) and an
+    // Keen Senses (CONTENT_CONVENTIONS §30): the field is perception_senses, at the end of this struct, not feature_id below.
+    // AbilityCheck of Perception: the senses that check relies on (kKeenSight / kKeenHearing / kKeenSmell). 0 = the check
+    // names no sense, and Keen Senses does not apply. Not folded into log_hash (same as skill, dc, and check_mode).
+    // Refused on any other action or skill.
+    // UseFeature, a different field: content feature id (opaque to rules; sim's feature registry) and an
     // optional self-heal rolled from the encounter rng. Spends the action, or the bonus action
     // when as_bonus_action (the feature itself grants it). Limited uses: EncounterState::features.
     uint32_t feature_id = 0;
@@ -177,7 +200,9 @@ struct ActionRequest {
     uint8_t flexible = 0, flexible_level = 0;
     // appended (Petrifying Gaze, ActionKind::GazeResponse, VERSION_BUMP_BATCH 7.2p): the turn-start answer while
     // TurnBudget::gaze_pending. avert_gaze (caller input, log_hash 0xBB): avert the eyes (refused while surprised): no save,
-    // gazers unseen until its next turn starts. gaze_seen (sim fact, not folded): the gazers it can see now (line of sight,
+    // gazers unseen until its next turn starts. B15 Horrific Appearance reuses this bit on ActionKind::AppearanceResponse
+    // (not gaze_averted): no initial save, and attack rolls against that source have disadvantage until the actor's next
+    // turn starts. gaze_seen (sim fact, not folded): the gazers it can see now (line of sight,
     // within the gaze's range_ft, not Blinded, the gazer not invisible to it); rules treats the list as opaque.
     bool avert_gaze = false;
     std::vector<CombatantId> gaze_seen = {};
@@ -215,6 +240,8 @@ struct ActionRequest {
     int16_t alt_to = 0;
     // appended (control conditions, 7.2v; log_hash 0xC4 when non-zero): CastSpell of a Command spell (SpellDef::control
     // Command): the CommandWord, 1 Approach, 2 Drop, 3 Flee, 4 Grovel, 5 Halt. Required there; 0 otherwise.
+    // B16 Charm (CONTENT_CONVENTIONS §47) reuses this byte: 0 on the Charm cast, 1..5 to order a creature this
+    // caster already charmed, 6 Suicidal (the repeat save, not an order). No new tag.
     uint8_t command_word = 0;
     // appended (vision 7.2x; log_hash 0xC6 when set): on an Attack against a creature hidden from the attacker, the tile the
     // attacker guesses (sim tile, opaque to rules; EncounterHooks::guess_correct). Required then; ignored otherwise.
@@ -251,6 +278,14 @@ struct ActionRequest {
     // appended (Tier-A §27, log_hash 0xE2 when set): Attack: on a hit, grapple instead of dealing damage. Legal only with an
     // attack whose Attack::grapple_instead_ok is set. AttackResolved c bit 3 (8) marks a hit resolved this way.
     bool grapple_instead = false;
+    // Keen Senses (CONTENT_CONVENTIONS §30). The comment next to check_mode points here. At the end so existing
+    // positional initialisers are unchanged. 0 = the Perception check names no sense.
+    uint8_t perception_senses = 0;
+    // Appended (B8, Bulette Deadly Leap; log_hash 0xE4 when non-zero). Move only: feet of this step that are a jump,
+    // a multiple of 5, at most 5 * move_tiles. A completed own-turn Move adds them to TurnBudget::jumped_ft. Not a
+    // speed and not a second spend (move_ft is the cost). 0 = this step is not a jump. Strength, a running start,
+    // and high jump are not checked (CONTENT_CONVENTIONS §38).
+    uint16_t jump_ft = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -388,6 +423,11 @@ using EndConditionFn = std::function<std::optional<EncounterOutcome>(const Encou
 // drop of more than 5 ft); rules applies SRD falling damage (1d6 bludgeoning per 10 ft, max 20d6) and the creature lands prone.
 struct ForcedMoveResult {
     uint16_t feet_moved = 0; bool stopped_short = false; bool hazard = false; uint16_t fell_ft = 0;
+    // B10 Whirlwind. The step that stopped the fling. An unwalkable footprint (wall, or off the map) sets
+    // struck_object. A creature other than the source on that step sets struck (the lowest id). Both stay
+    // clear when the path was open. Not hashed.
+    bool struck_object = false;
+    CombatantId struck = 0;
     std::vector<CombatantId> out_of_reach_of{};
     // appended (R-G11, Q2): the move's zone membership, as on a Move step (ascending zone ids). A forced move covers several
     // tiles, so zones_within repeats a zone id once per further 5 ft moved inside it (Spike Growth's per-5-ft damage:
@@ -490,6 +530,30 @@ struct ActiveSpellEffect {
     // attack rolls and ability checks until the start of the caster's next turn.
     uint32_t heated_item = 0, heated_def = 0;
     bool heated_worn = false, while_held = false;
+    // appended (7.2zj; leftover_digest sub-byte 0x60 only when any of these is set). suppress_count: how many Calm Emotions
+    // effects are holding this condition down (the condition bit is off while every holder is suppressed). suppress_mask:
+    // the conditions a Calm Emotions effect is suppressing. suppress_untracked: bits that were on with no effect and no
+    // sourced row, so they resume when this calm ends. granted_fly: the fly speed this effect granted (0 = none).
+    // ends_on_restoration: Greater Restoration ends this effect whatever option it chose (Geas).
+    uint8_t suppress_count = 0;
+    uint32_t suppress_mask = 0;
+    uint32_t suppress_untracked = 0;
+    uint8_t granted_fly = 0;
+    bool ends_on_restoration = false;
+    // appended (B15 Horrific Appearance). Derived from the zone row. Not hashed.
+    // immunity_on_end_hours > 0: ending this effect grants aura immunity from its caster for that many hours (0xDE).
+    // repeat_los_disadvantage: the end-of-turn repeat save is at disadvantage while the caster is within line of sight.
+    uint16_t immunity_on_end_hours = 0;
+    bool repeat_los_disadvantage = false;
+    // appended (B16 Charm). Derived from the SpellDef. Not hashed.
+    // action_immunity_on_end_hours > 0: ending this effect grants action immunity (0xE1) for that many hours.
+    // scope 0 = every user of the action (source 0); 1 = this caster only.
+    uint16_t action_immunity_on_end_hours = 0;
+    uint8_t action_immunity_on_end_scope = 0;
+    // appended (B17 Horrifying Visage). Derived from the SpellDef. Not hashed.
+    // repeat_save_magical: the end-of-turn repeat save's SaveSource::magical. Default true keeps every earlier
+    // repeat save magical. A visage sets it from SpellDef::magical (the sentence does not say "against this magic").
+    bool repeat_save_magical = true;
 };
 
 // 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).
@@ -578,6 +642,22 @@ inline constexpr int32_t kMovedDrag = 4;       // Moved.c bit2: dragged by a gra
 struct ForcedMoveQuery {
     CombatantId mover = 0, source = 0; uint8_t mode = 0; uint16_t feet = 0; bool teleport = false; uint32_t step_seq = 0;
     bool has_dest = false; int32_t dest_x = 0, dest_y = 0;
+    // Appended (B8 Deadly Leap): a push that moves 0 feet knocks the mover prone (unless immune). The no-hook
+    // path reports the requested feet, so this fires only when a hook says the space was blocked. Not hashed.
+    bool prone_if_blocked = false;
+    // Appended (B10 Whirlwind). dir_x/dir_y both 0: the existing away-from-source step. Otherwise that step
+    // (one of the eight grid directions). impact_per_ft > 0: after the hook, a reported strike deals impact_die
+    // once per impact_per_ft of feet_moved. struck_object damages the mover. struck is a Dexterity (impact_save)
+    // save against impact_dc; a failure takes that damage and falls prone. Not hashed. Replay re-runs the step.
+    int8_t dir_x = 0, dir_y = 0;
+    uint8_t impact_per_ft = 0;
+    DiceExpr impact_die{1, 6, 0};
+    DamageType impact_type = DamageType::Bludgeoning;
+    Ability impact_save = Ability::Dex;
+    int8_t impact_dc = 0;
+    // Appended (B11 Whelm). The walk stops on the first step whose footprint does not overlap the source.
+    // The source's tiles do not block it. feet is the cap (kWhelmPushCapFt). Not hashed. Replay re-runs the step.
+    bool clear_of_source = false;
 };
 // Cover (SRD 5.1 "Cover"; VERSION_BUMP_BATCH 7.2t). Rules never interpret positions: sim answers one query per source ->
 // target pair. Half = +2 to AC and Dex saves, ThreeQuarters = +5, Total = can't be targeted directly (an area effect skips
@@ -622,7 +702,7 @@ struct SightFacts {
     uint16_t distance_ft = 0;
     bool line_of_sight = true;                // no total cover / wall in between
     bool subject_invisible = false;
-    bool subject_grounded = true;             // touching the same surface as the viewer (tremorsense)
+    bool subject_grounded = true;             // subject in contact with the ground or a non-walkable climbable surface (tremorsense); airborne is not
     bool audible = true;                      // the viewer could hear it (rules adds Deafened)
 };
 // Rules' answer (derive_sight).
@@ -830,6 +910,10 @@ struct SourcedCondition {
     bool restrains = false;
     bool exclusive = false;
     bool owns_restrained = false;
+    // appended (7.2zj Calm Emotions; sourced_digest sub-byte 0x60 only when some entry's count is non-zero). While non-zero
+    // the condition bit may be off and charmed_by ignores the entry; prune_sourced keeps it until the calm ends or the
+    // charm effect itself ends.
+    uint8_t suppress_count = 0;
 };
 
 // monster@5 on_hit kind "grapple" (R-G8, appended fields for Druid gap G): the shared grapple rider. escape_dc 0 = contest.
@@ -844,8 +928,23 @@ struct GrappleRider {
     // appended (Tier-A §27): "Instead of dealing damage, the X can grapple the target": the hit grapples only when the request
     // chose ActionRequest::grapple_instead (and then deals no damage); a hit without the choice deals damage and does not grapple.
     bool instead_of_damage = false;
-    bool extended() const { return restrains || exclusive || max_grapples != 0 || instead_of_damage; }
+    // B5 (Roper tendril): the hit always deals no damage and grapples. Not a choice (that is instead_of_damage, and the
+    // two cannot combine). Can combine with restrains. Part of extended() so via_attack records the attack: the grapple's
+    // reach is that attack's reach, not a flat 5 ft.
+    bool no_damage = false;
+    // appended (Chuul pincer / Otyugh tentacle): largest Size this attack grapples (-1 = no cap beyond size_within_one).
+    // A larger target is not grappled (the hit's damage still stands; the caller treats false as damage only). Checked before
+    // extended(), so a size-only rider leaves via_attack 0xFF and Combat::hash is unchanged.
+    int8_t max_size = -1;
+    bool extended() const { return restrains || exclusive || max_grapples != 0 || instead_of_damage || no_damage; }
 };
+
+// B11 Whelm (CONTENT_CONVENTIONS §41). The grapple is not an attack, so via_attack is 0xFE (not 0xFF, which
+// 0xDB skips, and not an attack index). Reach stays 5 feet: the index is past the attack list. 0xDB already
+// folds via_attack and restrains. Not a new hash tag. The push walks at most this far and stops once the
+// mover's footprint no longer overlaps the user. The sentence names no distance.
+inline constexpr uint8_t kWhelmGrapple = 0xFE;
+inline constexpr uint16_t kWhelmPushCapFt = 60;
 
 // R-G12 rules PR 3 (D3): a Spiritual Weapon: not a combatant (no HP, not a target, no turn). token_id comes from the summon
 // counter (sim's token); end_round 0 = no limit, else it ends at the start of the owner's turn in that round.
@@ -882,6 +981,63 @@ struct AuraImmunity {
     uint32_t spell_id = 0;
     uint32_t until_round = 0;
     friend bool operator==(const AuraImmunity&, const AuraImmunity&) = default;
+};
+
+// B6 (CONTENT_CONVENTIONS §36): one SRD bite disease on a creature. Identity is (target, spell_id): a second failed save
+// from the same rider does not stack or reset the clock. next_round is the encounter round when the creature repeats the
+// save (24 hours = disease_hours × 600 rounds). reduction is the hit point maximum this disease has removed; curing it
+// puts that much back. A long rest does not. Sim Combat::hash 0xE3, folded only while a row exists or some
+// disease_hp_max_reduction is non-zero.
+struct Disease {
+    CombatantId target = 0;
+    uint32_t spell_id = 0;
+    CombatantId source = 0;
+    Ability save_ability = Ability::Con;
+    int16_t dc = 0;
+    DiceExpr dice{0, 0, 0};
+    Condition condition = Condition::Poisoned;
+    uint32_t next_round = 0;
+    uint32_t interval_rounds = 0;
+    int16_t reduction = 0;
+    friend bool operator==(const Disease&, const Disease&) = default;
+};
+
+// Visible figure (CONTENT_CONVENTIONS §52). Not a FormKind. shape is a body plan, not CreatureType.
+enum class FigureShape : uint8_t { None = 0, Humanoid = 1 };
+struct VisibleFigure {
+    uint32_t instance = 0;
+    CombatantId bearer = 0;
+    uint32_t spell_id = 0;
+    FigureShape shape = FigureShape::Humanoid;
+    Size size = Size::Medium;
+    int16_t dc = 0;
+    uint32_t armor_def = 0;
+    std::vector<uint32_t> covered_items;
+};
+// PRODUCT CHOICE: observer + subject, not the figure instance. A later activation does not clear it.
+struct FigureDiscernment {
+    CombatantId observer = 0;
+    CombatantId subject = 0;
+};
+struct VisibleFigureView {
+    bool active = false;
+    uint32_t instance = 0;
+    FigureShape shape = FigureShape::None;
+    Size size = Size::Medium;
+    uint32_t armor_def = 0;
+    std::vector<uint32_t> covered_items;
+    bool discerned = false;
+};
+// True statistics beside the figure. Not observer knowledge. No attack, grapple, or shove writes this.
+struct PhysicalMismatch {
+    bool active = false;
+    FigureShape presented_shape = FigureShape::None;
+    Size presented_size = Size::Medium;
+    Size true_size = Size::Medium;
+    CreatureType true_type = CreatureType::Humanoid;
+    uint8_t true_attack_count = 0;
+    uint32_t armor_def = 0;
+    std::vector<uint32_t> covered_items;
 };
 
 struct EncounterState {
@@ -924,6 +1080,13 @@ struct EncounterState {
     bool ground_items_seen = false;           // sticky: a ground item has existed (0xD2 keeps folding after a pick-up)
     std::vector<AuraImmunity> aura_immunities;  // appended (batch 3 ghast Stench): per-source immunity after a success; 0xDE
     std::vector<ActionImmunity> action_immunities;  // appended (Tier-A §26 Dreadful Glare): 0xE1, folded only when non-empty
+    std::vector<Disease> diseases;  // appended (B6 bite disease): 0xE3, folded only when non-empty or a reduction is set
+    // appended (visible figure, CONTENT_CONVENTIONS §52). Combat::hash 0xE7 while either vector is non-empty.
+    // figures: one per bearer, in activation order. figure_discerned: observer+subject, in first-success order.
+    // next_figure_instance is replayed by re-running the action. It is not hashed.
+    std::vector<VisibleFigure> figures{};
+    std::vector<FigureDiscernment> figure_discerned{};
+    uint32_t next_figure_instance = 1;
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
@@ -1050,6 +1213,7 @@ inline bool grapple(EncounterState& s, CombatantId grappler, CombatantId target,
 }
 // Druid gap G: a grapple rider on attack `attack_index`. Without extended fields this is exactly grapple() above. With them it
 // refuses past max_grapples (false, nothing changes), records via_attack / restrains / exclusive, and adds an owned Restrained.
+// max_size (>= 0) refuses a larger target the same way (false, nothing changes) and is not an extended field.
 bool grapple(EncounterState&, CombatantId grappler, CombatantId target, const GrappleRider&, uint8_t attack_index, std::vector<Event>&);
 // Druid gap G: true if `actor` may not use attack `attack_index` against `target` because an exclusive grapple made with that
 // attack holds another creature ("can't bite another target").
@@ -1058,6 +1222,11 @@ bool attack_locked(const EncounterState&, CombatantId actor, uint8_t attack_inde
 // same target, else remove Restrained (ConditionRemoved).
 void release_grapple_restraint(EncounterState&, const SourcedCondition& ended, std::vector<Event>&);
 CombatantId condition_source(const EncounterState&, CombatantId target, Condition);   // 0 = none recorded
+// True when `actor` is charmed by `source` (a sourced Charmed row, not suppressed).
+bool charmed_by(const EncounterState&, CombatantId actor, CombatantId source);
+// Empty when `target` meets at least one bit of `gates` (0 = any target). `willing` is ActionRequest::target_willing.
+// A willing target must also be on the actor's team. kTargetGateCharmedBySelf is charmed by the actor.
+std::string_view target_gate_reason(const EncounterState&, const Combatant& actor, const Combatant& target, uint8_t gates, bool willing);
 std::vector<CombatantId> grappled_by(const EncounterState&, CombatantId grappler);     // creatures the grappler is holding
 // Drops entries whose condition is gone; a grapple also ends when the grappler is dead or incapacitated. Called after every step.
 void prune_sourced(EncounterState&, std::vector<Event>&);
@@ -1083,6 +1252,16 @@ bool has_gaze_state(const EncounterState&);
 // Vision (7.2x). sight(): derive_sight over the hook's facts (the start-of-step state during a step), or Sight{} without a
 // hook / for an unknown id.
 Sight sight(const EncounterState&, CombatantId viewer, CombatantId subject);
+// The figure the viewer is shown, plus whether that viewer has discerned this subject.
+// Discernment does not change the figure. An inactive subject can still be discerned.
+VisibleFigureView visible_figure(const EncounterState&, CombatantId viewer, CombatantId subject);
+PhysicalMismatch physical_mismatch(const EncounterState&, CombatantId subject);
+// Invisible Passage (CONTENT_CONVENTIONS §53). Physical is None only while that action's effect is
+// on the subject. Magical is Unanswered: there is no magical-track query. Any other moment is
+// Unanswered. This does not say that tracks exist, and it is not Hide, Survival, or surprise.
+enum class TrackEvidence : uint8_t { Physical = 1, Magical = 2 };
+enum class TrackAnswer : uint8_t { Unanswered = 0, None = 1 };
+TrackAnswer track_evidence(const EncounterState&, CombatantId subject, TrackEvidence);
 bool is_hidden_from(const EncounterState&, CombatantId who, CombatantId from);
 bool has_hidden_state(const EncounterState&);   // Combat::hash 0xC5 folds hidden_digest only while true
 uint64_t hidden_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);

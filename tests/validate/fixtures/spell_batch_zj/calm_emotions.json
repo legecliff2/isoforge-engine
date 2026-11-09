@@ -1,0 +1,23 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.calm_emotions",
+  "name": "Calm Emotions",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "description": "Each humanoid in a 20-foot-radius sphere must make a Charisma save or have the charmed and frightened conditions suppressed for 1 minute, concentration. Suppression is cast-time only: underlying timers and repeat saves continue, and the conditions resume if their source remains. Indifference toward chosen hostiles and a voluntary failed save are deferred.",
+  "level": 2,
+  "school": "enchantment",
+  "classes": ["bard", "cleric"],
+  "casting_time": { "kind": "action" },
+  "range": { "kind": "ranged", "feet": 60 },
+  "components": { "v": true, "s": true },
+  "duration": { "kind": "minutes", "amount": 1, "concentration": true },
+  "area": { "shape": "sphere", "size_ft": 20 },
+  "targets": { "count": 255, "creature_type": ["humanoid"] },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "cha",
+      "suppress_conditions": ["charmed", "frightened"]
+    }
+  ]
+}

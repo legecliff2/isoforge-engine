@@ -1,0 +1,18 @@
+{
+  "$schema": "scenario@1",
+  "id": "sample.wyrmling_breath",
+  "seed": 56,
+  "pack": "sample.vertical_slice",
+  "board": {
+    "map": {}
+  },
+  "party": [
+    {"id": "fighter", "archetype": "srd51.character.fighter_1", "tile": {"x": 8, "y": 8}}
+  ],
+  "monsters": [
+    {"id": "wyrmling", "archetype": "srd51.monster.black_dragon_wyrmling", "tile": {"x": 10, "y": 8}}
+  ],
+  "surprise": [],
+  "end_condition": "teams",
+  "round_cap": 20
+}

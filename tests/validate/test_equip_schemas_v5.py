@@ -158,7 +158,8 @@ class AppendOnly(unittest.TestCase):
 
     def test_properties_carried(self):
         for old, new, extra_req in (("item/v1", "item/v2", set()), ("monster/v4", "monster/v5", set()),
-                                    ("character/v4", "character/v5", set())):
+                                    ("character/v4", "character/v5", set()),
+                                    ("monster/v5", "monster/v6", set()), ("character/v5", "character/v6", set())):
             o, n = schema(old + ".schema.json"), schema(new + ".schema.json")
             for k, v in o["properties"].items():
                 if k in ("$schema", "category", "equipment"):
@@ -186,11 +187,20 @@ class AppendOnly(unittest.TestCase):
                           # batch 3 riders (monster@5 only)
                           "drain", "curse", "target_requires_any", "ability_drain", "feet", "with_attack",
                           "ability",   # CONTENT_CONVENTIONS "Attack ability"
-                          "also_on_fail_by", "immune_on_success", "target_must_see_source"})   # Tier-A §26
+                          "also_on_fail_by", "immune_on_success", "target_must_see_source",   # Tier-A §26
+                          "drop_to_zero", "target_has_condition", "caster_sees_target",   # B15 Death Glare
+                          "charm_command", "drain_max_hp",   # B16 Charm and Draining Kiss
+                          "exclude_creature_types", "immune_on_end", "age_on_fail_by",   # B17 Horrifying Visage
+                          "rider_only",   # B3b chuul Tentacles free rider
+                          "escalates", "escalate_to", "escalate_margin",   # B4 area save petrify
+                          "jump_ft", "save_alt", "push_ft",   # B8 Deadly Leap
+                          "fling_ft", "impact", "impact_save",   # B10 Whirlwind
+                          "grapple", "crush",   # B11 Whelm
+                          "dc"})   # visible figure Investigation DC
         for k, v in c2["action"]["properties"].items():
-            if k == "kind":   # monster@5 appends "teleport" (batch 3, blink dog); common@2's enum is a strict prefix
+            if k == "kind":   # monster@5 appends "teleport" (batch 3) then "area_effect"; common@2's enum is a strict prefix
                 m_enum, c_enum = m5["action"]["properties"][k]["enum"], v["enum"]
-                self.assertEqual(m_enum, c_enum + ["teleport"], k)
+                self.assertEqual(m_enum, c_enum + ["teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm", "etherealness", "illusory_appearance", "invisible_passage"], k)
                 continue
             if k == "damage":   # CONTENT_CONVENTIONS 19: items widened to monster_damage (common@2 damage | {flat, type})
                 self.assertEqual(m5["action"]["properties"][k]["items"], {"$ref": "#/$defs/monster_damage"})
@@ -214,8 +224,8 @@ class TagTable(unittest.TestCase):
             local = checks_v4.MONSTER_AT5_EFFECT_KINDS if typ == "monster" else frozenset()
             local_act = checks_v4.MONSTER_AT5_ACTION_KINDS if typ == "monster" else frozenset()
             self.assertEqual((r4.action_kinds | local_act, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
-        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage", "aura"})
-        self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport"})
+        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage", "aura", "keen_senses", "regen", "regain", "freeze", "absorb", "innate_invisibility", "horrific_appearance", "bound"})
+        self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport", "area_effect", "pull", "deadly_leap", "whirlwind", "whelm", "etherealness", "illusory_appearance", "invisible_passage"})
 
 
 class LightPresetAndVisual(unittest.TestCase):
@@ -421,9 +431,16 @@ class DeriveCheck(unittest.TestCase):
                 self.assertIs(d["derive"], True, f.name)
                 for a in d["actions"]:
                     if a["kind"] in ("melee_weapon_attack", "ranged_weapon_attack"):
+                        if "damage" not in a:
+                            # B5: a no_damage grapple lists no damage array and no natural die (roper Tendril).
+                            self.assertTrue(
+                                any(isinstance(r, dict) and r.get("kind") == "grapple" and r.get("no_damage") is True
+                                    for r in a.get("on_hit") or []),
+                                f"{f.name}: {a['id']} omits damage without a no_damage grapple")
+                            continue
                         flat = all("flat" in c for c in a["damage"][:1])   # CONTENT_CONVENTIONS 19: no die to derive from
                         self.assertTrue("weapon" in a or "natural" in a or flat, f"{f.name}: {a['id']}")
-        self.assertEqual(n, 159)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 9 batch 2 + rat, scorpion (flat) + satyr, ghast (batch 3) + gladiator (riders, §21) + 5 batch 3b (blink dog deferred) + 11 tier B batch d1 + 10 batch D2 + 3 flat-damage batch d3 + acolyte, cult fanatic (casters) + blink dog, mummy (Tier-A b3c) + 6 CR 0 beasts (badger, eagle, owl, quipper, raven, vulture) + 4 CR 1/8 beasts (blood hawk, flying snake, giant crab, stirge) + 5 CR 1/4 batch B (constrictor snake, elk, panther, swarm of bats, swarm of ravens) + 4 CR 1/4 batch A beasts (giant badger, giant bat, giant frog, giant owl) + 4 CR 1/4 batch C (drow, pseudodragon, sprite, steam mephit) + 5 CR 1/2 batch D (giant goat, giant sea horse, giant wasp, swarm of insects, warhorse) + 5 CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) + 5 CR 1/2 batch F (crocodile, darkmantle, rust monster, gray ooze, deep gnome) + 5 CR 1 batch G (lion, tiger, giant eagle, giant vulture, hippogriff) + 6 CR 1 batch H (harpy, dryad, duergar, specter, giant octopus, swarm of quippers) + 6 CR 2 batch J (centaur, griffon, pegasus, ankheg, giant constrictor snake, minotaur skeleton) + 6 CR 2 batch I (polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger, hunter shark) + 4 CR 2 batch K (druid, priest, merrow, wererat) + 5 CR 2 batch L (grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp, ochre jelly)
+        self.assertEqual(n, 206)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 9 batch 2 + rat, scorpion (flat) + satyr, ghast (batch 3) + gladiator (riders, §21) + 5 batch 3b (blink dog deferred) + 11 tier B batch d1 + 10 batch D2 + 3 flat-damage batch d3 + acolyte, cult fanatic (casters) + blink dog, mummy (Tier-A b3c) + 6 CR 0 beasts (badger, eagle, owl, quipper, raven, vulture) + 4 CR 1/8 beasts (blood hawk, flying snake, giant crab, stirge) + 5 CR 1/4 batch B (constrictor snake, elk, panther, swarm of bats, swarm of ravens) + 4 CR 1/4 batch A beasts (giant badger, giant bat, giant frog, giant owl) + 4 CR 1/4 batch C (drow, pseudodragon, sprite, steam mephit) + 5 CR 1/2 batch D (giant goat, giant sea horse, giant wasp, swarm of insects, warhorse) + 5 CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) + 5 CR 1/2 batch F (crocodile, darkmantle, rust monster, gray ooze, deep gnome) + 5 CR 1 batch G (lion, tiger, giant eagle, giant vulture, hippogriff) + 6 CR 1 batch H (harpy, dryad, duergar, specter, giant octopus, swarm of quippers) + 6 CR 2 batch J (centaur, griffon, pegasus, ankheg, giant constrictor snake, minotaur skeleton) + 6 CR 2 batch I (polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger, hunter shark) + 4 CR 2 batch K (druid, priest, merrow, wererat) + 5 CR 2 batch L (grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp, ochre jelly) + 4 CR 3 batch M (giant scorpion, minotaur, hell hound, winter wolf) + 3 CR 3 batch N (manticore, werewolf, phase spider) + 3 CR 4 batch O (black pudding, elephant, ettin) + 4 CR 4 batch P (wereboar, weretiger, lamia, couatl) + 3 CR 5 batch Q (triceratops, giant crocodile, giant shark) + 4 CR 5 batch R (earth elemental, fire elemental, salamander, xorn) + 2 CR 5 batch S (werebear, wraith) + 4 CR 6 batch T (young white dragon, young brass dragon, chimera, wyvern) + 2 CR 6 batch U (mammoth, drider) + 2 CR 7 batch V (young black dragon, young copper dragon) + 1 CR 7 batch W (oni) + troll (regen content, Phase B after #383) + chuul (B3b tentacles free rider) + gorgon (B4 area petrify) + otyugh (bite disease and Tentacle Slam) + air elemental (Whirlwind content) + bulette (Deadly Leap content) + roper (Reel content) + shambling mound (Lightning Absorption and both-hits Engulf) + invisible stalker (Innate Invisibility content) + sea hag (Horrific Appearance and Death Glare content) + water elemental (Water Form, Whelm, and Freeze content) + green hag (Illusory Appearance and Invisible Passage content) + succubus (Charm and Draining Kiss content) + ghost (Horrifying Visage and Etherealness content) + shield guardian (Bound, Shield, and Regeneration content)
         self.assertEqual(core("monsters/goblin.json")["$schema"], "monster@3")   # fl1 compat: left at @3
 
     def test_valid_conversions(self):
@@ -654,6 +671,30 @@ class StructuralChecks(unittest.TestCase):
         e, _w = c4.check_save_effect_riders({"id": "x", "actions": [copy.deepcopy(glare)]}, "monster@4")
         self.assertTrue(any("need a monster@5 file" in x for x in e), e)
 
+    def test_horrifying_visage_keys(self):   # B17: area save, non-undead, see-source, fail-by aging, immunity on end
+        visage = {"kind": "save_effect", "id": "horrifying_visage", "name": "Horrifying Visage",
+                  "origin": "self", "area": {"shape": "sphere", "size_ft": 60},
+                  "save": {"ability": "wis", "dc": 13}, "target_must_see_source": True,
+                  "exclude_creature_types": ["undead"],
+                  "immune_on_success": {"hours": 24, "scope": "same_source"}, "immune_on_end": True,
+                  "age_on_fail_by": {"margin": 5, "dice": "1d4", "years_per": 10},
+                  "apply": [{"condition": "frightened", "duration": {"kind": "rounds", "n": 10},
+                             "repeat_save": "end_of_turn"}]}
+        b = bugbear5(); b["actions"].append(copy.deepcopy(visage))
+        e, _w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertEqual(e, [])
+        b = bugbear5(); g = copy.deepcopy(visage); g["age_on_fail_by"]["margin"] = 0; b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "bad age_on_fail_by margin")
+        b = bugbear5(); g = copy.deepcopy(visage); g["area"] = {"shape": "cone", "size_ft": 60}; b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "age_on_fail_by needs a sphere area")
+        b = bugbear5(); g = copy.deepcopy(visage)
+        g["also_on_fail_by"] = {"margin": 5, "condition": "paralyzed"}
+        b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "also_on_fail_by takes no area")
+        import checks_v4 as c4
+        e, _w = c4.check_horrifying_visage({"id": "x", "actions": [copy.deepcopy(visage)]}, "monster@4")
+        self.assertTrue(any("need a monster@5 file" in x for x in e), e)
+
     def test_reasons(self):
         b = bugbear5(); b["ac_adjust"] = {"value": 1, "reason": " "}
         self.expect(pack(**{"monsters/bugbear5.json": b}), "test.v4.bugbear5: ac_adjust needs a reason")
@@ -698,6 +739,49 @@ class StructuralChecks(unittest.TestCase):
     def test_ammo_kind_needs_ammunition_property(self):
         d = copy.deepcopy(core("items/longsword.json")); d.update({"$schema": "item@2", "id": "test.v4.ls", "ammo_kind": "arrow"})
         self.expect(pack(**{"items/ls.json": d}), "/ammo_kind: only a weapon with the 'ammunition' property fires ammunition")
+
+
+class VisualSchemaV6(unittest.TestCase):
+    """character@6 / monster@6 add optional presentation visual. 5 -> 6 is identity in the engine."""
+
+    def test_only_visual_is_new(self):
+        import checks_v4
+        for typ in ("monster", "character"):
+            old, new = schema(f"{typ}/v5.schema.json"), schema(f"{typ}/v6.schema.json")
+            self.assertEqual(set(new["$defs"]["stat_block"]["properties"]) - set(old["$defs"]["stat_block"]["properties"]), {"visual"})
+            declared = set(new["$defs"]["stat_block"]["properties"]) | set(new["properties"])
+            self.assertEqual(set(checks_v4.TAG_TABLE[f"{typ}@6"].top_level_keys), declared, typ)
+            self.assertEqual(checks_v4.TAG_TABLE[f"{typ}@6"].effect_kinds, checks_v4.TAG_TABLE[f"{typ}@5"].effect_kinds)
+
+    def test_visual_is_optional_and_closed(self):
+        wolf = core("monsters/wolf.json")
+        wolf["$schema"] = "monster@6"
+        self.assertEqual(h.validate_in_memory(wolf)[0], [])
+        wolf["visual"] = {"kind": "standin", "kit": "standin.medium", "standin_bin": "medium", "art_root": "art/standin", "size_short": False}
+        self.assertEqual(h.validate_in_memory(wolf)[0], [])
+        for vis in ({"kind": "dragon"}, {"standin_bin": "huge"}, {"bin": "medium"}, {"scale": 1}, {"art_root": "../x"}):
+            bad = dict(wolf, visual=vis)
+            self.assertTrue(h.validate_in_memory(bad)[0], vis)
+
+    def test_art_kit_is_not_a_content_document(self):
+        reg, by_tag = h.registry()
+        errs = vp.validate_pack(CORE, reg, by_tag, [])
+        self.assertFalse(any(e.startswith("art/") or "/art/" in e for e in errs), [e for e in errs if "art" in e])
+
+
+class BoundSchema(unittest.TestCase):
+    """B18: monster@5 trait bound. common@2 is unchanged. radius_ft is a multiple of 5."""
+
+    def test_radius_closed(self):
+        b = bugbear5()
+        b["traits"].append({"id": "bound", "name": "Bound", "description": "x",
+                            "effect": {"kind": "bound", "radius_ft": 60}})
+        e, w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertEqual(e, [])
+        self.assertFalse(any("unknown effect kind 'bound'" in x for x in w), w)
+        b["traits"][-1]["effect"]["radius_ft"] = 7
+        e, _w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertTrue(any("/traits/" in x for x in e), e)
 
 
 if __name__ == "__main__":
