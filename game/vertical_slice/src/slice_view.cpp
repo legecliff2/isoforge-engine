@@ -728,12 +728,12 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     text(help, {16, float(sh) - 16.f}, 1.f, dim);
     draw_cover(vm, cam);
     if (const std::string cap = area_caption_line(vm); !cap.empty()) {
-        const float panel_h = 30.f + 20.f * float(vm.actors.size());
-        float y = 12.f + panel_h;
-        if (vm.cover.present || !vm.cover.note.empty()) y += 16.f;
+        const float cap_panel_h = 30.f + 20.f * float(vm.actors.size());
+        float cap_y = 12.f + cap_panel_h;
+        if (vm.cover.present || !vm.cover.note.empty()) cap_y += 16.f;
         const Color col = vm.area.present ? area_fill_tint(vm.area.shape, vm.area.pulse_ms) : Color::rgba8(170, 176, 188);
         const Color ink = col.a > 0.f ? Color{col.r, col.g, col.b, 1.f} : Color::rgba8(170, 176, 188);
-        text(cap, {16.f, y}, 1.5f, ink, 32);
+        text(cap, {16.f, cap_y}, 1.5f, ink, 32);
     }
 
     ui_.prepare({{0, 0}, sw, sh, 1.f});
