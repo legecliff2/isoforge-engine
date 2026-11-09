@@ -503,3 +503,29 @@ TEST_CASE("shield: one grant ends the offer, and Ask pause and replay follow tha
     CHECK(find(again, 3)->reaction_used);
     CHECK(find(again, 2)->hp == find(live, 2)->hp);
 }
+
+TEST_CASE("shield: a larger reaction bonus is still only +2 on the attack") {
+    auto dist = std::make_shared<int>(5);
+    auto over = guardian(3, 2);
+    over.reactions[0].ac_bonus = 5;
+    EncounterHooks bare = hooks_at(dist, 0);
+    bool hit14 = false, miss12 = false;
+    for (uint64_t seed = 1; seed < 400 && !(hit14 && miss12); ++seed) {
+        auto st = begin_encounter({striker(1), wearer_of(2), over}, seed, nullptr, bare);
+        end_turns_until(st, 1);
+        auto r = step(st, swing(1, 2));
+        if (!r.ok) continue;
+        const auto roll = resolved(r.events);
+        if (roll.natural == 14) {
+            hit14 = true;
+            CHECK(roll.hit);             // 14 meets AC 14. +5 would miss.
+            CHECK(find(st, 3)->reaction_used);
+        } else if (roll.natural == 12) {
+            miss12 = true;
+            CHECK_FALSE(roll.hit);       // 12 misses AC 14, so the bound is not 0.
+            CHECK(find(st, 2)->hp == 80);
+        }
+    }
+    CHECK(hit14);
+    CHECK(miss12);
+}

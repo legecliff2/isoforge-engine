@@ -2132,7 +2132,7 @@ int wearer_shield_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t
         if (!d.react) continue;
         const ReactionOption o = opts[d.option];
         if (o.uses_reaction) r.reaction_used = true;
-        if (o.kind == ReactionOptionKind::AcBonus) bonus = o.ac_bonus;
+        if (o.kind == ReactionOptionKind::AcBonus) bonus = std::min(int(o.ac_bonus), 2);
         break;   // product choice: one grant. Later guardians are not offered and do not spend.
     }
     return bonus;
@@ -2729,7 +2729,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     const bool protected_by_ally = ally_attacked_window(s, ctx, a, t, atk.ranged, spell_id, ev);   // Protection-style reactions
-    actx.wearer_ac_bonus = int8_t(std::clamp(wearer_shield_window(s, ctx, a, t, atk.ranged, ev), 0, 127));   // §54, this attack only
+    actx.wearer_ac_bonus = int8_t(std::clamp(wearer_shield_window(s, ctx, a, t, atk.ranged, ev), 0, 2));   // §54, this attack only, at most +2
     const bool heat_dis = while_held_disadvantage(s, a.id);   // 7.2zh Heat Metal: attack rolls, weapon and spell
     actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis || a.squeezing || unseen_target || heat_dis;   // combined with conditions in one place
     if (!s.modifiers.empty()) {   // timed modifiers (row 12): sources merged into the one advantage/disadvantage resolution
@@ -3513,6 +3513,12 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
             commit_healing(c, h);
             emit(ev, EventKind::Healed, c.id, c.id, h.healed, h.hp_after, h.from_zero);
         }
+    }
+    // §55: regain hit points only while already at 1 or more. A creature at 0 is not kept in the fight.
+    if (!c.dead && c.hp >= 1 && c.regain > 0 && c.hp < effective_hp_max(c)) {
+        auto h = heal_hp(s, c, c.regain);
+        commit_healing(c, h);
+        if (h.healed > 0) emit(ev, EventKind::Healed, c.id, c.id, h.healed, h.hp_after, h.from_zero);
     }
     if (!c.dead) {   // Recharge: one d6 per expended recharge action of this creature (draws only when one exists)
         for (auto& u : s.action_uses) {

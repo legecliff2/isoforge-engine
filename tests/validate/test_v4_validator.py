@@ -1267,6 +1267,34 @@ class ShieldReaction(unittest.TestCase):
             ([], []))
 
 
+class RegainTrait(unittest.TestCase):
+    """Shield Guardian Regeneration (CONTENT_CONVENTIONS §55). Not troll regen."""
+
+    def doc(self, schema="monster@5", effects=None):
+        if effects is None:
+            effects = [{"kind": "regain", "amount": 10}]
+        return {"$schema": schema, "id": "t.guard",
+                "traits": [{"id": f"regain_{i}", "name": "Regeneration", "description": "x", "effect": e}
+                           for i, e in enumerate(effects)]}
+
+    def test_ok_and_refusals(self):
+        self.assertEqual(checks_v4.check_regain(self.doc(), "monster@5"), ([], []))
+        same = {"kind": "regain", "amount": 10}
+        errs, warns = checks_v4.check_regain(self.doc(effects=[same, dict(same)]), "monster@6")
+        self.assertEqual(errs, [])
+        self.assertTrue(any("duplicate regain" in w for w in warns), warns)
+        errs, _ = checks_v4.check_regain(self.doc(effects=[same, {"kind": "regain", "amount": 8}]), "monster@5")
+        self.assertTrue(any("a creature has one regain" in e for e in errs), errs)
+        errs, _ = checks_v4.check_regain(self.doc(schema="monster@4"), "monster@4")
+        self.assertTrue(any("needs a monster@5 file" in e for e in errs), errs)
+        errs, _ = checks_v4.check_regain(self.doc(schema="character@5"), "character@5")
+        self.assertTrue(any("only valid on monsters" in e for e in errs), errs)
+        errs, _ = checks_v4.check_regain(self.doc(effects=[{"kind": "regain", "amount": 0}]), "monster@5")
+        self.assertTrue(any("amount must be an integer 1..32767" in e for e in errs), errs)
+        errs, _ = checks_v4.check_regain(self.doc(effects=[{"kind": "regain", "amount": 10, "note": 1}]), "monster@5")
+        self.assertTrue(any("unknown key 'note'" in e for e in errs), errs)
+
+
 class LoaderValidatorStrings(unittest.TestCase):
     """fix/rules-loader-validator-strings: each loader / validator error pair of #214 / #218 carries one identical string."""
     PAIRS = ["pick_one needs choice ask on a hit or crit trigger",

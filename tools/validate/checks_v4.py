@@ -1505,6 +1505,45 @@ def check_regen(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     return errs, warns
 
 
+REGAIN_KEYS = frozenset({"kind", "amount"})
+
+
+def check_regain(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Shield Guardian Regeneration (CONTENT_CONVENTIONS §55; sim features.cpp apply_regain). The loader's refusals
+    as errors. An identical second declaration warns. A different second declaration errors. Not troll regen."""
+    errs: list[str] = []
+    warns: list[str] = []
+    seen: int | None = None
+    seen_path = ""
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "regain":
+            continue
+        did = f"{path}: {doc.get('id', '?')}"
+        if not str(tag).startswith("monster"):
+            errs.append(f"{did}: regain: only valid on monsters")
+            continue
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{did}: regain needs a monster@5 file")
+            continue
+        extra = sorted(k for k in eff if k not in REGAIN_KEYS)
+        if extra:
+            errs.append(f"{did}: regain: unknown key '{extra[0]}'")
+            continue
+        amount = eff.get("amount")
+        if not isinstance(amount, int) or isinstance(amount, bool) or not 1 <= amount <= 32767:
+            errs.append(f"{did}: regain: amount must be an integer 1..32767")
+            continue
+        if seen is not None:
+            if seen == amount:
+                warns.append(f"{path}: duplicate regain (same as {seen_path}); a second declaration adds nothing")
+            else:
+                errs.append(f"{did}: regain: a creature has one regain")
+        else:
+            seen = amount
+            seen_path = path
+    return errs, warns
+
+
 FREEZE_KEYS = frozenset({"kind", "by", "speed_sub"})
 
 

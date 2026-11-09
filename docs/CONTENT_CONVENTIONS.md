@@ -983,7 +983,7 @@ At the start of the creature's turn, a listed damage type taken since its previo
 
 `amount` and `suppressed_by` are static content, copied onto the combatant at spawn. They are not hashed. `regen_suppressed` and `regen_down` are the existing rules flags for "took a suppressing type since its last turn started" and "at 0 hit points, waiting for its turn." This kind does not fold them and does not claim a `SIM_EVENTS` tag. The next free hash tag stays **0xE3**. A fight whose creatures have no regeneration hashes as before. A completed heal or a death is already in hit points and `dead`. Replay of a loaded regenerator reproduces the heal from a logged hit. The 0 HP death is the same rules path; the sim test sets hit points for that case the way the rules tests do, because a content file sets only the starting hit points, so it cannot start a creature at 0.
 
-**Not this kind.** Oni and the shield guardian regain hit points only while they already have at least 1, with no damage-type list and with an ordinary death at 0. Loading `regen` on them would keep them up at 0. Radiant damage does suppress vampire spawn. The spawn still stays off `regen`: it heals only while it has at least 1 hit point, sunlight and running water also stop it, and it dies at 0. Rejuvenation (lich, ghost) is a different trait. Wild Shape and Polymorph do not copy `regeneration`: `FormStats` does not carry it, and `build_form` does not write it. The stat block is `content/packs/srd51.core/monsters/troll.json` (`srd51.monster.troll`): this effect, amount 10, `suppressed_by` acid and fire, and Keen Smell as `keen_senses` with `smell` (§30). The deferred troll row is unparked. Oni, the shield guardian, and vampire spawn still do not carry `regen`.
+**Not this kind.** Oni and the shield guardian regain hit points only while they already have at least 1, with no damage-type list and with an ordinary death at 0. Loading `regen` on them would keep them up at 0. The shield guardian sentence is §55 (`regain`), not this trait. Radiant damage does suppress vampire spawn. The spawn still stays off `regen`: it heals only while it has at least 1 hit point, sunlight and running water also stop it, and it dies at 0. Rejuvenation (lich, ghost) is a different trait. Wild Shape and Polymorph do not copy `regeneration`: `FormStats` does not carry it, and `build_form` does not write it. The stat block is `content/packs/srd51.core/monsters/troll.json` (`srd51.monster.troll`): this effect, amount 10, `suppressed_by` acid and fire, and Keen Smell as `keen_senses` with `smell` (§30). The deferred troll row is unparked. Oni, the shield guardian, and vampire spawn still do not carry `regen`.
 
 ## 32. Presentation visual and clip registry (character@6 / monster@6, Engine Core M0)
 
@@ -1750,7 +1750,7 @@ Deferred, not this trait:
 
 * Spell Storing.
 * The Shield reaction is §54. It is the same amulet, and it is not this damage transfer.
-* Regeneration, the fist, and the rest of the stat block.
+* Regeneration is §55 (`regain`), not this trait. The fist and the rest of the stat block are not this trait.
 * An amulet magic item. The spawn override is the link, not item UX.
 * `shield_guardian.json` is not authored.
 
@@ -1927,7 +1927,7 @@ What the sentence fixes:
 
 * **When a creature makes an attack.** The window opens in `do_attack` after a total-cover refusal and after the duplicate redirect, beside the Protection poll, and before the d20. It does not open for an attack that never reaches the wearer. It follows the existing no-chaining rule (`may_open`).
 * **Against the wearer of the guardian's amulet.** `Combatant::bound.wearer` is the attack's target. That is the §50 link. Spawn override `bound_wearer`. Not an item. Not a team check. An attack against anyone else does not offer it. The sentence does not exclude the guardian. The guardian's own attack against that wearer offers the reaction, including on the guardian's turn. A reaction can be taken on one's own turn.
-* **Grants a +2 bonus to the wearer's AC.** `ReactionEffectKind::WearerAc` offers one `AcBonus` option, `ac_bonus` 2, `uses_reaction` true. Taking it adds 2 to `AttackContext::wearer_ac_bonus` for this attack only. `evaluate_hit`, the Cutting Words DC, and a later `BeingHit` prompt all read `attack_target_ac`, which includes it. It is not written to `reaction_ac_bonus` and it does not emit `AcBonus`. A natural 20 still hits and is a critical hit. A natural 1 still misses. A total equal to the wearer's AC hits without the bonus and misses with it.
+* **Grants a +2 bonus to the wearer's AC.** `ReactionEffectKind::WearerAc` offers one `AcBonus` option, `ac_bonus` 2, `uses_reaction` true. Taking it adds 2 to `AttackContext::wearer_ac_bonus` for this attack only. The value is bounded to 2. A larger `ac_bonus` on the reaction row does not raise it. `evaluate_hit`, the Cutting Words DC, and a later `BeingHit` prompt all read `attack_target_ac`, which includes it. It is not written to `reaction_ac_bonus` and it does not emit `AcBonus`. A natural 20 still hits and is a critical hit. A natural 1 still misses. A total equal to the wearer's AC hits without the bonus and misses with it.
 * **If the guardian is within 5 feet.** `sight_facts(guardian, wearer).distance_ft <= 5`. At 5 feet the reaction is offered. At 6 it is not. The bound radius (60) is not this distance. No sight hook: the distance is unknown, so it is not offered. This is not the `in_range` hook. `source: ally_within_5ft` stays uncompiled.
 * **A reaction.** Optional. `Ask` may decline and keeps the reaction. `Auto` takes option 0 without seeing the roll (the BeingHit "only if it would turn the hit into a miss" rule does not apply). `Never` opens nothing. Taking it sets `reaction_used`. That clears at the start of the guardian's turn. `may_react` still requires the guardian alive, above 0 hit points, able to act, and not surprised. The built-in policy takes `AllyAttacked` option 0, so it spends this reaction. Eligible guardians are polled in the existing poll order until one grants the bonus. That stop is the product choice below, not this sentence.
 
@@ -1946,10 +1946,42 @@ Product calls, not decided here:
 Deferred, not this reaction:
 
 * Spell Storing.
-* Regeneration.
+* Regeneration is §55 (`regain`). It is not this reaction.
 * The rest of Bound (the telepathic call, the plane, the distance the guardian knows).
 * An amulet magic item.
 * `shield_guardian.json` is not authored.
 
-This section does not author `srd51.monster.shield_guardian`. The row stays deferred until Spell Storing, Regeneration, and the stat block are written. Counts stay 205 authored and 5 deferred.
+This section does not author `srd51.monster.shield_guardian`. Regeneration is §55. The row stays deferred until Spell Storing and the stat block are written. Counts stay 205 authored and 5 deferred.
+
+## 55. Regain (monster@5 trait `regain`)
+
+SRD 5.1 Shield Guardian Regeneration. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `shield-guardian`, `special_abilities` name Regeneration). The mirror prints:
+
+"The shield guardian regains 10 hit points at the start of its turn if it has at least 1 hit. point."
+
+The period in "hit. point" is a mirror typo. The sentence is "at least 1 hit point." It is not troll Regeneration (§31). There is no damage-type list and no "dies only if it starts its turn with 0 hit points and doesn't regenerate."
+
+```json
+{ "id": "regeneration", "name": "Regeneration", "effect": { "kind": "regain", "amount": 10 } }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `amount` | integer 1..32767. The shield guardian is 10. Regained at the start of this creature's turn, capped at `effective_hp_max` | `regain: amount must be an integer 1..32767` |
+| (none other) | id, name, kind, amount, an optional description. Not `regen` | `regain: unknown key '...'` / `regain needs a monster@5 file` / `regain: only valid on monsters` |
+
+One trait per creature. An identical second declaration adds nothing. A different amount is `regain: a creature has one regain`. Below monster@5, or on a character, the loader says `regain needs a monster@5 file` or `regain: only valid on monsters`.
+
+What the sentence fixes:
+
+* **At the start of its turn.** `start_turn` of this creature only. Another creature's turn does not heal it.
+* **10 hit points.** `heal_hp` of `amount`, then `commit_healing`. A `Healed` event is emitted when the regain is above 0. At the effective maximum there is no event and the hit points stay.
+* **At least 1 hit point.** `hp >= 1`. Temporary hit points are not hit points. A creature at 1 regains. A creature at 0 does not.
+* **Ordinary death at 0.** This trait does not set `regeneration` and does not set `regen_down`. A monster with no death saves that drops to 0 dies on the existing path. A dead creature stays dead. A troll with `regen` still waits at 0 and stands on a clear turn.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `regain` is static. Hit points and `Healed` are already hashed. Next free stays **0xE8**. Replay re-runs the turn. `FormStats` does not carry it. Shapechange is not this trait.
+
+`srd51.monster.shield_guardian` is not authored. Oni prints the same one-sentence shape and is not authored here. Vampire spawn is not this sentence. Spell Storing is not this trait.
+
+This section does not author `srd51.monster.shield_guardian`. The row stays deferred until Spell Storing and the stat block are written. Counts stay 205 authored and 5 deferred.
 

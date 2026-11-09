@@ -243,6 +243,32 @@
                   ],
                   "properties": {
                     "kind": {
+                      "const": "regain"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/regain_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
                       "const": "freeze"
                     }
                   }
@@ -2288,6 +2314,26 @@
             "$ref": "../common/v1.schema.json#/$defs/damage_type"
           },
           "description": "Damage types that suppress the next start-of-turn regeneration. A type reduced to 0 by resistance or immunity does not count."
+        }
+      }
+    },
+    "regain_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "amount"
+      ],
+      "description": "monster@5-local trait kind (CONTENT_CONVENTIONS §55; common@2 unchanged): regains amount hit points at the start of its turn if it has at least 1 hit point. Ordinary death at 0. Not troll regen. SRD Shield Guardian: {kind regain, amount 10}.",
+      "properties": {
+        "kind": {
+          "const": "regain"
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32767,
+          "description": "Hit points regained (int16) while current hit points are at least 1. Capped at the effective maximum."
         }
       }
     },
