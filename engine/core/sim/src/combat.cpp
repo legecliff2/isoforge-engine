@@ -278,35 +278,23 @@ const rules5e::SpellDef* Combat::spell_def(uint32_t id) const { return spells_ ?
 namespace {
 using rules5e::AreaShape;
 int64_t i64(int v) { return v; }
-}
 
-std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
-                                              std::string* error) const {
-    auto fail = [&](const char* m) { if (error) *error = m; return std::vector<CombatantId>{}; };
-    if (def.area == AreaShape::None) return fail("spell has no area");
-    if (!rules5e::find(state_, caster)) return fail("bad caster");
-    if (!grid_.in_bounds(aim)) return fail("aim tile out of bounds");
-    const Spot cs = spot(caster);
-    const bool self_origin = def.range_ft == 0;
-    const bool directional = def.area == AreaShape::Cone || def.area == AreaShape::Line;
-    const int size = int(def.area_size_ft) / kFeetPerTile;   // cone/line length, cube side, sphere/cylinder radius (tiles)
-    const int width = std::max(1, int(def.area_width_ft) / kFeetPerTile);
-    // Doubled coordinates keep even footprints' centres integral.
-    const Vec2i c2{2 * cs.p.x + cs.n - 1, 2 * cs.p.y + cs.n - 1};
-    const Vec2i a2{2 * aim.x - c2.x, 2 * aim.y - c2.y};   // aim relative to the caster's centre
-    if (!self_origin && !directional) {
-        if (rect_distance(cs.p, cs.n, aim, 1) * kFeetPerTile > int(def.range_ft)) return fail("aim beyond range");
-        bool seen = false;
-        for (int y = 0; y < cs.n && !seen; ++y)
-            for (int x = 0; x < cs.n && !seen; ++x) seen = grid_.line_of_sight({cs.p.x + x, cs.p.y + y}, aim);
-        if (!seen) return fail("aim not in line of sight");
-    } else if (directional || def.area == AreaShape::Cube) {
-        if (a2.x == 0 && a2.y == 0) return fail("aim must differ from the caster's tile");
-    }
-    // Template membership of one tile.
-    auto inside = [&](Vec2i t) {
+// One template for area_targets and area_preview. The renderer must call area_preview, not copy this.
+struct AreaTemplate {
+    const Grid* grid = nullptr;
+    AreaShape shape = AreaShape::None;
+    bool self_origin = false;
+    bool directional = false;
+    Combat::Spot cs{};
+    Vec2i aim{};
+    Vec2i c2{};
+    Vec2i a2{};
+    int size = 0;    // cone/line length, cube side, sphere/cylinder radius, in tiles
+    int width = 1;   // line width in tiles (at least 1)
+
+    bool inside(Vec2i t) const {
         const Vec2i v2{2 * t.x - c2.x, 2 * t.y - c2.y};   // tile centre relative to the caster centre, doubled
-        switch (def.area) {
+        switch (shape) {
             case AreaShape::Cone: {
                 const int64_t dot = i64(v2.x) * a2.x + i64(v2.y) * a2.y, cross = i64(v2.x) * a2.y - i64(v2.y) * a2.x;
                 const int cheb = std::max(std::abs(v2.x), std::abs(v2.y));
@@ -344,15 +332,89 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
             }
             default: return false;
         }
-    };
-    // Where line of sight is taken from: the aim tile for a point origin, otherwise the caster's footprint.
-    auto origin_sees = [&](Vec2i t) {
-        if (!self_origin && !directional) return grid_.line_of_sight(aim, t);
+    }
+    // Line of sight from the origin: the aim tile for a point origin, otherwise any caster footprint tile.
+    bool origin_sees(Vec2i t) const {
+        if (!self_origin && !directional) return grid->line_of_sight(aim, t);
         for (int y = 0; y < cs.n; ++y)
             for (int x = 0; x < cs.n; ++x)
-                if (grid_.line_of_sight({cs.p.x + x, cs.p.y + y}, t)) return true;
+                if (grid->line_of_sight({cs.p.x + x, cs.p.y + y}, t)) return true;
         return false;
+    }
+    bool member(Vec2i t) const { return inside(t) && origin_sees(t); }
+    // A superset of member tiles: the footprint and the aim, each grown by the template's reach. member() is the test.
+    void tile_box(int& x0, int& x1, int& y0, int& y1) const {
+        const int pad = size + width + 2;
+        const int ax0 = cs.p.x - pad, ax1 = cs.p.x + cs.n - 1 + pad;
+        const int ay0 = cs.p.y - pad, ay1 = cs.p.y + cs.n - 1 + pad;
+        const int bx0 = aim.x - pad, bx1 = aim.x + pad;
+        const int by0 = aim.y - pad, by1 = aim.y + pad;
+        x0 = ax0 < bx0 ? ax0 : bx0;
+        x1 = ax1 > bx1 ? ax1 : bx1;
+        y0 = ay0 < by0 ? ay0 : by0;
+        y1 = ay1 > by1 ? ay1 : by1;
+    }
+};
+
+// Aim rejections shared with area_targets. "spell has no area" and "bad caster" are checked by the callers, in that
+// order, so a missing spell still wins over a bad id. Does not report "no creature in the area".
+std::optional<AreaTemplate> make_area_template(const Grid& grid, Combat::Spot cs, const rules5e::SpellDef& def, Vec2i aim,
+                                              std::string* error) {
+    auto fail = [&](const char* m) -> std::optional<AreaTemplate> {
+        if (error) *error = m;
+        return std::nullopt;
     };
+    if (!grid.in_bounds(aim)) return fail("aim tile out of bounds");
+    AreaTemplate g;
+    g.grid = &grid;
+    g.shape = def.area;
+    g.self_origin = def.range_ft == 0;
+    g.directional = def.area == AreaShape::Cone || def.area == AreaShape::Line;
+    g.cs = cs;
+    g.aim = aim;
+    g.size = int(def.area_size_ft) / kFeetPerTile;
+    g.width = std::max(1, int(def.area_width_ft) / kFeetPerTile);
+    // Doubled coordinates keep even footprints' centres integral.
+    g.c2 = {2 * cs.p.x + cs.n - 1, 2 * cs.p.y + cs.n - 1};
+    g.a2 = {2 * aim.x - g.c2.x, 2 * aim.y - g.c2.y};   // aim relative to the caster's centre
+    if (!g.self_origin && !g.directional) {
+        if (rect_distance(cs.p, cs.n, aim, 1) * kFeetPerTile > int(def.range_ft)) return fail("aim beyond range");
+        bool seen = false;
+        for (int y = 0; y < cs.n && !seen; ++y)
+            for (int x = 0; x < cs.n && !seen; ++x) seen = grid.line_of_sight({cs.p.x + x, cs.p.y + y}, aim);
+        if (!seen) return fail("aim not in line of sight");
+    } else if (g.directional || def.area == AreaShape::Cube) {
+        if (g.a2.x == 0 && g.a2.y == 0) return fail("aim must differ from the caster's tile");
+    }
+    return g;
+}
+} // namespace
+
+std::vector<Vec2i> Combat::area_preview(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
+                                        std::string* error) const {
+    auto fail = [&](const char* m) { if (error) *error = m; return std::vector<Vec2i>{}; };
+    if (def.area == AreaShape::None) return fail("spell has no area");
+    if (!rules5e::find(state_, caster)) return fail("bad caster");
+    const auto tmpl = make_area_template(grid_, spot(caster), def, aim, error);
+    if (!tmpl) return {};
+    int x0 = 0, x1 = -1, y0 = 0, y1 = -1;
+    tmpl->tile_box(x0, x1, y0, y1);
+    std::vector<Vec2i> tiles;
+    for (int y = y0; y <= y1; ++y)
+        for (int x = x0; x <= x1; ++x) {
+            const Vec2i t{x, y};
+            if (grid_.in_bounds(t) && tmpl->member(t)) tiles.push_back(t);
+        }
+    return tiles;
+}
+
+std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
+                                              std::string* error) const {
+    auto fail = [&](const char* m) { if (error) *error = m; return std::vector<CombatantId>{}; };
+    if (def.area == AreaShape::None) return fail("spell has no area");
+    if (!rules5e::find(state_, caster)) return fail("bad caster");
+    const auto tmpl = make_area_template(grid_, spot(caster), def, aim, error);
+    if (!tmpl) return {};
     std::vector<CombatantId> out;
     for (const auto& sl : slots_) {
         const auto* c = rules5e::find(state_, sl.id);
@@ -360,10 +422,8 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
         const Spot s = spot(sl.id);
         bool hit = false;
         for (int y = 0; y < s.n && !hit; ++y)
-            for (int x = 0; x < s.n && !hit; ++x) {
-                const Vec2i t{s.p.x + x, s.p.y + y};
-                hit = inside(t) && origin_sees(t);
-            }
+            for (int x = 0; x < s.n && !hit; ++x)
+                hit = tmpl->member({s.p.x + x, s.p.y + y});
         if (hit) out.push_back(sl.id);
     }
     if (out.empty()) return fail("no creature in the area");

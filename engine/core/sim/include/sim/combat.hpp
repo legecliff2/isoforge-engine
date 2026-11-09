@@ -362,8 +362,27 @@ public:
     // (see docs/SIM_EVENTS.md "Area templates"): range 0 is a self origin (cone / line / cube start at the caster and
     // point toward `aim`; sphere / cylinder are centred on the caster), range > 0 a point origin at `aim` (must be within
     // range and in line of sight of the caster). Creatures need line of sight from the origin to a tile of their footprint.
+    // area_preview is that same template as a tile list (one geometry path).
     std::vector<CombatantId> area_targets(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
                                           std::string* error = nullptr) const;
+    // Tiles of the template area_targets uses, so a preview cannot drift from resolution. Row-scan (y, then x) of the
+    // in-bounds tiles that are inside the shape and seen from its origin (the same line of sight area_targets uses).
+    // Read-only: no events and no hash change. *error, when non-null, is set only for the aim rejections area_targets
+    // uses ("spell has no area", "bad caster", "aim tile out of bounds", "aim beyond range", "aim not in line of sight",
+    // "aim must differ from the caster's tile") and is left unchanged on success. A valid template with nobody in it still
+    // returns its tiles; it does not report "no creature in the area". Empty, and no error, means the template covers no
+    // in-bounds tile.
+    // Feet stay on the SpellDef and are converted with area_targets' integer division (5 ft per tile). A line whose
+    // width_ft is 0 is one tile wide, because that is what area_targets does. Cylinder height is ignored (the template is
+    // 2D), the same as area_targets; this does not stand in for a 3D cylinder. There is no altitude filter. The caster's
+    // own tiles are included when they fall inside (a self sphere covers its footprint); area_targets still never returns
+    // the caster.
+    // Contract gap vs a hook of the form area_preview(actor, shape, size_ft, width_ft, origin, aim): range_ft chooses a
+    // self origin (0) or a point origin and is not in that argument list, so the hook cannot name a point-origin sphere or
+    // cube. The origin is this caster's live footprint, not the anchor from pos(caster) (a larger footprint's centre is
+    // not that tile). Pass the SpellDef area_targets already takes. There is no pending flag; that belongs to the view.
+    std::vector<Vec2i> area_preview(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
+                                    std::string* error = nullptr) const;
     const rules5e::SpellDef* spell_def(uint32_t id) const;
     // R-G9 teleport (FORCED_MOVEMENT.md §3, Q8): the anchors `actor` may teleport to with `def` (a Teleport spell), row-major
     // (y, then x): footprint walkable and free, not its own tile, at most max_feet away (anchor-to-anchor Chebyshev x 5 ft), in
