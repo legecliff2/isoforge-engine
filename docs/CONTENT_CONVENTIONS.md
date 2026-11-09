@@ -1746,15 +1746,15 @@ Product calls, not decided here:
 * **Two guardians, one wearer.** Sequential half-up of the remainder is what keeps "transferred" from handing out more hit points than the wearer took. A ruling that only the first guardian receives the half is not taken.
 * **No sight hook.** Nothing is transferred. A ruling that missing positions count as within 60 feet is not taken.
 
+`srd51.monster.shield_guardian` authors this trait (`radius_ft` 60) with the printed construct stat block. The damage sentence is the trait. Same plane, the telepathic call, and the distance and direction stay descriptive. There is no amulet item. Spell Storing stays description only (HOLD). The Shield reaction is §54. Regeneration is §55 (`regain`). Multiattack is two fist attacks. Not full Shield Guardian support. No new hash tag. Counts are 206 authored and 4 deferred.
+
 Deferred, not this trait:
 
-* Spell Storing.
-* The Shield reaction is §54. It is the same amulet, and it is not this damage transfer.
-* Regeneration is §55 (`regain`), not this trait. The fist and the rest of the stat block are not this trait.
+* Spell Storing. `srd51.monster.shield_guardian` carries the SRD sentences as a description-only trait. No stored spell and no cast.
+* The Shield reaction is §54. It is the same amulet, and it is not this damage transfer. `srd51.monster.shield_guardian` authors that reaction.
+* Regeneration is §55 (`regain`), not this trait. `srd51.monster.shield_guardian` authors that trait. The fist and the rest of the stat block are not this trait.
 * An amulet magic item. The spawn override is the link, not item UX.
-* `shield_guardian.json` is not authored.
-
-This section does not author `srd51.monster.shield_guardian`. The row stays deferred until Spell Storing, the Shield reaction, and the stat block are written. Counts stay 204 authored and 6 deferred.
+* Same plane, the telepathic call, and the distance and direction the guardian knows. Those sentences stay in the Bound description. They are not this damage transfer.
 
 ## 51. Etherealness (monster@5 action `etherealness`)
 
@@ -1943,15 +1943,14 @@ Product calls, not decided here:
 * **The reactor does not see the d20.** The sentence says "makes an attack", not "makes an attack roll" and not "when hit". `AttackRolled` is the later window.
 * **No sight hook.** The reaction is not offered.
 
+`srd51.monster.shield_guardian` authors this reaction (`ally_attacked`, `ac_bonus` 2) with the `bound` trait. The bonus is for the triggering attack only. A natural 20 still hits. Product choice, separate from the SRD sentence: after one guardian grants +2, later guardians are not offered and do not spend for that attack. A decline offers the next. The bonus is 2 or 0. The wearer is spawn override `bound_wearer`, not an amulet item. Spell Storing stays description only (HOLD). Same plane, the telepathic call, and the distance and direction stay descriptive on Bound. Regeneration is §55. Not full Shield Guardian support. No new hash tag. Counts are 206 authored and 4 deferred.
+
 Deferred, not this reaction:
 
-* Spell Storing.
-* Regeneration is §55 (`regain`). It is not this reaction.
-* The rest of Bound (the telepathic call, the plane, the distance the guardian knows).
-* An amulet magic item.
-* `shield_guardian.json` is not authored.
-
-This section does not author `srd51.monster.shield_guardian`. Regeneration is §55. The row stays deferred until Spell Storing and the stat block are written. Counts stay 205 authored and 5 deferred.
+* Spell Storing. `srd51.monster.shield_guardian` carries the SRD sentences as a description-only trait. No stored spell and no cast.
+* Regeneration is §55 (`regain`). It is not this reaction. `srd51.monster.shield_guardian` authors that trait.
+* The rest of Bound (the telepathic call, the plane, the distance the guardian knows). Those sentences stay descriptive on the Bound trait.
+* An amulet magic item. The spawn override is the link, not item UX.
 
 ## 55. Regain (monster@5 trait `regain`)
 
@@ -1981,7 +1980,5 @@ What the sentence fixes:
 
 No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `regain` is static. Hit points and `Healed` are already hashed. Next free stays **0xE8**. Replay re-runs the turn. `FormStats` does not carry it. Shapechange is not this trait.
 
-`srd51.monster.shield_guardian` is not authored. Oni prints the same one-sentence shape and is not authored here. Vampire spawn is not this sentence. Spell Storing is not this trait.
-
-This section does not author `srd51.monster.shield_guardian`. The row stays deferred until Spell Storing and the stat block are written. Counts stay 205 authored and 5 deferred.
+`srd51.monster.shield_guardian` authors this trait (`amount` 10). The a6212be mirror prints "1 hit. point."; that period is a mirror typo. The authored sentence is "at least 1 hit point." Oni prints the same one-sentence shape and is not authored here. Vampire spawn is not this sentence. Spell Storing is not this trait. It stays description only (HOLD) on the shield guardian row. Not full Shield Guardian support. No new hash tag. Counts are 206 authored and 4 deferred.
 
