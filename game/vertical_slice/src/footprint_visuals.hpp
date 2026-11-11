@@ -78,15 +78,35 @@ inline void place_on_footprint(float& w, float& h, float& ax, float& ay, const F
     ay = ay * s + g.centre_anchor_y + (grow ? g.grow_lift : 0.f);
 }
 
-// World px of the name / HP anchor: the footprint centre, one body-height above the feet.
-// pawn_h is the unscaled body height. scale is g.pawn_scale for a placeholder pawn and 1
-// for a stand-in canvas drawn 1:1. The footprint argument keeps this call beside
-// include_actor_bounds; the height does not read pawn_scale itself. Side 1 is
-// centre.y - (pawn_h - 4) for either scale.
-inline eng::Vec2f footprint_head_px(eng::Vec2f centre_px, const FootprintGeom& /*g*/, float pawn_h,
-                                    float scale) noexcept {
+// World px of the name / HP anchor: the footprint centre, one body-height above the feet,
+// pulled down 4px. pawn_h is the unscaled body height. scale is pawn_scale for a placeholder
+// pawn and 1 for a stand-in canvas drawn 1:1. Side 1 is centre.y - (pawn_h - 4) for either scale.
+inline eng::Vec2f footprint_head_px(eng::Vec2f centre_px, float pawn_h, float scale) noexcept {
     return {centre_px.x, centre_px.y - (pawn_h - 4.f) * scale};
 }
+
+// Name / HP / camera height. When the stand-in canvas is the body, height is that canvas and
+// scale is 1. When the draw falls back to the grown pawn (missing kit, or a bin with no canvas),
+// height is the pawn and scale is pawn_scale, so the bar sits above the pawn that is drawn.
+struct LabelBodyAnchor {
+    float body_h = 0.f;
+    float scale = 1.f;
+};
+inline LabelBodyAnchor label_body_anchor(bool standin_drawn, float canvas_h, float pawn_h,
+                                         float pawn_scale) noexcept {
+    if (standin_drawn && canvas_h > 0.f) return {canvas_h, 1.f};
+    return {pawn_h, pawn_scale};
+}
+
+// Body sprite anchor_y before place_on_footprint.
+// Pawn: height - tile_h/2 - 4. Stand-in: pivot_y - tile_h/2 (feet pivot, half a tile above the anchor).
+inline float pawn_body_anchor_y(float pawn_h, float tile_h) noexcept { return pawn_h - tile_h * 0.5f - 4.f; }
+inline float standin_body_anchor_y(float pivot_y, float tile_h) noexcept { return pivot_y - tile_h * 0.5f; }
+
+// Unseen-attacker pip anchor_y before place_on_footprint. The quad stays 5x9 with ax -8.
+// anchor_y is px down from the sprite's top-left, so body_pay + 2 puts the pip top 2px above
+// the body top. A 44px pawn on a 32px tile has body_pay 24, so the pip stays at 26.
+inline float unseen_attacker_pip_ay(float body_pay) noexcept { return body_pay + 2.f; }
 
 // Union a creature's screen bounds into the focus box. centre_px is the footprint centre
 // (tile centre of centre_iso). scale matches footprint_head_px: pawn_scale for a pawn, 1
