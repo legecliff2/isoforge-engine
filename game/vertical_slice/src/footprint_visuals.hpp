@@ -67,8 +67,9 @@ inline FootprintGeom footprint_geom(eng::Vec2i anchor, int side, float tile_w, f
 
 // A sprite authored for a 1x1 token (its iso point is the anchor tile's top vertex). grow
 // scales it with the body, about the feet, so the ground contact stays on the footprint
-// centre; otherwise only the centre slide is applied (a cue mark). Side 1 leaves w, h and
-// both anchors unchanged: centre_anchor_y, pawn_scale's effect and grow_lift are all 0.
+// centre; otherwise only the centre slide is applied (a cue mark, or a stand-in canvas
+// drawn 1:1). Side 1 leaves w, h and both anchors unchanged: centre_anchor_y, pawn_scale's
+// effect and grow_lift are all 0.
 inline void place_on_footprint(float& w, float& h, float& ax, float& ay, const FootprintGeom& g, bool grow) noexcept {
     const float s = grow ? g.pawn_scale : 1.f;
     w *= s;
@@ -78,19 +79,25 @@ inline void place_on_footprint(float& w, float& h, float& ax, float& ay, const F
 }
 
 // World px of the name / HP anchor: the footprint centre, one body-height above the feet.
-// pawn_h is the unscaled placeholder height. Side 1 is centre.y - (pawn_h - 4).
-inline eng::Vec2f footprint_head_px(eng::Vec2f centre_px, const FootprintGeom& g, float pawn_h) noexcept {
-    return {centre_px.x, centre_px.y - (pawn_h - 4.f) * g.pawn_scale};
+// pawn_h is the unscaled body height. scale is g.pawn_scale for a placeholder pawn and 1
+// for a stand-in canvas drawn 1:1. The footprint argument keeps this call beside
+// include_actor_bounds; the height does not read pawn_scale itself. Side 1 is
+// centre.y - (pawn_h - 4) for either scale.
+inline eng::Vec2f footprint_head_px(eng::Vec2f centre_px, const FootprintGeom& /*g*/, float pawn_h,
+                                    float scale) noexcept {
+    return {centre_px.x, centre_px.y - (pawn_h - 4.f) * scale};
 }
 
 // Union a creature's screen bounds into the focus box. centre_px is the footprint centre
-// (tile centre of centre_iso). Side 1 is one tile wide and pawn_h above that centre.
+// (tile centre of centre_iso). scale matches footprint_head_px: pawn_scale for a pawn, 1
+// for a 1:1 stand-in. The ring stays footprint-wide. Side 1 is one tile wide and pawn_h
+// above that centre.
 inline void include_actor_bounds(float& x0, float& y0, float& x1, float& y1, eng::Vec2f centre_px,
-                                 const FootprintGeom& g, float pawn_h) noexcept {
+                                 const FootprintGeom& g, float pawn_h, float scale) noexcept {
     const float hw = g.ring_w * 0.5f, hh = g.ring_h * 0.5f;
     x0 = std::min(x0, centre_px.x - hw);
     x1 = std::max(x1, centre_px.x + hw);
-    y0 = std::min(y0, centre_px.y - pawn_h * g.pawn_scale);
+    y0 = std::min(y0, centre_px.y - pawn_h * scale);
     y1 = std::max(y1, centre_px.y + hh);
 }
 

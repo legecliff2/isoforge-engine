@@ -149,11 +149,24 @@ const char* facing_name(Facing f) {
 }
 
 // Canvas height of a stand-in bin. The pawn stays kPawnH. Used for the name/HP anchor and
-// the camera box so a loaded kit and a missing kit agree before textures exist.
+// the camera box so a loaded kit and a missing kit agree before textures exist: both use
+// this height, not the uploaded image.
+//
+// standin_anchor_scale is 1 for a known bin (this returns the canvas height) and pawn_scale
+// otherwise. If the kit is missing, the body falls back to the grown pawn, but the anchor
+// stays at 1x canvas height so the label and the camera do not jump when the kit loads.
+// Huge / gargantuan are not a canvas, so that anchor is the pawn height at pawn_scale,
+// matching the pawn they draw. An empty bin uses the same anchor; body_for may still
+// load medium, and that loaded canvas is drawn 1:1.
 float standin_body_h(const ActorView& a) {
     if (a.visual_kind != "standin") return float(kPawnH);
     const presentation::StandinCanvas c = presentation::standin_canvas(a.standin_bin);
     return c.h == 0 ? float(kPawnH) : float(c.h);
+}
+
+float standin_anchor_scale(const ActorView& a, float pawn_scale) {
+    if (a.visual_kind != "standin") return pawn_scale;
+    return presentation::standin_canvas(a.standin_bin).h == 0 ? pawn_scale : 1.f;
 }
 
 Color tint_for(const ActorView& a) {
@@ -434,7 +447,7 @@ Vec2f SliceView::actors_focus_px(const ViewModel& vm) const {
     for (const ActorView& a : vm.actors) {
         const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
         const Vec2f c = tile_center_px(fp.centre_iso.x, fp.centre_iso.y);
-        include_actor_bounds(x0, y0, x1, y1, c, fp, standin_body_h(a));
+        include_actor_bounds(x0, y0, x1, y1, c, fp, standin_body_h(a), standin_anchor_scale(a, fp.pawn_scale));
     }
     return {(x0 + x1) * 0.5f, (y0 + y1) * 0.5f};
 }
@@ -599,6 +612,12 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         // selected. Either one covers the whole NxN diamond. A 1x1 that is not current draws none.
         if (a.current) footprint_ring(Color::rgba8(255, 220, 60), 0, 9, iso);
         else if (fp.n > 1) footprint_ring(Color::rgba8(236, 238, 244, 180), 0, 9, iso);
+        // Loaded stand-in art is the canvas, drawn 1:1. Enlarge, Transform, and squeeze change
+        // the footprint (and the rings) and not this size: grow stays false for as long as the
+        // kit is the body. The centre slide still puts the feet on the footprint centre;
+        // grow_lift is only the pawn's. A missing kit leaves standin empty and the pawn grows.
+        const std::optional<StandinCache::Body> standin = standins_->body_for(a, present_s_);
+        const bool grow_body = !standin;
         // Unseen target: a small slate-cyan diamond on the ground. It is not the full-tile current-turn
         // ring (gold, z 9) and not a Faerie Fire outline (full-tile purple on the actor). Alpha stays
         // well above the Invisible ghost (~0.38): this is a mark, not a fade of the token.
@@ -612,9 +631,10 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         }
         // Unseen attacker: a coral pip beside the head. They can affect the viewer while the viewer
         // cannot see them. A pip, not a ring, so it does not stack with the outline above.
+        // Same scale as the body: 1:1 when the stand-in canvas is what we draw.
         if (a.unseen_attacker) {
             float w = 5.f, h = 9.f, ax = -8.f, ay = 26.f;
-            place_on_footprint(w, h, ax, ay, fp, true);
+            place_on_footprint(w, h, ax, ay, fp, grow_body);
             iso2d::Sprite pip{tex_->white, w, h, ax, ay};
             pip.tint = Color::rgba8(232, 84, 58, 235);
             world_.draw(pip, iso, actor_sort, 1, a.id, 9);
@@ -626,7 +646,6 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         Color lit_by = af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible);
         if (L.present) lit_by = mul(lit_by, {1.6f, 1.6f, 1.6f, 1.f});   // tokens stay readable in dim light
         if (a.invisible && !a.dead) lit_by.a *= 0.38f;   // ghost equipment with the body
-        const std::optional<StandinCache::Body> standin = standins_->body_for(a, present_s_);
         float pw = float(kPawnW), ph = float(kPawnH), pax = kPawnW / 2.f, pay = float(kPawnH) - kTileH / 2.f - 4.f;
         TextureId body_tex = tex_->pawn;
         if (standin) {
@@ -636,7 +655,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             pay = float(standin->pivot_y) - float(kTileH) * 0.5f;
             body_tex = standin->tex;
         }
-        place_on_footprint(pw, ph, pax, pay, fp, true);
+        place_on_footprint(pw, ph, pax, pay, fp, grow_body);
         iso2d::Sprite p{body_tex, pw, ph, pax, pay};
         if (standin) {
             p.tint = lit_by;   // authored west frames, uv 0..1 (flip+1px is in the pixels, not a uv swap)
@@ -653,7 +672,8 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
                 if (l.part == EquipPart::Body) { world_.draw(p, iso, actor_sort, 1, a.id, kZBody); continue; }
                 for (const EquipQuad& q : equip_quads(*l.item, l.part, l.at)) {
                     float w = q.size.x, h = q.size.y, ax = q.size.x / 2.f - q.at.x, ay = q.size.y - q.at.y;
-                    place_on_footprint(w, h, ax, ay, fp, true);   // bottom-centre on the token anchor + q.at
+                    // Same scale as the body. Bottom-centre sits on the token anchor + q.at.
+                    place_on_footprint(w, h, ax, ay, fp, grow_body);
                     iso2d::Sprite s{tex_->white, w, h, ax, ay};
                     s.tint = q.emissive ? q.color : mul(q.color, lit_by);
                     if (a.invisible && !a.dead && q.emissive) s.tint.a *= 0.38f;
@@ -677,8 +697,9 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         if (!visible(a)) continue;
         const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
         const Vec2f head = cam.world_to_screen(
-            footprint_head_px(tile_center_px(fp.centre_iso.x, fp.centre_iso.y), fp, standin_body_h(a)));
-        const float bw = 40.f * fp.pawn_scale, bh = 5.f;
+            footprint_head_px(tile_center_px(fp.centre_iso.x, fp.centre_iso.y), fp, standin_body_h(a),
+                              standin_anchor_scale(a, fp.pawn_scale)));
+        const float bw = 40.f * fp.pawn_scale, bh = 5.f;   // bar stays footprint-wide
         const Vec2f bp{head.x - bw / 2.f, head.y - 12.f};
         rect({bp.x - 1, bp.y - 1}, {bw + 2, bh + 2}, Color::rgba8(0, 0, 0, 200), 10);
         const float frac = a.hp_max > 0 ? std::clamp(float(a.hp) / float(a.hp_max), 0.f, 1.f) : 0.f;
