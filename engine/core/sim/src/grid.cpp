@@ -124,6 +124,29 @@ bool Grid::passable_over(Vec2i p, const MoveCaps& caps, int abs_ft) const noexce
 }
 
 bool Grid::in_bounds(Vec2i p) const noexcept { return walk_at(p) != nullptr; }
+void Grid::world_bounds(int& x0, int& y0, int& x1, int& y1) const noexcept {
+    x0 = 0;
+    y0 = 0;
+    x1 = -1;
+    y1 = -1;
+    for (const auto& entry : chunks_) {
+        const int ox = entry.first.first * N;
+        const int oy = entry.first.second * N;
+        const int ex = ox + N - 1;
+        const int ey = oy + N - 1;
+        if (x1 < x0) {
+            x0 = ox;
+            y0 = oy;
+            x1 = ex;
+            y1 = ey;
+            continue;
+        }
+        if (ox < x0) x0 = ox;
+        if (oy < y0) y0 = oy;
+        if (ex > x1) x1 = ex;
+        if (ey > y1) y1 = ey;
+    }
+}
 bool Grid::walkable(Vec2i p) const noexcept { const uint8_t* w = walk_at(p); return w && *w != 0; }
 bool Grid::difficult(Vec2i p) const noexcept { const uint8_t* w = walk_at(p); return w && *w == 2; }
 bool Grid::blocks_sight(Vec2i p) const noexcept { const uint8_t* s = sight_at(p); return s && *s != 0; }

@@ -114,6 +114,47 @@ bool cube_1x1(Vec2i caster, Vec2i aim, Vec2i t, int size, bool self) {
 bool disk(Vec2i centre, Vec2i t, int radius) {
     return std::max(std::abs(t.x - centre.x), std::abs(t.y - centre.y)) <= radius;
 }
+// Self-origin cube over its unclamped tile box. The square touches the footprint on the aim's
+// dominant axis (a tie prefers x) and is centred across on the footprint centre. clip_box then
+// keeps only chunk tiles. This is the pre-clamp membership, not Combat::area_preview.
+struct CubeBox { int x0, x1, y0, y1; };
+CubeBox self_cube_box(Vec2i anchor, int n, Vec2i aim, int size) {
+    const int c2x = 2 * anchor.x + n - 1;
+    const int c2y = 2 * anchor.y + n - 1;
+    const int a2x = 2 * aim.x - c2x;
+    const int a2y = 2 * aim.y - c2y;
+    const int lo = -((size - 1) / 2);
+    const int hi = size / 2;
+    const int mid_x = c2x / 2;
+    const int mid_y = c2y / 2;
+    CubeBox box;
+    if (std::abs(a2x) >= std::abs(a2y)) {
+        const int left = a2x > 0 ? anchor.x + n : anchor.x - size;
+        box.x0 = left;
+        box.x1 = left + size - 1;
+        box.y0 = mid_y + lo;
+        box.y1 = mid_y + hi;
+    } else {
+        const int top = a2y > 0 ? anchor.y + n : anchor.y - size;
+        box.y0 = top;
+        box.y1 = top + size - 1;
+        box.x0 = mid_x + lo;
+        box.x1 = mid_x + hi;
+    }
+    return box;
+}
+std::vector<Vec2i> clip_box(CubeBox box) {
+    std::vector<Vec2i> out;
+    for (int y = box.y0; y <= box.y1; ++y)
+        for (int x = box.x0; x <= box.x1; ++x)
+            if (x >= 0 && y >= 0 && x < kMap && y < kMap) out.push_back({x, y});
+    return out;
+}
+int box_count(CubeBox box) {
+    if (box.x1 < box.x0 || box.y1 < box.y0) return 0;
+    return (box.x1 - box.x0 + 1) * (box.y1 - box.y0 + 1);
+}
+
 std::vector<Vec2i> scan_1x1(AreaShape shape, int range_ft, int size_ft, int width_ft, Vec2i caster, Vec2i aim) {
     const int size = tiles_of(size_ft);
     const int width = std::max(1, tiles_of(width_ft));
@@ -434,5 +475,67 @@ TEST_CASE("area preview: a partly covered footprint is one target, and the map e
         err = "unset";
         CHECK(small.view().area_preview(small.id(0), tmpl(AreaShape::Sphere, 90, 5), {16, 10}, &err).empty());
         CHECK(err == "aim not in line of sight");
+    }
+}
+
+TEST_CASE("area preview: a scan clamped to the grid matches the unclamped in-bounds tiles") {
+    auto lib = preview_lib();
+    // 15 ft cube west of a caster on column 1. The unclamped square is x -2..0, y 9..11.
+    // Aim (0, 10) stays on the map; the two columns past the edge do not.
+    {
+        const Vec2i anchor{1, 10};
+        const Vec2i aim{0, 10};
+        const CubeBox box = self_cube_box(anchor, 1, aim, 3);
+        CHECK(box.x0 < 0);
+        CHECK(box_count(box) > 3);
+        const std::vector<Vec2i> exp = clip_box(box);
+        const std::vector<Vec2i> hand{{0, 9}, {0, 10}, {0, 11}};
+        expect_tiles("hand list is the clipped unclamped box", exp, hand);
+        CHECK(scan_1x1(AreaShape::Cube, 0, 15, 0, anchor, aim) == exp);
+
+        Board b(lib, {{kFighter, anchor.x, anchor.y}, {kGoblin, 0, 9}, {kGoblin, 0, 10}, {kGoblin, 0, 12}, {kGoblin, 2, 10}});
+        const uint64_t hash = b.view().hash();
+        const uint64_t log = b.view().log_hash();
+        const std::size_t events = b.view().events().size();
+        const auto cube = tmpl(AreaShape::Cube, 0, 15);
+        std::string part_err;
+        expect_tiles("partly off cube", b.view().area_preview(b.id(0), cube, aim, &part_err), exp);
+        CHECK(part_err.empty());
+        std::vector<CombatantId> exp_ids;
+        for (std::size_t i = 1; i < b.at.size(); ++i)
+            if (std::find(exp.begin(), exp.end(), b.at[i]) != exp.end()) exp_ids.push_back(b.id(i));
+        CHECK(exp_ids.size() == 2);
+        std::string target_err;
+        CHECK(b.view().area_targets(b.id(0), cube, aim, &target_err) == exp_ids);
+        CHECK(target_err.empty());
+        CHECK(b.view().hash() == hash);
+        CHECK(b.view().log_hash() == log);
+        CHECK(b.view().events().size() == events);
+    }
+    // A 2x2 on the east edge can aim at its own east tile. The 15 ft cube then starts at x = 32,
+    // entirely past the chunk. A 1x1 cannot: aiming further east would leave the map.
+    {
+        const Vec2i anchor{30, 10};
+        const Vec2i aim{31, 10};
+        const CubeBox box = self_cube_box(anchor, 2, aim, 3);
+        CHECK(box.x0 >= kMap);
+        CHECK(box_count(box) > 0);
+        const std::vector<Vec2i> exp = clip_box(box);
+        CHECK(exp.empty());
+
+        Board b(lib, {{"t.large", anchor.x, anchor.y}, {kGoblin, 29, 10}, {kGoblin, 31, 9}});
+        const uint64_t hash = b.view().hash();
+        const uint64_t log = b.view().log_hash();
+        const std::size_t events = b.view().events().size();
+        const auto cube = tmpl(AreaShape::Cube, 0, 15);
+        std::string full_err;
+        expect_tiles("fully off cube", b.view().area_preview(b.id(0), cube, aim, &full_err), exp);
+        CHECK(full_err.empty());
+        std::string target_err = "unset";
+        CHECK(b.view().area_targets(b.id(0), cube, aim, &target_err).empty());
+        CHECK(target_err == "no creature in the area");
+        CHECK(b.view().hash() == hash);
+        CHECK(b.view().log_hash() == log);
+        CHECK(b.view().events().size() == events);
     }
 }
