@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/monster/v6.schema.json",
   "title": "monster@6",
-  "description": "monster@6 = monster@5 carried in full plus optional presentation visual (kind, bin, art_root, size_short). monster@5 -> monster@6 is an identity migration: the body is unchanged and visual stays absent. visual is presentation only and is not part of Combat::hash, log_hash, or content hashes. Integers only (4.3). size_short is not applied in M0. Huge and gargantuan have no stand-in art bin in M0.",
+  "description": "monster@6 = monster@5 carried in full plus optional presentation visual (kind, bin, art_root, size_short). monster@5 -> monster@6 is an identity migration: the body is unchanged and visual stays absent. visual is presentation only and is not part of Combat::hash, log_hash, or content hashes. Integers only (4.3). size_short is not applied in M0. Huge resolves to standin.huge. Gargantuan has no stand-in art bin.",
   "$ref": "#/$defs/stat_block",
   "unevaluatedProperties": false,
   "required": [
@@ -747,7 +747,7 @@
         "visual": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Presentation only (Engine Core M0). Never read by rules and never folded into Combat::hash, log_hash, or chunk content_hash. Absent: a humanoid type resolves to paperdoll; any other type resolves to a stand-in bin from size (tiny, small, medium, large). Huge and gargantuan have no art bin in M0. size_short is stored and not applied (M1: torso+head _short plates, else scale about the feet pivot).",
+          "description": "Presentation only (Engine Core M0). Never read by rules and never folded into Combat::hash, log_hash, or chunk content_hash. Absent: a humanoid type resolves to paperdoll; any other type resolves to a stand-in bin from size (tiny, small, medium, large, huge). Gargantuan has no art bin. size_short is stored and not applied (M1: torso+head _short plates, else scale about the feet pivot).",
           "properties": {
             "kind": {
               "enum": ["paperdoll", "standin"],
@@ -759,8 +759,8 @@
               "description": "Kit id Render & Platform loads. Wins over presentation.sprite. Absent: presentation.sprite, else paperdoll or standin.<standin_bin>."
             },
             "standin_bin": {
-              "enum": ["tiny", "small", "medium", "large"],
-              "description": "Stand-in canvas. Ignored for paperdoll. Huge and gargantuan are not M0 bins."
+              "enum": ["tiny", "small", "medium", "large", "huge"],
+              "description": "Stand-in canvas. Ignored for paperdoll. Gargantuan is not a bin."
             },
             "art_root": {
               "type": "string",

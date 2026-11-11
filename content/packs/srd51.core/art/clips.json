@@ -1,5 +1,5 @@
 {
-  "description": "Engine Core M0 clip registry for the packed default kit. Construction greys; no plates. size_short runtime is M1. Art keeps 8 facings; this file does not extend the engine Facing enum. Huge and gargantuan stand-in bins are not here.",
+  "description": "Engine Core M0 clip registry for the packed default kit. Construction greys; no plates. size_short runtime is M1. Art keeps 8 facings; this file does not extend the engine Facing enum. Gargantuan has no stand-in bin.",
   "kits": [
     {
       "id": "paperdoll",
@@ -67,7 +67,7 @@
     {
       "id": "standin",
       "kind": "standin",
-      "bins": ["tiny", "small", "medium", "large"],
+      "bins": ["tiny", "small", "medium", "large", "huge"],
       "description": "Whole-body stand-in. Missing names fall back to idle. climb and crawl alias to walk; hide aliases to idle. hard_land aliases to fall_impact (prone_idle is not a stand-in clip).",
       "fallback": "idle",
       "clips": [

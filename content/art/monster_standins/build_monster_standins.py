@@ -4,7 +4,7 @@ import json, os
 from PIL import Image
 HERE=os.path.dirname(os.path.abspath(__file__))
 FILL=(0x5C,0x63,0x70,255); MID=(0x8C,0x7A,0x62,255); OUT=(0x1E,0x22,0x28,255); SEAM=(0x82,0x82,0x82,255)
-SIZES={"tiny":(16,16),"small":(24,32),"medium":(32,48),"large":(48,64)}
+SIZES={"tiny":(16,16),"small":(24,32),"medium":(32,48),"large":(48,64),"huge":(72,96)}
 CLIPS=[("idle",4,6,"loop"),("walk",6,10,"loop"),("react",3,12,"once"),("attack",6,12,"once"),
 ("cast",4,10,"once"),("stun",4,8,"loop"),("death",5,8,"hold_last"),("fall",3,12,"loop"),("fall_impact",3,12,"once")]
 FACINGS=["se","sw","ne","nw"]

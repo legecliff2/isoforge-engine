@@ -487,7 +487,7 @@ TEST_CASE("large stand-in draws 1:1 on a 2x2; a pawn on that footprint still gro
     CHECK(count_sized(s2, 48.f, 64.f) == 0);
 }
 
-TEST_CASE("missing huge kit and an empty bin anchor the label to the body drawn") {
+TEST_CASE("huge stand-in draws 1:1; an empty bin anchors the label to the body drawn") {
     CaptureDevice dev;
     SliceView view(dev);
     auto centre_of = [&](Vec2i tile, int side) {
@@ -495,8 +495,8 @@ TEST_CASE("missing huge kit and an empty bin anchor the label to the body drawn"
         return std::pair<FootprintGeom, Vec2f>{fp, view.tile_center_px(fp.centre_iso.x, fp.centre_iso.y)};
     };
 
-    // Huge bin, no standin.huge kit: the body is the grown 84x132 pawn. The HP bar uses that
-    // pawn, not the 96px canvas, so it stays above the head.
+    // standin.huge is in the clip registry. Missing PNGs are checker frames of the 72x96
+    // canvas, drawn 1:1. The label uses that canvas, not the grown 84x132 pawn.
     ActorView huge = body(1, {4, 6});
     huge.visual_kind = "standin";
     huge.standin_bin = "huge";
@@ -508,18 +508,22 @@ TEST_CASE("missing huge kit and an empty bin anchor the label to the body drawn"
     huge.unseen_attacker = true;
     const auto [fp3, centre3] = centre_of(huge.tile, 3);
     const ViewModel huge_vm = scene(huge);
-    CHECK(view.actors_focus_px(huge_vm).y == doctest::Approx(centre3.y + (fp3.ring_h * 0.5f - 132.f) * 0.5f));
+    CHECK(view.actors_focus_px(huge_vm).y == doctest::Approx(centre3.y + (fp3.ring_h * 0.5f - 96.f) * 0.5f));
     const std::vector<Quad> hq = draw_quads(dev, view, huge_vm);
-    const Quad* grown = only_sized(hq, 84.f, 132.f);
-    CHECK(grown->y0 + 120.f == doctest::Approx(centre3.y));
-    const Vec2f head = footprint_head_px(centre3, 44.f, fp3.pawn_scale);
-    CHECK(head.y == doctest::Approx(centre3.y - 120.f));
+    const Quad* bodyq = only_sized(hq, 72.f, 96.f);
+    CHECK(bodyq->tw == 72);
+    CHECK(bodyq->th == 96);
+    CHECK(bodyq->x0 + 36.f == doctest::Approx(centre3.x));
+    CHECK(bodyq->y0 + 95.f == doctest::Approx(centre3.y));
+    CHECK(count_sized(hq, 84.f, 132.f) == 0);
+    const Vec2f head = footprint_head_px(centre3, 96.f, 1.f);
+    CHECK(head.y == doctest::Approx(centre3.y - 92.f));
     const Quad* bar = only_sized(hq, 122.f, 7.f);
     CHECK(bar->y0 == doctest::Approx(head.y - 13.f));
-    CHECK(bar->y1 <= grown->y0);
-    const Quad* pip = only_sized(hq, 15.f, 27.f);
-    CHECK(pip->y0 == doctest::Approx(grown->y0 - 6.f));
-    CHECK(count_sized(hq, 72.f, 96.f) == 0);
+    CHECK(bar->y1 <= bodyq->y0);
+    const Quad* pip = only_sized(hq, 5.f, 9.f);
+    CHECK(pip->y0 == doctest::Approx(bodyq->y0 - 2.f));
+    CHECK(count_sized(hq, 15.f, 27.f) == 0);
 
     // Empty bin loads medium and draws it 1:1. The label is the 48px canvas, not the 2x pawn.
     ActorView empty = body(1, {4, 6});

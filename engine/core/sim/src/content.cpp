@@ -2100,7 +2100,7 @@ std::optional<std::string> check_art_root(std::string_view root, std::string_vie
 }
 
 // Defaults when `visual` is absent: humanoid -> paperdoll; otherwise a stand-in bin from size.
-// Huge and gargantuan have no M0 bin (Unbinned, empty kit) unless the file names one.
+// Gargantuan has no art bin (Unbinned, empty kit) unless the file names one.
 // size_short is stored and not applied (kSizeShortRuntime is false).
 // Kit id: visual.kit, else presentation.sprite, else paperdoll / standin.<standin_bin>.
 std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize size, std::string_view pack_dir, CreatureVisual& out) {
@@ -2129,10 +2129,10 @@ std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize si
             authored_kit = kit->get<std::string>();
         }
         if (auto b = vis->find("standin_bin"); b != vis->end()) {
-            if (!b->is_string()) return "visual.standin_bin must be tiny, small, medium, or large";
+            if (!b->is_string()) return "visual.standin_bin must be tiny, small, medium, large, or huge";
             bin_s = b->get<std::string>();
-            if (bin_s != "tiny" && bin_s != "small" && bin_s != "medium" && bin_s != "large")
-                return "visual.standin_bin must be tiny, small, medium, or large";
+            if (bin_s != "tiny" && bin_s != "small" && bin_s != "medium" && bin_s != "large" && bin_s != "huge")
+                return "visual.standin_bin must be tiny, small, medium, large, or huge";
             bin_set = true;
         }
         if (auto a = vis->find("art_root"); a != vis->end()) {
@@ -2153,7 +2153,8 @@ std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize si
         case CreatureSize::Small: return "small";
         case CreatureSize::Medium: return "medium";
         case CreatureSize::Large: return "large";
-        default: return nullptr;   // huge / gargantuan: no M0 art bin
+        case CreatureSize::Huge: return "huge";
+        default: return nullptr;   // gargantuan: no art bin
         }
     };
     if (kind_set && kind_s == "paperdoll") {
