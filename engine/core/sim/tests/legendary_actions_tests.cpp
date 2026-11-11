@@ -9,6 +9,15 @@
 #include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
 
+namespace eng::sim {
+struct CombatTestAccess {   // same definition as hash_fold_tests.cpp (ODR)
+    static rules5e::EncounterState& state(Combat& c) { return c.state_; }
+    static std::vector<LogEntry>& log(Combat& c) { return c.log_; }
+    static std::vector<Combat::MaterialUse>& materials(Combat& c) { return c.materials_used_; }
+    static std::shared_ptr<const rules5e::SpellBook>& spells(Combat& c) { return c.spells_; }
+};
+}  // namespace eng::sim
+
 using namespace eng;
 using namespace eng::sim;
 using Json = assets::Json;
@@ -76,6 +85,67 @@ Command end_turn(const Combat& c) {
     Command e;
     e.request = {rules5e::current_actor(c.state()), ActionKind::EndTurn};
     return e;
+}
+
+void offer(Combat& c, CombatantId beast) {
+    for (int i = 0; i < 8 && c.state().legendary_window.candidate != beast && !c.state().ended; ++i)
+        REQUIRE(c.submit(end_turn(c)).ok);
+    REQUIRE(c.state().legendary_window.candidate == beast);
+}
+
+Command stride_to(CombatantId beast, Vec2i to, uint32_t option = 3) {
+    Command m;
+    m.request = {beast, ActionKind::LegendaryAction};
+    m.request.feature_id = option;
+    m.to = to;
+    return m;
+}
+
+void expect_replay(const world::Chunk& ch, const ContentLibrary& l, uint64_t seed, const Combat& c) {
+    ecs::Registry reg2;
+    std::string err;
+    auto again = replay(reg2, ch, l, seed, c.log(), &err);
+    REQUIRE_MESSAGE(again, err);
+    CHECK(again->hash() == c.hash());
+    CHECK(again->log_hash() == c.log_hash());
+    CHECK(event_stream_hash(again->events()) == event_stream_hash(c.events()));
+}
+
+bool attacked(const Combat& c, CombatantId who) {
+    for (const auto& e : c.events())
+        if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::AttackResolved && e.rules.actor == who)
+            return true;
+    return false;
+}
+
+world::Chunk walled(std::vector<std::pair<std::string, Vec2i>> spawns, Vec2i wall) {
+    auto c = arena(std::move(spawns));
+    c.layers[2][std::size_t(wall.y * 32 + wall.x)].flags = world::tile_flags::kBlocksMove;
+    c.content_hash = world::compute_content_hash(c);
+    return c;
+}
+
+// y = 5 is open, plus the fighter's alcove tile. A straight legendary move cannot dodge around.
+world::Chunk corridor(Vec2i fighter_at, Vec2i beast_at, const char* beast_id = "test.legendary.beast") {
+    auto c = arena({{"srd51.character.fighter_1", fighter_at}, {beast_id, beast_at}});
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) {
+            if (y == 5 || (x == fighter_at.x && y == fighter_at.y)) continue;
+            c.layers[2][std::size_t(y * 32 + x)].flags = world::tile_flags::kBlocksMove;
+        }
+    c.content_hash = world::compute_content_hash(c);
+    return c;
+}
+
+SubmitResult take_reactions(Combat& c) {
+    return c.settle([](const Combat&, const NeedsDecision& n) { return ReactionDecision{n.window_seq, true, 0}; });
+}
+
+Json frail_beast() {
+    Json m = legendary_beast();
+    m["id"] = "test.legendary.frail";
+    m["hit_points"]["average"] = 1;
+    return m;
 }
 
 }  // namespace
@@ -217,3 +287,130 @@ TEST_CASE("run_to_end passes legendary actions") {
     CHECK(again->hash() == c->hash());
     CHECK(again->log_hash() == c->log_hash());
 }
+
+// A multi-tile legendary move is one request. Each tile is checked for opportunity attacks and
+// zones, so a hostile left in the middle of the path is offered the attack even when the origin
+// and the destination are both outside that reach. An interrupt stops on the last tile kept.
+// Replay re-derives the path from the logged destination.
+TEST_CASE("legendary move provokes and enters zones tile by tile") {
+    auto l = lib_with();
+    REQUIRE_FALSE(l.add(frail_beast(), "monster"));
+    const auto fighter_of = [](const world::Chunk& ch) { return ch.spawns[0].stable_id; };
+    const auto beast_of = [](const world::Chunk& ch) { return ch.spawns[1].stable_id; };
+    {
+        const auto pass = corridor({5, 4}, {2, 5});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, pass, l, 3);
+        REQUIRE(c);
+        const auto fighter = fighter_of(pass), beast = beast_of(pass);
+        offer(*c, beast);
+        auto r = c->submit(stride_to(beast, {8, 5}));
+        REQUIRE(r.ok);
+        REQUIRE(r.status == StepStatus::NeedsDecision);
+        REQUIRE(r.needs);
+        CHECK(r.needs->reactor == fighter);
+        CHECK(r.needs->trigger == rules5e::ReactionTrigger::LeavingReach);
+        CHECK(c->pos(beast) == Vec2i{2, 5});
+        auto done = take_reactions(*c);
+        REQUIRE_MESSAGE(done.ok, done.error);
+        CHECK(attacked(*c, fighter));
+        CHECK(c->pos(beast) == Vec2i{8, 5});
+        CHECK(c->log().back().to == Vec2i{8, 5});
+        expect_replay(pass, l, 3, *c);
+    }
+    {
+        const auto back = walled({{"srd51.character.fighter_1", {5, 4}}, {"test.legendary.beast", {4, 5}}}, {5, 5});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, back, l, 4);
+        REQUIRE(c);
+        const auto fighter = fighter_of(back), beast = beast_of(back);
+        offer(*c, beast);
+        auto r = c->submit(stride_to(beast, {6, 5}));
+        REQUIRE(r.ok);
+        REQUIRE(r.status == StepStatus::NeedsDecision);
+        auto done = take_reactions(*c);
+        REQUIRE_MESSAGE(done.ok, done.error);
+        CHECK(attacked(*c, fighter));
+        CHECK(c->pos(beast) == Vec2i{6, 5});
+        expect_replay(back, l, 4, *c);
+    }
+    {
+        const auto glide = corridor({5, 4}, {4, 5});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, glide, l, 5);
+        REQUIRE(c);
+        const auto fighter = fighter_of(glide), beast = beast_of(glide);
+        offer(*c, beast);
+        auto r = c->submit(stride_to(beast, {7, 5}, 4));   // half speed, no opportunity attacks
+        REQUIRE_MESSAGE(r.ok, r.error);
+        CHECK(r.status == StepStatus::Done);
+        CHECK_FALSE(attacked(*c, fighter));
+        CHECK(c->pos(beast) == Vec2i{7, 5});
+        expect_replay(glide, l, 5, *c);
+    }
+    {
+        auto zone_lib = lib_with();
+        auto* arch = const_cast<Archetype*>(zone_lib.find("srd51.character.fighter_1"));
+        REQUIRE(arch);
+        rules5e::SpellDef d;
+        d.content_id = "test.legendary.enter";
+        d.id = rules5e::spell_id_of(d.content_id);
+        d.is_spell = false;
+        d.kind = rules5e::SpellEffectKind::Zone;
+        d.zone.shape = rules5e::AreaShape::Sphere;
+        d.zone.anchor = rules5e::ZoneAnchor::Creature;
+        d.zone.size_ft = 5;
+        rules5e::ZoneTriggerRow row;
+        row.on = rules5e::ZoneTrigger::Enter;
+        row.effect.kind = rules5e::SpellEffectKind::ApplyCondition;
+        d.zone.triggers.push_back(row);
+        auto book = std::const_pointer_cast<rules5e::SpellBook>(zone_lib.spells());
+        REQUIRE(book);
+        REQUIRE(book->add(std::move(d)));
+        arch->aura_spell_ids.push_back(rules5e::spell_id_of("test.legendary.enter"));
+        const auto pass = corridor({5, 4}, {2, 5});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, pass, zone_lib, 6);
+        REQUIRE(c);
+        const auto beast = beast_of(pass);
+        REQUIRE_FALSE(c->state().zones.empty());
+        offer(*c, beast);
+        auto r = c->submit(stride_to(beast, {8, 5}));
+        REQUIRE(r.ok);
+        if (r.status == StepStatus::NeedsDecision) {
+            auto done = take_reactions(*c);
+            REQUIRE_MESSAGE(done.ok, done.error);
+        }
+        CHECK(c->pos(beast) == Vec2i{8, 5});
+        bool entered = false;
+        for (const auto& e : c->events())
+            entered = entered || (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::FeatureTriggered &&
+                                  e.rules.target == beast && e.rules.a == int32_t(rules5e::spell_id_of("test.legendary.enter")));
+        CHECK(entered);
+        expect_replay(pass, zone_lib, 6, *c);
+    }
+    {
+        const auto pass = corridor({5, 4}, {2, 5}, "test.legendary.frail");
+        bool dropped = false;
+        for (uint64_t seed = 1; seed <= 40 && !dropped; ++seed) {
+            ecs::Registry reg;
+            auto c = Combat::create(reg, pass, l, seed);
+            REQUIRE(c);
+            const auto beast = beast_of(pass);
+            offer(*c, beast);
+            auto r = c->submit(stride_to(beast, {8, 5}));
+            REQUIRE(r.ok);
+            if (r.status == StepStatus::NeedsDecision) {
+                auto done = take_reactions(*c);
+                REQUIRE_MESSAGE(done.ok, done.error);
+            }
+            if (rules5e::find(c->state(), beast)->hp > 0) continue;
+            dropped = true;
+            CHECK(c->pos(beast) == Vec2i{6, 5});
+            CHECK(c->log().back().to == Vec2i{8, 5});
+            expect_replay(pass, l, seed, *c);
+        }
+        CHECK(dropped);
+    }
+}
+

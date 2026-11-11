@@ -1073,12 +1073,19 @@ void Combat::install_hooks() {
             return false;
         }
         if (w.trigger != ReactionTrigger::LeavingReach) return false;
-        const auto to = moving_to(w.trigger_actor);
+        // A legendary move names the tile it is leaving and the tile it would enter. Comparing only
+        // the origin with the final destination misses a hostile whose reach the path crosses.
+        const bool leg = legendary_step_from_ && legendary_step_to_ && w.trigger_actor == legendary_mover_;
+        const auto to = leg ? legendary_step_to_ : moving_to(w.trigger_actor);
         if (!to) return false;
         const int reach = melee_reach_tiles(r.id);
         if (reach == 0) return false;
-        const Spot rs = spot(r.id), f = spot(w.trigger_actor), t = spot_at(w.trigger_actor, *to);
-        const int zr = abs_height_ft(r.id), zf = abs_height_ft(w.trigger_actor), zt = moving_abs_height(w.trigger_actor, *to);
+        const Spot rs = spot(r.id);
+        const Spot f = leg ? spot_at(w.trigger_actor, *legendary_step_from_) : spot(w.trigger_actor);
+        const Spot t = spot_at(w.trigger_actor, *to);
+        const int zr = abs_height_ft(r.id);
+        const int zf = leg ? abs_height_at(w.trigger_actor, *legendary_step_from_) : abs_height_ft(w.trigger_actor);
+        const int zt = leg ? abs_height_at(w.trigger_actor, *to) : moving_abs_height(w.trigger_actor, *to);
         return spot_distance(f, zf, rs, zr) <= reach && spot_distance(t, zt, rs, zr) > reach;   // altitude PR3: 3D
     };
     // A readied ranged attack's facts are taken when it fires, not when it was readied.
@@ -1205,6 +1212,55 @@ bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
         if (std::find(k->form_blocked_features.begin(), k->form_blocked_features.end(), fid) != k->form_blocked_features.end()) return false;
     if (f->cost == FeatureCost::Free) return true;
     return f->cost == FeatureCost::BonusAction ? state_.budget.bonus_action : state_.budget.action || state_.budget.extra_actions > 0;
+}
+
+void Combat::clear_legendary_move() {
+    legendary_mover_ = 0;
+    legendary_to_.reset();
+    legendary_log_to_.reset();
+    legendary_origin_.reset();
+    legendary_stop_.reset();
+    legendary_step_from_.reset();
+    legendary_step_to_.reset();
+    legendary_path_.clear();
+}
+
+void Combat::bind_legendary_walk() {
+    if (legendary_path_.empty() || !legendary_origin_ || legendary_mover_ == 0) return;
+    state_.hooks.legendary_step = [this](const rules5e::EncounterState&, rules5e::CombatantId who, int index)
+        -> std::optional<rules5e::LegendaryStepFacts> {
+        if (who != legendary_mover_) return std::nullopt;
+        if (index < 0) {
+            legendary_step_from_.reset();
+            legendary_step_to_.reset();
+            if (index == -1) legendary_stop_ = legendary_origin_;
+            else if (legendary_stop_) legendary_to_ = legendary_stop_;   // -2: later hooks see where the walk ended
+            return std::nullopt;
+        }
+        if (index >= int(legendary_path_.size())) return std::nullopt;
+        const Vec2i prev = index == 0 ? *legendary_origin_ : legendary_path_[std::size_t(index - 1)];
+        const Vec2i p = legendary_path_[std::size_t(index)];
+        legendary_step_from_ = prev;
+        legendary_step_to_ = p;
+        legendary_to_ = p;
+        rules5e::LegendaryStepFacts f;
+        f.cost_ft = int16_t(step_cost_ft(who, prev, p));
+        f.leaves_reach = leaves_reach(who, prev, p);
+        if (!state_.zones.empty()) {
+            rules5e::ActionRequest q;
+            const int fp = footprint_size(who);
+            zone_lists(who, spot_at(who, prev), Spot{p, fp}, q);
+            f.zones_entered = std::move(q.zones_entered);
+            f.zones_left = std::move(q.zones_left);
+            f.zones_within = std::move(q.zones_within);
+            f.zone_changes = zone_changes_for(who, spot_at(who, prev), Spot{p, fp});
+        }
+        return f;
+    };
+    state_.hooks.legendary_step_kept = [this](const rules5e::EncounterState&, rules5e::CombatantId who, int index) {
+        if (who != legendary_mover_ || index < 0 || index >= int(legendary_path_.size())) return;
+        legendary_stop_ = legendary_path_[std::size_t(index)];
+    };
 }
 
 std::optional<Vec2i> Combat::moving_to(CombatantId id) const {
@@ -1343,12 +1399,18 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         if (e.kind == rules5e::EventKind::Moved && e.reaction_depth == 0 && e.actor == q.actor && to &&
             (q.kind == ActionKind::Move || legendary_move)) {
             const Vec2i from = pos(q.actor);
-            if (q.squeeze != 0 && !std::any_of(evs.begin(), evs.end(), [&](const rules5e::Event& x) {
-                    return x.kind == rules5e::EventKind::MoveInterrupted && x.actor == q.actor; })) {
+            // A legendary move that was stopped mid-path is placed on the last tile kept, not the
+            // logged destination and not the origin. A stop before any tile is kept does not move.
+            Vec2i dest = *to;
+            if (legendary_move && legendary_stop_) dest = *legendary_stop_;
+            const bool interrupt = std::any_of(evs.begin(), evs.end(), [&](const rules5e::Event& x) {
+                return x.kind == rules5e::EventKind::MoveInterrupted && x.actor == q.actor;
+            });
+            if (q.squeeze != 0 && !interrupt) {
                 SimEvent fe;   // SRD Squeezing: the footprint shrinks / grows back (side a, at the new anchor), before its TileMoved
                 fe.kind = SimEvent::Kind::Footprint;
                 fe.actor = q.actor;
-                fe.tile = *to;
+                fe.tile = dest;
                 fe.rules.a = footprint_size(q.actor);
                 events_.push_back(fe);
             }
@@ -1356,17 +1418,20 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
             const int g0 = grid_.footprint_ground_ft(from, footprint_size(q.actor)), a0 = abs_height_ft(q.actor);
             const bool air0 = airborne(q.actor);
             if (q.alt_to != 0) {   // vertical move in place: no TileMoved
-                if (!std::any_of(evs.begin(), evs.end(), [&](const rules5e::Event& x) {
-                        return x.kind == rules5e::EventKind::MoveInterrupted && x.actor == q.actor; }))
+                if (!interrupt)
                     step_altitude(q, g0, a0, air0);
                 continue;
             }
-            const bool stepped = move_tile(q.actor, *to, evs);
+            bool stepped = false;
+            if (!(interrupt && dest == from)) {
+                if (legendary_move && interrupt) { place(q.actor, dest); stepped = true; }
+                else stepped = move_tile(q.actor, dest, evs);
+            }
             if (stepped) step_altitude(q, g0, a0, air0);
             if (stepped)   // drag: creatures the mover holds come along (same step, else into the vacated tile)
                 for (CombatantId held : rules5e::grappled_by(state_, q.actor)) {
                     const Vec2i hp = pos(held);
-                    const Vec2i same{hp.x + to->x - from.x, hp.y + to->y - from.y};
+                    const Vec2i same{hp.x + dest.x - from.x, hp.y + dest.y - from.y};
                     std::optional<Vec2i> drag_to;
                     if (same != hp && free_for(held, same)) drag_to = same;
                     else if (distance_tiles(q.actor, held) > 1 && free_for(held, from)) drag_to = from;
@@ -1665,9 +1730,7 @@ void Combat::attach_light_driver(LightDriver* d) {
 
 SubmitResult Combat::submit(const Command& cmd) {
     SubmitResult r;
-    legendary_mover_ = 0;
-    legendary_to_.reset();
-    legendary_log_to_.reset();
+    clear_legendary_move();
     if (state_.pending) { r.error = "a reaction window is waiting for a decision"; r.needs = pending(); return r; }
     if (state_.ended) { r.error = "encounter ended"; return r; }
     if (light_.d && light_.d->halted()) {   // R-G13 §7: never step on a partial halo; re-check once (the streamer may have loaded)
@@ -1689,6 +1752,7 @@ SubmitResult Combat::decide(const ReactionDecision& d) {
     if (!nd) { r.error = "no pending reaction window"; return r; }
     if (d.window_seq != nd->window_seq) { r.error = "decision for a different window"; r.needs = nd; return r; }
     install_hooks();
+    bind_legendary_walk();   // a paused legendary move re-walks the path stored on this Combat
     if (state_.pending) set_step_context(state_.pending->request);
     clear_forced();
     return finish(rules5e::step(state_, rules5e::decision_request(*nd, d)));
@@ -1711,13 +1775,12 @@ SubmitResult Combat::settle(const ReactionDeciderFn& decider) {
 SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     SubmitResult r;
     derived_area_ = false;
-    legendary_mover_ = 0;
-    legendary_to_.reset();
-    legendary_log_to_.reset();
+    clear_legendary_move();
     const CombatantId actor = rules5e::current_actor(state_);
     // Legendary window: the offered creature, not the creature whose turn just ended. The destination
-    // tile is logged for every LegendaryAction (MUST-1). A move is one request: the path is path_for
-    // from here to `to`, and opportunity attacks see that destination unless the option says otherwise.
+    // tile is logged for every LegendaryAction (MUST-1). A move is one request. The path is path_for
+    // to `to`, and each tile is checked for opportunity attacks and zones. An interrupt stops on the
+    // last tile kept; replay re-derives the path from the logged destination.
     if (req.kind == ActionKind::LegendaryAction) {
         const auto& w = state_.legendary_window;
         if (w.x == 0) { r.error = "no legendary window"; return r; }
@@ -1772,13 +1835,13 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
                 req.move_ft = int16_t(cost);
                 req.move_tiles = uint8_t(std::min<std::size_t>(path.size(), 255));
                 req.leaves_reach = leave;
-                if (!state_.zones.empty()) {
-                    zone_lists(req.actor, spot(req.actor), Spot{to, fp}, req);
-                    req.zone_changes = zone_changes_for(req.actor, spot(req.actor), Spot{to, fp});
-                }
+                legendary_path_ = path;
+                legendary_origin_ = from;
+                legendary_stop_ = from;
                 legendary_mover_ = req.actor;
                 legendary_to_ = to;
                 legendary_log_to_ = to;
+                bind_legendary_walk();
             } else if (opt.use == rules5e::LegendaryUse::Action || opt.use == rules5e::LegendaryUse::Effect ||
                        opt.use == rules5e::LegendaryUse::Spell) {
                 const rules5e::SpellDef* d = spells_ ? spells_->find(opt.ref_id) : nullptr;
@@ -3253,16 +3316,21 @@ std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* c
         c->ready_to_.reset();
         if (e.step.request.kind == ActionKind::Move) c->step_to_ = e.to;
         if (e.step.request.kind == ActionKind::Ready) c->ready_to_ = e.to;
-        c->legendary_mover_ = 0;
-        c->legendary_to_.reset();
-        c->legendary_log_to_.reset();
+        c->clear_legendary_move();
         if (e.step.request.kind == ActionKind::LegendaryAction && e.to) {
             c->legendary_log_to_ = e.to;
             const auto* mv = rules5e::find(c->state_, e.step.request.actor);
             if (mv && e.step.request.feature_id > 0 && e.step.request.feature_id <= mv->legendary.size() &&
                 mv->legendary[std::size_t(e.step.request.feature_id - 1)].use == rules5e::LegendaryUse::Move) {
+                const Vec2i from = c->pos(e.step.request.actor);
+                const int fp = c->footprint_size(e.step.request.actor);
+                const auto path = c->path_for(e.step.request.actor, from, {*e.to}, fp);
+                c->legendary_path_ = path;
+                c->legendary_origin_ = from;
+                c->legendary_stop_ = from;
                 c->legendary_mover_ = e.step.request.actor;
                 c->legendary_to_ = e.to;
+                c->bind_legendary_walk();
             }
         }
         c->derived_area_ = e.step.request.kind == ActionKind::CastSpell && e.to;   // logged targets came from an aim tile

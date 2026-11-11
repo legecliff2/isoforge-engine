@@ -580,11 +580,20 @@ private:
     std::optional<Vec2i> ready_to_;               // destination of the Ready being resolved
     std::optional<Vec2i> aim_to_;                 // aim tile of the area CastSpell being resolved
     std::optional<Vec2i> step_to_;   // destination of the Move being resolved / paused (sim-only)
-    // LegendaryAction: the destination tile finish logs (MUST-1), and, for a move, the mover whose
-    // in-range check reads that tile while the request resolves.
+    // LegendaryAction: the destination tile finish logs (MUST-1). A move walks legendary_path_ one
+    // tile at a time; legendary_step_from_/to_ are the tile the LeavingReach check is on, and
+    // legendary_stop_ is the last tile kept (an interrupt does not place the creature on the
+    // logged destination). Replay re-derives the path from that destination.
     std::optional<Vec2i> legendary_log_to_;
     rules5e::CombatantId legendary_mover_ = 0;
     std::optional<Vec2i> legendary_to_;
+    std::optional<Vec2i> legendary_origin_;
+    std::optional<Vec2i> legendary_stop_;
+    std::optional<Vec2i> legendary_step_from_;
+    std::optional<Vec2i> legendary_step_to_;
+    std::vector<Vec2i> legendary_path_;
+    void clear_legendary_move();
+    void bind_legendary_walk();
     // Aggressive Dash of the current turn (sim-only, derived from the log, not hashed): the turn stamp (round << 16 |
     // turn_index), the dasher, and the movement left from before the Dash (spent first by its Moves).
     // R-G12: the stamp is the TurnKey (a summon inserted before the current actor shifts turn_index, not the key).

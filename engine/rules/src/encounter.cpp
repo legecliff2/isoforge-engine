@@ -6362,7 +6362,42 @@ StepResult legendary_action(EncounterState& s, Ctx& ctx, const ActionRequest& re
         const int allow = opt.half_speed ? modified_speed(s, *a) / 2 : modified_speed(s, *a);
         if (req.move_ft <= 0) return fail("move_ft must be positive");
         if (req.move_ft > allow) return fail("legendary move exceeds speed");
-        if (!opt.no_opportunity_attacks && req.leaves_reach && !leaving_reach_window(s, ctx, *a, req, out.events)) {
+        if (s.hooks.legendary_step) {
+            // One request, walked tile by tile. Each step that leaves a hostile's reach opens its own
+            // window against that step's two tiles. An interrupt stops on the last tile kept. Zones
+            // are the same per-tile facts a Step would use. The logged destination still re-derives the path.
+            s.hooks.legendary_step(s, a->id, -1);
+            int moved = 0;
+            for (int i = 0;; ++i) {
+                auto st = s.hooks.legendary_step(s, a->id, i);
+                if (!st) {
+                    if (i == 0) return fail("legendary move destination unreachable");
+                    break;
+                }
+                if (st->cost_ft <= 0 || moved + st->cost_ft > allow) break;
+                if (!opt.no_opportunity_attacks && st->leaves_reach &&
+                    !leaving_reach_window(s, ctx, *a, req, out.events)) {
+                    emit(out.events, EventKind::MoveInterrupted, a->id, 0, st->cost_ft);
+                    break;
+                }
+                if (ctx.need) return out;
+                a = find_mut(s, req.actor);
+                if (!a || a->dead || a->hp <= 0) break;
+                moved += st->cost_ft;
+                if (s.hooks.legendary_step_kept) s.hooks.legendary_step_kept(s, a->id, i);
+                if (!s.zones.empty()) {
+                    zone_membership(s, &ctx, a->id, st->zones_entered, st->zones_left, st->zones_within, out.events);
+                    zone_changes(s, &ctx, st->zone_changes, out.events);
+                }
+                if (ctx.need) return out;
+                a = find_mut(s, req.actor);
+                if (!a || a->dead || a->hp <= 0 || effective_speed(*a) == 0) break;
+            }
+            if (ctx.need) return out;
+            s.hooks.legendary_step(s, req.actor, -2);
+            a = find_mut(s, req.actor);
+            if (a && moved > 0) emit(out.events, EventKind::Moved, a->id, 0, moved, 0);
+        } else if (!opt.no_opportunity_attacks && req.leaves_reach && !leaving_reach_window(s, ctx, *a, req, out.events)) {
             emit(out.events, EventKind::MoveInterrupted, a->id, 0, req.move_ft);
         } else if (!a->dead && a->hp > 0) {
             emit(out.events, EventKind::Moved, a->id, 0, req.move_ft, 0);

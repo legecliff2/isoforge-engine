@@ -753,6 +753,15 @@ constexpr int passive_sight_penalty(const Sight& v, bool sunlight_sensitive = fa
 // dispels_light(light, darkness) with the roles swapped by the caller. Sim does the overlap test.
 constexpr bool dispels_light(uint8_t darkness_level, uint8_t light_level) { return light_level <= darkness_level; }
 
+// One tile of a sim-pathed legendary move, in path order. Rules tests leave the hook empty and
+// keep a single step (leaves_reach on the request). index -1 resets a re-run; -2 ends the walk.
+struct LegendaryStepFacts {
+    int16_t cost_ft = 0;
+    bool leaves_reach = false;
+    std::vector<uint32_t> zones_entered, zones_left, zones_within;
+    std::vector<ZoneChange> zone_changes;
+};
+
 struct EncounterHooks {
     // Checked after every state change. Empty = default_end_condition.
     EndConditionFn end_condition;
@@ -875,6 +884,11 @@ struct EncounterHooks {
     // not a def id); nullptr / empty = unknown, and PickUp is refused `equip: unknown ground item`.
     std::function<const ItemDef*(const EncounterState&, uint32_t instance)> ground_item_def;   // the state passed is the one being
     // evaluated (an AI lookahead copy uses its own), like loadout_of
+    // Legendary move, one tile at a time. Empty = the request is one step. Sim fills it from path_for
+    // of the logged destination; replay re-derives the same path. Not hashed.
+    std::function<std::optional<LegendaryStepFacts>(const EncounterState&, CombatantId, int step_index)> legendary_step;
+    // The tile of `step_index` was kept (the opportunity attack, if any, did not stop it).
+    std::function<void(const EncounterState&, CombatantId, int step_index)> legendary_step_kept;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
