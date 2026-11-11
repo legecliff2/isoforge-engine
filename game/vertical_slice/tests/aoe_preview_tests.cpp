@@ -283,7 +283,7 @@ TEST_CASE("area overlay: tinted tiles and one creature ring, off the zone slot")
     const uint32_t body_n = render_frame(body).world;
     body.area.present = true;
     body.area.shape = AreaPreviewShape::Cone;
-    body.area.aim = {8, 8};
+    body.area.aim = {4, 4};
     body.area.hits.push_back(AreaHitView{7, AreaHitSide::Enemy});
     const uint32_t marked = render_frame(body).world;
     CHECK(marked == body_n + 2);   // aim cursor + one ring, not one per footprint tile
@@ -308,6 +308,31 @@ TEST_CASE("area overlay: tinted tiles and one creature ring, off the zone slot")
     zone.area.aim = {2, 3};
     zone.area.tiles = {{2, 3}};
     CHECK(render_frame(zone).world == zone_n + 3);   // fill + edge + aim, zone sprites kept
+
+    ViewModel offmap = floors({{0, 0}, {2, 1}});
+    const uint32_t off_n = render_frame(offmap).world;
+    offmap.area.present = true;
+    offmap.area.shape = AreaPreviewShape::Sphere;
+    offmap.area.aim = {-1, 1};
+    offmap.area.tiles = {{-1, 1}, {40, 0}, {2, 1}};
+    CHECK(render_frame(offmap).world == off_n + 2);   // on-map fill + edge; off-map tiles and the cursor are skipped
+
+    ViewModel wide;
+    wide.tiles.push_back(TileView{{0, 0}, 0, 0, TileKind::Floor});
+    wide.tiles.push_back(TileView{{40, 2}, 0, 0, TileKind::Floor});
+    const AreaMapSpan span = area_map_span(wide);
+    CHECK(span.contains({0, 0}));
+    CHECK(span.contains({40, 2}));
+    CHECK_FALSE(span.contains({-1, 0}));
+    CHECK_FALSE(span.contains({41, 2}));
+    CHECK(span.key({0, 1}) != span.key({32, 0}));   // y * 32 + x collides on these two
+    ViewModel chunk;
+    chunk.tiles.push_back(TileView{{0, 0}, 0, 0, TileKind::Floor});
+    chunk.tiles.push_back(TileView{{31, 31}, 0, 0, TileKind::Floor});
+    const AreaMapSpan chunk_span = area_map_span(chunk);
+    CHECK(chunk_span.key({5, 7}) == uint32_t(7 * 32 + 5));
+    CHECK_FALSE(chunk_span.contains({-1, 5}));
+    CHECK_FALSE(chunk_span.contains({32, 0}));
 
     ViewModel quiet = floors({{1, 1}});
     const Frame q0 = render_frame(quiet);
@@ -413,6 +438,9 @@ TEST_CASE("area targeting: F5 follows the PC's area spells under the cursor and 
     REQUIRE(pc != 0);
     REQUIRE(foe != 0);
     REQUIRE(plain->end_turns_until(pc));
+    const uint64_t plain_hash = plain->combat_hash();
+    const uint64_t plain_log = plain->combat_log_hash();
+    const std::size_t plain_events = plain->combat_event_count();
     CHECK(plain->actor_is_pc(pc));
     CHECK_FALSE(plain->actor_is_pc(foe));
     CHECK(plain->area_spell_ids(pc).empty());
@@ -439,6 +467,9 @@ TEST_CASE("area targeting: F5 follows the PC's area spells under the cursor and 
     CHECK(q.note.empty());
     CHECK(q.pulse_ms == 9);
     CHECK(plain->view().round == round_before);   // the query did not step the fight
+    CHECK(plain->combat_hash() == plain_hash);
+    CHECK(plain->combat_log_hash() == plain_log);
+    CHECK(plain->combat_event_count() == plain_events);
 
     REQUIRE(plain->end_turns_until(foe));
     ViewModel monster = plain->view();
@@ -468,6 +499,9 @@ TEST_CASE("area targeting: F5 follows the PC's area spells under the cursor and 
     REQUIRE_MESSAGE(taught, err);
     const uint32_t mage = pc_of(*taught);
     REQUIRE(taught->end_turns_until(mage));
+    const uint64_t taught_hash = taught->combat_hash();
+    const uint64_t taught_log = taught->combat_log_hash();
+    const std::size_t taught_events = taught->combat_event_count();
     const std::vector<uint32_t> spells = taught->area_spell_ids(mage);
     REQUIRE(spells.size() == 3);
     CHECK(spells[0] == rules5e::spell_id_of("srd51.spell.burning_hands"));
@@ -494,6 +528,9 @@ TEST_CASE("area targeting: F5 follows the PC's area spells under the cursor and 
     aim.decorate(*taught, done, {12, 15}, 40);
     CHECK_FALSE(done.area.present);
     CHECK(done.area.note.empty());
+    CHECK(taught->combat_hash() == taught_hash);
+    CHECK(taught->combat_log_hash() == taught_log);
+    CHECK(taught->combat_event_count() == taught_events);
 }
 
 TEST_CASE("area targeting: a static view has no actor, and the cursor picks the tile centre") {

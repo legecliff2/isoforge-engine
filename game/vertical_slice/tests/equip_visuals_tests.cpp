@@ -86,13 +86,130 @@ TEST_CASE("equip visuals: fixed draw order around the body; facing West swaps th
     CHECK(la.front().z > 0);
     for (size_t i = 1; i < la.size(); ++i) CHECK(la[i - 1].z < la[i].z);
     for (Facing f : {Facing::SouthWest, Facing::NorthWest}) {
-        a.facing = f;
-        CHECK(parts(a) == std::vector<P>{P::Back, P::Body, P::MainHand, P::OffHand, P::HeldLight});
         CHECK(attach_points(f).main_hand.x < 0.f);
+        CHECK(attach_points(f).back.x == -attach_points(Facing::SouthEast).back.x);
+        CHECK(attach_points(f).hip.x == -attach_points(Facing::SouthEast).hip.x);
     }
+    // Toward (SW): the back stays behind the body. Away (NW / NE): it draws in front of the body, hands still mirrored.
+    a.facing = Facing::SouthWest;
+    CHECK(parts(a) == std::vector<P>{P::Back, P::Body, P::MainHand, P::OffHand, P::HeldLight});
+    a.facing = Facing::NorthWest;
+    CHECK(parts(a) == std::vector<P>{P::Body, P::Back, P::MainHand, P::OffHand, P::HeldLight});
     a.facing = Facing::NorthEast;
-    CHECK(parts(a) == std::vector<P>{P::Back, P::Body, P::OffHand, P::MainHand, P::HeldLight});
+    CHECK(parts(a) == std::vector<P>{P::Body, P::Back, P::OffHand, P::MainHand, P::HeldLight});
     CHECK(attach_points(Facing::SouthEast).main_hand.x > 0.f);
+}
+
+TEST_CASE("equip visuals: back and hip z flip around the body on all four facings") {
+    ActorView a;
+    a.equipment = {equip_scene::item(2, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longsword"),
+                   equip_scene::item(3, AttachSlot::OffHand, EquipKind::Shield, "srd51.item.shield"),
+                   equip_scene::item(8, AttachSlot::MainHand, EquipKind::Light, "srd51.item.torch"),
+                   equip_scene::item(4, AttachSlot::Back, EquipKind::Other, "srd51.item.backpack"),
+                   equip_scene::item(9, AttachSlot::Back, EquipKind::Weapon, "srd51.item.dagger"),
+                   equip_scene::item(5, AttachSlot::Hip, EquipKind::Other, "srd51.item.pouch")};
+    auto find_layer = [](const std::vector<EquipLayer>& ls, uint32_t id) -> const EquipLayer* {
+        for (const EquipLayer& l : ls)
+            if (l.item && l.item->item == id) return &l;
+        return nullptr;
+    };
+    auto index_of = [](const std::vector<EquipLayer>& ls, uint32_t id) {
+        for (size_t i = 0; i < ls.size(); ++i)
+            if (ls[i].item && ls[i].item->item == id) return i;
+        return ls.size();
+    };
+    for (Facing f : {Facing::SouthEast, Facing::SouthWest, Facing::NorthEast, Facing::NorthWest}) {
+        a.facing = f;
+        const bool away = facing_shows_back(f);
+        const std::vector<EquipLayer> ls = equip_layers(a);
+        const EquipLayer* body = nullptr;
+        for (const EquipLayer& l : ls)
+            if (l.part == EquipPart::Body) body = &l;
+        const EquipLayer* pack = find_layer(ls, 4);
+        const EquipLayer* dagger = find_layer(ls, 9);
+        const EquipLayer* pouch = find_layer(ls, 5);
+        const EquipLayer* sword = find_layer(ls, 2);
+        const EquipLayer* shield = find_layer(ls, 3);
+        const EquipLayer* torch = find_layer(ls, 8);
+        REQUIRE(body);
+        REQUIRE(pack);
+        REQUIRE(dagger);
+        REQUIRE(pouch);
+        REQUIRE(sword);
+        REQUIRE(shield);
+        REQUIRE(torch);
+        CHECK(pack->part == EquipPart::Back);
+        CHECK(dagger->part == EquipPart::Back);
+        CHECK(pouch->part == EquipPart::Hip);
+        CHECK(pack->z == worn_z(AttachSlot::Back, f));
+        CHECK(dagger->z == pack->z);
+        CHECK(pouch->z == worn_z(AttachSlot::Hip, f));
+        if (away) {
+            CHECK(pack->z == kZWornFront);
+            CHECK(pack->z > body->z);
+            CHECK(pouch->z == kZBack);
+            CHECK(pouch->z < body->z);
+        } else {
+            CHECK(pack->z == kZBack);
+            CHECK(pack->z < body->z);
+            CHECK(pouch->z == kZWornFront);
+            CHECK(pouch->z > body->z);
+        }
+        // Both worn layers stay behind both hands. The light stays above the hands, the outline above the light.
+        CHECK(pack->z < sword->z);
+        CHECK(pack->z < shield->z);
+        CHECK(pouch->z < sword->z);
+        CHECK(pouch->z < shield->z);
+        CHECK(sword->z > body->z);
+        CHECK(shield->z > body->z);
+        CHECK(sword->z == ((f == Facing::SouthWest || f == Facing::NorthWest) ? kZFarHand : kZNearHand));
+        CHECK(shield->z == ((f == Facing::SouthWest || f == Facing::NorthWest) ? kZNearHand : kZFarHand));
+        CHECK(torch->z == kZLight);
+        CHECK(torch->z > sword->z);
+        CHECK(torch->z > shield->z);
+        CHECK(kZOutline > kZLight);
+        CHECK(kZLight > kZNearHand);
+        CHECK(kZNearHand > kZFarHand);
+        CHECK(kZFarHand > kZWornFront);
+        CHECK(kZWornFront > kZBody);
+        CHECK(kZBody > kZBack);
+        // Same z: lower item instance first (pack 4 before the slung dagger 9), on either side of the body.
+        CHECK(index_of(ls, 4) < index_of(ls, 9));
+        const AttachPoints ap = attach_points(f);
+        CHECK(pack->at.x == ap.back.x);
+        CHECK(pack->at.y == ap.back.y);
+        CHECK(pouch->at.x == ap.hip.x);
+        CHECK(pouch->at.y == ap.hip.y);
+    }
+    // Input order does not change the tie-break.
+    std::reverse(a.equipment.begin(), a.equipment.end());
+    a.facing = Facing::NorthEast;
+    const std::vector<EquipLayer> away = equip_layers(a);
+    CHECK(index_of(away, 4) < index_of(away, 9));
+    a.facing = Facing::SouthEast;
+    const std::vector<EquipLayer> toward = equip_layers(a);
+    CHECK(index_of(toward, 4) < index_of(toward, 9));
+    // Placeholder quads: a pack is a bag, a slung weapon stays a shaft, a pouch is the belt bag.
+    const EquipLayer* pack_layer = find_layer(toward, 4);
+    const EquipLayer* dagger_layer = find_layer(toward, 9);
+    const EquipLayer* pouch_layer = find_layer(toward, 5);
+    REQUIRE(pack_layer);
+    REQUIRE(dagger_layer);
+    REQUIRE(pouch_layer);
+    const EquipVisual* pack_item = pack_layer->item;
+    const EquipVisual* dagger_item = dagger_layer->item;
+    const EquipVisual* pouch_item = pouch_layer->item;
+    REQUIRE(pack_item);
+    REQUIRE(dagger_item);
+    REQUIRE(pouch_item);
+    const std::vector<EquipQuad> pack_q = equip_quads(*pack_item, EquipPart::Back, {0, 0});
+    const std::vector<EquipQuad> shaft_q = equip_quads(*dagger_item, EquipPart::Back, {0, 0});
+    const std::vector<EquipQuad> pouch_q = equip_quads(*pouch_item, EquipPart::Hip, {0, 0});
+    REQUIRE(pack_q.size() == 1);
+    REQUIRE(shaft_q.size() == 1);
+    REQUIRE(pouch_q.size() == 1);
+    CHECK(pack_q[0].size.x > shaft_q[0].size.x);
+    CHECK(pouch_q[0].size.x < pack_q[0].size.x);
 }
 
 TEST_CASE("equip visuals: held light flame follows the lit state exactly like the glow") {
@@ -192,6 +309,32 @@ fs::path make_kit_pack() {
     std::ofstream(pack / "characters/fighter_1.json") << f.dump(2);
     return root;
 }
+// Same temp pack, with the fighter carrying a slung weapon and shield plus the four body-gear items.
+// component_pouch is carried too, and must not be drawn as the belt pouch.
+fs::path make_body_gear_pack() {
+    const fs::path root = fs::temp_directory_path() / ("isoforge_equip_body_" + run_suffix());
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    fs::create_directories(root);
+    const fs::path pack = root / "test.equip";
+    fs::copy(fs::path(SLICE_PACK_ROOT) / SLICE_PACK, pack, fs::copy_options::recursive);
+    std::string man = slurp(pack / "manifest.json");
+    man.replace(man.find("\"sample.vertical_slice\""), 23, "\"test.equip\"");
+    std::ofstream(pack / "manifest.json") << man;
+    assets::Json f = assets::Json::parse(slurp(fs::path(SLICE_PACK_ROOT) / "srd51.core/characters/fighter_level_1.json"));
+    f["id"] = "srd51.character.fighter_1";
+    f["equipment"] = assets::Json::array({assets::Json{{"item", "srd51.item.chain_mail"}, {"equipped", true}},
+                                          assets::Json{{"item", "srd51.item.longsword"}, {"equipped", true}},
+                                          assets::Json{{"item", "srd51.item.dagger"}, {"equipped", false}},
+                                          assets::Json{{"item", "srd51.item.shield"}, {"equipped", false}},
+                                          assets::Json{{"item", "srd51.item.backpack"}, {"equipped", false}},
+                                          assets::Json{{"item", "srd51.item.quiver"}, {"equipped", false}},
+                                          assets::Json{{"item", "srd51.item.case_crossbow_bolt"}, {"equipped", false}},
+                                          assets::Json{{"item", "srd51.item.pouch"}, {"equipped", false}},
+                                          assets::Json{{"item", "srd51.item.component_pouch"}, {"equipped", false}}});
+    std::ofstream(pack / "characters/fighter_1.json") << f.dump(2);
+    return root;
+}
 const ActorView* actor(const ViewModel& vm, uint32_t id) {
     for (const ActorView& a : vm.actors) if (a.id == id) return &a;
     return nullptr;
@@ -257,4 +400,49 @@ TEST_CASE("equip visuals: the session reads the sim loadout; stow slings, drop r
     CHECK(sword->slot == AttachSlot::Back);
     for (const EquipVisual& e : actor(vm, pc)->equipment) CHECK(e.slot == AttachSlot::Back);
     { std::error_code ec; fs::remove_all(root, ec); }   // best-effort; do not fail the test on cleanup
+}
+
+TEST_CASE("equip visuals: backpack, quiver and bolt case go to the back; the pouch goes to the hip") {
+    const fs::path root = make_body_gear_pack();
+    Session::Options o{{root.string(), SLICE_PACK_ROOT}, {"test.equip"}, 1, true};
+    o.pc_torches = false;
+    o.equipment = true;
+    std::string err;
+    auto s = Session::open(o, &err);
+    REQUIRE_MESSAGE(s, err);
+    ViewModel vm = s->view();
+    uint32_t pc = 0;
+    for (const ActorView& a : vm.actors)
+        if (a.is_pc) pc = a.id;
+    REQUIRE(pc);
+    const ActorView* a = actor(vm, pc);
+    REQUIRE(a);
+    const EquipVisual* sword = find_item(*a, "srd51.item.longsword");
+    const EquipVisual* dagger = find_item(*a, "srd51.item.dagger");
+    const EquipVisual* shield = find_item(*a, "srd51.item.shield");
+    const EquipVisual* pack = find_item(*a, "srd51.item.backpack");
+    const EquipVisual* quiver = find_item(*a, "srd51.item.quiver");
+    const EquipVisual* bolts = find_item(*a, "srd51.item.case_crossbow_bolt");
+    const EquipVisual* pouch = find_item(*a, "srd51.item.pouch");
+    REQUIRE(sword);
+    REQUIRE(dagger);
+    REQUIRE(shield);
+    REQUIRE(pack);
+    REQUIRE(quiver);
+    REQUIRE(bolts);
+    REQUIRE(pouch);
+    CHECK(sword->slot == AttachSlot::MainHand);
+    CHECK(dagger->slot == AttachSlot::Back);
+    CHECK(dagger->kind == EquipKind::Weapon);
+    CHECK(shield->slot == AttachSlot::Back);
+    CHECK(shield->kind == EquipKind::Shield);
+    CHECK(pack->slot == AttachSlot::Back);
+    CHECK(pack->kind == EquipKind::Other);
+    CHECK(quiver->slot == AttachSlot::Back);
+    CHECK(bolts->slot == AttachSlot::Back);
+    CHECK(pouch->slot == AttachSlot::Hip);
+    CHECK(pouch->kind == EquipKind::Other);
+    CHECK(find_item(*a, "srd51.item.component_pouch") == nullptr);   // not the belt pouch
+    CHECK(find_item(*a, "srd51.item.chain_mail") == nullptr);        // worn armor stays undrawn
+    { std::error_code ec; fs::remove_all(root, ec); }
 }

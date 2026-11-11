@@ -89,9 +89,26 @@ bool area_tile_is_edge(const std::vector<eng::Vec2i>& tiles, eng::Vec2i tile) no
            !has({tile.x, tile.y + 1});
 }
 
+AreaMapSpan area_map_span(const ViewModel& vm) noexcept {
+    AreaMapSpan span;
+    for (const TileView& tv : vm.tiles) {
+        if (span.x1 < span.x0) {
+            span.x0 = span.x1 = tv.tile.x;
+            span.y0 = span.y1 = tv.tile.y;
+            continue;
+        }
+        if (tv.tile.x < span.x0) span.x0 = tv.tile.x;
+        if (tv.tile.y < span.y0) span.y0 = tv.tile.y;
+        if (tv.tile.x > span.x1) span.x1 = tv.tile.x;
+        if (tv.tile.y > span.y1) span.y1 = tv.tile.y;
+    }
+    return span;
+}
+
 void paint_area_overlay(const AreaOverlayGfx& g, const ViewModel& vm) {
     const AreaPreviewView& a = vm.area;
     if (!a.present) return;
+    const AreaMapSpan map = area_map_span(vm);
 
     auto diamond = [&](eng::render::TextureId tex, eng::Color tint, int32_t z, float w, float h, float ax, float ay,
                        eng::Vec2f draw_iso, eng::Vec2f sort_iso, int32_t layer, uint32_t key) {
@@ -104,23 +121,24 @@ void paint_area_overlay(const AreaOverlayGfx& g, const ViewModel& vm) {
     std::vector<eng::Vec2i> painted;
     painted.reserve(a.tiles.size());
     for (eng::Vec2i t : a.tiles) {
+        if (!map.contains(t)) continue;
         if (std::find(painted.begin(), painted.end(), t) != painted.end()) continue;
         const TileView* floor = floor_tile(vm, t);
         if (!floor) continue;
         painted.push_back(t);
         const float lift = float(floor->elevation) * float(g.elev_px);
         const eng::Vec2f iso{float(t.x), float(t.y)};
-        const uint32_t key = uint32_t(t.y * 32 + t.x);
+        const uint32_t key = map.key(t);
         const float tw = float(g.tile_w), th = float(g.tile_h);
         diamond(g.floor, area_fill_tint(a.shape, a.pulse_ms), kAreaFillZ, tw, th, tw * 0.5f, lift, iso, iso, 0, key);
         if (area_tile_is_edge(a.tiles, t))
             diamond(g.ring, area_edge_tint(a.shape, a.pulse_ms), kAreaEdgeZ, tw, th, tw * 0.5f, lift, iso, iso, 0, key);
     }
 
-    {
+    if (map.contains(a.aim)) {
         const float lift = floor_lift(vm, a.aim, g.elev_px);
         const eng::Vec2f iso{float(a.aim.x), float(a.aim.y)};
-        const uint32_t key = uint32_t(a.aim.y * 32 + a.aim.x);
+        const uint32_t key = map.key(a.aim);
         const float tw = float(g.tile_w), th = float(g.tile_h);
         diamond(g.ring, area_aim_tint(), kAreaAimZ, tw, th, tw * 0.5f, lift, iso, iso, 0, key);
     }

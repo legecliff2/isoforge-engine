@@ -3,14 +3,17 @@
 //
 // Depth, kept off the zone slot (iso2d::kZoneOverlayLayer / kZoneOverlayZ = 0 / 1) and off the
 // cover overlay (that one is screen-space in SliceView::draw_cover):
-//   tile fill   layer 0, z = 2, entity = tile.y * 32 + tile.x
+//   tile fill   layer 0, z = 2, entity = (tile.y - y0) * map_width + (tile.x - x0)
 //   tile edge   layer 0, z = 3, same entity
 //   aim cursor  layer 0, z = 4, entity = aim tile (steady; the template pulses, the cursor does not)
-//   creature    layer 1, z = 9 (above equip_visuals kZOutline), one ring for the whole footprint
+//   creature    layer 1, z = 10 (above equip_visuals kZOutline), one ring for the whole footprint
 //
+// map_width is the view's tile span (max x - min x + 1), not a fixed 32. A stride of 32 aliases
+// once the map is wider than one chunk, and a negative cursor wraps through uint32_t.
 // Pulse reads AreaPreviewView::pulse_ms (the frame clock). It does not read ViewModel::anim_phase.
-// A tile is drawn only when the view has a non-wall floor for it. The aim cursor is drawn whenever
-// the preview is present, including while tiles_pending is set and the tile list is empty.
+// A tile is drawn only when it is inside that span and the view has a non-wall floor for it.
+// The aim cursor is drawn when the aim tile is inside the span, including while tiles_pending is
+// set and the tile list is empty. An aim outside the span is not drawn.
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -24,7 +27,7 @@ namespace slice {
 inline constexpr int32_t kAreaFillZ = 2;
 inline constexpr int32_t kAreaEdgeZ = 3;
 inline constexpr int32_t kAreaAimZ = 4;
-inline constexpr int32_t kAreaHitZ = 9;
+inline constexpr int32_t kAreaHitZ = 10;
 
 // Triangle wave, period 800 ms, 0 at 0 and 1 at 400. frame_ms is the frame clock.
 float area_pulse01(uint32_t frame_ms) noexcept;
@@ -36,6 +39,21 @@ eng::Color area_aim_tint() noexcept;
 
 // Orthogonal edge: a listed tile with any 4-neighbour missing from the set.
 bool area_tile_is_edge(const std::vector<eng::Vec2i>& tiles, eng::Vec2i tile) noexcept;
+
+// Inclusive tile rectangle of the view. x1 < x0 when the view has no tiles.
+// key() is unique inside the rectangle: (y - y0) * width + (x - x0), width = x1 - x0 + 1.
+struct AreaMapSpan {
+    int x0 = 0;
+    int y0 = 0;
+    int x1 = -1;
+    int y1 = -1;
+    bool contains(eng::Vec2i t) const noexcept { return t.x >= x0 && t.x <= x1 && t.y >= y0 && t.y <= y1; }
+    uint32_t key(eng::Vec2i t) const noexcept {
+        const int w = x1 - x0 + 1;
+        return uint32_t(int64_t(t.y - y0) * int64_t(w) + int64_t(t.x - x0));
+    }
+};
+AreaMapSpan area_map_span(const ViewModel& vm) noexcept;
 
 struct AreaOverlayGfx {
     eng::iso2d::SpriteBatch& world;
