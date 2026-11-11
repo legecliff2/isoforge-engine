@@ -54,19 +54,23 @@ TEST_CASE("regain: heals at the start of its turn, including from 1, and caps at
 TEST_CASE("regain: another creature's turn does not heal it") {
     auto ally = monster(3);
     ally.team = 1;
-    auto s = begin_encounter({pc(1, 500), guardian(2, 80, 80), ally}, 5);
-    end_turns_until(s, 2);
-    REQUIRE(step(s, {2, ActionKind::EndTurn}).ok);
-    REQUIRE(current_actor(s) != 2);
-    mut(s, 2).hp = 30;
-    REQUIRE(step(s, {current_actor(s), ActionKind::EndTurn}).ok);
-    if (current_actor(s) != 2) CHECK(mut(s, 2).hp == 30);
-    else CHECK(mut(s, 2).hp == 40);
-    if (current_actor(s) != 2) {
-        REQUIRE(step(s, {current_actor(s), ActionKind::EndTurn}).ok);
-        REQUIRE(current_actor(s) == 2);
-        CHECK(mut(s, 2).hp == 40);
+    // Dex is 14 on all three, so the d20 decides the order. Pin ally, then the PC, then the guardian.
+    EncounterState s;
+    bool pinned = false;
+    for (uint64_t seed = 1; seed < 200 && !pinned; ++seed) {
+        s = begin_encounter({pc(1, 500), guardian(2, 80, 80), ally}, seed);
+        pinned = s.order.size() == 3 && s.order[0].id == 3 && s.order[1].id == 1 && s.order[2].id == 2;
     }
+    REQUIRE(pinned);
+    REQUIRE(current_actor(s) == 3);
+    mut(s, 2).hp = 30;
+    REQUIRE(step(s, {3, ActionKind::EndTurn}).ok);
+    REQUIRE(current_actor(s) == 1);
+    REQUIRE(current_actor(s) != 2);   // the PC's turn, not the guardian's
+    CHECK(mut(s, 2).hp == 30);
+    REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);
+    REQUIRE(current_actor(s) == 2);
+    CHECK(mut(s, 2).hp == 40);
 }
 
 TEST_CASE("regain: 0 hit points is an ordinary death, and a troll still waits") {

@@ -70,6 +70,9 @@ public:
     static std::pair<int32_t, int32_t> chunk_of(Vec2i world_tile) noexcept;
 
     bool in_bounds(Vec2i p) const noexcept;
+    // Inclusive world-tile rectangle of every loaded chunk. x1 < x0 when the grid has none.
+    // A gap between chunks lies inside the rectangle and still fails in_bounds.
+    void world_bounds(int& x0, int& y0, int& x1, int& y1) const noexcept;
     // Walkable: has a ground tile (layer 0 tile != 0) and no layer sets blocks_move.
     bool walkable(Vec2i p) const noexcept;
     bool difficult(Vec2i p) const noexcept;

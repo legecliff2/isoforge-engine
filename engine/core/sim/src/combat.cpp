@@ -353,6 +353,15 @@ struct AreaTemplate {
         x1 = ax1 > bx1 ? ax1 : bx1;
         y0 = ay0 < by0 ? ay0 : by0;
         y1 = ay1 > by1 ? ay1 : by1;
+        // The scan keeps only in-bounds tiles, in this same row order. Intersecting the superset
+        // with the loaded chunks' rectangle drops coordinates the scan would skip, and no others.
+        if (!grid) return;
+        int gx0 = 0, gy0 = 0, gx1 = -1, gy1 = -1;
+        grid->world_bounds(gx0, gy0, gx1, gy1);
+        if (x0 < gx0) x0 = gx0;
+        if (y0 < gy0) y0 = gy0;
+        if (x1 > gx1) x1 = gx1;
+        if (y1 > gy1) y1 = gy1;
     }
 };
 
