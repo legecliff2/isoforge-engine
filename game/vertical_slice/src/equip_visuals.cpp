@@ -11,6 +11,7 @@ AttachPoints attach_points(Facing f) {
         p.main_hand.x = -p.main_hand.x;
         p.off_hand.x = -p.off_hand.x;
         p.back.x = -p.back.x;
+        p.hip.x = -p.hip.x;
     }
     return p;
 }
@@ -25,8 +26,11 @@ std::vector<EquipLayer> equip_layers(const ActorView& a) {
             continue;   // the true item is covered by the figure and is not drawn as itself
         EquipLayer l;
         l.item = &e;
-        if (e.slot == AttachSlot::Back) {
-            l.part = EquipPart::Back; l.z = kZBack; l.at = ap.back;
+        if (e.slot == AttachSlot::Back || e.slot == AttachSlot::Hip) {
+            const bool hip = e.slot == AttachSlot::Hip;
+            l.part = hip ? EquipPart::Hip : EquipPart::Back;
+            l.z = worn_z(e.slot, a.facing);
+            l.at = hip ? ap.hip : ap.back;
         } else {
             const bool main = e.slot == AttachSlot::MainHand;
             l.at = main ? ap.main_hand : ap.off_hand;
@@ -50,16 +54,21 @@ std::vector<EquipLayer> equip_layers(const ActorView& a) {
 namespace {
 bool has(std::string_view id, std::string_view w) { return id.find(w) != std::string_view::npos; }
 constexpr eng::Color kSteel{0.78f, 0.80f, 0.85f, 1.f}, kWood{0.50f, 0.33f, 0.18f, 1.f}, kBrass{0.80f, 0.63f, 0.25f, 1.f},
-                     kGrey{0.6f, 0.6f, 0.6f, 1.f}, kFlame{1.f, 0.92f, 0.55f, 1.f};
+                     kGrey{0.6f, 0.6f, 0.6f, 1.f}, kFlame{1.f, 0.92f, 0.55f, 1.f}, kLeather{0.45f, 0.32f, 0.22f, 1.f};
 } // namespace
 
 std::vector<EquipQuad> equip_quads(const EquipVisual& e, EquipPart part, eng::Vec2f at) {
     std::vector<EquipQuad> q;
     const bool wooden = has(e.content_id, "bow") || has(e.content_id, "club") || has(e.content_id, "staff");
     if (part == EquipPart::Back) {
-        // Slung behind the body: a shield shows its rim either side, a weapon its hilt / shaft over the shoulder.
+        // A shield shows its rim, a weapon its hilt / shaft. Rear gear (pack, quiver, bolt case) is a bag.
         if (e.kind == EquipKind::Shield) q.push_back({{0.f, at.y + 6.f}, {24.f, 18.f}, kWood});
+        else if (e.kind == EquipKind::Other) q.push_back({{at.x, at.y + 4.f}, {14.f, 16.f}, kLeather});
         else q.push_back({at, {3.f, 24.f}, wooden ? kWood : kSteel});
+        return q;
+    }
+    if (part == EquipPart::Hip) {
+        q.push_back({{at.x, at.y + 2.f}, {8.f, 7.f}, kLeather});   // belt pouch
         return q;
     }
     switch (e.kind) {

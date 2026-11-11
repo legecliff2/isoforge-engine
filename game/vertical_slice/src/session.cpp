@@ -8,6 +8,8 @@
 #include <cctype>
 #include <filesystem>
 #include <map>
+#include <optional>
+#include <string_view>
 
 #include "assets/pack_set.hpp"
 #include "ecs/registry.hpp"
@@ -622,9 +624,28 @@ bool Session::ended() const { return impl_->combat && impl_->combat->ended(); }
 const std::vector<std::string>& Session::warnings() const { return impl_->warnings; }
 const std::string& Session::error() const { return impl_->error; }
 
+// Last segment of a content id ("srd51.item.pouch" -> "pouch"). Empty when the id is empty.
+static std::string_view item_slug(std::string_view id) {
+    const auto dot = id.rfind('.');
+    return dot == std::string_view::npos ? id : id.substr(dot + 1);
+}
+
+// Carried body slot, or nullopt when this carried item is not drawn. Weapons and shields stay slung on the back.
+// Backpack, quiver and the crossbow bolt case share that rear slot. The belt pouch is the hip. The signal is the
+// content id's last segment: item@2 has no wear-slot field, ItemKind::Other does not separate these four, and
+// `visual` on an item is the light glow. component_pouch is a different slug and is not the belt pouch.
+static std::optional<AttachSlot> carried_body_slot(const rules5e::ItemDef& d, std::string_view content_id) {
+    if (d.kind == rules5e::ItemKind::Weapon || d.kind == rules5e::ItemKind::Shield) return AttachSlot::Back;
+    const std::string_view slug = item_slug(content_id);
+    if (slug == "backpack" || slug == "quiver" || slug == "case_crossbow_bolt") return AttachSlot::Back;
+    if (slug == "pouch") return AttachSlot::Hip;
+    return std::nullopt;
+}
+
 // Loadout -> EquipVisual list (read-only, through sim::Combat::loadout / item_defs): main hand, off hand (a two-handed
-// item, held in both, once at the main hand), then carried weapons / shields slung on the back (instance order).
-// Lit state and radii are rules5e::light_radii, the same values the light producer publishes.
+// item, held in both, once at the main hand), then carried body gear in instance order (slung weapons and shields,
+// backpack, quiver, bolt case on the back; the pouch on the hip). Worn armor is not drawn. Lit state and radii are
+// rules5e::light_radii, the same values the light producer publishes.
 static void equipment_visuals(const sim::Combat& c, sim::CombatantId id, std::vector<EquipVisual>& out) {
     out.clear();
     const rules5e::Loadout* lo = c.loadout(id);
@@ -656,13 +677,19 @@ static void equipment_visuals(const sim::Combat& c, sim::CombatantId id, std::ve
     };
     add(lo->view.main, AttachSlot::MainHand);
     if (lo->view.off.instance != lo->view.main.instance) add(lo->view.off, AttachSlot::OffHand);
-    std::vector<rules5e::HeldItem> slung;
+    struct Carried { rules5e::HeldItem item; AttachSlot slot; };
+    std::vector<Carried> worn;
     for (const rules5e::HeldItem& h : lo->view.carried) {
         const rules5e::ItemDef* d = table->find(h.def);
-        if (d && (d->kind == rules5e::ItemKind::Weapon || d->kind == rules5e::ItemKind::Shield)) slung.push_back(h);
+        if (!d) continue;
+        const std::string* cid = table->content_id(h.def);
+        const std::optional<AttachSlot> slot = carried_body_slot(*d, cid ? std::string_view(*cid) : std::string_view{});
+        if (slot) worn.push_back({h, *slot});
     }
-    std::sort(slung.begin(), slung.end(), [](const auto& x, const auto& y) { return x.instance < y.instance; });
-    for (const rules5e::HeldItem& h : slung) add(h, AttachSlot::Back);
+    std::sort(worn.begin(), worn.end(), [](const Carried& x, const Carried& y) {
+        return x.item.instance < y.item.instance;
+    });
+    for (const Carried& w : worn) add(w.item, w.slot);
 }
 
 void apply_visible_figure(const ::rules5e::EncounterState& st, uint32_t viewer, ActorView& actor) {
