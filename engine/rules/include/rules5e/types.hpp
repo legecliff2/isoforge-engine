@@ -850,8 +850,9 @@ struct Combatant {
     // refills to la_max at the start of this creature's turn. Not ResourcePool and not legendary_pool
     // (that name is Legendary Resistance). Options are static content. FormStats does not carry them.
     // Polymorph suspends the live pool into la_saved_* and restores that la_cur (no refill). Shapechanger
-    // and Wild Shape leave the live pool alone. Combat::hash 0xE8 folds la_max and la_cur only while some
-    // combatant has la_max > 0, so a polymorphed creature hashes as la_max 0.
+    // and Wild Shape leave the live pool alone. Combat::hash 0xE8 folds a live pool while la_max > 0, and
+    // appends saved la_max, la_cur, the option identity and legendary_pool while la_suspended. The tag is
+    // omitted only when neither exists.
     uint8_t la_max = 0;
     uint8_t la_cur = 0;
     std::vector<LegendaryOption> legendary;

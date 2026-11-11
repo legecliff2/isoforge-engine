@@ -606,3 +606,60 @@ TEST_CASE("polymorph suspends a legendary creature; revert restores the pool; re
     }
     REQUIRE_MESSAGE(ran, why);
 }
+
+// Pinned before the suspended section existed. The live 0xE8 bytes are unchanged, and the trailing
+// section is omitted unless someone is polymorphed, so these digests stay put.
+TEST_CASE("0xE8 folds a suspended legendary pool; a non-polymorph hash stays pinned") {
+    auto l = lib_with();
+    auto ch = arena({{"srd51.character.fighter_1", {7, 4}}, {"test.legendary.beast", {8, 4}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 11);
+    REQUIRE(c);
+    CHECK(c->hash() == 0x40c5e7a2531bae06ull);
+
+    ContentLibrary plain;
+    REQUIRE(plain.load(sample_set()).empty());
+    auto ch2 = arena({{"srd51.character.fighter_1", {4, 4}}, {"srd51.monster.goblin", {8, 4}}});
+    ecs::Registry reg2;
+    auto plain_fight = Combat::create(reg2, ch2, plain, 4);
+    REQUIRE(plain_fight);
+    REQUIRE(plain_fight->submit(end_turn(*plain_fight)).ok);
+    CHECK(plain_fight->hash() == 0x67bca9677135717dull);
+
+    const auto beast = ch.spawns[1].stable_id;
+    rules5e::Combatant* boss = nullptr;
+    for (auto& k : CombatTestAccess::state(*c).combatants)
+        if (k.id == beast) boss = &k;
+    REQUIRE(boss);
+    rules5e::FormStats form;
+    form.hp_max = 22;
+    form.ac = 13;
+    form.abilities = boss->abilities;
+    form.speed_ft = boss->speed_ft;
+    form.attacks = boss->attacks;
+    form.creature_type = rules5e::CreatureType::Beast;
+    REQUIRE(rules5e::apply_form(*boss, rules5e::FormKind::Polymorph, form));
+    REQUIRE(boss->la_suspended);
+    REQUIRE(boss->la_max == 0);
+    REQUIRE(boss->la_saved_cur > 0);
+    const uint64_t suspended = c->hash();
+    CHECK(suspended != 0x40c5e7a2531bae06ull);   // the only legendary creature is suspended, and 0xE8 is still emitted
+
+    boss->la_saved_cur = uint8_t(boss->la_saved_cur - 1);
+    const uint64_t fewer = c->hash();
+    CHECK(fewer != suspended);                   // the saved count is the only difference
+    boss->la_saved_cur = uint8_t(boss->la_saved_cur + 1);
+    CHECK(c->hash() == suspended);
+
+    REQUIRE_FALSE(boss->la_saved.empty());
+    boss->la_saved[0].cost = uint8_t(boss->la_saved[0].cost + 1);
+    CHECK(c->hash() != suspended);               // option identity
+    boss->la_saved[0].cost = uint8_t(boss->la_saved[0].cost - 1);
+    CHECK(c->hash() == suspended);
+
+    const uint32_t pool = boss->la_saved_pool;
+    boss->la_saved_pool = pool + 1;
+    CHECK(c->hash() != suspended);
+    boss->la_saved_pool = pool;
+    CHECK(c->hash() == suspended);
+}

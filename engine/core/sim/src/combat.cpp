@@ -2573,19 +2573,43 @@ uint64_t Combat::hash() const {
         h.u32(uint32_t(state_.figure_discerned.size()));
         for (const auto& d : state_.figure_discerned) { h.u32(d.observer); h.u32(d.subject); }
     }
-    // 0xE8 (legendary actions): pool and the open window. Folded only while some combatant has a pool,
-    // so a fight with no legendary creature hashes as before.
+    // 0xE8 (legendary actions): the live pool and the open window, then a Polymorph-suspended pool.
+    // The live bytes are exactly the pre-suspension fold, and the trailing section is written only
+    // when someone is suspended, so a fight that never polymorphs a legendary creature hashes as before.
+    // The tag is still emitted when the only legendary creature is suspended (live count 0).
     {
-        uint32_t n = 0;
-        for (const auto& c : state_.combatants) if (c.la_max > 0) ++n;
-        if (n != 0) {
+        uint32_t live = 0, suspended = 0;
+        for (const auto& c : state_.combatants) {
+            if (c.la_max > 0) ++live;
+            if (c.la_suspended) ++suspended;
+        }
+        if (live != 0 || suspended != 0) {
             h.byte(0xE8);
-            h.u32(n);
+            h.u32(live);
             for (const auto& c : state_.combatants)
                 if (c.la_max > 0) { h.u32(c.id); h.byte(c.la_max); h.byte(c.la_cur); }
             h.u32(state_.legendary_window.x);
             h.byte(state_.legendary_window.index);
             h.u32(state_.legendary_window.candidate);
+            if (suspended != 0) {
+                h.u32(suspended);
+                for (const auto& c : state_.combatants) {
+                    if (!c.la_suspended) continue;
+                    h.u32(c.id);
+                    h.byte(c.la_saved_max);
+                    h.byte(c.la_saved_cur);
+                    h.u32(uint32_t(c.la_saved.size()));
+                    for (const auto& o : c.la_saved) {
+                        h.byte(o.cost);
+                        h.byte(uint8_t(o.use));
+                        h.byte(o.attack_index);
+                        h.u32(o.ref_id);
+                        h.byte(o.half_speed ? 1 : 0);
+                        h.byte(o.no_opportunity_attacks ? 1 : 0);
+                    }
+                    h.u32(c.la_saved_pool);
+                }
+            }
         }
     }
     return h.value();

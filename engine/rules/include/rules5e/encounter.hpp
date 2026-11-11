@@ -1108,7 +1108,8 @@ struct EncounterState {
     uint32_t next_figure_instance = 1;
     // appended (legendary actions). Open between TurnEnded and advance_turn. x is the creature whose turn ended
     // (0 = closed). queue is the candidate order fixed at open (not hashed: replay rebuilds it). index and
-    // candidate are the offer. Combat::hash 0xE8 folds x, index and candidate with the pools.
+    // candidate are the offer. Combat::hash 0xE8 folds x, index and candidate with the live pools, and
+    // appends a Polymorph-suspended pool when la_suspended is set.
     struct LegendaryWindow {
         CombatantId x = 0;
         uint8_t index = 0;
