@@ -2129,10 +2129,10 @@ std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize si
             authored_kit = kit->get<std::string>();
         }
         if (auto b = vis->find("standin_bin"); b != vis->end()) {
-            if (!b->is_string()) return "visual.standin_bin must be tiny, small, medium, or large";
+            if (!b->is_string()) return "visual.standin_bin must be tiny, small, medium, large, or huge";
             bin_s = b->get<std::string>();
-            if (bin_s != "tiny" && bin_s != "small" && bin_s != "medium" && bin_s != "large")
-                return "visual.standin_bin must be tiny, small, medium, or large";
+            if (bin_s != "tiny" && bin_s != "small" && bin_s != "medium" && bin_s != "large" && bin_s != "huge")
+                return "visual.standin_bin must be tiny, small, medium, large, or huge";
             bin_set = true;
         }
         if (auto a = vis->find("art_root"); a != vis->end()) {
@@ -3017,6 +3017,132 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         synth.push_back(d);
     }
     a.aura_defs.clear();
+    // monster@7 legendary actions. @5/@6 (and anything migrated from them) keep a descriptive list: entries
+    // with neither use nor effect are ignored. Mechanical entries require the file to have declared @7.
+    if (schema_type == "monster") {
+        const auto la = doc.find("legendary_actions");
+        const bool at7 = declared == 0 || declared >= 7;
+        if (la != doc.end() && la->is_array()) {
+            int per = -1;
+            if (auto pr = doc.find("legendary_actions_per_round"); pr != doc.end()) {
+                if (!at7) return a.id + ": legendary_actions_per_round needs a monster@7 file";
+                if (!pr->is_number_integer() || pr->get<int64_t>() < 1 || pr->get<int64_t>() > 5)
+                    return a.id + ": legendary_actions_per_round must be 1..5";
+                per = int(pr->get<int64_t>());
+            }
+            std::vector<std::string> seen_ids;
+            bool any = false;
+            for (const Json& opt : *la) {
+                if (!opt.is_object()) return a.id + ": legendary action must be an object";
+                const bool mech = opt.contains("use") || opt.contains("effect");
+                if (!mech) {
+                    if (at7) return a.id + ": legendary action '" + opt.value("id", "?") + "' needs use or effect";
+                    continue;   // descriptive list on an older file
+                }
+                if (!at7) return a.id + ": legendary actions need a monster@7 file";
+                any = true;
+                const std::string oid = opt.value("id", "");
+                if (oid.empty()) return a.id + ": legendary action needs an id";
+                if (std::find(seen_ids.begin(), seen_ids.end(), oid) != seen_ids.end())
+                    return a.id + ": duplicate legendary action id '" + oid + "'";
+                seen_ids.push_back(oid);
+                if (opt.contains("use") && opt.contains("effect"))
+                    return a.id + ": legendary action '" + oid + "' has both use and effect";
+                int cost = 1;
+                if (opt.contains("cost")) {
+                    if (!opt["cost"].is_number_integer() || opt["cost"].get<int64_t>() < 1 || opt["cost"].get<int64_t>() > 3)
+                        return a.id + ": legendary action '" + oid + "' cost must be 1..3";
+                    cost = int(opt["cost"].get<int64_t>());
+                }
+                if (per >= 0 && cost > per) return a.id + ": legendary action '" + oid + "' costs more than the pool";
+                rules5e::LegendaryOption lo;
+                lo.cost = uint8_t(cost);
+                if (opt.contains("effect")) {
+                    if (!opt["effect"].is_object()) return a.id + ": legendary action '" + oid + "' effect must be an object";
+                    Json body = opt["effect"];
+                    if (!body.contains("id")) body["id"] = oid;
+                    if (!body.contains("name")) body["name"] = opt.value("name", oid);
+                    const std::string ak = body.value("kind", "");
+                    rules5e::SpellDef d;
+                    Archetype::SaveAction sa;
+                    bool unsupported = false;
+                    std::optional<std::string> err;
+                    if (ak == "save_effect") err = compile_save_action(a.id, body, d, sa, doc, unsupported);
+                    else if (ak == "attack_effect") err = compile_attack_effect(a.id, body, d, sa, doc, unsupported);
+                    else if (ak == "area_effect") err = compile_area_action(a.id, body, d, sa, doc, unsupported, schema_type, declared);
+                    else if (ak == "healing_touch") err = compile_healing_touch(a.id, body, declared, schema_type, d, sa);
+                    else return a.id + ": legendary action '" + oid + "' effect kind '" + ak + "' is not a compiled action";
+                    if (err) return *err;
+                    if (unsupported) return a.id + ": legendary action '" + oid + "' effect is not usable";
+                    lo.use = rules5e::LegendaryUse::Effect;
+                    lo.ref_id = d.id;
+                    for (const auto& prev : synth)
+                        if (prev.id == d.id) return a.id + ": legendary effect id collides with '" + prev.content_id + "'";
+                    a.legendary_effect_ids.push_back(d.id);
+                    synth.push_back(std::move(d));
+                } else {
+                    const Json& use = opt["use"];
+                    if (!use.is_object()) return a.id + ": legendary action '" + oid + "' use must be an object";
+                    const int keys = int(use.size());
+                    if (use.contains("attack")) {
+                        if (keys != 1 || !use["attack"].is_string()) return a.id + ": legendary use.attack must be the only key";
+                        const std::string aid = use["attack"].get<std::string>();
+                        int found = -1;
+                        for (std::size_t i = 0; i < c.attacks.size(); ++i)
+                            if (c.attacks[i].id == aid) found = int(i);
+                        if (found < 0) return a.id + ": legendary action '" + oid + "' attack '" + aid + "' is not an attack of this creature";
+                        lo.use = rules5e::LegendaryUse::Attack;
+                        lo.attack_index = uint8_t(found);
+                    } else if (use.contains("action")) {
+                        if (keys != 1 || !use["action"].is_string()) return a.id + ": legendary use.action must be the only key";
+                        const std::string aid = use["action"].get<std::string>();
+                        const Archetype::SaveAction* sa = nullptr;
+                        for (const auto& sact : a.save_actions) if (sact.id == aid) sa = &sact;
+                        if (!sa) return a.id + ": legendary action '" + oid + "' action '" + aid + "' is not an action of this creature";
+                        lo.use = rules5e::LegendaryUse::Action;
+                        lo.ref_id = sa->spell_id;
+                    } else if (use.contains("check")) {
+                        if (keys != 1 || !use["check"].is_string() || use["check"].get<std::string>() != "perception")
+                            return a.id + ": legendary use.check must be perception";
+                        lo.use = rules5e::LegendaryUse::Check;
+                    } else if (use.contains("move")) {
+                        if (!use["move"].is_string()) return a.id + ": legendary use.move must be half_speed or speed";
+                        const std::string mv = use["move"].get<std::string>();
+                        if (mv != "half_speed" && mv != "speed") return a.id + ": legendary use.move must be half_speed or speed";
+                        lo.use = rules5e::LegendaryUse::Move;
+                        lo.half_speed = mv == "half_speed";
+                        if (use.contains("no_opportunity_attacks")) {
+                            if (!use["no_opportunity_attacks"].is_boolean())
+                                return a.id + ": legendary use.move no_opportunity_attacks must be a boolean";
+                            lo.no_opportunity_attacks = use["no_opportunity_attacks"].get<bool>();
+                        }
+                        for (auto it = use.begin(); it != use.end(); ++it)
+                            if (it.key() != "move" && it.key() != "no_opportunity_attacks")
+                                return a.id + ": legendary use.move: unknown key '" + it.key() + "'";
+                    } else if (use.contains("spell")) {
+                        if (keys != 1 || !use["spell"].is_string() || use["spell"].get<std::string>().empty())
+                            return a.id + ": legendary use.spell must be the only key";
+                        const std::string sid = use["spell"].get<std::string>();
+                        bool known = false;
+                        for (const auto& s : a.spell_ids) known = known || s == sid;
+                        for (const auto& s : a.innate_spell_ids) known = known || s == sid;
+                        if (!known) return a.id + ": legendary action '" + oid + "' spell '" + sid + "' is not one this creature knows";
+                        lo.use = rules5e::LegendaryUse::Spell;
+                        lo.ref_id = rules5e::spell_id_of(sid);
+                    } else {
+                        return a.id + ": legendary action '" + oid + "' use needs attack, action, check, move, or spell";
+                    }
+                }
+                c.legendary.push_back(lo);
+            }
+            if (any) {
+                if (per < 0) return a.id + ": legendary_actions_per_round is required";
+                c.la_max = c.la_cur = uint8_t(per);
+            }
+        } else if (doc.contains("legendary_actions_per_round")) {
+            return a.id + ": legendary_actions_per_round needs legendary_actions";
+        }
+    }
     // Register in the shared SpellBook, replacing an overridden archetype's entries; all-or-nothing.
     if (!synth.empty() || by_id_.count(a.id)) {
         std::vector<rules5e::SpellDef> old;
@@ -3026,6 +3152,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             for (uint32_t id : prev->second.trigger_spell_ids)
                 if (const auto* d = spells_->find(id)) old.push_back(*d);
             for (uint32_t id : prev->second.aura_spell_ids)
+                if (const auto* d = spells_->find(id)) old.push_back(*d);
+            for (uint32_t id : prev->second.legendary_effect_ids)
                 if (const auto* d = spells_->find(id)) old.push_back(*d);
             for (const auto& m : prev->second.base.multiattacks)   // B7: both-hits Engulf defs live only in the book
                 if (m.engulf_both != 0)

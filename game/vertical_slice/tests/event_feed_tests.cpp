@@ -127,12 +127,22 @@ TEST_CASE("v10 summon / transform kinds 48-52 are known (not counted as unknown,
     slice::apply_events(evs, st, nm);
     CHECK(st.skipped_unknown == 0);
     CHECK(st.log.empty());
-    CHECK(sim::kLastRulesEventKind == EventKind::Commanded);
+    CHECK(sim::kLastRulesEventKindV12 == EventKind::Commanded);
+    CHECK(sim::kLastRulesEventKind == EventKind::LegendaryActionsRegained);
+}
+
+TEST_CASE("v13 legendary kinds 53-54 are known (not counted as unknown, not shown)") {
+    std::vector<SimEvent> evs;
+    for (int k = 53; k <= 54; ++k) evs.push_back(rules(EventKind(k), 1, 0, 1, 2, 3));
+    FeedState st;
+    slice::apply_events(evs, st, nm);
+    CHECK(st.skipped_unknown == 0);
+    CHECK(st.log.empty());
 }
 
 TEST_CASE("unknown event kinds are skipped (above kLastRulesEventKind, future sim kinds)") {
     std::vector<SimEvent> evs;
-    for (int k = 53; k <= 56; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));   // past v10's last kind (52)
+    for (int k = 55; k <= 56; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));   // past v13's last kind (54)
     evs.push_back(rules(EventKind(250), 1));
     SimEvent future;
     future.kind = SimEvent::Kind(7);
@@ -143,7 +153,7 @@ TEST_CASE("unknown event kinds are skipped (above kLastRulesEventKind, future si
     FeedState st;
     st.tiles[2] = {20, 15};
     slice::apply_events(evs, st, nm);
-    CHECK(st.skipped_unknown == 6);
+    CHECK(st.skipped_unknown == 4);   // 55, 56, 250, and the non-Rules sim kind
     CHECK(st.tiles[2] == Vec2i{20, 15});   // the unknown kind did not move anyone
     REQUIRE(st.log.size() == 1);
     CHECK(st.log[0] == "GOBLIN DIES!");

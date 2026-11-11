@@ -183,10 +183,13 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   InspectFigure,
                                   // appended (SRD concentration): end the actor's concentration at any time. No action,
                                   // bonus action, or reaction. Same admission as Heal and AbilityCheck.
-                                  EndConcentration };
+                                  EndConcentration,
+                                  // appended (legendary actions): one option, or a pass (feature_id 0), in the window
+                                  // after another creature's turn. Not a turn action. Does not spend TurnBudget.
+                                  LegendaryAction };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
-static_assert(static_cast<uint32_t>(ActionKind::EndConcentration) < 32,
-              "ActionKind::bit shifts a uint32_t; InspectFigure and EndConcentration must stay below 32");
+static_assert(static_cast<uint32_t>(ActionKind::LegendaryAction) < 32,
+              "ActionKind::bit shifts a uint32_t; InspectFigure, EndConcentration and LegendaryAction must stay below 32");
 
 // Reaction windows (encounter.hpp). Append-only.
 // HitRider (row 9c): the attacker is the reactor; opened after a hit for each `choice: ask` trigger (Divine Smite).
@@ -583,6 +586,19 @@ struct FormStats {
     uint8_t keen_senses = 0;
 };
 
+// One legendary-action option. Static content: no per-option state. feature_id on a LegendaryAction request is the
+// 1-based index into Combatant::legendary (0 = pass). use.attack is an index into Combatant::attacks. ref_id is the
+// spell id of a referenced action, an inline effect, or a spell. A move is half_speed or the full speed.
+enum class LegendaryUse : uint8_t { Attack = 1, Action = 2, Check = 3, Move = 4, Spell = 5, Effect = 6 };
+struct LegendaryOption {
+    uint8_t cost = 1;
+    LegendaryUse use = LegendaryUse::Attack;
+    uint8_t attack_index = 0;
+    uint32_t ref_id = 0;
+    bool half_speed = false;
+    bool no_opportunity_attacks = false;
+};
+
 // 7.2z Danger Sense: advantage on `ability` saves against effects the creature can see (source_seen: the effect's creature is
 // seen, `sight`; no known source counts as seen), not while it has any of `not_conditions` (bitmask over Condition).
 struct SaveAdvantage { Ability ability = Ability::Dex; bool source_seen = true; uint32_t not_conditions = 0; };
@@ -830,6 +846,13 @@ struct Combatant {
     // Any other plane folds under Combat::hash 0xE6 only while some combatant is not Material.
     // FormStats does not carry it; the plane stays on the creature. Not a condition and not invisibility.
     Plane plane = Plane::Material;
+    // appended (legendary actions). la_max is the pool size from content (0 = none). la_cur starts full and
+    // refills to la_max at the start of this creature's turn. Not ResourcePool and not legendary_pool
+    // (that name is Legendary Resistance). Options are static content. Forms do not carry any of this.
+    // Combat::hash 0xE8 folds la_max and la_cur only while some combatant has la_max > 0.
+    uint8_t la_max = 0;
+    uint8_t la_cur = 0;
+    std::vector<LegendaryOption> legendary;
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 

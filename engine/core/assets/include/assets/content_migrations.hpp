@@ -27,6 +27,9 @@
 //  monster@6 / character@6 (Engine Core M0): optional presentation `visual`. Migrations 5 -> 6 are identity
 //  (only $schema changes; visual stays absent). The loader fills a presentation default when visual is absent
 //  and never folds visual or presentation.sprite into Combat::hash, log_hash, or content hashes.
+//  monster@7 (legendary actions): monster@6 carried in full, including `huge` in visual.standin_bin, plus
+//  legendary_actions_per_round and a mechanical legendary_actions list. Migration 6 -> 7 is identity.
+//  In files that declared @5 or @6, legendary_actions stays descriptive and the loader ignores it.
 //  character@3: feature effects (features[]/traits[] "effect") become mechanically active.
 //  Before @3 they were descriptive only and content baked their numbers into stat blocks (fl1's
 //  longsword 1d8+5 includes Dueling). Migration 2 -> 3 marks every pre-@3 effect
@@ -39,7 +42,7 @@
 
 namespace eng::assets {
 
-inline constexpr uint32_t kMonsterSchemaVersion = 6;
+inline constexpr uint32_t kMonsterSchemaVersion = 7;
 inline constexpr uint32_t kCharacterSchemaVersion = 6;
 // spell@1: SRD spell (schemas/spell/v1.schema.json); mapped to rules5e::SpellDef by rules5e_content.
 inline constexpr uint32_t kSpellSchemaVersion = 1;

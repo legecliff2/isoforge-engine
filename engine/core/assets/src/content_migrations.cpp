@@ -157,6 +157,8 @@ void register_content_schemas(SchemaRegistry& reg) {
     // M0 visual is optional presentation. 5 -> 6 does not write a visual block (absent keeps the load-time default).
     reg.register_migration("monster", 5, 6, identity);
     reg.register_migration("character", 5, 6, identity);
+    // Legendary actions. 6 -> 7 does not write legendary fields (absent stays descriptive / none).
+    reg.register_migration("monster", 6, 7, identity);
 }
 
 std::optional<std::string> behavior_ai_script(const Json& doc) {

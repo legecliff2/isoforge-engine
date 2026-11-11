@@ -12,9 +12,11 @@
 namespace eng::sim {
 
 // Version of the event stream contract (SimEvent + rules5e::Event as surfaced by sim).
-inline constexpr uint32_t kSimEventSchemaVersion = 12;
+inline constexpr uint32_t kSimEventSchemaVersion = 13;
 // Last rules5e::EventKind surfaced under this schema version (rules appends; sim bumps).
-inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::Commanded;
+inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::LegendaryActionsRegained;
+// Last rules kind that existed at v12. A stream carrying a later kind (legendary actions, 53-54) is a v13 stream.
+inline constexpr rules5e::EventKind kLastRulesEventKindV12 = rules5e::EventKind::Commanded;
 // Last rules kind that existed at v9. A stream carrying a later kind (R-G12 kinds 48-52: Summoned .. Commanded) is a v10 stream.
 inline constexpr rules5e::EventKind kLastRulesEventKindV9 = rules5e::EventKind::ZoneEnded;
 // Last rules kind that existed at v8. A stream carrying a later kind (R-G11 ZoneCreated / ZoneMoved / ZoneEnded) is a v9 stream.
@@ -62,13 +64,15 @@ struct SimEvent {
     Vec2i tile{};                    // TileMoved: destination; {0,0} otherwise
 };
 
-// Lowest schema version that can express the stream: 10 if it contains a rules kind past kLastRulesEventKindV9 (R-G12
+// Lowest schema version that can express the stream: 13 if it contains a rules kind past kLastRulesEventKindV12
+// (legendary actions, 53-54), 12 if it contains an AltitudeChanged, 11 if it contains an ItemMoved,
+// 10 if it contains a rules kind past kLastRulesEventKindV9 (R-G12
 // summons / transforms) or a TokenSpawned / TokenRemoved, 9 if it contains a rules kind past kLastRulesEventKindV8 (R-G11 zones),
 // 8 if it contains a rules Moved with c != 0 (movement flags), 7 if
 // it contains a rules kind past kLastRulesEventKindV6, 6 if it contains a v6 construct (Footprint), else
 // 5 if it contains a v5 construct (SpellTarget), else 4. The digest records this, not
 // kSimEventSchemaVersion, so streams without a CastSpell or a multi-tile creature keep their v4 / v5
-// digests bit-identical (docs/SIM_EVENTS.md versioning policy).
+// digests bit-identical, and a stream with no legendary event stays below 13 (docs/SIM_EVENTS.md versioning policy).
 uint32_t event_stream_version(std::span<const SimEvent> events);
 
 // ItemMoved reasons (rules.b): 1..7 = rules5e::EquipOp (draw, stow, drop, pick up, don shield, doff shield, hand over),

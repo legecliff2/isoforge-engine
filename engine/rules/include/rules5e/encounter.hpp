@@ -308,6 +308,9 @@ enum class EventKind : uint8_t {
     // appended (R-G12 summons and transforms, event schema v10; SUMMONS_TRANSFORMS.md §2.7, numbered 48-52). Rules PR 1 emits
     // Transformed / Reverted; Summoned, SummonEnded and Commanded are reserved for rules PR 2 (never emitted yet).
     Summoned, SummonEnded, Transformed, Reverted, Commanded,
+    // appended (legendary actions, event schema v13). LegendaryActionUsed: one per option used (several per window).
+    // LegendaryActionsRegained: start of the creature's turn, only when la_cur was below la_max.
+    LegendaryActionUsed, LegendaryActionsRegained,
     // Not an event: the number of kinds. Append new kinds ABOVE this line; consumers that lock the
     // numeric layout (sim's "event layout" test) compare against kEventKindCount.
     Count_ };
@@ -334,6 +337,8 @@ inline constexpr std::size_t kEventKindCount = std::size_t(EventKind::Count_);
 //   Summoned actor=summoner target=creature a=spell id b=archetype index c=initiative total; SummonEnded actor=summoner target=creature
 //   a=spell id b=reason (0 duration, 1 concentration, 3 0 HP, 5 encounter ended); a Spiritual Weapon: Summoned target=token id
 //   b=0 c=-1, SummonEnded b=0 / 5; Commanded actor=summoner target=creature (0 = all) a=command.
+//   v13: LegendaryActionUsed actor=user target=first target a=option (1-based) b=cost c=remaining;
+//   LegendaryActionsRegained actor a=la_cur before b=la_max.
 //   v7: RechargeRolled actor a=action/spell id b=d6 natural c=recharged(0/1); FeatureTriggered actor=owner
 //   target=subject a=trigger id b=TriggerOn c=outcome (0 none, 1 applied, 2 declined, 3 failed save);
 //   ResourceSpent actor a=pool id b=amount c=remaining; ModifierApplied actor=caster target a=modifier id
@@ -1087,6 +1092,16 @@ struct EncounterState {
     std::vector<VisibleFigure> figures{};
     std::vector<FigureDiscernment> figure_discerned{};
     uint32_t next_figure_instance = 1;
+    // appended (legendary actions). Open between TurnEnded and advance_turn. x is the creature whose turn ended
+    // (0 = closed). queue is the candidate order fixed at open (not hashed: replay rebuilds it). index and
+    // candidate are the offer. Combat::hash 0xE8 folds x, index and candidate with the pools.
+    struct LegendaryWindow {
+        CombatantId x = 0;
+        uint8_t index = 0;
+        CombatantId candidate = 0;
+        std::vector<CombatantId> queue;
+    };
+    LegendaryWindow legendary_window;
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call

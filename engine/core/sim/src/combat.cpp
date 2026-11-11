@@ -1208,6 +1208,7 @@ bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
 }
 
 std::optional<Vec2i> Combat::moving_to(CombatantId id) const {
+    if (legendary_to_ && id == legendary_mover_) return legendary_to_;
     if (step_to_ && id == rules5e::current_actor(state_)) return step_to_;
     // A readied Move resolving inside another creature's request.
     if (id != rules5e::current_actor(state_)) return readied_destination(id);
@@ -1334,7 +1335,13 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
             }
             continue;
         }
-        if (e.kind == rules5e::EventKind::Moved && e.reaction_depth == 0 && q.kind == ActionKind::Move && e.actor == q.actor && to) {
+        const bool legendary_move = q.kind == ActionKind::LegendaryAction && q.feature_id > 0 && [&] {
+            const auto* mv = rules5e::find(state_, q.actor);
+            return mv && q.feature_id <= mv->legendary.size() &&
+                   mv->legendary[std::size_t(q.feature_id - 1)].use == rules5e::LegendaryUse::Move;
+        }();
+        if (e.kind == rules5e::EventKind::Moved && e.reaction_depth == 0 && e.actor == q.actor && to &&
+            (q.kind == ActionKind::Move || legendary_move)) {
             const Vec2i from = pos(q.actor);
             if (q.squeeze != 0 && !std::any_of(evs.begin(), evs.end(), [&](const rules5e::Event& x) {
                     return x.kind == rules5e::EventKind::MoveInterrupted && x.actor == q.actor; })) {
@@ -1642,6 +1649,7 @@ SubmitResult Combat::finish(rules5e::StepResult sr) {
     if (ls.request.kind == ActionKind::Move) to = step_to_;
     if (ls.request.kind == ActionKind::Ready) to = ready_to_;
     if (ls.request.kind == ActionKind::CastSpell && derived_area_) to = aim_to_;   // the aim tile (log_hash folds it)
+    if (ls.request.kind == ActionKind::LegendaryAction) to = legendary_log_to_;   // MUST-1: the destination tile
     derived_area_ = false;
     complete(ls, sr.events, to, sr.teardown_begin);
     log_.push_back({ls, to});
@@ -1657,6 +1665,9 @@ void Combat::attach_light_driver(LightDriver* d) {
 
 SubmitResult Combat::submit(const Command& cmd) {
     SubmitResult r;
+    legendary_mover_ = 0;
+    legendary_to_.reset();
+    legendary_log_to_.reset();
     if (state_.pending) { r.error = "a reaction window is waiting for a decision"; r.needs = pending(); return r; }
     if (state_.ended) { r.error = "encounter ended"; return r; }
     if (light_.d && light_.d->halted()) {   // R-G13 §7: never step on a partial halo; re-check once (the streamer may have loaded)
@@ -1700,7 +1711,90 @@ SubmitResult Combat::settle(const ReactionDeciderFn& decider) {
 SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     SubmitResult r;
     derived_area_ = false;
+    legendary_mover_ = 0;
+    legendary_to_.reset();
+    legendary_log_to_.reset();
     const CombatantId actor = rules5e::current_actor(state_);
+    // Legendary window: the offered creature, not the creature whose turn just ended. The destination
+    // tile is logged for every LegendaryAction (MUST-1). A move is one request: the path is path_for
+    // from here to `to`, and opportunity attacks see that destination unless the option says otherwise.
+    if (req.kind == ActionKind::LegendaryAction) {
+        const auto& w = state_.legendary_window;
+        if (w.x == 0) { r.error = "no legendary window"; return r; }
+        if (req.actor != w.candidate) { r.error = "not the creature offered a legendary action"; return r; }
+        const auto* me = rules5e::find(state_, req.actor);
+        if (!me) { r.error = "bad combatant"; return r; }
+        legendary_log_to_ = to;
+        if (req.feature_id != 0) {
+            if (req.feature_id > me->legendary.size()) { r.error = "bad legendary option"; return r; }
+            const auto& opt = me->legendary[std::size_t(req.feature_id - 1)];
+            if (opt.use == rules5e::LegendaryUse::Attack) {
+                req.attack_index = opt.attack_index;
+                if (req.attack_index >= me->attacks.size() || !rules5e::find(state_, req.target)) {
+                    r.error = "bad attack";
+                    return r;
+                }
+                const int d = distance_tiles(req.actor, req.target);
+                if (me->attacks[req.attack_index].ranged) {
+                    if (!ranged_attack_facts(req.actor, req.attack_index, spot(req.actor), spot(req.target),
+                                             abs_height_ft(req.target), req, &r.error))
+                        return r;
+                } else if (d > reach_tiles(me->attacks[req.attack_index].reach_or_range_ft)) {
+                    r.error = "target out of reach";
+                    return r;
+                }
+                req.target_within_5ft = d <= 1;
+                req.ally_near_target = ally_near(req.actor, spot(req.target));
+            } else if (opt.use == rules5e::LegendaryUse::Move) {
+                const Vec2i from = pos(req.actor);
+                const int fp = footprint_size(req.actor);
+                if (to == from || !grid_.footprint_walkable(to, fp)) { r.error = "bad legendary move destination"; return r; }
+                if (const rules5e::CombatantId src = rules5e::condition_source(state_, req.actor, rules5e::Condition::Frightened)) {
+                    const Spot ss = spot(src);
+                    if (rect_distance(to, fp, ss.p, ss.n) < rect_distance(from, fp, ss.p, ss.n)) {
+                        r.error = "frightened: cannot move closer to the source";
+                        return r;
+                    }
+                }
+                const auto path = path_for(req.actor, from, {to}, fp);
+                if (path.empty() || path.back() != to) { r.error = "legendary move destination unreachable"; return r; }
+                int cost = 0;
+                Vec2i prev = from;
+                bool leave = false;
+                for (Vec2i p : path) {
+                    cost += step_cost_ft(req.actor, prev, p);
+                    if (!opt.no_opportunity_attacks && leaves_reach(req.actor, prev, p)) leave = true;
+                    prev = p;
+                }
+                int allow = rules5e::modified_speed(state_, *me);
+                if (opt.half_speed) allow /= 2;
+                if (cost <= 0 || cost > allow) { r.error = "legendary move exceeds speed"; return r; }
+                req.move_ft = int16_t(cost);
+                req.move_tiles = uint8_t(std::min<std::size_t>(path.size(), 255));
+                req.leaves_reach = leave;
+                if (!state_.zones.empty()) {
+                    zone_lists(req.actor, spot(req.actor), Spot{to, fp}, req);
+                    req.zone_changes = zone_changes_for(req.actor, spot(req.actor), Spot{to, fp});
+                }
+                legendary_mover_ = req.actor;
+                legendary_to_ = to;
+                legendary_log_to_ = to;
+            } else if (opt.use == rules5e::LegendaryUse::Action || opt.use == rules5e::LegendaryUse::Effect ||
+                       opt.use == rules5e::LegendaryUse::Spell) {
+                const rules5e::SpellDef* d = spells_ ? spells_->find(opt.ref_id) : nullptr;
+                if (d && d->area != rules5e::AreaShape::None && req.targets.empty()) {
+                    std::string err;
+                    req.targets = area_targets(req.actor, *d, to, &err);
+                    if (!err.empty()) { r.error = err; return r; }
+                    if (!req.targets.empty()) req.target = req.targets[0];
+                }
+                if (req.target != 0) req.target_within_5ft = distance_tiles(req.actor, req.target) <= 1;
+            }
+        }
+        set_step_context(req);
+        clear_forced();
+        return finish(rules5e::step(state_, req));
+    }
     // SRD: concentration may be ended at any time, no action required. Same rules admission as Heal
     // and AbilityCheck. This is the one sim forward of an off-turn request; Heal stays on the turn gate.
     if (req.kind == ActionKind::EndConcentration) {
@@ -2403,6 +2497,21 @@ uint64_t Combat::hash() const {
         h.u32(uint32_t(state_.figure_discerned.size()));
         for (const auto& d : state_.figure_discerned) { h.u32(d.observer); h.u32(d.subject); }
     }
+    // 0xE8 (legendary actions): pool and the open window. Folded only while some combatant has a pool,
+    // so a fight with no legendary creature hashes as before.
+    {
+        uint32_t n = 0;
+        for (const auto& c : state_.combatants) if (c.la_max > 0) ++n;
+        if (n != 0) {
+            h.byte(0xE8);
+            h.u32(n);
+            for (const auto& c : state_.combatants)
+                if (c.la_max > 0) { h.u32(c.id); h.byte(c.la_max); h.byte(c.la_cur); }
+            h.u32(state_.legendary_window.x);
+            h.byte(state_.legendary_window.index);
+            h.u32(state_.legendary_window.candidate);
+        }
+    }
     return h.value();
 }
 
@@ -2545,6 +2654,13 @@ uint64_t Combat::log_hash() const {
             h.byte(q.command);
             h.u32(uint32_t(q.command_ids.size()));
             for (const auto id : q.command_ids) h.u32(id);
+        }
+        // 0xE9: creature targets of a LegendaryAction, in request order. Single targets already fold through `target`.
+        // Other kinds do not fold `targets` (that would move existing digests).
+        if (q.kind == rules5e::ActionKind::LegendaryAction && !q.targets.empty()) {
+            h.byte(0xE9);
+            h.u32(uint32_t(q.targets.size()));
+            for (const auto id : q.targets) h.u32(id);
         }
         h.byte(q.heal_dice.count);
         h.byte(q.heal_dice.sides);
@@ -3137,6 +3253,18 @@ std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* c
         c->ready_to_.reset();
         if (e.step.request.kind == ActionKind::Move) c->step_to_ = e.to;
         if (e.step.request.kind == ActionKind::Ready) c->ready_to_ = e.to;
+        c->legendary_mover_ = 0;
+        c->legendary_to_.reset();
+        c->legendary_log_to_.reset();
+        if (e.step.request.kind == ActionKind::LegendaryAction && e.to) {
+            c->legendary_log_to_ = e.to;
+            const auto* mv = rules5e::find(c->state_, e.step.request.actor);
+            if (mv && e.step.request.feature_id > 0 && e.step.request.feature_id <= mv->legendary.size() &&
+                mv->legendary[std::size_t(e.step.request.feature_id - 1)].use == rules5e::LegendaryUse::Move) {
+                c->legendary_mover_ = e.step.request.actor;
+                c->legendary_to_ = e.to;
+            }
+        }
         c->derived_area_ = e.step.request.kind == ActionKind::CastSpell && e.to;   // logged targets came from an aim tile
         c->set_step_context(e.step.request);
         c->clear_forced();

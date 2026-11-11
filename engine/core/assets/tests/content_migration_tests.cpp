@@ -17,7 +17,7 @@ SchemaRegistry make() {
 
 TEST_CASE("content schemas: chains are complete") {
     CHECK(make().check_chains().empty());
-    CHECK(make().current_version("monster") == 6u);
+    CHECK(make().current_version("monster") == 7u);
     CHECK(make().current_version("character") == 6u);
 }
 
@@ -25,7 +25,7 @@ TEST_CASE("monster 1->2: presentation.ai moves to behavior.ai") {
     auto r = make().load_text(R"({"$schema":"monster@1","id":"x.monster.a",
         "presentation":{"ai":"scripts/ai/a.luau","sprite":"s.png"}})");
     REQUIRE_MESSAGE(r.ok, r.error);
-    CHECK(r.data["$schema"] == "monster@6");
+    CHECK(r.data["$schema"] == "monster@7");
     CHECK(r.data["behavior"] == Json{{"ai", "scripts/ai/a.luau"}});
     CHECK(r.data["presentation"] == Json{{"sprite", "s.png"}});
     CHECK(monster_ai_script(r.data) == "scripts/ai/a.luau");
@@ -44,7 +44,7 @@ TEST_CASE("monster 1->2: no ai is a no-op; v2 passes through; conflicts rejected
     REQUIRE(v2.ok);
     CHECK(monster_ai_script(v2.data) == "scripts/b.luau");
     CHECK_FALSE(make().load_text(R"({"$schema":"monster@1","behavior":{},"presentation":{"ai":"x"}})").ok);
-    CHECK_FALSE(make().load_text(R"({"$schema":"monster@7"})").ok);
+    CHECK_FALSE(make().load_text(R"({"$schema":"monster@8"})").ok);
 }
 
 TEST_CASE("frozen fl1 goblin (monster@1, no ai) migrates to monster@6; only effects marked inert") {
@@ -52,7 +52,7 @@ TEST_CASE("frozen fl1 goblin (monster@1, no ai) migrates to monster@6; only effe
     auto r = make().load_file(path);
     REQUIRE_MESSAGE(r.ok, r.error);
     CHECK(r.declared == SchemaRef{"monster", 1});
-    CHECK(r.data["$schema"] == "monster@6");
+    CHECK(r.data["$schema"] == "monster@7");
     CHECK(r.data["id"] == "srd51.monster.goblin");
     CHECK_FALSE(monster_ai_script(r.data));
     // Everything except $schema and the 2 -> 3 inert markers is identical to the source.
@@ -77,7 +77,7 @@ TEST_CASE("monster 2->3: features/traits effects marked inert; @3 passes through
     auto r = make().load_text(R"({"$schema":"monster@2","traits":[{"id":"t","effect":{"kind":"damage_bonus","amount":2}},
         {"id":"plain"}],"features":[{"id":"f","effect":{"kind":"self_heal"}}],"actions":[{"id":"a"}]})");
     REQUIRE_MESSAGE(r.ok, r.error);
-    CHECK(r.data["$schema"] == "monster@6");
+    CHECK(r.data["$schema"] == "monster@7");
     CHECK(r.data["traits"][0]["effect"]["inert"] == true);
     CHECK_FALSE(r.data["traits"][1].contains("effect"));
     CHECK(r.data["features"][0]["effect"]["inert"] == true);
@@ -115,7 +115,7 @@ TEST_CASE("3 -> 4 migration: markers, frozen effect kinds, merged inert_mechanic
     REQUIRE_MESSAGE(r.ok, r.error);
     CHECK(r.declared == SchemaRef{"monster", 3});
     const Json& d = r.data;
-    CHECK(d["$schema"] == "monster@6");
+    CHECK(d["$schema"] == "monster@7");
     CHECK(d["inert_mechanics"] == Json::array({"bonus_actions", "damage[1..]", "reactions", "spellcasting"}));   // merged, sorted
     CHECK(d["reactions"][0]["inert"] == true);   // every reactions[] entry, special or not
     CHECK(d["reactions"][1]["inert"] == true);
@@ -178,7 +178,8 @@ TEST_CASE("3 -> 4 parity: T&C's at3 fixtures migrate to the Python reference's e
         std::ifstream f(base + "expected4/" + cs.name + ".json");
         REQUIRE(f.good());
         Json expected = Json::parse(f);
-        CHECK(r.data["$schema"] == std::string(cs.type) + "@6");   // 4 -> 5 and 5 -> 6 are identity
+        const unsigned cur = *make().current_version(cs.type);
+        CHECK(r.data["$schema"] == std::string(cs.type) + "@" + std::to_string(cur));   // identity steps after @4
         expected["$schema"] = r.data["$schema"];
         CHECK(r.data == expected);   // nlohmann sorts keys: equal as JSON, not byte-identical
     }
@@ -189,7 +190,7 @@ TEST_CASE("3 -> 4 parity: T&C's at3 fixtures migrate to the Python reference's e
 TEST_CASE("item@2 / monster@6 / character@6: identity migrations, same body loads to the same data") {
     const SchemaRegistry reg = make();
     CHECK(reg.current_version("item") == 2u);
-    CHECK(reg.current_version("monster") == 6u);
+    CHECK(reg.current_version("monster") == 7u);
     CHECK(reg.current_version("character") == 6u);
     struct Case { const char* type; uint32_t old_v; const char* body; };
     const Case cases[] = {

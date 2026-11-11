@@ -580,6 +580,11 @@ private:
     std::optional<Vec2i> ready_to_;               // destination of the Ready being resolved
     std::optional<Vec2i> aim_to_;                 // aim tile of the area CastSpell being resolved
     std::optional<Vec2i> step_to_;   // destination of the Move being resolved / paused (sim-only)
+    // LegendaryAction: the destination tile finish logs (MUST-1), and, for a move, the mover whose
+    // in-range check reads that tile while the request resolves.
+    std::optional<Vec2i> legendary_log_to_;
+    rules5e::CombatantId legendary_mover_ = 0;
+    std::optional<Vec2i> legendary_to_;
     // Aggressive Dash of the current turn (sim-only, derived from the log, not hashed): the turn stamp (round << 16 |
     // turn_index), the dasher, and the movement left from before the Dash (spent first by its Moves).
     // R-G12: the stamp is the TurnKey (a summon inserted before the current actor shifts turn_index, not the key).

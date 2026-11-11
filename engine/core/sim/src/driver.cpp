@@ -1158,6 +1158,11 @@ bool choose_grapple_instead(const Combat& c, const rules5e::ActionRequest& q) {
 }
 
 Command next_command(const Combat& c, std::optional<CombatantId> target) {
+    if (c.state().legendary_window.x != 0) {   // the built-in policy always passes
+        Command pass;
+        pass.request = {c.state().legendary_window.candidate, ActionKind::LegendaryAction};
+        return pass;
+    }
     Command cmd = tactical_command(c, target);
     rules5e::ActionRequest& q = cmd.request;
     if (cmd.kind == CommandKind::Rules) complete_request(c, q);   // 7.2zc mark_ability / 7.2zd ward_alternate
@@ -1222,6 +1227,15 @@ RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_comman
         return p ? p->decide_reaction(cc, n) : ReactionDecision{n.window_seq, false, 0};
     };
     while (!c.ended() && rr.commands < max_commands) {
+        if (c.state().legendary_window.x != 0) {   // pass, then the queue moves; the built-in policy does not spend
+            Command pass;
+            pass.request = {c.state().legendary_window.candidate, ActionKind::LegendaryAction};
+            auto r = c.submit(pass);
+            if (r.ok && r.status == StepStatus::NeedsDecision) r = c.settle(decider);
+            ++rr.commands;
+            if (!r.ok) { rr.error = r.error; return rr; }
+            continue;
+        }
         const CombatantId self = rules5e::current_actor(c.state());
         if (!turn || !(*turn == c.turn_key())) {
             turn = c.turn_key();
