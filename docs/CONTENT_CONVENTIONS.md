@@ -1101,6 +1101,8 @@ The clock is the encounter round. 24 hours is 14400 rounds (`hours × 600`, the 
 
 Not this key. Mummy rot lowers the maximum by 3d6 every 24 hours with no repeat save and no cure-on-success; `curse` is still only `no_regain_hp`. Lesser Restoration ends the poisoned condition and does not cure this disease. Lay on Hands' disease spend and Divine Health are not wired. Greater Restoration's hit point maximum option clears Life Drain only. Two `until_cured` poisons without a disease row share one condition bit; curing a disease clears that bit unless another disease row or a tracked effect still applies it. `srd51.monster.otyugh` authors the bite with this object (Con DC 15). Death dog stays on its poisoned-only rider until T&C adds `disease`.
 
+Healing Touch (§56) is the one action that cures every stored `Disease` row on its target, by the cure rule in this section, and then ends `Condition::Poisoned` and every tracked effect that applies it. It does not grant poison resistance or save advantage. Run 2 stays outside this key and outside §56: mummy rot (it is not a `Disease` row), lycanthropy, any poison that is not the one Poisoned bit, and a general cure on Lesser Restoration, Lay on Hands, or Greater Restoration. Those three still do not cure a bite disease. Lesser Restoration still only ends one listed condition. Lay on Hands still does not spend 5 points to cure a disease or neutralize a poison. Greater Restoration's hit point maximum option still clears Life Drain only.
+
 ## 37. Both-hits Engulf (monster@5 multiattack `engulf_both_hits`)
 
 SRD 5.1 Shambling Mound Multiattack: "The shambling mound makes two slam attacks. If both attacks hit a Medium or smaller target, the target is grappled (escape DC 14), and the shambling mound uses its Engulf on it." Engulf: "The shambling mound engulfs a Medium or smaller creature grappled by it. The engulfed target is blinded, restrained, and unable to breathe, and it must succeed on a DC 14 Constitution saving throw at the start of each of the mound's turns or take 13 (2d8 + 4) bludgeoning damage. If the mound moves, the engulfed target moves with it. The mound can have only one creature engulfed at a time."
@@ -1983,4 +1985,44 @@ Nothing authors `regen` (§31) and `regain` on the same creature. The loader doe
 No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `regain` is static. Hit points and `Healed` are already hashed. Next free stays **0xE8**. Replay re-runs the turn. `FormStats` does not carry it. Shapechange is not this trait.
 
 `srd51.monster.shield_guardian` authors this trait (`amount` 10). The a6212be mirror prints "1 hit. point."; that period is a mirror typo. The authored sentence is "at least 1 hit point." Oni prints the same one-sentence shape and is not authored here. Vampire spawn is not this sentence. Spell Storing is not this trait. It stays description only (HOLD) on the shield guardian row. Not full Shield Guardian support. No new hash tag. Counts are 206 authored and 4 deferred.
+
+## 56. Healing Touch (monster@5 action `healing_touch`)
+
+SRD 5.1 unicorn Healing Touch. Verified against 5e-bits/5e-database commit a6212be (`src/2014/en/5e-SRD-Monsters.json`, index `unicorn`, `actions` entry Healing Touch). The description:
+
+"The unicorn touches another creature with its horn. The target magically regains 11 (2d8 + 2) hit points. In addition, the touch removes all diseases and neutralizes all poisons afflicting the target."
+
+`usage` is `{ "type": "per day", "times": 3 }`. The entry has no attack bonus and no damage array. It is an action. The Horn attack is a different entry (melee, +7, reach 5 ft., 1d8+4 piercing). Legendary Heal Self is a different sentence and stays held.
+
+```json
+{ "id": "healing_touch", "name": "Healing Touch", "kind": "healing_touch" }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| (none) | id, name, kind, and an optional description. The dice are 2d8+2. The uses are 3, long rest. The range is 5 ft. | `healing touch: unknown key '...'` / `healing touch needs a monster@5 file` / `healing touch: only valid on monsters` |
+| one | a second Healing Touch action | `healing touch: a creature has one` |
+
+What the sentence fixes, on this action only:
+
+* **Another creature.** The user is refused (`healing touch: another creature`). The action is not spent. Legendary Heal Self is not this action.
+* **Touches.** `target_within_5ft`. At 5 feet the touch resolves. Past 5 feet it is `healing touch: touch range`, and the action is not spent. Total cover is the existing cover refusal. A creature on the other plane is the existing plane refusal. A dead creature is `bad target`.
+* **11 (2d8 + 2).** `SpellDef::dice` is `{2, 8, 2}`. The roll is that dice. Beacon of Hope's `heal_maximum` takes the maximum and draws no die, the same way other healing dice do. The amount goes through `heal_hp` and `commit_healing`. The result caps at `effective_hp_max` as it is when the heal happens, before the disease cure raises a reduced maximum. `NoHealing` and `no_regain_hp` heal 0 and still emit `Healed`. Temporary hit points are not hit points and are not spent by the heal. A creature healed from 0 follows that path (death saves reset, Unconscious ends, Prone stays). The heal is not a spell slot and does not add a spellcasting modifier.
+* **3/Day.** `usage_kind` 2, three uses, `FeatureRecharge::LongRest`. `Combat::create` registers the row. A fourth use is `no uses left` and does not spend the action. A short rest does not refill it. A long rest does.
+* **Removes all diseases** that the engine stores. Every `Disease` row on the target is cured with `cure_disease_at` (§36): that row's hit point maximum comes back, and the row's condition ends only when no other disease and no tracked effect still applies it. Current hit points do not rise when the maximum does. A disease row on a different creature stays.
+* **Neutralizes all poisons** the engine stores. After the disease cure, every tracked effect on the target whose condition is Poisoned, or whose `also` is Poisoned, ends. Then the Poisoned bit ends if it is still set. A frightened effect, a poison resistance modifier, and a save advantage against Poisoned stay. This action does not grant Protection from Poison's resistance or its save advantage.
+
+The heal runs first, then the disease cure, then the Poisoned end. `NoHealing` does not skip the cure. The built-in AI does not use the action. `legal_actions` lists every other living creature the range hook accepts, including a foe. Self is not listed.
+
+No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The dice and the three uses are static. Hit points, `Healed`, `FeatureUses`, disease rows (0xE3), and the Poisoned bit are already hashed. Next free stays **0xE8**. Replay re-runs the action. `FormStats` does not carry the action. Shapechange is not this action. The Horn attack is a separate weapon attack and is not rewritten.
+
+### Run 2, not this action
+
+* Mummy rot. It is not a `Disease` row. `curse` is still only `no_regain_hp`.
+* Lycanthropy.
+* A poison that is not the one `Condition::Poisoned` bit. Two `until_cured` poisons still share that bit.
+* A general cure for Lesser Restoration, Lay on Hands, or Greater Restoration. They do not call this cure. Lesser Restoration still ends one listed condition and does not cure a bite disease. Lay on Hands still does not spend 5 points to cure a disease or neutralize a poison. Greater Restoration's hit point maximum option still clears Life Drain only.
+* Legendary actions, including Heal Self. Spell Storing. `unicorn.json`.
+
+This section does not author `srd51.monster.unicorn`. The row stays deferred until legendary actions and the stat block are written. Counts stay 206 authored and 4 deferred.
 

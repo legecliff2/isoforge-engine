@@ -602,6 +602,10 @@ bool Session::actor_is_pc(uint32_t actor) const {
     return a && a->schema_type == "character";
 }
 
+uint64_t Session::combat_hash() const { return impl_->combat ? impl_->combat->hash() : 0; }
+uint64_t Session::combat_log_hash() const { return impl_->combat ? impl_->combat->log_hash() : 0; }
+std::size_t Session::combat_event_count() const { return impl_->combat ? impl_->combat->events().size() : 0; }
+
 std::vector<uint32_t> Session::area_spell_ids(uint32_t actor) const {
     if (!impl_->combat) return {};
     return slice::area_spell_ids(*impl_->combat, actor);

@@ -837,6 +837,44 @@ std::optional<std::string> compile_invisible_passage(const std::string& arch, co
     return std::nullopt;
 }
 
+// Healing Touch (CONTENT_CONVENTIONS §56). An action. Another creature, touch, 2d8+2, 3/day.
+// The numbers are the sentence. No dice key and no usage key. The built-in AI does not use it.
+std::optional<std::string> compile_healing_touch(const std::string& arch, const Json& act, uint32_t declared,
+                                                 const std::string& schema_type, rules5e::SpellDef& d,
+                                                 Archetype::SaveAction& sa) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": healing touch '" + aid + "'";
+    if (schema_type != "monster") return where + ": healing touch: only valid on monsters";
+    if (declared != 0 && declared < 5) return where + ": healing touch needs a monster@5 file";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description")
+            return where + ": healing touch: unknown key '" + k + "'";
+    }
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.kind = rules5e::SpellEffectKind::Heal;
+    d.is_spell = false;
+    d.magical = true;
+    d.components = 0;
+    d.targets = 1;
+    d.range_ft = 5;
+    d.dice = {2, 8, 2};
+    d.healing_touch = true;
+    d.usage_kind = 2;
+    d.casting_time = rules5e::CastingTime::Action;
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.range_ft = 5;
+    sa.usage_kind = 2;
+    sa.uses = 3;
+    sa.recharge = Recharge::LongRest;
+    sa.healing_touch = true;
+    return std::nullopt;
+}
+
 // B8 Deadly Leap (CONTENT_CONVENTIONS §38). Its own action. Not a multiattack rider.
 // {kind: deadly_leap, jump_ft, save: {ability, dc}, save_alt, damage: [two], push_ft}.
 // One save, the higher of the two abilities (tie: save.ability). Fail: both damages and prone.
@@ -2803,7 +2841,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             const std::string ak = act.value("kind", "");
             if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect" && ak != "pull" &&
                 ak != "deadly_leap" && ak != "whirlwind" && ak != "whelm" && ak != "etherealness" &&
-                ak != "illusory_appearance" && ak != "invisible_passage") continue;
+                ak != "illusory_appearance" && ak != "invisible_passage" && ak != "healing_touch") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
@@ -2829,6 +2867,17 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 if (auto e = compile_invisible_passage(a.id, act, declared, schema_type, d, sa)) return e;
                 for (const auto& prev : synth)
                     if (prev.id == d.id) return a.id + ": invisible passage ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "healing_touch") {
+                if (auto e = compile_healing_touch(a.id, act, declared, schema_type, d, sa)) return e;
+                for (const auto& prev : a.save_actions)
+                    if (prev.healing_touch) return a.id + ": healing touch: a creature has one";
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": healing touch ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
                 c.spells_known.push_back(d.id);
                 a.save_actions.push_back(sa);
                 synth.push_back(std::move(d));

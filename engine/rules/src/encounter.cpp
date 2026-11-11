@@ -4975,6 +4975,56 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         emit(out.events, EventKind::ActionUsed, a.id, a.id, int32_t(def.id), 0, def.usage_kind);
         return out;
     }
+    if (def.healing_touch) {   // §56: touch another creature. Heal, then the stored-disease cure, then Poisoned.
+        if (req.as_bonus_action || req.sustain || req.innate || req.spell_level != 0) return fail("healing touch: an action");
+        std::vector<CombatantId> ids = req.targets;
+        if (ids.empty() && req.target != 0) ids.push_back(req.target);
+        if (ids.size() != 1) return fail("healing touch: one other creature");
+        if (ids[0] == a.id) return fail("healing touch: another creature");
+        Combatant* t = find_mut(s, ids[0]);
+        if (!t || t->dead) return fail("bad target");
+        if (!req.target_within_5ft) return fail("healing touch: touch range");
+        if (cover_of(s, a.id, t->id, false, def.id) == Cover::Total) return fail("target has total cover");
+        if (!plane_affect_refusal(a, *t).empty()) return fail(plane_affect_refusal(a, *t));
+        if (const std::string_view why = spell_cast_resource_refusal(s, a, def, false, 0); !why.empty()) return fail(why);
+        if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
+        s.budget = b;
+        FeatureUses* fu = nullptr;
+        if (def.usage_kind == 2)
+            for (auto& f : s.features)
+                if (f.actor == a.id && f.feature_id == def.id) fu = &f;
+        if (fu && fu->max > 0) ++fu->used;
+        StepResult out{true, {}, {}};
+        const bool maxed = !s.modifiers.empty() && std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) {
+            return m.target == t->id && m.spec.heal_maximum != 0; });
+        const int amt = std::max(0, maxed ? dice_max(def.dice) : roll_dice(s.rng, def.dice));
+        const bool was_unconscious = t->has(Condition::Unconscious);
+        const auto h = heal_hp(s, *t, int16_t(amt));
+        commit_healing(*t, h);
+        emit(out.events, EventKind::Healed, a.id, t->id, h.healed, h.hp_after, h.from_zero);
+        if (h.from_zero && was_unconscious)
+            emit(out.events, EventKind::ConditionRemoved, t->id, 0, int32_t(Condition::Unconscious));
+        for (std::size_t i = 0; i < s.diseases.size();)
+            if (s.diseases[i].target == t->id) cure_disease_at(s, i, out.events);
+            else ++i;
+        std::vector<std::pair<uint32_t, CombatantId>> ended;
+        for (std::size_t i = 0; i < s.effects.size();) {
+            const ActiveSpellEffect& e = s.effects[i];
+            const bool applies = e.target == t->id && ((!e.no_condition && e.condition == Condition::Poisoned) ||
+                                                       (e.has_also && e.also == Condition::Poisoned));
+            if (!applies) { ++i; continue; }
+            ended.push_back({e.spell_id, e.caster});
+            end_effect(s, i, out.events);
+        }
+        for (const auto& k : ended) end_concentration_if_empty(s, k.second, k.first, out.events);
+        if (t->has(Condition::Poisoned)) {
+            remove_condition(*t, Condition::Poisoned);
+            emit(out.events, EventKind::ConditionRemoved, t->id, 0, int32_t(Condition::Poisoned));
+        }
+        emit(out.events, EventKind::ActionUsed, a.id, t->id, int32_t(def.id), 0, def.usage_kind);
+        check_end(s, out.events);
+        return out;
+    }
     if (def.kind == SpellEffectKind::Descriptive) return fail("descriptive spells cannot be cast");
     if (req.zone_move != 0) {   // R-G11: move the actor's zone (Moonbeam); no slot, no SpellCast window
         if (req.sustain) return fail("zone_move: not with sustain");
@@ -6984,6 +7034,15 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
         if (find_figure(s, a.id)) {
             if (s.budget.bonus_action) { r.as_bonus_action = true; out.push_back(r); }
         } else out.push_back(r);
+        return;
+    }
+    if (d.healing_touch) {   // §56: any other living creature in reach. Self is not a target. The AI does not pick it.
+        for (const auto& t : s.combatants) {
+            if (t.dead || t.id == a.id || !creature_ok(t)) continue;
+            ActionRequest q = r;
+            q.target = t.id;
+            out.push_back(q);
+        }
         return;
     }
     if (d.kind == SpellEffectKind::Teleport || d.kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self; sim adds the destination

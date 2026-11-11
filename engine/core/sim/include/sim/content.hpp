@@ -78,6 +78,7 @@ struct Archetype {
         bool ethereal = false;          // B19: Etherealness. The built-in AI does not toggle planes.
         bool illusory = false;          // visible figure: the built-in AI does not start or end it.
         bool passage = false;           // Invisible Passage: the built-in AI does not use it.
+        bool healing_touch = false;     // Healing Touch: the built-in AI does not use it (it would heal the current foe).
     };
     std::vector<SaveAction> save_actions;
     // resources[] (row 13): pools Combat::create registers (resolved against the archetype's level / abilities at load).

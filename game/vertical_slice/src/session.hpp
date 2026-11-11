@@ -2,6 +2,7 @@
 // Game-side glue: loads a pack set (default sample.vertical_slice) through the world module (FileChunkProvider)
 // and, optionally, runs Engine Core's headless sim fight (sim::Combat) one command at a time.
 // Produces ViewModel snapshots; it never touches the renderer.
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -109,9 +110,13 @@ public:
     // Aim: origin is `aim_tile` with side 1 (the attacker's body is still excluded). present=false when
     // there is no fight, either id is missing / dead / gone, or attacker == target.
     CoverDebugView query_cover(uint32_t attacker, uint32_t target, bool aim, eng::Vec2i aim_tile) const;
-    // True when `actor` is a living or downed character archetype (a player creature). False for
-    // monsters, a missing id, or no fight. Area preview uses this to stay player-side.
+    // True when `actor` has a character archetype (a player creature), dead or alive, downed included.
+    // False for monsters, a missing id, or no fight. Area preview uses this to stay player-side.
     bool actor_is_pc(uint32_t actor) const;
+    // Read-only fight digests. 0 when there is no fight. A preview query must leave them unchanged.
+    uint64_t combat_hash() const;
+    uint64_t combat_log_hash() const;
+    std::size_t combat_event_count() const;
     // Area spells `actor` can cast (spells_known, then innate). Empty without a fight.
     std::vector<uint32_t> area_spell_ids(uint32_t actor) const;
     // Read-only Combat::area_targets and Combat::area_preview for `spell_id`. Does not cast.

@@ -376,10 +376,7 @@ public:
     // width_ft is 0 is one tile wide, because that is what area_targets does. Cylinder height is ignored (the template is
     // 2D), the same as area_targets; this does not stand in for a 3D cylinder. There is no altitude filter. The caster's
     // own tiles are included when they fall inside (a self sphere covers its footprint); area_targets still never returns
-    // the caster.
-    // Contract gap vs a hook of the form area_preview(actor, shape, size_ft, width_ft, origin, aim): range_ft chooses a
-    // self origin (0) or a point origin and is not in that argument list, so the hook cannot name a point-origin sphere or
-    // cube. The origin is this caster's live footprint, not the anchor from pos(caster) (a larger footprint's centre is
+    // the caster. The origin is this caster's live footprint, not the anchor from pos(caster) (a larger footprint's centre is
     // not that tile). Pass the SpellDef area_targets already takes. There is no pending flag; that belongs to the view.
     std::vector<Vec2i> area_preview(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
                                     std::string* error = nullptr) const;
