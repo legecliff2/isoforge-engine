@@ -814,7 +814,8 @@
             "whelm",
             "etherealness",
             "illusory_appearance",
-            "invisible_passage"
+            "invisible_passage",
+            "healing_touch"
           ]
         },
         "dc": {
@@ -2120,6 +2121,18 @@
             "required": ["dc"],
             "propertyNames": {
               "enum": ["id", "name", "kind", "description", "dc"]
+            }
+          }
+        },
+        {
+          "description": "Healing Touch: an action. The user touches another creature. That creature regains 2d8+2 hit points. The touch cures every stored disease row and ends the Poisoned condition and tracked effects that apply it. 3/day, long rest. monster@5 only. Not the Horn attack.",
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "healing_touch" } }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": ["id", "name", "kind", "description"]
             }
           }
         }
