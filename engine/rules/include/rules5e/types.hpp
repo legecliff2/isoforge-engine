@@ -848,11 +848,18 @@ struct Combatant {
     Plane plane = Plane::Material;
     // appended (legendary actions). la_max is the pool size from content (0 = none). la_cur starts full and
     // refills to la_max at the start of this creature's turn. Not ResourcePool and not legendary_pool
-    // (that name is Legendary Resistance). Options are static content. Forms do not carry any of this.
-    // Combat::hash 0xE8 folds la_max and la_cur only while some combatant has la_max > 0.
+    // (that name is Legendary Resistance). Options are static content. FormStats does not carry them.
+    // Polymorph suspends the live pool into la_saved_* and restores that la_cur (no refill). Shapechanger
+    // and Wild Shape leave the live pool alone. Combat::hash 0xE8 folds la_max and la_cur only while some
+    // combatant has la_max > 0, so a polymorphed creature hashes as la_max 0.
     uint8_t la_max = 0;
     uint8_t la_cur = 0;
     std::vector<LegendaryOption> legendary;
+    bool la_suspended = false;
+    uint8_t la_saved_max = 0;
+    uint8_t la_saved_cur = 0;
+    uint32_t la_saved_pool = 0;
+    std::vector<LegendaryOption> la_saved;
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 

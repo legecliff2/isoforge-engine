@@ -8379,6 +8379,17 @@ bool apply_form(Combatant& c, FormKind kind, const FormStats& f) {
     } else {
         c.hp_max = n.hp_max; c.hp = n.hp_max;   // a fresh pool (temp HP stay on the creature, D8)
     }
+    if (kind == FormKind::Polymorph) {   // SRD: game statistics are the beast's. Legendary actions and Legendary Resistance suspend.
+        c.la_saved_max = c.la_max;
+        c.la_saved_cur = c.la_cur;
+        c.la_saved_pool = c.legendary_pool;
+        c.la_saved = c.legendary;
+        c.la_suspended = true;
+        c.la_max = 0;
+        c.la_cur = 0;
+        c.legendary.clear();
+        c.legendary_pool = 0;
+    }
     c.form = kind;
     c.form_blocked_features = kind == FormKind::WildShape ? f.blocked_features : std::vector<uint32_t>{};
     return true;
@@ -8387,7 +8398,18 @@ bool apply_form(Combatant& c, FormKind kind, const FormStats& f) {
 bool revert_form(Combatant& c) {
     if (c.form == FormKind::None || !c.base) return false;
     const FormStats b = *c.base;
+    const bool poly = c.form == FormKind::Polymorph;
     put_stats(c, b);
+    if (poly && c.la_suspended) {   // the value at transformation, not a refill
+        c.la_max = c.la_saved_max;
+        c.la_cur = c.la_saved_cur;
+        c.legendary_pool = c.la_saved_pool;
+        c.legendary = std::move(c.la_saved);
+        c.la_suspended = false;
+        c.la_saved_max = 0;
+        c.la_saved_cur = 0;
+        c.la_saved_pool = 0;
+    }
     if (c.form == FormKind::Shapechanger) {
         c.hp_max = b.hp_max; c.hp = std::min(c.hp, b.hp_max);
     } else {

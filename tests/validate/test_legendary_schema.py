@@ -54,6 +54,8 @@ class LegendarySchema(unittest.TestCase):
         ok, _warns = h.validate_in_memory(
             doc, spell_times={"srd51.spell.misty_step": "action"})
         self.assertEqual(ok, [], ok)
+        missing, _warns = h.validate_in_memory(doc)
+        self.assertTrue(any("was not found" in e for e in missing), missing)
 
     def test_older_schema_rejects_a_mechanical_list(self):
         doc = goblin()

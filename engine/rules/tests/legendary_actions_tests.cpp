@@ -429,3 +429,95 @@ TEST_CASE("legendary check and move take no creature targets") {
     CHECK_FALSE(bad_move.ok);
     CHECK(find(s, 2)->la_cur == 3);
 }
+
+// Polymorph replaces game statistics (SRD 5.1). Legendary actions and Legendary Resistance suspend with them
+// and come back on revert at the remaining value, not refilled. Shapechanger and Wild Shape keep their own.
+TEST_CASE("polymorph suspends legendary actions and Legendary Resistance") {
+    const uint32_t kBlast = spell_id_of("test.spell#poly_blast");
+    const uint32_t kLr = 880;
+    SpellDef blast;
+    blast.id = kBlast;
+    blast.content_id = "test.spell#poly_blast";
+    blast.level = 0;
+    blast.range_ft = 60;
+    blast.kind = SpellEffectKind::Save;
+    blast.save_ability = Ability::Dex;
+    blast.fixed_dc = 100;
+    blast.on_save = OnSave::None;
+    blast.dice = DiceExpr{1, 6, 0};
+    blast.damage_type = DamageType::Fire;
+    EncounterHooks h = spell_hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    book->add(blast);
+    h.spells = book;
+
+    Combatant kept = monster(3);
+    pool(kept, {attack_opt()}, 3);
+    kept.la_cur = 1;
+    kept.legendary_pool = 9;
+    FormStats shape;
+    shape.hp_max = 22;
+    shape.ac = 13;
+    shape.abilities = kept.abilities;
+    shape.speed_ft = kept.speed_ft;
+    shape.attacks = kept.attacks;
+    shape.creature_type = CreatureType::Beast;
+    REQUIRE(apply_form(kept, FormKind::Shapechanger, shape));
+    CHECK(kept.la_max == 3);
+    CHECK(kept.la_cur == 1);
+    CHECK(kept.legendary_pool == 9);
+    CHECK(kept.legendary.size() == 1);
+    REQUIRE(revert_form(kept));
+    CHECK(kept.la_cur == 1);
+    CHECK_FALSE(kept.la_suspended);
+
+    Combatant wild = monster(4);
+    pool(wild, {attack_opt()}, 3);
+    wild.la_cur = 2;
+    wild.legendary_pool = 9;
+    REQUIRE(apply_form(wild, FormKind::WildShape, shape));
+    CHECK(wild.la_max == 3);
+    CHECK(wild.la_cur == 2);
+    CHECK(wild.legendary_pool == 9);
+    REQUIRE(revert_form(wild));
+    CHECK(wild.la_cur == 2);
+
+    Combatant wiz = wizard(1);
+    wiz.spells_known.push_back(kBlast);
+    Combatant boss = monster(2);
+    pool(boss, {attack_opt()}, 3);
+    boss.legendary_pool = kLr;
+    auto s = begin_encounter({wiz, boss}, 5, nullptr, h);
+    order_as(s, {1, 2});
+    mut(s, 2).la_cur = 2;   // spent before the spell; begin_encounter itself starts the pool full
+    register_pool(s, 2, kLr, 3, 3);
+    REQUIRE(apply_form(mut(s, 2), FormKind::Polymorph, shape));
+    CHECK(find(s, 2)->form == FormKind::Polymorph);
+    CHECK(find(s, 2)->la_max == 0);
+    CHECK(find(s, 2)->la_cur == 0);
+    CHECK(find(s, 2)->legendary.empty());
+    CHECK(find(s, 2)->legendary_pool == 0);
+    CHECK(find(s, 2)->la_suspended);
+    CHECK(find(s, 2)->la_saved_cur == 2);
+    CHECK(find(s, 2)->la_saved_pool == kLr);
+    auto saved = step(s, cast(1, kBlast, 2));
+    REQUIRE(saved.ok);
+    CHECK(count(saved.events, EventKind::ResourceSpent) == 0);
+    CHECK(find_pool(s, 2, kLr)->cur == 3);
+    const Event* sv = nullptr;
+    for (const auto& e : saved.events) if (e.kind == EventKind::SavingThrowRolled) sv = &e;
+    REQUIRE(sv);
+    CHECK((sv->c & 1) == 0);
+    auto ended = step(s, {1, ActionKind::EndTurn});
+    REQUIRE(ended.ok);
+    CHECK_FALSE(offered(s, 2));
+    CHECK(s.legendary_window.x == 0);
+    CHECK(count(ended.events, EventKind::LegendaryActionsRegained) == 0);
+    REQUIRE(revert_form(mut(s, 2)));
+    CHECK(find(s, 2)->la_max == 3);
+    CHECK(find(s, 2)->la_cur == 2);
+    CHECK(find(s, 2)->legendary.size() == 1);
+    CHECK(find(s, 2)->legendary_pool == kLr);
+    CHECK_FALSE(find(s, 2)->la_suspended);
+    CHECK(find_pool(s, 2, kLr)->cur == 3);
+}

@@ -363,6 +363,7 @@ TEST_CASE("legendary move provokes and enters zones tile by tile") {
         d.zone.size_ft = 5;
         rules5e::ZoneTriggerRow row;
         row.on = rules5e::ZoneTrigger::Enter;
+        row.completely_within = true;   // zone_contains reads the step tile, not the origin
         row.effect.kind = rules5e::SpellEffectKind::ApplyCondition;
         d.zone.triggers.push_back(row);
         auto book = std::const_pointer_cast<rules5e::SpellBook>(zone_lib.spells());
@@ -447,3 +448,161 @@ TEST_CASE("legendary opportunity attack uses cover from the tile being left") {
     expect_replay(ch, l, 7, *c);
 }
 
+// Polymorph replaces the creature's game statistics, so the legendary pool and Legendary Resistance are gone
+// until the spell ends. la_cur comes back as it was; the turn-start refill does not run while the pool is suspended.
+TEST_CASE("polymorph suspends a legendary creature; revert restores the pool; replay matches") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    Json boss = legendary_beast();
+    boss["id"] = "test.legendary.poly";
+    boss["resources"] = Json::array({
+        {{"id", "legendary_resistance"}, {"name", "Legendary Resistance"}, {"max", 3}, {"recharge", "never"}},
+    });
+    REQUIRE_FALSE(l.add(boss, "monster"));
+    Json mouse = load_json("content/packs/srd51.core/monsters/goblin.json");
+    mouse["id"] = "test.legendary.mouse";
+    mouse["type"] = "beast";
+    mouse["challenge"] = {{"rating", "0"}, {"xp", 10}};
+    mouse["hit_points"]["average"] = 40;
+    REQUIRE_FALSE(l.add(mouse, "monster"));
+    Json poly = {{"$schema", "spell@1"}, {"id", "test.spell.poly"}, {"name", "Poly"}, {"level", 1},
+                 {"school", "transmutation"}, {"casting_time", {{"kind", "action"}}},
+                 {"range", {{"kind", "ranged"}, {"feet", 60}}}, {"components", {{"v", true}, {"s", true}}},
+                 {"duration", {{"kind", "hours"}, {"amount", 1}, {"concentration", true}}},
+                 {"effects", Json::array({{{"kind", "polymorph"}, {"forms", {"test.legendary.mouse"}},
+                                           {"max_cr", "0"}, {"save", {{"ability", "wis"}}}}})}};
+    Json zap = {{"$schema", "spell@1"}, {"id", "test.spell.zap"}, {"name", "zap"}, {"level", 0},
+                {"school", "evocation"}, {"casting_time", {{"kind", "action"}}},
+                {"range", {{"kind", "ranged"}, {"feet", 60}}}, {"components", {{"v", true}, {"s", true}}},
+                {"duration", {{"kind", "instantaneous"}}},
+                {"effects", Json::array({{{"kind", "save"}, {"ability", "wis"}, {"on_success", "none"},
+                                          {"damage", {{"dice", "1d4"}, {"type", "fire"}}}}})}};
+    REQUIRE_FALSE(l.add_spell(poly));
+    REQUIRE_FALSE(l.add_spell(zap));
+    Json wiz_doc = load_json("content/packs/srd51.core/characters/wizard_level_1.json");
+    wiz_doc["id"] = "test.character.polywiz";
+    wiz_doc["spellcasting"]["dc"] = 30;   // the beast's Wisdom 8 cannot succeed
+    wiz_doc["spellcasting"]["spells"].push_back("test.spell.poly");
+    wiz_doc["spellcasting"]["spells"].push_back("test.spell.zap");
+    REQUIRE_FALSE(l.add(wiz_doc, "character"));
+
+    const uint32_t lr = rules5e::spell_id_of("legendary_resistance");
+    auto settle = [](Combat& c, SubmitResult r) {
+        while (r.ok && r.needs) r = c.decide(rules5e::ReactionDecision{r.needs->window_seq, false, 0});
+        return r;
+    };
+    bool ran = false;
+    std::string why;
+    for (uint64_t seed = 1; seed <= 24 && !ran; ++seed) {
+        auto ch = arena({{"test.character.polywiz", {2, 2}},
+                         {"test.character.polywiz", {4, 2}},
+                         {"test.legendary.poly", {3, 2}}});
+        ch.spawns[1].overrides_json = "{\"team\":\"monsters\"}";   // the zap caster
+        ch.spawns[2].overrides_json = "{\"team\":\"party\"}";      // willing: Polymorph applies without a save
+        ch.content_hash = world::compute_content_hash(ch);
+        ecs::Registry reg;
+        auto fight = Combat::create(reg, ch, l, seed);
+        REQUIRE(fight);
+        Combat& c = *fight;
+        const auto wiz = ch.spawns[0].stable_id, foe = ch.spawns[1].stable_id, beast = ch.spawns[2].stable_id;
+        REQUIRE(rules5e::find(c.state(), beast)->la_max == 3);
+        REQUIRE(rules5e::find(c.state(), beast)->legendary_pool == lr);
+        REQUIRE(rules5e::find_pool(c.state(), beast, lr)->cur == 3);
+        auto next_after = [&](CombatantId x) {
+            const auto& o = c.state().order;
+            for (std::size_t i = 0; i < o.size(); ++i)
+                if (o[i].id == x) return o[(i + 1) % o.size()].id;
+            return CombatantId{0};
+        };
+        bool spent = false;
+        for (int guard = 0; guard < 16 && rules5e::current_actor(c.state()) != wiz && !c.ended(); ++guard) {
+            if (c.state().legendary_window.x != 0) {
+                const auto cand = c.state().legendary_window.candidate;
+                const auto opener = c.state().legendary_window.x;
+                if (!spent && cand == beast && next_after(opener) == wiz) {
+                    Command sniff;
+                    sniff.request = {beast, ActionKind::LegendaryAction};
+                    sniff.request.feature_id = 2;
+                    auto u = settle(c, c.submit(sniff));
+                    if (!u.ok) { why = std::string(u.error); break; }
+                    spent = rules5e::find(c.state(), beast)->la_cur == 2;
+                    continue;
+                }
+                Command pass;
+                pass.request = {cand, ActionKind::LegendaryAction};
+                auto u = settle(c, c.submit(pass));
+                if (!u.ok) { why = std::string(u.error); break; }
+            } else {
+                auto u = settle(c, c.submit(end_turn(c)));
+                if (!u.ok) { why = std::string(u.error); break; }
+            }
+        }
+        if (!spent || rules5e::current_actor(c.state()) != wiz) continue;
+
+        int form_index = -1;
+        const auto& forms = c.polymorph_forms();
+        for (int i = 0; i < int(forms.size()); ++i)
+            if (forms[std::size_t(i)]->id == "test.legendary.mouse") form_index = i;
+        REQUIRE(form_index >= 0);
+        REQUIRE(form_index < 255);
+        std::string form_why;
+        REQUIRE_MESSAGE(c.build_form(*rules5e::find(c.state(), beast), rules5e::FormKind::Polymorph,
+                                     rules5e::spell_id_of("test.spell.poly"), uint8_t(form_index), &form_why),
+                        form_why);
+        Command cast;
+        cast.request = {wiz, ActionKind::CastSpell, beast};
+        cast.request.spell_id = rules5e::spell_id_of("test.spell.poly");
+        cast.request.spell_level = 1;
+        cast.request.form_archetype = uint8_t(form_index + 1);
+        cast.request.targets = {beast};
+        auto shaped = settle(c, c.submit(cast));
+        REQUIRE_MESSAGE(shaped.ok, shaped.error);
+        REQUIRE(rules5e::find(c.state(), beast)->form == rules5e::FormKind::Polymorph);
+        CHECK(rules5e::find(c.state(), beast)->la_max == 0);
+        CHECK(rules5e::find(c.state(), beast)->legendary.empty());
+        CHECK(rules5e::find(c.state(), beast)->legendary_pool == 0);
+
+        const int form_hp = rules5e::find(c.state(), beast)->hp;
+        auto back = settle(c, c.submit(end_turn(c)));
+        REQUIRE_MESSAGE(back.ok, back.error);
+        CHECK(c.state().legendary_window.x == 0);
+        CHECK(c.state().legendary_window.candidate != beast);
+        for (int i = 0; i < 8 && rules5e::current_actor(c.state()) != foe && !c.ended(); ++i) {
+            CHECK(c.state().legendary_window.x == 0);
+            auto u = settle(c, c.submit(end_turn(c)));
+            REQUIRE_MESSAGE(u.ok, u.error);
+        }
+        REQUIRE(rules5e::current_actor(c.state()) == foe);
+        CHECK(rules5e::find(c.state(), beast)->form == rules5e::FormKind::Polymorph);
+
+        Command blast;
+        blast.request = {foe, ActionKind::CastSpell, beast};
+        blast.request.spell_id = rules5e::spell_id_of("test.spell.zap");
+        blast.request.targets = {beast};
+        auto saved = settle(c, c.submit(blast));
+        REQUIRE_MESSAGE(saved.ok, saved.error);
+        int spent_lr = 0;
+        for (const auto& e : c.events())
+            if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::ResourceSpent && e.rules.a == int32_t(lr))
+                ++spent_lr;
+        CHECK(spent_lr == 0);
+        CHECK(rules5e::find_pool(c.state(), beast, lr)->cur == 3);
+        CHECK(rules5e::find(c.state(), beast)->hp < form_hp);
+        CHECK(rules5e::find(c.state(), beast)->legendary_pool == 0);
+        CHECK(rules5e::find(c.state(), beast)->form == rules5e::FormKind::Polymorph);
+
+        Command drop;
+        drop.request = {wiz, ActionKind::EndConcentration};
+        auto reverted = settle(c, c.submit(drop));
+        REQUIRE_MESSAGE(reverted.ok, reverted.error);
+        CHECK(rules5e::find(c.state(), beast)->form == rules5e::FormKind::None);
+        CHECK(rules5e::find(c.state(), beast)->la_max == 3);
+        CHECK(rules5e::find(c.state(), beast)->la_cur == 2);
+        CHECK(rules5e::find(c.state(), beast)->legendary.size() == 4);
+        CHECK(rules5e::find(c.state(), beast)->legendary_pool == lr);
+        CHECK(rules5e::find_pool(c.state(), beast, lr)->cur == 3);
+        expect_replay(ch, l, seed, c);
+        ran = true;
+    }
+    REQUIRE_MESSAGE(ran, why);
+}

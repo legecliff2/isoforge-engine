@@ -341,12 +341,13 @@ def check_legendary_actions(doc: dict, ctx: dict, errs: list[str]) -> None:
                 errs.append(f"{where}/use/move: must be half_speed or speed")
         elif "spell" in use:
             ref = use.get("spell")
+            times = ctx.get("spell_times") or {}
             if ref not in ctx.get("spell_ids", ()) and not ctx["external_ok"](ref):
                 errs.append(f"{where}/use/spell: '{ref}' is not a spell@1 in this pack or its depends")
-            else:
-                kind = (ctx.get("spell_times") or {}).get(ref)
-                if kind is not None and kind != "action":
-                    errs.append(f"{where}/use/spell: '{ref}' needs a casting time of 1 action")
+            elif ref not in times:
+                errs.append(f"{where}/use/spell: '{ref}' was not found; its casting time must be 1 action")
+            elif times[ref] != "action":
+                errs.append(f"{where}/use/spell: '{ref}' needs a casting time of 1 action")
         else:
             errs.append(f"{where}/use: needs attack, action, check, move, or spell")
 
