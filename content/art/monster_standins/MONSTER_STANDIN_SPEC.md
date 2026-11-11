@@ -1,6 +1,6 @@
 # Monster Stand-in Spec (isoforge-engine)
 
-**Status:** LOCKED 2026-10-28 (Zach) — project-agnostic default. Engine fallbacks, not final art. No project IP.
+**Status:** LOCKED 2026-10-28 (Zach) — project-agnostic default. Engine fallbacks, not final art. No project IP. The huge row below is the 2026-11-11 unlock.
 
 ## Goal
 Whole-body silhouette stand-ins for creatures that do **not** use the humanoid paper-doll.
@@ -12,6 +12,9 @@ Whole-body silhouette stand-ins for creatures that do **not** use the humanoid p
 | small | 24×32 | (12,31) |
 | medium | 32×48 | (16,47) — same as humanoid doll, for swap tests |
 | large | 48×64 | (24,63) |
+| huge | 72×96 | (36,95) |
+
+Huge is drawn 1:1 on the same 9-clip template. Bins stop at Huge. Gargantuan stays unbinned.
 
 ## Facings (v0)
 4 iso diagonals: `se` `sw` `ne` `nw` (engine 4-facing slice). 8-facing optional later.

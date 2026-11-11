@@ -90,7 +90,7 @@ TEST_CASE("monster@6 / character@6: identity migration leaves the body unchanged
     CHECK_FALSE(kSizeShortRuntime);
 }
 
-TEST_CASE("visual defaults: humanoid paperdoll, beast stand-in bin, huge unbinned") {
+TEST_CASE("visual defaults: humanoid paperdoll, beast stand-in bin, huge binned, gargantuan unbinned") {
     ContentLibrary lib;
     auto gob = migrate(load_json("content/packs/srd51.core/monsters/goblin.json"));
     auto wolf = migrate(load_json("content/packs/srd51.core/monsters/wolf.json"));
@@ -117,9 +117,30 @@ TEST_CASE("visual defaults: humanoid paperdoll, beast stand-in bin, huge unbinne
     REQUIRE_FALSE(lib.add(huge, "monster"));
     const Archetype* h = lib.find("test.monster.huge");
     REQUIRE(h);
-    CHECK(h->visual.kind == VisualKind::Unbinned);
-    CHECK(h->visual.kit.empty());
-    CHECK(h->visual.standin_bin.empty());
+    CHECK(h->visual.kind == VisualKind::Standin);
+    CHECK(h->visual.standin_bin == "huge");
+    CHECK(h->visual.kit == "standin.huge");
+
+    Json garg = gob.data;
+    garg["id"] = "test.monster.gargantuan";
+    garg["type"] = "dragon";
+    garg["size"] = "gargantuan";
+    REQUIRE_FALSE(lib.add(garg, "monster"));
+    const Archetype* ga = lib.find("test.monster.gargantuan");
+    REQUIRE(ga);
+    CHECK(ga->visual.kind == VisualKind::Unbinned);
+    CHECK(ga->visual.kit.empty());
+    CHECK(ga->visual.standin_bin.empty());
+
+    Json named = wolf.data;
+    named["id"] = "test.monster.namedhuge";
+    named["visual"] = Json{{"standin_bin", "huge"}};
+    REQUIRE_FALSE(lib.add(named, "monster"));
+    const Archetype* nh = lib.find("test.monster.namedhuge");
+    REQUIRE(nh);
+    CHECK(nh->visual.kind == VisualKind::Standin);
+    CHECK(nh->visual.standin_bin == "huge");
+    CHECK(nh->visual.kit == "standin.huge");
 
     Json authored = gob.data;
     authored["id"] = "test.monster.kit";
@@ -155,6 +176,12 @@ TEST_CASE("visual defaults: humanoid paperdoll, beast stand-in bin, huge unbinne
     err = lib.add(bad, "monster");
     REQUIRE(err);
     CHECK(err->find("visual.kind") != std::string::npos);
+    Json bad_bin = authored;
+    bad_bin["id"] = "test.monster.badbin";
+    bad_bin["visual"] = Json{{"standin_bin", "gargantuan"}};
+    err = lib.add(bad_bin, "monster");
+    REQUIRE(err);
+    CHECK(err->find("visual.standin_bin must be tiny, small, medium, large, or huge") != std::string::npos);
 }
 
 TEST_CASE("visual is inert: Combat::hash and log_hash match with and without it") {
@@ -193,8 +220,13 @@ TEST_CASE("ContentLibrary::load reads the packed clip registry") {
     REQUIRE_MESSAGE(errs.empty(), (errs.empty() ? std::string{} : errs.front()));
     const assets::ClipRegistry* doll = lib.clip_kit("paperdoll");
     const assets::ClipRegistry* med = lib.clip_kit("standin.medium");
+    const assets::ClipRegistry* huge_kit = lib.clip_kit("standin.huge");
     REQUIRE(doll);
     REQUIRE(med);
+    REQUIRE(huge_kit);
+    CHECK(huge_kit->bin == "huge");
+    CHECK(huge_kit->resolve("climb") == "walk");
+    CHECK(huge_kit->resolve("hard_land") == "fall_impact");
     CHECK(doll->resolve("hard-land") == "prone_idle");
     CHECK(doll->resolve("dodge") == "guard");
     CHECK(med->resolve("climb") == "walk");
