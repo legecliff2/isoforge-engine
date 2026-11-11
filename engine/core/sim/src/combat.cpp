@@ -256,6 +256,9 @@ const Archetype* Combat::archetype(CombatantId id) const { const Slot* s = slot(
 Vec2i Combat::pos(CombatantId id) const {
     const Slot* s = slot(id);
     if (!s) return {};
+    // A legendary move's reaction window and the zone check after a kept step see the tile the
+    // walk is on, not the origin the token still occupies.
+    if (legendary_pos_ && id == legendary_mover_ && !s->gone) return *legendary_pos_;
     if (s->gone) return s->last;   // R-G12: where it stood when it ended
     const TilePos* p = reg_->get<TilePos>(s->entity);
     return p ? Vec2i{p->x, p->y} : Vec2i{};
@@ -1222,7 +1225,10 @@ void Combat::clear_legendary_move() {
     legendary_stop_.reset();
     legendary_step_from_.reset();
     legendary_step_to_.reset();
+    legendary_pos_.reset();
     legendary_path_.clear();
+    state_.hooks.legendary_step = nullptr;
+    state_.hooks.legendary_step_kept = nullptr;
 }
 
 void Combat::bind_legendary_walk() {
@@ -1233,6 +1239,7 @@ void Combat::bind_legendary_walk() {
         if (index < 0) {
             legendary_step_from_.reset();
             legendary_step_to_.reset();
+            legendary_pos_.reset();
             if (index == -1) legendary_stop_ = legendary_origin_;
             else if (legendary_stop_) legendary_to_ = legendary_stop_;   // -2: later hooks see where the walk ended
             return std::nullopt;
@@ -1243,6 +1250,7 @@ void Combat::bind_legendary_walk() {
         legendary_step_from_ = prev;
         legendary_step_to_ = p;
         legendary_to_ = p;
+        legendary_pos_ = prev;   // the opportunity attack sees the tile being left
         rules5e::LegendaryStepFacts f;
         f.cost_ft = int16_t(step_cost_ft(who, prev, p));
         f.leaves_reach = leaves_reach(who, prev, p);
@@ -1260,6 +1268,7 @@ void Combat::bind_legendary_walk() {
     state_.hooks.legendary_step_kept = [this](const rules5e::EncounterState&, rules5e::CombatantId who, int index) {
         if (who != legendary_mover_ || index < 0 || index >= int(legendary_path_.size())) return;
         legendary_stop_ = legendary_path_[std::size_t(index)];
+        legendary_pos_ = legendary_stop_;   // zone membership sees the tile just entered
     };
 }
 
@@ -1707,6 +1716,10 @@ SubmitResult Combat::finish(rules5e::StepResult sr) {
     r.ok = true;
     if (sr.status == StepStatus::NeedsDecision) {   // events are provisional; state is pre-request
         r.needs = std::move(sr.needs);
+        // The token never moved. Drop the virtual tile so pos() is the origin while the caller decides.
+        legendary_step_from_.reset();
+        legendary_step_to_.reset();
+        legendary_pos_.reset();
         return r;
     }
     const rules5e::LoggedStep& ls = *sr.logged;

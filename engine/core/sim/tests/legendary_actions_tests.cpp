@@ -415,3 +415,35 @@ TEST_CASE("legendary move provokes and enters zones tile by tile") {
     }
 }
 
+// The origin is around a corner: total cover from the fighter. The tile the move leaves is beside
+// the fighter, with no cover. The opportunity attack must be offered from that tile.
+TEST_CASE("legendary opportunity attack uses cover from the tile being left") {
+    auto l = lib_with();
+    // A two-tile-thick corner between the origin (1,5) and the fighter (4,6). The walk goes around
+    // it and leaves the fighter's reach from (5,6), which the wall does not cover.
+    auto ch = arena({{"srd51.character.fighter_1", {4, 6}}, {"test.legendary.beast", {1, 5}}});
+    for (int y = 5; y <= 6; ++y)
+        for (int x = 2; x <= 3; ++x)
+            ch.layers[2][std::size_t(y * 32 + x)].flags = world::tile_flags::kBlocksMove | world::tile_flags::kBlocksSight;
+    ch.content_hash = world::compute_content_hash(ch);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 7);
+    REQUIRE(c);
+    const auto fighter = ch.spawns[0].stable_id, beast = ch.spawns[1].stable_id;
+    rules5e::CoverQuery q{fighter, beast};
+    CHECK(c->cover_of(q) == rules5e::Cover::Total);
+    offer(*c, beast);
+    auto r = c->submit(stride_to(beast, {6, 6}));
+    REQUIRE(r.ok);
+    REQUIRE(r.status == StepStatus::NeedsDecision);
+    REQUIRE(r.needs);
+    CHECK(r.needs->reactor == fighter);
+    CHECK(r.needs->trigger == rules5e::ReactionTrigger::LeavingReach);
+    CHECK(c->pos(beast) == Vec2i{1, 5});
+    auto done = take_reactions(*c);
+    REQUIRE_MESSAGE(done.ok, done.error);
+    CHECK(attacked(*c, fighter));
+    CHECK(c->pos(beast) == Vec2i{6, 6});
+    expect_replay(ch, l, 7, *c);
+}
+

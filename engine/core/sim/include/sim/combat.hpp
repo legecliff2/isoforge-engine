@@ -591,6 +591,10 @@ private:
     std::optional<Vec2i> legendary_stop_;
     std::optional<Vec2i> legendary_step_from_;
     std::optional<Vec2i> legendary_step_to_;
+    // While a legendary step is resolving, pos() reports this tile (the tile being left during the
+    // opportunity-attack window, then the tile just kept for zone membership). The board token stays
+    // put until complete(), so a paused request still reports the real origin.
+    std::optional<Vec2i> legendary_pos_;
     std::vector<Vec2i> legendary_path_;
     void clear_legendary_move();
     void bind_legendary_walk();
