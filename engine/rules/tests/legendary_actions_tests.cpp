@@ -409,3 +409,23 @@ TEST_CASE("a form does not carry legendary actions") {
     CHECK(leg.la_max == 3);
     CHECK(leg.legendary.size() == 1);
 }
+
+TEST_CASE("legendary check and move take no creature targets") {
+    Combatant x = pc(1), a = monster(2);
+    pool(a, {check_opt(), move_opt(false, false)});
+    auto s = begin_encounter({x, a}, 1);
+    order_as(s, {1, 2});
+    REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);
+    ActionRequest chk = la(2, 1);
+    chk.targets = {1};
+    auto bad = step(s, chk);
+    CHECK_FALSE(bad.ok);
+    CHECK(std::string(bad.error) == "legendary check or move takes no targets");
+    CHECK(find(s, 2)->la_cur == 3);
+    ActionRequest mv = la(2, 2);
+    mv.move_ft = 5;
+    mv.target = 1;
+    auto bad_move = step(s, mv);
+    CHECK_FALSE(bad_move.ok);
+    CHECK(find(s, 2)->la_cur == 3);
+}

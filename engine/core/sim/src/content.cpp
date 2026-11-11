@@ -3127,8 +3127,12 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                         for (const auto& s : a.spell_ids) known = known || s == sid;
                         for (const auto& s : a.innate_spell_ids) known = known || s == sid;
                         if (!known) return a.id + ": legendary action '" + oid + "' spell '" + sid + "' is not one this creature knows";
+                        const auto* def = spells_->find(rules5e::spell_id_of(sid));
+                        if (!def) return a.id + ": legendary action '" + oid + "' spell '" + sid + "' is not loaded";
+                        if (!def->is_spell || def->casting_time != rules5e::CastingTime::Action)
+                            return a.id + ": legendary spell '" + sid + "' needs a casting time of 1 action";
                         lo.use = rules5e::LegendaryUse::Spell;
-                        lo.ref_id = rules5e::spell_id_of(sid);
+                        lo.ref_id = def->id;
                     } else {
                         return a.id + ": legendary action '" + oid + "' use needs attack, action, check, move, or spell";
                     }

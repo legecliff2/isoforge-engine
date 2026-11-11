@@ -41,6 +41,20 @@ class LegendarySchema(unittest.TestCase):
         self.assertTrue(any("exceeds legendary_actions_per_round" in e for e in errs), errs)
         self.assertTrue(any("no_such_attack" in e for e in errs), errs)
 
+    def test_spell_must_be_one_action(self):
+        doc = goblin()
+        doc["legendary_actions_per_round"] = 1
+        doc["legendary_actions"] = [
+            {"id": "step", "name": "Step", "description": "A bonus-action spell.",
+             "use": {"spell": "srd51.spell.misty_step"}},
+        ]
+        errs, _warns = h.validate_in_memory(
+            doc, spell_times={"srd51.spell.misty_step": "bonus_action"})
+        self.assertTrue(any("1 action" in e for e in errs), errs)
+        ok, _warns = h.validate_in_memory(
+            doc, spell_times={"srd51.spell.misty_step": "action"})
+        self.assertEqual(ok, [], ok)
+
     def test_older_schema_rejects_a_mechanical_list(self):
         doc = goblin()
         doc["$schema"] = "monster@6"

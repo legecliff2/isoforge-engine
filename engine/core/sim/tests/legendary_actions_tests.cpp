@@ -199,7 +199,7 @@ TEST_CASE("monster@7 loads legendary actions; a descriptive list and a form do n
 
 TEST_CASE("legendary move logs the destination, creature targets fold under 0xE9, and replay matches") {
     auto l = lib_with();
-    auto ch = arena({{"srd51.character.fighter_1", {4, 4}}, {"test.legendary.beast", {8, 4}}});
+    auto ch = arena({{"srd51.character.fighter_1", {7, 4}}, {"test.legendary.beast", {8, 4}}});
     ecs::Registry reg;
     auto c = Combat::create(reg, ch, l, 11);
     REQUIRE(c);
@@ -211,17 +211,18 @@ TEST_CASE("legendary move logs the destination, creature targets fold under 0xE9
     REQUIRE(c->submit(end_turn(*c)).ok);
     REQUIRE(c->state().legendary_window.candidate == beast);
 
-    Command sniff;
-    sniff.request = {beast, ActionKind::LegendaryAction};
-    sniff.request.feature_id = 2;   // perception, no creature list
-    auto plain = c->submit(sniff);
+    Command bite;
+    bite.request = {beast, ActionKind::LegendaryAction};
+    bite.request.feature_id = 1;   // the bite, which takes a creature
+    bite.request.target = host;
+    auto plain = c->submit(bite);
     REQUIRE_MESSAGE(plain.ok, plain.error);
     const uint64_t plain_log = c->log_hash();
     CHECK(c->log().back().to.has_value());   // MUST-1: every LegendaryAction logs a destination tile
-    CHECK(c->hash() != before);              // 0xE8: the pool changed (a check spends 1) or the window moved
+    CHECK(c->hash() != before);              // 0xE8: the pool changed (an attack spends 1) or the window moved
 
-    Command listed = sniff;
-    listed.request.targets = {host};
+    Command listed = bite;
+    listed.request.targets = {host};   // 0xE9: a target list on an option that takes creatures
     auto with_list = c->submit(listed);
     REQUIRE_MESSAGE(with_list.ok, with_list.error);
     CHECK(c->log_hash() != plain_log);   // 0xE9 folds the creature list

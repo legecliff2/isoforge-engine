@@ -933,7 +933,13 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
     pid = str(man.get("id", ""))
     order, set_errs = pset.resolve([pid]) if pid in pset.by_id else ([], [])
     out += [str(e) for e in set_errs if e.pack == pid]
+    def _casting_kind(doc: dict):
+        ct = doc.get("casting_time")
+        return ct.get("kind") if isinstance(ct, dict) else None
+
     spell_ids = {d.get("id") for r, d in docs.items() if isinstance(d, dict) and str(d.get("$schema", "")).startswith("spell@")}
+    spell_times = {d.get("id"): _casting_kind(d) for r, d in docs.items()
+                   if isinstance(d, dict) and str(d.get("$schema", "")).startswith("spell@")}
     item_ids = {d.get("id") for r, d in docs.items() if isinstance(d, dict) and str(d.get("$schema", "")).startswith("item@")}
     for dep in order:
         if dep.id == pid:
@@ -942,6 +948,11 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
             ids.add(cid)
             if rel.startswith("spells/") or _is_spell(dep.dir / rel):
                 spell_ids.add(cid)
+                if cid not in spell_times:
+                    try:
+                        spell_times[cid] = _casting_kind(json.loads((dep.dir / rel).read_text(encoding="utf-8")))
+                    except (OSError, ValueError):
+                        pass
             if rel.startswith("items/") or _is_item(dep.dir / rel):
                 item_ids.add(cid)
     # Deprecated escape hatch: a pack that doesn't (transitively) depend on srd51.core may still
@@ -973,7 +984,7 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
                         monsters[cid] = c4.monster_facts(json.loads((dep.dir / rel).read_text(encoding="utf-8")))
                     except (OSError, ValueError):
                         pass
-    ctx = {"ids": ids, "spell_ids": spell_ids, "items": item_ids, "external_ok": external_ok, "types": types,
+    ctx = {"ids": ids, "spell_ids": spell_ids, "spell_times": spell_times, "items": item_ids, "external_ok": external_ok, "types": types,
            "monsters": monsters,
            # item@2 documents of this pack (EQUIPMENT 3.1 hand slots: the category / hands of an equipped item)
            "item_docs": {d.get("id"): d for r, d in docs.items()

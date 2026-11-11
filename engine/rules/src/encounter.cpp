@@ -6357,8 +6357,10 @@ StepResult legendary_action(EncounterState& s, Ctx& ctx, const ActionRequest& re
         do_attack(s, ctx, *a, *t, a->attacks[opt.attack_index], req.target_within_5ft, out.events,
                   req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target);
     } else if (opt.use == LegendaryUse::Check) {
+        if (req.target != 0 || !req.targets.empty()) return fail("legendary check or move takes no targets");
         roll_check(s, *a, Skill::Perception, req.dc, req.check_mode, out.events);
     } else if (opt.use == LegendaryUse::Move) {
+        if (req.target != 0 || !req.targets.empty()) return fail("legendary check or move takes no targets");
         const int allow = opt.half_speed ? modified_speed(s, *a) / 2 : modified_speed(s, *a);
         if (req.move_ft <= 0) return fail("move_ft must be positive");
         if (req.move_ft > allow) return fail("legendary move exceeds speed");
@@ -7374,6 +7376,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                 continue;
             }
             const SpellDef* d = o.ref_id != 0 && s.hooks.spells ? s.hooks.spells->find(o.ref_id) : nullptr;
+            if (o.use == LegendaryUse::Spell && (!d || !d->is_spell || d->casting_time != CastingTime::Action)) continue;
             const bool self_only = d && d->range_ft == 0 && d->area == AreaShape::None && d->kind != SpellEffectKind::Heal;
             const bool heal = d && d->kind == SpellEffectKind::Heal;
             if (self_only) {
