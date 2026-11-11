@@ -25,8 +25,10 @@ struct TileView {
 
 // ---- Equipment visuals: a plain-data copy of what the sim's loadout shows on a creature (sim::Combat::loadout). ----
 // Where an item is drawn on its holder's sprite. MainHand / OffHand: the item is held in that hand (a two-handed item is
-// listed once, MainHand). Back: a stowed (carried) weapon or shield, slung on the back. Worn armor is not drawn.
-enum class AttachSlot : uint8_t { Back, MainHand, OffHand };
+// listed once, MainHand). Back: a carried weapon or shield slung on the back, or carried rear gear (backpack, quiver,
+// crossbow bolt case). Hip: a carried belt pouch. Worn armor is not drawn. equipment_visuals picks Back vs Hip from the
+// content id; item@2 has no wear-slot field, and these four are all ItemKind::Other.
+enum class AttachSlot : uint8_t { Back, MainHand, OffHand, Hip };
 enum class EquipKind : uint8_t { Weapon, Shield, Light, Other };
 struct EquipVisual {
     uint32_t    item = 0;            // item instance id (stable; tie-break inside a slot)

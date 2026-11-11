@@ -6,7 +6,7 @@
 //   tile fill   layer 0, z = 2, entity = tile.y * 32 + tile.x
 //   tile edge   layer 0, z = 3, same entity
 //   aim cursor  layer 0, z = 4, entity = aim tile (steady; the template pulses, the cursor does not)
-//   creature    layer 1, z = 9 (above equip_visuals kZOutline), one ring for the whole footprint
+//   creature    layer 1, z = 10 (above equip_visuals kZOutline), one ring for the whole footprint
 //
 // Pulse reads AreaPreviewView::pulse_ms (the frame clock). It does not read ViewModel::anim_phase.
 // A tile is drawn only when the view has a non-wall floor for it. The aim cursor is drawn whenever
@@ -24,7 +24,7 @@ namespace slice {
 inline constexpr int32_t kAreaFillZ = 2;
 inline constexpr int32_t kAreaEdgeZ = 3;
 inline constexpr int32_t kAreaAimZ = 4;
-inline constexpr int32_t kAreaHitZ = 9;
+inline constexpr int32_t kAreaHitZ = 10;
 
 // Triangle wave, period 800 ms, 0 at 0 and 1 at 400. frame_ms is the frame clock.
 float area_pulse01(uint32_t frame_ms) noexcept;

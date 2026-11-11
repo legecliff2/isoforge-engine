@@ -611,13 +611,14 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             world_.draw(u, iso, 0, a.id, 4);
         }
         // Unseen attacker: a coral pip beside the head. They can affect the viewer while the viewer
-        // cannot see them. A pip, not a ring, so it does not stack with the outline above.
+        // cannot see them. A pip, not a ring, so it does not stack with the outline. One z above
+        // kZOutline keeps the pip in front of that ring.
         if (a.unseen_attacker) {
             float w = 5.f, h = 9.f, ax = -8.f, ay = 26.f;
             place_on_footprint(w, h, ax, ay, fp, true);
             iso2d::Sprite pip{tex_->white, w, h, ax, ay};
             pip.tint = Color::rgba8(232, 84, 58, 235);
-            world_.draw(pip, iso, actor_sort, 1, a.id, 9);
+            world_.draw(pip, iso, actor_sort, 1, a.id, kZOutline + 1);
         }
         // Pawn feet at the footprint centre; drawn on the wall layer so walls in front occlude it.
         // A stand-in uses its feet pivot instead, and keeps the construction palette (light tint only).
