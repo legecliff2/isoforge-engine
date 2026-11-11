@@ -983,7 +983,7 @@ At the start of the creature's turn, a listed damage type taken since its previo
 
 `amount` and `suppressed_by` are static content, copied onto the combatant at spawn. They are not hashed. `regen_suppressed` and `regen_down` are the existing rules flags for "took a suppressing type since its last turn started" and "at 0 hit points, waiting for its turn." This kind does not fold them and does not claim a `SIM_EVENTS` tag. The next free hash tag stays **0xE3**. A fight whose creatures have no regeneration hashes as before. A completed heal or a death is already in hit points and `dead`. Replay of a loaded regenerator reproduces the heal from a logged hit. The 0 HP death is the same rules path; the sim test sets hit points for that case the way the rules tests do, because a content file sets only the starting hit points, so it cannot start a creature at 0.
 
-**Not this kind.** Oni and the shield guardian regain hit points only while they already have at least 1, with no damage-type list and with an ordinary death at 0. Loading `regen` on them would keep them up at 0. The shield guardian sentence is §55 (`regain`), not this trait. Radiant damage does suppress vampire spawn. The spawn still stays off `regen`: it heals only while it has at least 1 hit point, sunlight and running water also stop it, and it dies at 0. Rejuvenation (lich, ghost) is a different trait. Wild Shape and Polymorph do not copy `regeneration`: `FormStats` does not carry it, and `build_form` does not write it. The stat block is `content/packs/srd51.core/monsters/troll.json` (`srd51.monster.troll`): this effect, amount 10, `suppressed_by` acid and fire, and Keen Smell as `keen_senses` with `smell` (§30). The deferred troll row is unparked. Oni, the shield guardian, and vampire spawn still do not carry `regen`.
+**Not this kind.** Oni and the shield guardian regain hit points only while they already have at least 1, with no damage-type list and with an ordinary death at 0. Loading `regen` on them would keep them up at 0. The shield guardian sentence is §55 (`regain`), not this trait. Radiant damage does suppress vampire spawn. The spawn still stays off `regen`: it heals only while it has at least 1 hit point, sunlight and running water also stop it, and it dies at 0. Rejuvenation (lich, ghost) is a different trait. Wild Shape and Polymorph do not copy `regeneration`: `FormStats` does not carry it, and `build_form` does not write it. The stat block is `content/packs/srd51.core/monsters/troll.json` (`srd51.monster.troll`): this effect, amount 10, `suppressed_by` acid and fire, and Keen Smell as `keen_senses` with `smell` (§30). The deferred troll row is unparked. Oni, the shield guardian, and vampire spawn still do not carry `regen`. Nothing authors `regen` and §55 `regain` on the same creature. The loader does not refuse that pair. Both would apply on the same turn start. Authors should not combine them.
 
 ## 32. Presentation visual and clip registry (character@6 / monster@6, Engine Core M0)
 
@@ -1752,7 +1752,7 @@ Deferred, not this trait:
 
 * Spell Storing. `srd51.monster.shield_guardian` carries the SRD sentences as a description-only trait. No stored spell and no cast.
 * The Shield reaction is §54. It is the same amulet, and it is not this damage transfer. `srd51.monster.shield_guardian` authors that reaction.
-* Regeneration is §55 (`regain`), not this trait. `srd51.monster.shield_guardian` authors that trait. The fist and the rest of the stat block are not this trait.
+* Regeneration is §55 (`regain`), not this trait. `srd51.monster.shield_guardian` authors that trait. The fist and the rest of the stat block are authored on `shield_guardian.json`, outside this Bound trait.
 * An amulet magic item. The spawn override is the link, not item UX.
 * Same plane, the telepathic call, and the distance and direction the guardian knows. Those sentences stay in the Bound description. They are not this damage transfer.
 
@@ -1977,6 +1977,8 @@ What the sentence fixes:
 * **10 hit points.** `heal_hp` of `amount`, then `commit_healing`. A `Healed` event is emitted when the regain is above 0. At the effective maximum there is no event and the hit points stay.
 * **At least 1 hit point.** `hp >= 1`. Temporary hit points are not hit points. A creature at 1 regains. A creature at 0 does not.
 * **Ordinary death at 0.** This trait does not set `regeneration` and does not set `regen_down`. A monster with no death saves that drops to 0 dies on the existing path. A dead creature stays dead. A troll with `regen` still waits at 0 and stands on a clear turn.
+
+Nothing authors `regen` (§31) and `regain` on the same creature. The loader does not refuse the pair. If both were set, both would apply at the start of that creature's turn. Authors should not combine them.
 
 No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `regain` is static. Hit points and `Healed` are already hashed. Next free stays **0xE8**. Replay re-runs the turn. `FormStats` does not carry it. Shapechange is not this trait.
 
