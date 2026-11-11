@@ -370,7 +370,7 @@ TEST_CASE("large stand-in draws 1:1 on a 2x2; a pawn on that footprint still gro
     CHECK(count_sized(lq, 96.f, 128.f) == 0);
 
     // Name / HP anchor is the same 1x height. The bar stays footprint-wide (40 * pawn_scale).
-    const Vec2f head = footprint_head_px(centre2, fp2, 64.f, 1.f);
+    const Vec2f head = footprint_head_px(centre2, 64.f, 1.f);
     CHECK(head.y == doctest::Approx(centre2.y - 60.f));
     const Quad* bar = only_sized(lq, 82.f, 7.f);
     CHECK(bar->tw == 1);
@@ -379,7 +379,8 @@ TEST_CASE("large stand-in draws 1:1 on a 2x2; a pawn on that footprint still gro
     CHECK(bar->y0 == doctest::Approx(head.y - 13.f));
 
     // Pip and the sword use the body's scale: native sizes, centre slide, no grow.
-    CHECK(count_sized(lq, 5.f, 9.f) == 1);
+    const Quad* pip = only_sized(lq, 5.f, 9.f);
+    CHECK(pip->y0 == doctest::Approx(bodyq->y0 - 2.f));
     CHECK(count_sized(lq, 10.f, 18.f) == 0);
     CHECK(count_sized(lq, 3.f, 16.f) == 1);
     CHECK(count_sized(lq, 6.f, 32.f) == 0);
@@ -419,11 +420,12 @@ TEST_CASE("large stand-in draws 1:1 on a 2x2; a pawn on that footprint still gro
     CHECK(grown->th == 44);
     CHECK(grown->x0 + 28.f == doctest::Approx(centre2.x));
     CHECK(grown->y0 + 80.f == doctest::Approx(centre2.y));
-    const Vec2f pawn_head = footprint_head_px(centre2, fp2, 44.f, fp2.pawn_scale);
+    const Vec2f pawn_head = footprint_head_px(centre2, 44.f, fp2.pawn_scale);
     CHECK(pawn_head.y == doctest::Approx(centre2.y - 80.f));
     const Quad* pawn_bar = only_sized(pq, 82.f, 7.f);
     CHECK(pawn_bar->y0 == doctest::Approx(pawn_head.y - 13.f));
-    CHECK(count_sized(pq, 10.f, 18.f) == 1);
+    const Quad* pawn_pip = only_sized(pq, 10.f, 18.f);
+    CHECK(pawn_pip->y0 == doctest::Approx(grown->y0 - 4.f));
     CHECK(count_sized(pq, 5.f, 9.f) == 0);
     CHECK(count_sized(pq, 6.f, 32.f) == 1);
     CHECK(count_sized(pq, 3.f, 16.f) == 0);
@@ -462,9 +464,12 @@ TEST_CASE("large stand-in draws 1:1 on a 2x2; a pawn on that footprint still gro
         a.standin_bin = b.name;
         a.kit = std::string("standin.") + b.name;
         a.footprint = 1;
+        a.unseen_attacker = true;
         const auto [one, tile_c] = centre_of(a.tile, 1);
         const std::vector<Quad> sq = draw_quads(dev, view, scene(a));
         const Quad* q = only_sized(sq, b.w, b.h);
+        const Quad* bin_pip = only_sized(sq, 5.f, 9.f);
+        CHECK(bin_pip->y0 == doctest::Approx(q->y0 - 2.f));
         CHECK(q->tw == uint32_t(b.w));
         CHECK(q->th == uint32_t(b.h));
         CHECK(q->x0 + b.px == doctest::Approx(tile_c.x));
@@ -480,4 +485,63 @@ TEST_CASE("large stand-in draws 1:1 on a 2x2; a pawn on that footprint still gro
     CHECK(small_big->x0 + 12.f == doctest::Approx(centre2.x));
     CHECK(small_big->y0 + 31.f == doctest::Approx(centre2.y));
     CHECK(count_sized(s2, 48.f, 64.f) == 0);
+}
+
+TEST_CASE("missing huge kit and an empty bin anchor the label to the body drawn") {
+    CaptureDevice dev;
+    SliceView view(dev);
+    auto centre_of = [&](Vec2i tile, int side) {
+        const FootprintGeom fp = footprint_geom(tile, side, 64.f, 32.f);
+        return std::pair<FootprintGeom, Vec2f>{fp, view.tile_center_px(fp.centre_iso.x, fp.centre_iso.y)};
+    };
+
+    // Huge bin, no standin.huge kit: the body is the grown 84x132 pawn. The HP bar uses that
+    // pawn, not the 96px canvas, so it stays above the head.
+    ActorView huge = body(1, {4, 6});
+    huge.visual_kind = "standin";
+    huge.standin_bin = "huge";
+    huge.kit = "standin.huge";
+    huge.clip = "idle";
+    huge.footprint = 3;
+    huge.name = "HUGE";
+    huge.hp = huge.hp_max = 20;
+    huge.unseen_attacker = true;
+    const auto [fp3, centre3] = centre_of(huge.tile, 3);
+    const ViewModel huge_vm = scene(huge);
+    CHECK(view.actors_focus_px(huge_vm).y == doctest::Approx(centre3.y + (fp3.ring_h * 0.5f - 132.f) * 0.5f));
+    const std::vector<Quad> hq = draw_quads(dev, view, huge_vm);
+    const Quad* grown = only_sized(hq, 84.f, 132.f);
+    CHECK(grown->y0 + 120.f == doctest::Approx(centre3.y));
+    const Vec2f head = footprint_head_px(centre3, 44.f, fp3.pawn_scale);
+    CHECK(head.y == doctest::Approx(centre3.y - 120.f));
+    const Quad* bar = only_sized(hq, 122.f, 7.f);
+    CHECK(bar->y0 == doctest::Approx(head.y - 13.f));
+    CHECK(bar->y1 <= grown->y0);
+    const Quad* pip = only_sized(hq, 15.f, 27.f);
+    CHECK(pip->y0 == doctest::Approx(grown->y0 - 6.f));
+    CHECK(count_sized(hq, 72.f, 96.f) == 0);
+
+    // Empty bin loads medium and draws it 1:1. The label is the 48px canvas, not the 2x pawn.
+    ActorView empty = body(1, {4, 6});
+    empty.visual_kind = "standin";
+    empty.standin_bin.clear();
+    empty.kit.clear();
+    empty.clip = "idle";
+    empty.footprint = 2;
+    empty.name = "MED";
+    empty.hp = empty.hp_max = 20;
+    const auto [fp2, centre2] = centre_of(empty.tile, 2);
+    const ViewModel empty_vm = scene(empty);
+    CHECK(view.actors_focus_px(empty_vm).y == doctest::Approx(centre2.y + (fp2.ring_h * 0.5f - 48.f) * 0.5f));
+    const std::vector<Quad> eq = draw_quads(dev, view, empty_vm);
+    const Quad* med = only_sized(eq, 32.f, 48.f);
+    CHECK(med->y0 + 47.f == doctest::Approx(centre2.y));
+    CHECK(count_sized(eq, 56.f, 88.f) == 0);
+    const Vec2f med_head = footprint_head_px(centre2, 48.f, 1.f);
+    CHECK(med_head.y == doctest::Approx(centre2.y - 44.f));
+    const Quad* med_bar = only_sized(eq, 82.f, 7.f);
+    CHECK(med_bar->y0 == doctest::Approx(med_head.y - 13.f));
+    const Vec2f floated = footprint_head_px(centre2, 44.f, fp2.pawn_scale);
+    CHECK(floated.y < med_head.y);
+    CHECK(med_bar->y0 != doctest::Approx(floated.y - 13.f));
 }
