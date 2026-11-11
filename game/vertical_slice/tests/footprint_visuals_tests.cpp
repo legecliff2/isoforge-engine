@@ -125,6 +125,66 @@ TEST_CASE("footprint centre and ring: 1x1, 2x2, 3x3 and 4x4, odd and even") {
     }
 }
 
+TEST_CASE("stand-in canvas is 1:1 on a 2x2; the pawn still grows") {
+    const iso2d::IsoProjection proj;
+    const Vec2i anchor{4, 6};
+    const FootprintGeom g = footprint_geom(anchor, 2, kW, kH);
+    REQUIRE(g.pawn_scale == 2.f);
+    REQUIRE(g.grow_lift == kH * 0.5f);
+    REQUIRE(g.centre_anchor_y == kH * 0.5f);
+
+    // Large stand-in (MONSTER_STANDIN_SPEC): 48x64, pivot (24, 63). grow=false keeps the
+    // centre slide and leaves grow_lift off, so the pivot sits on the footprint centre.
+    constexpr float kLargeW = 48.f, kLargeH = 64.f, kPivotX = 24.f, kPivotY = 63.f;
+    float w = kLargeW, h = kLargeH, ax = kPivotX, ay = kPivotY - kH * 0.5f;
+    place_on_footprint(w, h, ax, ay, g, false);
+    CHECK(w == kLargeW);
+    CHECK(h == kLargeH);
+    CHECK(ax == kPivotX);
+    CHECK(ay == kPivotY - kH * 0.5f + g.centre_anchor_y);
+
+    const Vec2f iso = screen(proj, g.sort_iso.x, g.sort_iso.y);
+    const Vec2f pivot{iso.x - ax + kPivotX, iso.y - ay + kPivotY};
+    const Vec2f centre = screen(proj, g.centre_iso.x, g.centre_iso.y);
+    const Vec2f feet{centre.x, centre.y + kH * 0.5f};
+    CHECK(pivot.x == feet.x);
+    CHECK(pivot.y == feet.y);
+
+    const Vec2f head = footprint_head_px(feet, g, kLargeH, 1.f);
+    CHECK(head.x == feet.x);
+    CHECK(head.y == feet.y - (kLargeH - 4.f));
+    const Vec2f grown_head = footprint_head_px(feet, g, kLargeH, g.pawn_scale);
+    CHECK(grown_head.y == feet.y - (kLargeH - 4.f) * g.pawn_scale);
+    CHECK(grown_head.y != head.y);
+
+    float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
+    include_actor_bounds(x0, y0, x1, y1, feet, g, kLargeH, 1.f);
+    CHECK(y0 == feet.y - kLargeH);
+    float gx0 = 1e30f, gy0 = 1e30f, gx1 = -1e30f, gy1 = -1e30f;
+    include_actor_bounds(gx0, gy0, gx1, gy1, feet, g, 44.f, g.pawn_scale);
+    CHECK(gy0 == feet.y - 44.f * g.pawn_scale);
+
+    // A 2x2 pawn still grows about the feet.
+    float pw = 28.f, ph = 44.f, pax = 14.f, pay = 24.f;
+    place_on_footprint(pw, ph, pax, pay, g, true);
+    CHECK(pw == 56.f);
+    CHECK(ph == 88.f);
+    CHECK(pax == 28.f);
+    CHECK(pay == 24.f * g.pawn_scale + g.centre_anchor_y + g.grow_lift);
+    const Vec2f pawn_head = footprint_head_px(feet, g, 44.f, g.pawn_scale);
+    CHECK(pawn_head.y == feet.y - (44.f - 4.f) * g.pawn_scale);
+
+    // Footprint 1: a stand-in and a pawn are both unscaled. Tiny / small / medium live here.
+    const FootprintGeom one = footprint_geom(anchor, 1, kW, kH);
+    float sw = 24.f, sh = 32.f, sax = 12.f, say = 31.f - kH * 0.5f;
+    place_on_footprint(sw, sh, sax, say, one, false);
+    CHECK(sw == 24.f);
+    CHECK(sh == 32.f);
+    CHECK(sax == 12.f);
+    CHECK(say == 31.f - kH * 0.5f);
+    CHECK(footprint_head_px(feet, one, 32.f, 1.f).y == footprint_head_px(feet, one, 32.f, one.pawn_scale).y);
+}
+
 TEST_CASE("footprint side: a non-positive side is one tile") {
     CHECK(footprint_geom({1, 1}, 0, kW, kH).n == 1);
     CHECK(footprint_geom({1, 1}, -4, kW, kH).sort_iso.x == 1.f);
