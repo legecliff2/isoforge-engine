@@ -733,7 +733,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     if (const Archetype* arch = c.archetype(self); arch && !beast_form && s.budget.action && s.budget.sequence == 0 &&
                                                    s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t))
         for (const auto& sa : arch->save_actions) {
-            if (sa.teleport || sa.rider_only || sa.leap || sa.whirl || sa.whelm || sa.ethereal || sa.illusory || sa.passage) continue;   // blink dog: destination not guessed. B3b: a free rider is not this action. B8: the AI does not jump or land. B10: the AI does not pick a random fling. B11: the AI does not use Whelm. B19: the AI does not use Etherealness. The visible-figure action is not this AI's choice. Invisible Passage is not this AI's choice.
+            if (sa.teleport || sa.rider_only || sa.leap || sa.whirl || sa.whelm || sa.ethereal || sa.illusory || sa.passage || sa.healing_touch) continue;   // blink dog: destination not guessed. B3b: a free rider is not this action. B8: the AI does not jump or land. B10: the AI does not pick a random fling. B11: the AI does not use Whelm. B19: the AI does not use Etherealness. The visible-figure action is not this AI's choice. Invisible Passage is not this AI's choice. Healing Touch would heal the current foe.
             if (sa.usage_kind == 1) {
                 const auto* u = rules5e::find_action_use(s, self, sa.spell_id);
                 if (u && u->expended) continue;

@@ -650,6 +650,12 @@ struct SpellDef {
     // No duration. Not a spell: cast_spell_impl returns before resolve_effect, so the action does not
     // end itself. Not innate_invisibility.
     bool invisible_passage = false;
+    // appended (Healing Touch, CONTENT_CONVENTIONS §56). Static content: not hashed.
+    // An action. One other creature within 5 ft. Rolls dice (2d8+2), then heal_hp / commit_healing.
+    // Then every Disease row on that creature, then Poisoned and tracked effects that apply it.
+    // kind is Heal so the action is not a harmful spell. cast_spell_impl returns before resolve_effect.
+    // Not a spell. usage_kind 2 is 3 long-rest uses, registered by Combat::create.
+    bool healing_touch = false;
 };
 
 // B10 Whirlwind and B11 Whelm name creatures already in the user's space. Rules does not see tiles.
