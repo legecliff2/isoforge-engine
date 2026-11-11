@@ -115,7 +115,16 @@ TEST_CASE("stand-in kit: loads authored frames and a missing file is a checker")
     CHECK(medium.h == 48);
     CHECK(medium.pivot_x == 16);
     CHECK(medium.pivot_y == 47);
-    CHECK(standin_canvas("huge").w == 0);
+    const StandinCanvas huge = standin_canvas("huge");
+    CHECK(huge.w == 72);
+    CHECK(huge.h == 96);
+    CHECK(huge.pivot_x == 36);
+    CHECK(huge.pivot_y == 95);
+    const StandinCanvas gargantuan = standin_canvas("gargantuan");
+    CHECK(gargantuan.w == 0);
+    CHECK(gargantuan.h == 0);
+    CHECK(gargantuan.pivot_x == 0);
+    CHECK(gargantuan.pivot_y == 0);
 
     // Frame counts match Core's stand-in registry. Aliases are not applied here.
     const KitClip clips[] = {
@@ -151,7 +160,7 @@ TEST_CASE("stand-in kit: loads authored frames and a missing file is a checker")
     CHECK(tiny->frame_at(0).image->w == 16);
     CHECK(tiny->frame_at(0).pivot_x == 8);
     CHECK(tiny->frame_at(0).pivot_y == 15);
-    CHECK_FALSE(MonsterStandinKit::load(root(), "huge", idle_only));
+    CHECK_FALSE(MonsterStandinKit::load(root(), "gargantuan", idle_only));
 
     const auto dir = std::filesystem::temp_directory_path() / "isoforge-standin-missing";
     std::filesystem::remove_all(dir);

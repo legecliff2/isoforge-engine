@@ -70,6 +70,7 @@ StandinCanvas standin_canvas(std::string_view bin) {
     if (bin == "small") return {24, 32, 12, 31};
     if (bin == "medium") return {32, 48, 16, 47};
     if (bin == "large") return {48, 64, 24, 63};
+    if (bin == "huge") return {72, 96, 36, 95};
     return {};
 }
 

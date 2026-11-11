@@ -150,10 +150,10 @@ TEST_CASE("stand-in canvas is 1:1 on a 2x2; the pawn still grows") {
     CHECK(pivot.x == feet.x);
     CHECK(pivot.y == feet.y);
 
-    const Vec2f head = footprint_head_px(feet, g, kLargeH, 1.f);
+    const Vec2f head = footprint_head_px(feet, kLargeH, 1.f);
     CHECK(head.x == feet.x);
     CHECK(head.y == feet.y - (kLargeH - 4.f));
-    const Vec2f grown_head = footprint_head_px(feet, g, kLargeH, g.pawn_scale);
+    const Vec2f grown_head = footprint_head_px(feet, kLargeH, g.pawn_scale);
     CHECK(grown_head.y == feet.y - (kLargeH - 4.f) * g.pawn_scale);
     CHECK(grown_head.y != head.y);
 
@@ -171,7 +171,7 @@ TEST_CASE("stand-in canvas is 1:1 on a 2x2; the pawn still grows") {
     CHECK(ph == 88.f);
     CHECK(pax == 28.f);
     CHECK(pay == 24.f * g.pawn_scale + g.centre_anchor_y + g.grow_lift);
-    const Vec2f pawn_head = footprint_head_px(feet, g, 44.f, g.pawn_scale);
+    const Vec2f pawn_head = footprint_head_px(feet, 44.f, g.pawn_scale);
     CHECK(pawn_head.y == feet.y - (44.f - 4.f) * g.pawn_scale);
 
     // Footprint 1: a stand-in and a pawn are both unscaled. Tiny / small / medium live here.
@@ -182,7 +182,7 @@ TEST_CASE("stand-in canvas is 1:1 on a 2x2; the pawn still grows") {
     CHECK(sh == 32.f);
     CHECK(sax == 12.f);
     CHECK(say == 31.f - kH * 0.5f);
-    CHECK(footprint_head_px(feet, one, 32.f, 1.f).y == footprint_head_px(feet, one, 32.f, one.pawn_scale).y);
+    CHECK(footprint_head_px(feet, 32.f, 1.f).y == footprint_head_px(feet, 32.f, one.pawn_scale).y);
 }
 
 TEST_CASE("footprint side: a non-positive side is one tile") {
@@ -332,4 +332,91 @@ TEST_CASE("slice view: a multi-tile base ring is one extra sprite; side 1 is unc
     CHECK(mid.x == doctest::Approx(view.tile_center_px(5.f, 7.f).x));   // odd: middle tile
     vm.actors[0].footprint = 1;
     CHECK(view.actors_focus_px(vm).x == doctest::Approx(view.tile_center_px(4.f, 6.f).x));
+}
+
+TEST_CASE("unseen attacker pip ay follows the unscaled body anchor") {
+    constexpr float kTile = 32.f;
+    constexpr float kPawnH = 44.f;
+    const float pawn_pay = pawn_body_anchor_y(kPawnH, kTile);
+    CHECK(pawn_pay == 24.f);
+    CHECK(unseen_attacker_pip_ay(pawn_pay) == 26.f);
+
+    // Unscaled ay (before place_on_footprint) and the sprite ay after place on that size's
+    // footprint. Stand-ins do not grow, so only the centre slide is added. anchor_y is from
+    // the sprite top, so ay = body_pay + 2 puts the pip top 2px above the canvas top.
+    struct Bin {
+        const char* name;
+        float pivot_y;
+        float canvas_h;
+        int side;
+        float unscaled;
+        float placed;
+    };
+    const Bin bins[] = {
+        {"tiny", 15.f, 16.f, 1, 1.f, 1.f},
+        {"small", 31.f, 32.f, 1, 17.f, 17.f},
+        {"medium", 47.f, 48.f, 1, 33.f, 33.f},
+        {"large", 63.f, 64.f, 2, 49.f, 65.f},
+        {"huge", 95.f, 96.f, 3, 81.f, 113.f},
+    };
+    for (const Bin& b : bins) {
+        CAPTURE(b.name);
+        const float pay = standin_body_anchor_y(b.pivot_y, kTile);
+        const float ay = unseen_attacker_pip_ay(pay);
+        CHECK(ay == b.unscaled);
+        CHECK(ay == pay + 2.f);
+        const FootprintGeom g = footprint_geom({4, 6}, b.side, kW, kTile);
+        float w = 5.f, h = 9.f, ax = -8.f, placed = ay;
+        place_on_footprint(w, h, ax, placed, g, false);
+        CHECK(w == 5.f);
+        CHECK(h == 9.f);
+        CHECK(ax == -8.f);
+        CHECK(placed == b.placed);
+        if (b.canvas_h >= 48.f) CHECK(ay - pay == 2.f);
+    }
+
+    // Grown pawn: the input ay is still 26, so place_on_footprint matches the old fixed pip.
+    const float placed_ay[] = {26.f, 84.f, 142.f};
+    for (int n : {1, 2, 3}) {
+        CAPTURE(n);
+        const FootprintGeom g = footprint_geom({4, 6}, n, kW, kTile);
+        float w = 5.f, h = 9.f, ax = -8.f, ay = unseen_attacker_pip_ay(pawn_pay);
+        place_on_footprint(w, h, ax, ay, g, true);
+        float ow = 5.f, oh = 9.f, oax = -8.f, oay = 26.f;
+        place_on_footprint(ow, oh, oax, oay, g, true);
+        CHECK(ay == oay);
+        CHECK(w == ow);
+        CHECK(h == oh);
+        CHECK(ax == oax);
+        CHECK(ay == placed_ay[n - 1]);
+    }
+}
+
+TEST_CASE("label anchor matches the body that is drawn") {
+    const Vec2f centre{100.f, 200.f};
+    // Missing kit: the grown pawn, not the canvas. Huge on 3x3 is 44*3, not the 96px canvas.
+    const LabelBodyAnchor missing = label_body_anchor(false, 96.f, 44.f, 3.f);
+    CHECK(missing.body_h == 44.f);
+    CHECK(missing.scale == 3.f);
+    const Vec2f head = footprint_head_px(centre, missing.body_h, missing.scale);
+    const float pawn_top = centre.y - (44.f - 4.f) * 3.f;
+    CHECK(head.y == pawn_top);
+    const float bar_bottom = head.y - 12.f + 5.f;
+    CHECK(bar_bottom < pawn_top);
+    // The 1x canvas anchor would put the bar on the 132px pawn's head.
+    const Vec2f canvas_head = footprint_head_px(centre, 96.f, 1.f);
+    CHECK(canvas_head.y - 12.f > pawn_top);
+
+    // Empty bin draws medium 1:1. The pawn_scale anchor floats above that canvas.
+    const LabelBodyAnchor empty = label_body_anchor(true, 48.f, 44.f, 2.f);
+    CHECK(empty.body_h == 48.f);
+    CHECK(empty.scale == 1.f);
+    const Vec2f empty_head = footprint_head_px(centre, empty.body_h, empty.scale);
+    CHECK(empty_head.y == centre.y - 44.f);
+    const Vec2f floated = footprint_head_px(centre, 44.f, 2.f);
+    CHECK(floated.y < empty_head.y);
+
+    const LabelBodyAnchor loaded = label_body_anchor(true, 64.f, 44.f, 2.f);
+    CHECK(loaded.body_h == 64.f);
+    CHECK(loaded.scale == 1.f);
 }

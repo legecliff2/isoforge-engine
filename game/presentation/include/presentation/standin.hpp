@@ -29,7 +29,8 @@ int clip_frame(const ClipClock& clock, double t_sec);
 // last frame is showing (`step >= frames - 1`).
 bool clip_finished(const ClipClock& clock, double t_sec);
 
-// Locked canvases (MONSTER_STANDIN_SPEC). Zero size when `bin` is not tiny|small|medium|large.
+// Locked canvases. Zero size when `bin` is not tiny|small|medium|large|huge.
+// Gargantuan stays unbinned. Huge is 72x96, feet pivot (36, 95), drawn 1:1.
 struct StandinCanvas {
     uint32_t w = 0, h = 0;
     int pivot_x = 0, pivot_y = 0;
@@ -62,7 +63,7 @@ struct StandinPose {
 
 class MonsterStandinKit {
 public:
-    // `bin` is tiny|small|medium|large. PNGs are
+    // `bin` is tiny|small|medium|large|huge. PNGs are
     // frames/{bin}/{facing}/mon_{bin}_{facing}_{clip}_{ff}.png.
     // A missing file is a magenta checker. nullopt when `bin` is unknown or `clips` is empty.
     static std::optional<MonsterStandinKit> load(const std::filesystem::path& root, std::string_view bin,
