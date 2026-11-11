@@ -992,9 +992,9 @@ At the start of the creature's turn, a listed damage type taken since its previo
 | Authored | Resolved |
 |---|---|
 | `visual` absent, `type` `humanoid` | `kind` paperdoll, `kit` `paperdoll`, empty `standin_bin` |
-| `visual` absent, any other type, size tiny / small / medium / large | `kind` standin, `standin_bin` from size, `kit` `standin.<standin_bin>` |
-| `visual` absent, size huge or gargantuan | `kind` unbinned, empty `kit` (no M0 art bin) |
-| `visual.kind` / `visual.standin_bin` | override the default. `standin_bin` is `tiny`, `small`, `medium`, or `large` |
+| `visual` absent, any other type, size tiny / small / medium / large / huge | `kind` standin, `standin_bin` from size, `kit` `standin.<standin_bin>` |
+| `visual` absent, size gargantuan | `kind` unbinned, empty `kit` (no art bin) |
+| `visual.kind` / `visual.standin_bin` | override the default. `standin_bin` is `tiny`, `small`, `medium`, `large`, or `huge` |
 | `visual.kit` | kit id. Wins over `presentation.sprite` |
 | `presentation.sprite` | kit id when `visual.kit` is absent |
 | `visual.art_root` | pack-relative directory under `art/`. When `ContentLibrary::add` is given the pack directory, the directory must exist. `..` is refused |
@@ -1002,9 +1002,9 @@ At the start of the creature's turn, a listed damage type taken since its previo
 
 `CreatureVisual` sits on `Archetype`. `ActorView` copies `visual_kind` (`"paperdoll"` / `"standin"` / `"unbinned"`), `kit`, `standin_bin`, `art_root`, and `size_short`. `ActorView::clip` is the clip-clock request (Render & Platform). There is no `hard_land` field; that name is only a registry alias. None of these fields are written back into sim, and none are folded into `Combat::hash` or `log_hash`. No new `SIM_EVENTS` tag. A humanoid with no visual block, including the sample goblin, resolves to paperdoll, not `standin.<size>`.
 
-The clip registry is `content/packs/srd51.core/art/clips.json` (not a manifest content document; `validate_packs` skips `art/`). `ContentLibrary::load` reads `<pack>/art/clips.json` when the file is present. Every alias target must be a clip id in that kit. `ClipRegistry::resolve` maps `-` to `_` and is the only alias path. The paperdoll kit resolves `hard_land` / `hard-land` to `prone_idle`, `dodge` to `guard`, `knockback` to `react`, and swim / fly idle and move to `idle` / `walk`. The stand-in kits (`standin.tiny` through `standin.large`) resolve `climb` and `crawl` to `walk`, `hide` to `idle`, `melee` / `melee_near` / `melee_far` to `attack`, `hard_land` / `hard-land` to `fall_impact` (not `prone_idle`), and an unknown name to `idle`.
+The clip registry is `content/packs/srd51.core/art/clips.json` (not a manifest content document; `validate_packs` skips `art/`). `ContentLibrary::load` reads `<pack>/art/clips.json` when the file is present. Every alias target must be a clip id in that kit. `ClipRegistry::resolve` maps `-` to `_` and is the only alias path. The paperdoll kit resolves `hard_land` / `hard-land` to `prone_idle`, `dodge` to `guard`, `knockback` to `react`, and swim / fly idle and move to `idle` / `walk`. The stand-in kits (`standin.tiny` through `standin.huge`) resolve `climb` and `crawl` to `walk`, `hide` to `idle`, `melee` / `melee_near` / `melee_far` to `attack`, `hard_land` / `hard-land` to `fall_impact` (not `prone_idle`), and an unknown name to `idle`.
 
-Facing stays the four iso values `SouthEast`, `SouthWest`, `NorthEast`, `NorthWest`. Art still authors eight. A committed `TileMoved` or a later aim / attack sets `ActorView::facing` from the tile step (`+x` SouthEast, `+y` SouthWest). That state lives on the presentation feed, not on the combatant. `SouthWest` and `NorthWest` are the west mirror. Huge and gargantuan bins, `size_short` runtime, and an 8-value facing enum are not M0.
+Facing stays the four iso values `SouthEast`, `SouthWest`, `NorthEast`, `NorthWest`. Art still authors eight. A committed `TileMoved` or a later aim / attack sets `ActorView::facing` from the tile step (`+x` SouthEast, `+y` SouthWest). That state lives on the presentation feed, not on the combatant. `SouthWest` and `NorthWest` are the west mirror. Gargantuan stays unbinned. `size_short` runtime and an 8-value facing enum are not M0.
 
 ## 33. Save grappled by the user, and grapple `max_size` (monster@5)
 

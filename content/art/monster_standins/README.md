@@ -1,6 +1,12 @@
 # Monster stand-ins (generic)
 
-Repo path: `content/art/monster_standins/`. These are the stand-in PNGs (frames, strips, previews). Clip ids, frame counts, fps, modes, and aliases are Engine Core's registry at `content/packs/srd51.core/art/clips.json`. This directory is not a rules pack. The vertical slice loads frames from here when `ActorView.visual_kind` is `standin` and `standin_bin` is `tiny|small|medium|large`. `paperdoll` still draws the procedural pawn. `size_short` is stored and not applied.
+Repo path: `content/art/monster_standins/`. These are the stand-in PNGs (frames, strips, previews). Clip ids, frame counts, fps, modes, and aliases are Engine Core's registry at `content/packs/srd51.core/art/clips.json`. This directory is not a rules pack. The vertical slice loads frames from here when `ActorView.visual_kind` is `standin` and `standin_bin` is `tiny|small|medium|large|huge`. `paperdoll` still draws the procedural pawn. `size_short` is stored and not applied.
+
+| bin | canvas | feet pivot |
+|---|---|---|
+| huge | 72×96 | (36,95) |
+
+Huge is drawn 1:1 on the same 9-clip template. Bins stop at Huge. Gargantuan stays unbinned.
 
 Regenerate: `python3 build_monster_standins.py` (Pillow). Deterministic; overwrites `frames/`, `strips/`, and `previews/`. The script may also write a local `clips.json`; the engine does not read that file.
 

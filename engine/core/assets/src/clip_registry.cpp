@@ -12,7 +12,7 @@ std::string norm_key(std::string_view s) {
     return out;
 }
 bool known_bin(std::string_view s) {
-    return s == "tiny" || s == "small" || s == "medium" || s == "large";
+    return s == "tiny" || s == "small" || s == "medium" || s == "large" || s == "huge";
 }
 } // namespace
 
@@ -116,7 +116,7 @@ std::optional<std::string> load_clip_file(const Json& doc, ClipFile& out) {
             if (id.find('.') != std::string::npos) return fail("kit '" + id + "': a binned kit id must not contain '.'");
             for (const Json& one : *b) {
                 if (!one.is_string() || !known_bin(one.get<std::string>()))
-                    return fail("kit '" + id + "': bin must be tiny, small, medium, or large");
+                    return fail("kit '" + id + "': bin must be tiny, small, medium, large, or huge");
                 const std::string bin = one.get<std::string>();
                 for (const ClipRegistry& prev : file.kits)
                     if (prev.id == id + "." + bin) return fail("clip registry: duplicate kit '" + id + "." + bin + "'");
@@ -126,7 +126,7 @@ std::optional<std::string> load_clip_file(const Json& doc, ClipFile& out) {
             std::string bin;
             if (auto bin_field = k.find("bin"); bin_field != k.end()) {
                 if (!bin_field->is_string() || !known_bin(bin_field->get<std::string>()))
-                    return fail("kit '" + id + "': bin must be tiny, small, medium, or large");
+                    return fail("kit '" + id + "': bin must be tiny, small, medium, large, or huge");
                 bin = bin_field->get<std::string>();
             }
             for (const ClipRegistry& prev : file.kits)

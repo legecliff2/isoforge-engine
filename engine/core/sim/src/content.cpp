@@ -2100,7 +2100,7 @@ std::optional<std::string> check_art_root(std::string_view root, std::string_vie
 }
 
 // Defaults when `visual` is absent: humanoid -> paperdoll; otherwise a stand-in bin from size.
-// Huge and gargantuan have no M0 bin (Unbinned, empty kit) unless the file names one.
+// Gargantuan has no art bin (Unbinned, empty kit) unless the file names one.
 // size_short is stored and not applied (kSizeShortRuntime is false).
 // Kit id: visual.kit, else presentation.sprite, else paperdoll / standin.<standin_bin>.
 std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize size, std::string_view pack_dir, CreatureVisual& out) {
@@ -2153,7 +2153,8 @@ std::optional<std::string> read_creature_visual(const Json& doc, CreatureSize si
         case CreatureSize::Small: return "small";
         case CreatureSize::Medium: return "medium";
         case CreatureSize::Large: return "large";
-        default: return nullptr;   // huge / gargantuan: no M0 art bin
+        case CreatureSize::Huge: return "huge";
+        default: return nullptr;   // gargantuan: no art bin
         }
     };
     if (kind_set && kind_s == "paperdoll") {

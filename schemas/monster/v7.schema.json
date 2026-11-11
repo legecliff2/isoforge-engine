@@ -755,7 +755,7 @@
         "visual": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Presentation only (Engine Core M0). Never read by rules and never folded into Combat::hash, log_hash, or chunk content_hash. Absent: a humanoid type resolves to paperdoll; any other type resolves to a stand-in bin from size (tiny, small, medium, large). huge is a stand-in bin. Gargantuan has no art bin. size_short is stored and not applied (M1: torso+head _short plates, else scale about the feet pivot).",
+          "description": "Presentation only (Engine Core M0). Never read by rules and never folded into Combat::hash, log_hash, or chunk content_hash. Absent: a humanoid type resolves to paperdoll; any other type resolves to a stand-in bin from size (tiny, small, medium, large, huge). Gargantuan has no art bin. size_short is stored and not applied (M1: torso+head _short plates, else scale about the feet pivot).",
           "properties": {
             "kind": {
               "enum": [
@@ -777,7 +777,7 @@
                 "large",
                 "huge"
               ],
-              "description": "Stand-in canvas. Ignored for paperdoll. huge is a bin (the huge stand-in). Gargantuan is not."
+              "description": "Stand-in canvas. Ignored for paperdoll. Gargantuan is not a bin."
             },
             "art_root": {
               "type": "string",

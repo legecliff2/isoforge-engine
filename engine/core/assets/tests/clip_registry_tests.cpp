@@ -1,13 +1,21 @@
 #include <doctest/doctest.h>
 
-#include <algorithm>
-
 #include "assets/clip_registry.hpp"
 
 using namespace eng::assets;
 
 namespace {
 const std::string kKit = std::string(ENGINE_SOURCE_ROOT) + "/content/packs/srd51.core/art/clips.json";
+
+bool same_draw(const ClipRegistry& a, const ClipRegistry& b) {
+    if (a.clips.size() != b.clips.size() || a.aliases != b.aliases || a.fallback != b.fallback) return false;
+    for (size_t i = 0; i < a.clips.size(); ++i) {
+        const Clip& x = a.clips[i];
+        const Clip& y = b.clips[i];
+        if (x.id != y.id || x.frames != y.frames || x.fps != y.fps || x.mode != y.mode) return false;
+    }
+    return true;
+}
 } // namespace
 
 TEST_CASE("clip registry: packed kit membership, including hard-land -> prone_idle") {
@@ -16,12 +24,18 @@ TEST_CASE("clip registry: packed kit membership, including hard-land -> prone_id
     REQUIRE_MESSAGE(!err, err.value_or(std::string{}));
     const ClipRegistry* doll = nullptr;
     const ClipRegistry* stand = nullptr;
+    const ClipRegistry* large = nullptr;
+    const ClipRegistry* huge = nullptr;
     for (const ClipRegistry& k : file.kits) {
         if (k.id == "paperdoll") doll = &k;
         if (k.id == "standin.medium") stand = &k;
+        if (k.id == "standin.large") large = &k;
+        if (k.id == "standin.huge") huge = &k;
     }
     REQUIRE(doll);
     REQUIRE(stand);
+    REQUIRE(large);
+    REQUIRE(huge);
     CHECK(doll->resolve("hard-land") == "prone_idle");
     CHECK(doll->resolve("hard_land") == "prone_idle");
     CHECK(doll->resolve("dodge") == "guard");
@@ -41,10 +55,11 @@ TEST_CASE("clip registry: packed kit membership, including hard-land -> prone_id
     CHECK(stand->resolve("hard_land") == "fall_impact");
     CHECK(stand->resolve("missing") == "idle");
     CHECK(stand->bin == "medium");
-    bool saw_large = false;
-    for (const ClipRegistry& k : file.kits) saw_large = saw_large || k.id == "standin.large";
-    CHECK(saw_large);
-    CHECK_FALSE(std::any_of(file.kits.begin(), file.kits.end(), [](const ClipRegistry& k) { return k.id == "standin.huge"; }));
+    CHECK(large->bin == "large");
+    CHECK(huge->id == "standin.huge");
+    CHECK(huge->bin == "huge");
+    CHECK(huge->clips.size() == 9);
+    CHECK(same_draw(*huge, *large));
 }
 
 TEST_CASE("clip registry: an alias target that is not a clip is refused") {
@@ -60,13 +75,15 @@ TEST_CASE("clip registry: an alias target that is not a clip is refused") {
     CHECK(file.kits[0].resolve("hard-land") == "prone_idle");
 }
 
-TEST_CASE("clip registry: alias keys that are clips, duplicate kits, and huge bins are refused") {
+TEST_CASE("clip registry: alias keys that are clips, duplicate kits, and unknown bins are refused") {
     ClipFile file;
     CHECK(load_clip_file(Json::parse(R"({"kits":[{"id":"k","kind":"paperdoll","clips":[{"id":"idle"}],"aliases":{"idle":"idle"}}]})"), file));
     CHECK(load_clip_file(Json::parse(R"({"kits":[{"id":"k","kind":"paperdoll","clips":[{"id":"a"}]},{"id":"k","kind":"paperdoll","clips":[{"id":"b"}]}]})"), file));
-    CHECK(load_clip_file(Json::parse(R"({"kits":[{"id":"standin","kind":"standin","bins":["huge"],"clips":[{"id":"idle"}]}]})"), file));
-    CHECK_FALSE(load_clip_file(Json::parse(R"({"kits":[{"id":"standin","kind":"standin","bins":["tiny","small"],"clips":[{"id":"idle"}],"fallback":"idle"}]})"), file));
-    CHECK(file.kits.size() == 2);
+    CHECK(load_clip_file(Json::parse(R"({"kits":[{"id":"standin","kind":"standin","bins":["gargantuan"],"clips":[{"id":"idle"}]}]})"), file));
+    CHECK_FALSE(load_clip_file(Json::parse(R"({"kits":[{"id":"standin","kind":"standin","bins":["tiny","small","huge"],"clips":[{"id":"idle"}],"fallback":"idle"}]})"), file));
+    CHECK(file.kits.size() == 3);
     CHECK(file.kits[0].id == "standin.tiny");
     CHECK(file.kits[1].id == "standin.small");
+    CHECK(file.kits[2].id == "standin.huge");
+    CHECK(file.kits[2].bin == "huge");
 }

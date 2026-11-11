@@ -148,27 +148,6 @@ const char* facing_name(Facing f) {
     }
 }
 
-// Canvas height of a stand-in bin. The pawn stays kPawnH. Used for the name/HP anchor and
-// the camera box so a loaded kit and a missing kit agree before textures exist: both use
-// this height, not the uploaded image.
-//
-// standin_anchor_scale is 1 for a known bin (this returns the canvas height) and pawn_scale
-// otherwise. If the kit is missing, the body falls back to the grown pawn, but the anchor
-// stays at 1x canvas height so the label and the camera do not jump when the kit loads.
-// Huge / gargantuan are not a canvas, so that anchor is the pawn height at pawn_scale,
-// matching the pawn they draw. An empty bin uses the same anchor; body_for may still
-// load medium, and that loaded canvas is drawn 1:1.
-float standin_body_h(const ActorView& a) {
-    if (a.visual_kind != "standin") return float(kPawnH);
-    const presentation::StandinCanvas c = presentation::standin_canvas(a.standin_bin);
-    return c.h == 0 ? float(kPawnH) : float(c.h);
-}
-
-float standin_anchor_scale(const ActorView& a, float pawn_scale) {
-    if (a.visual_kind != "standin") return pawn_scale;
-    return presentation::standin_canvas(a.standin_bin).h == 0 ? pawn_scale : 1.f;
-}
-
 Color tint_for(const ActorView& a) {
     Color c = a.is_pc ? Color::rgba8(90, 150, 255) : Color::rgba8(110, 200, 80);
     if (a.dead) c = Color::rgba8(90, 90, 90, 200);
@@ -251,6 +230,29 @@ struct SliceView::StandinCache {
         for (const assets::ClipRegistry& k : clips.kits)
             if (k.id == id) return &k;
         return nullptr;
+    }
+
+    // True when body_for draws a stand-in canvas. An empty bin loads medium. A missing kit
+    // (no registry, or a bin with no canvas) is false, and the pawn grows instead.
+    // Does not touch the walk-tile map: the canvas height does not depend on idle vs walk.
+    bool draws_standin(const ActorView& a) const {
+        if (a.visual_kind != "standin" || root.empty() || !clips_ok) return false;
+        const std::string_view bin = a.standin_bin.empty() ? std::string_view("medium") : std::string_view(a.standin_bin);
+        const assets::ClipRegistry* reg = registry(bin);
+        if (!reg || reg->clips.empty()) return false;
+        const presentation::StandinCanvas canvas = presentation::standin_canvas(bin);
+        if (canvas.w == 0 || canvas.h == 0) return false;
+        std::string clip = a.clip.empty() ? std::string("idle") : a.clip;
+        if (a.dead) clip = "death";
+        return reg->resolve(clip).has_value();
+    }
+
+    // Label and camera follow the body this frame draws: canvas height at scale 1 when the
+    // stand-in draws, pawn height at pawn_scale when it falls back to the grown pawn.
+    LabelBodyAnchor label_anchor(const ActorView& a, float pawn_h, float pawn_scale) const {
+        if (!draws_standin(a)) return label_body_anchor(false, 0.f, pawn_h, pawn_scale);
+        const std::string_view bin = a.standin_bin.empty() ? std::string_view("medium") : std::string_view(a.standin_bin);
+        return label_body_anchor(true, float(presentation::standin_canvas(bin).h), pawn_h, pawn_scale);
     }
 
     Bin* bin_for(const std::string& name) {
@@ -447,7 +449,8 @@ Vec2f SliceView::actors_focus_px(const ViewModel& vm) const {
     for (const ActorView& a : vm.actors) {
         const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
         const Vec2f c = tile_center_px(fp.centre_iso.x, fp.centre_iso.y);
-        include_actor_bounds(x0, y0, x1, y1, c, fp, standin_body_h(a), standin_anchor_scale(a, fp.pawn_scale));
+        const LabelBodyAnchor la = standins_->label_anchor(a, float(kPawnH), fp.pawn_scale);
+        include_actor_bounds(x0, y0, x1, y1, c, fp, la.body_h, la.scale);
     }
     return {(x0 + x1) * 0.5f, (y0 + y1) * 0.5f};
 }
@@ -618,6 +621,18 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         // grow_lift is only the pawn's. A missing kit leaves standin empty and the pawn grows.
         const std::optional<StandinCache::Body> standin = standins_->body_for(a, present_s_);
         const bool grow_body = !standin;
+        // Body size and unscaled anchor, before the pip. The pip uses this anchor; the body
+        // draw stays below the pip so z order is unchanged.
+        float pw = float(kPawnW), ph = float(kPawnH), pax = kPawnW / 2.f;
+        float body_pay = pawn_body_anchor_y(float(kPawnH), float(kTileH));
+        TextureId body_tex = tex_->pawn;
+        if (standin) {
+            pw = float(standin->w);
+            ph = float(standin->h);
+            pax = float(standin->pivot_x);
+            body_pay = standin_body_anchor_y(float(standin->pivot_y), float(kTileH));
+            body_tex = standin->tex;
+        }
         // Unseen target: a small slate-cyan diamond on the ground. It is not the full-tile current-turn
         // ring (gold, z 9) and not a Faerie Fire outline (full-tile purple on the actor). Alpha stays
         // well above the Invisible ghost (~0.38): this is a mark, not a fade of the token.
@@ -631,10 +646,10 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         }
         // Unseen attacker: a coral pip beside the head. They can affect the viewer while the viewer
         // cannot see them. A pip, not a ring, so it does not stack with the outline. One z above
-        // kZOutline keeps the pip in front of that ring. Same scale as the body: 1:1 when the
-        // stand-in canvas is what we draw.
+        // kZOutline keeps the pip in front of that ring. ay follows the unscaled body anchor
+        // (pawn stays 26). ax stays -8. Same grow as the body: 1:1 when the stand-in canvas is drawn.
         if (a.unseen_attacker) {
-            float w = 5.f, h = 9.f, ax = -8.f, ay = 26.f;
+            float w = 5.f, h = 9.f, ax = -8.f, ay = unseen_attacker_pip_ay(body_pay);
             place_on_footprint(w, h, ax, ay, fp, grow_body);
             iso2d::Sprite pip{tex_->white, w, h, ax, ay};
             pip.tint = Color::rgba8(232, 84, 58, 235);
@@ -647,15 +662,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         Color lit_by = af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible);
         if (L.present) lit_by = mul(lit_by, {1.6f, 1.6f, 1.6f, 1.f});   // tokens stay readable in dim light
         if (a.invisible && !a.dead) lit_by.a *= 0.38f;   // ghost equipment with the body
-        float pw = float(kPawnW), ph = float(kPawnH), pax = kPawnW / 2.f, pay = float(kPawnH) - kTileH / 2.f - 4.f;
-        TextureId body_tex = tex_->pawn;
-        if (standin) {
-            pw = float(standin->w);
-            ph = float(standin->h);
-            pax = float(standin->pivot_x);
-            pay = float(standin->pivot_y) - float(kTileH) * 0.5f;
-            body_tex = standin->tex;
-        }
+        float pay = body_pay;
         place_on_footprint(pw, ph, pax, pay, fp, grow_body);
         iso2d::Sprite p{body_tex, pw, ph, pax, pay};
         if (standin) {
@@ -697,9 +704,9 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     for (const ActorView& a : vm.actors) {
         if (!visible(a)) continue;
         const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
+        const LabelBodyAnchor la = standins_->label_anchor(a, float(kPawnH), fp.pawn_scale);
         const Vec2f head = cam.world_to_screen(
-            footprint_head_px(tile_center_px(fp.centre_iso.x, fp.centre_iso.y), fp, standin_body_h(a),
-                              standin_anchor_scale(a, fp.pawn_scale)));
+            footprint_head_px(tile_center_px(fp.centre_iso.x, fp.centre_iso.y), la.body_h, la.scale));
         const float bw = 40.f * fp.pawn_scale, bh = 5.f;   // bar stays footprint-wide
         const Vec2f bp{head.x - bw / 2.f, head.y - 12.f};
         rect({bp.x - 1, bp.y - 1}, {bw + 2, bh + 2}, Color::rgba8(0, 0, 0, 200), 10);
