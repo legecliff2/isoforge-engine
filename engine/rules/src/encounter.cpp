@@ -8379,7 +8379,9 @@ bool apply_form(Combatant& c, FormKind kind, const FormStats& f) {
     } else {
         c.hp_max = n.hp_max; c.hp = n.hp_max;   // a fresh pool (temp HP stay on the creature, D8)
     }
-    if (kind == FormKind::Polymorph) {   // SRD: game statistics are the beast's. Legendary actions and Legendary Resistance suspend.
+    if (kind == FormKind::Polymorph && (c.la_max > 0 || !c.legendary.empty() || c.legendary_pool != 0)) {
+        // Only a real legendary pool or Legendary Resistance is suspended. An empty Polymorph must not set
+        // la_suspended: Combat::hash 0xE8 is emitted for that flag, and a plain polymorph would move every digest.
         c.la_saved_max = c.la_max;
         c.la_saved_cur = c.la_cur;
         c.la_saved_pool = c.legendary_pool;

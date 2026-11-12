@@ -462,6 +462,26 @@ TEST_CASE("polymorph suspends legendary actions and Legendary Resistance") {
     shape.speed_ft = kept.speed_ft;
     shape.attacks = kept.attacks;
     shape.creature_type = CreatureType::Beast;
+    Combatant plain = monster(5);
+    REQUIRE(apply_form(plain, FormKind::Polymorph, shape));
+    CHECK_FALSE(plain.la_suspended);
+    CHECK(plain.la_max == 0);
+    CHECK(plain.legendary.empty());
+    CHECK(plain.legendary_pool == 0);
+    REQUIRE(revert_form(plain));
+    CHECK_FALSE(plain.la_suspended);
+    CHECK(plain.la_max == 0);
+
+    Combatant lr_only = monster(6);
+    lr_only.legendary_pool = 9;
+    REQUIRE(apply_form(lr_only, FormKind::Polymorph, shape));
+    CHECK(lr_only.la_suspended);
+    CHECK(lr_only.legendary_pool == 0);
+    CHECK(lr_only.la_saved_pool == 9);
+    REQUIRE(revert_form(lr_only));
+    CHECK(lr_only.legendary_pool == 9);
+    CHECK_FALSE(lr_only.la_suspended);
+
     REQUIRE(apply_form(kept, FormKind::Shapechanger, shape));
     CHECK(kept.la_max == 3);
     CHECK(kept.la_cur == 1);

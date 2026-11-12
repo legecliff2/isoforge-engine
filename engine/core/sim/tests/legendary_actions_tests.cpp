@@ -663,3 +663,42 @@ TEST_CASE("0xE8 folds a suspended legendary pool; a non-polymorph hash stays pin
     boss->la_saved_pool = pool;
     CHECK(c->hash() == suspended);
 }
+
+// A Polymorph of a creature with no legendary pool and no Legendary Resistance must not emit 0xE8.
+TEST_CASE("polymorph of a non-legendary creature does not fold 0xE8") {
+    ContentLibrary plain;
+    REQUIRE(plain.load(sample_set()).empty());
+    auto ch = arena({{"srd51.character.fighter_1", {4, 4}}, {"srd51.monster.goblin", {8, 4}}});
+    ecs::Registry reg;
+    auto fight = Combat::create(reg, ch, plain, 4);
+    REQUIRE(fight);
+    const auto goblin = ch.spawns[1].stable_id;
+    rules5e::Combatant* g = nullptr;
+    for (auto& k : CombatTestAccess::state(*fight).combatants)
+        if (k.id == goblin) g = &k;
+    REQUIRE(g);
+    CHECK(g->la_max == 0);
+    CHECK(g->legendary.empty());
+    CHECK(g->legendary_pool == 0);
+    rules5e::FormStats form;
+    form.hp_max = 11;
+    form.ac = 12;
+    form.abilities = g->abilities;
+    form.speed_ft = g->speed_ft;
+    form.attacks = g->attacks;
+    form.creature_type = rules5e::CreatureType::Beast;
+    REQUIRE(rules5e::apply_form(*g, rules5e::FormKind::Polymorph, form));
+    CHECK(g->form == rules5e::FormKind::Polymorph);
+    CHECK_FALSE(g->la_suspended);
+    const uint64_t hashed = fight->hash();
+    g->la_suspended = false;
+    g->la_saved_max = 0;
+    g->la_saved_cur = 0;
+    g->la_saved_pool = 0;
+    g->la_saved.clear();
+    CHECK(fight->hash() == hashed);   // clearing the saved fields does not move the digest
+    g->la_suspended = true;            // the empty flag would emit 0xE8
+    CHECK(fight->hash() != hashed);
+    g->la_suspended = false;
+    CHECK(fight->hash() == hashed);
+}
