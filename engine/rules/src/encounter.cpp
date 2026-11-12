@@ -235,6 +235,7 @@ Ability leap_save_ability(const Combatant& t, const SpellDef& def) {
 // d20 saving throw with modifiers: modes merge, then flat bonus and dice (drawn after the d20, only if a die exists).
 // Row 13, Legendary Resistance: a failed save turns into a success by spending 1 from Combatant::legendary_pool
 // (ResourceSpent is emitted before the caller's SavingThrowRolled, which then reports success).
+// Product choice M4: the SRD says the creature can choose to succeed. This engine spends automatically. No choice.
 SaveResult save_roll(EncounterState& s, const Combatant& t, Ability ab, int dc, RollMode mode, std::vector<Event>& ev,
                      const SaveSource* src = nullptr, int cover = 0) {
     SaveResult r = save_roll_raw(s, t, ab, dc, mode, src, cover);
@@ -3415,6 +3416,11 @@ std::vector<AppearanceHit> appearance_hits(const EncounterState& s, CombatantId 
 void start_turn(EncounterState& s, std::vector<Event>& ev) {
     Combatant& c = *find_mut(s, s.order[s.turn_index].id);
     c.reaction_used = false;
+    if (c.la_max > 0 && c.la_cur < c.la_max) {   // legendary actions refill only here, and only when something was spent
+        const int32_t before = c.la_cur;
+        c.la_cur = c.la_max;
+        emit(ev, EventKind::LegendaryActionsRegained, c.id, 0, before, c.la_max);
+    }
     c.dodging = false;
     c.disengaged = false;
     c.reaction_ac_bonus = 0;       // Shield-style bonus lasts until the start of its next turn
@@ -6209,6 +6215,218 @@ void finish_engulf_both(EncounterState& s, Ctx& ctx, Combatant& a, std::vector<E
     resolve_spell(s, ctx, a, *def, 0, std::vector<Combatant*>{t}, true, ev);
 }
 
+// ---- Legendary actions ----
+// Eligible to be offered: a pool, able to act (L8), not surprised (L9), not in Haste lethargy, and able to pay
+// the cheapest option. Turned and Slow do not block. Dead and 0 HP fail can_act.
+bool legendary_ready(const EncounterState&, const Combatant& c) {
+    if (c.la_max == 0 || c.legendary.empty()) return false;
+    if (!can_act(c) || c.surprised || c.lethargy != 0) return false;
+    uint8_t cheap = 255;
+    for (const auto& o : c.legendary) cheap = std::min(cheap, o.cost);
+    return c.la_cur >= cheap;
+}
+
+// Initiative order after X, wrapping, the same walk as default_poll_order. hooks.poll_order is not read.
+// A lower CombatantId breaks a tie (two creatures the walk does not separate).
+std::vector<CombatantId> legendary_queue(const EncounterState& s, CombatantId x) {
+    const int n = int(s.order.size());
+    int xi = 0;
+    for (int i = 0; i < n; ++i) if (s.order[std::size_t(i)].id == x) xi = i;
+    struct Item { int dist; CombatantId id; };
+    std::vector<Item> items;
+    for (const auto& c : s.combatants) {
+        if (c.id == x || !legendary_ready(s, c)) continue;
+        int ii = -1;
+        for (int i = 0; i < n; ++i) if (s.order[std::size_t(i)].id == c.id) ii = i;
+        int dist = ii < 0 ? n + 1 : (ii - xi + n) % n;
+        if (dist == 0) dist = n;
+        items.push_back({dist, c.id});
+    }
+    std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
+        if (a.dist != b.dist) return a.dist < b.dist;
+        return a.id < b.id;
+    });
+    std::vector<CombatantId> out;
+    for (const auto& it : items) out.push_back(it.id);
+    return out;
+}
+
+bool open_legendary_window(EncounterState& s, CombatantId x) {
+    auto q = legendary_queue(s, x);
+    if (q.empty()) return false;
+    s.legendary_window.x = x;
+    s.legendary_window.index = 0;
+    s.legendary_window.candidate = q[0];
+    s.legendary_window.queue = std::move(q);
+    return true;
+}
+
+void close_legendary_window(EncounterState& s) { s.legendary_window = {}; }
+
+// True when another candidate is now the offer. False when the queue is finished (window left open for the caller to close).
+bool advance_legendary_queue(EncounterState& s) {
+    auto& w = s.legendary_window;
+    for (std::size_t i = std::size_t(w.index) + 1; i < w.queue.size(); ++i) {
+        const Combatant* c = find(s, w.queue[i]);
+        if (!c || !legendary_ready(s, *c)) continue;
+        w.index = uint8_t(i);
+        w.candidate = c->id;
+        return true;
+    }
+    return false;
+}
+
+// After this answer: a use re-offers the same creature while it can still pay. A pass always advances.
+// The next candidate, or advance_turn once the queue is finished. An ended encounter does not advance.
+void finish_legendary_offer(EncounterState& s, CombatantId who, bool reoffer, std::vector<Event>& ev) {
+    check_end(s, ev);
+    if (s.ended) { close_legendary_window(s); return; }
+    const Combatant* c = find(s, who);
+    if (reoffer && c && c->id == s.legendary_window.candidate && legendary_ready(s, *c)) return;   // D1
+    if (!advance_legendary_queue(s)) {
+        close_legendary_window(s);
+        advance_turn(s, ev);
+    }
+}
+
+// Targets named by the request, target first. Fails before any spend.
+std::string_view legendary_targets(EncounterState& s, const ActionRequest& req, const SpellDef& def,
+                                   std::vector<Combatant*>& T) {
+    std::vector<CombatantId> ids = req.targets;
+    if (req.target != 0 && std::find(ids.begin(), ids.end(), req.target) == ids.end()) ids.insert(ids.begin(), req.target);
+    for (CombatantId id : ids) {
+        Combatant* t = find_mut(s, id);
+        if (!t || t->dead) return "bad target";
+        T.push_back(t);
+    }
+    if (T.empty() && def.kind != SpellEffectKind::Descriptive) return "target required";
+    return {};
+}
+
+// A referenced action, an inline effect, or a spell. Does not spend the turn's action or that action's usage
+// or recharge. A spell requires a casting time of 1 action, spends a slot as a normal cast, and does not apply
+// the bonus-action spell rule. Slow's "lost on 11+" roll is not applied: Slow does not block a legendary action.
+std::string_view legendary_resolve_ref(EncounterState& s, Ctx& ctx, Combatant& a, const LegendaryOption& opt,
+                                       const ActionRequest& req, std::vector<Event>& ev) {
+    const SpellDef* def = spell_def(s, opt.ref_id);
+    if (!def) return "legendary option: unknown action or spell";
+    const bool as_spell = opt.use == LegendaryUse::Spell;
+    uint8_t lvl = 0;
+    if (as_spell) {
+        if (def->casting_time != CastingTime::Action) return "legendary spell: casting time must be 1 action";
+        if (!def->is_spell) return "legendary spell: not a spell";
+        lvl = req.spell_level != 0 ? req.spell_level : def->level;
+        if (def->level == 0) lvl = 0;
+        if (auto why = spell_cast_resource_refusal(s, a, *def, false, lvl); !why.empty()) return why;
+    }
+    std::vector<Combatant*> T;
+    if (auto why = legendary_targets(s, req, *def, T); !why.empty()) return why;
+    if (as_spell) {
+        if (!spend_slot(a, lvl)) return "no spell slot of that level";
+        if (def->concentration && a.concentration_spell != 0) end_concentration(s, a.id, ev);
+        const CombatantId first = T.empty() ? CombatantId(0) : T[0]->id;
+        emit(ev, EventKind::SpellCast, a.id, first, int32_t(def->id), lvl);
+        const bool countered = spell_cast_window(s, ctx, a, def->id, lvl, first, ev);
+        if (!countered && !T.empty()) resolve_spell(s, ctx, a, *def, lvl, T, req.target_within_5ft, ev);
+        emit(ev, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, first, int32_t(def->id), lvl);
+        return {};
+    }
+    if (!T.empty()) resolve_spell(s, ctx, a, *def, 0, T, req.target_within_5ft, ev);
+    return {};
+}
+
+StepResult legendary_action(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
+    if (s.legendary_window.x == 0) return fail("no legendary window");
+    if (req.actor != s.legendary_window.candidate) return fail("not the creature offered a legendary action");
+    Combatant* a = find_mut(s, req.actor);
+    if (!a) return fail("bad combatant");
+    if (req.feature_id == 0) {   // pass: spends nothing and yields the offer
+        StepResult out{true, {}, {}};
+        finish_legendary_offer(s, a->id, false, out.events);
+        return out;
+    }
+    if (req.feature_id > a->legendary.size()) return fail("bad legendary option");
+    const LegendaryOption opt = a->legendary[std::size_t(req.feature_id - 1)];
+    if (opt.cost == 0 || opt.cost > a->la_cur) return fail("not enough legendary actions");
+    if (!legendary_ready(s, *a)) return fail("cannot take a legendary action");
+    StepResult out{true, {}, {}};
+    if (opt.use == LegendaryUse::Attack) {
+        if (opt.attack_index >= a->attacks.size()) return fail("bad legendary attack");
+        Combatant* t = find_mut(s, req.target);
+        if (!t || t == a || t->dead) return fail("bad target");
+        do_attack(s, ctx, *a, *t, a->attacks[opt.attack_index], req.target_within_5ft, out.events,
+                  req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target);
+    } else if (opt.use == LegendaryUse::Check) {
+        if (req.target != 0 || !req.targets.empty()) return fail("legendary check or move takes no targets");
+        roll_check(s, *a, Skill::Perception, req.dc, req.check_mode, out.events);
+    } else if (opt.use == LegendaryUse::Move) {
+        if (req.target != 0 || !req.targets.empty()) return fail("legendary check or move takes no targets");
+        const int allow = opt.half_speed ? modified_speed(s, *a) / 2 : modified_speed(s, *a);
+        if (req.move_ft <= 0) return fail("move_ft must be positive");
+        if (req.move_ft > allow) return fail("legendary move exceeds speed");
+        if (s.hooks.legendary_step) {
+            // One request, walked tile by tile. Each step that leaves a hostile's reach opens its own
+            // window against that step's two tiles. An interrupt stops on the last tile kept. Zones
+            // are the same per-tile facts a Step would use. The logged destination still re-derives the path.
+            s.hooks.legendary_step(s, a->id, -1);
+            int moved = 0;
+            for (int i = 0;; ++i) {
+                auto st = s.hooks.legendary_step(s, a->id, i);
+                if (!st) {
+                    if (i == 0) return fail("legendary move destination unreachable");
+                    break;
+                }
+                if (st->cost_ft <= 0 || moved + st->cost_ft > allow) break;
+                if (!opt.no_opportunity_attacks && st->leaves_reach &&
+                    !leaving_reach_window(s, ctx, *a, req, out.events)) {
+                    emit(out.events, EventKind::MoveInterrupted, a->id, 0, st->cost_ft);
+                    break;
+                }
+                if (ctx.need) return out;
+                a = find_mut(s, req.actor);
+                if (!a || a->dead || a->hp <= 0) break;
+                moved += st->cost_ft;
+                if (s.hooks.legendary_step_kept) s.hooks.legendary_step_kept(s, a->id, i);
+                if (!s.zones.empty()) {
+                    zone_membership(s, &ctx, a->id, st->zones_entered, st->zones_left, st->zones_within, out.events);
+                    zone_changes(s, &ctx, st->zone_changes, out.events);
+                }
+                if (ctx.need) return out;
+                a = find_mut(s, req.actor);
+                if (!a || a->dead || a->hp <= 0 || effective_speed(*a) == 0) break;
+            }
+            if (ctx.need) return out;
+            s.hooks.legendary_step(s, req.actor, -2);
+            a = find_mut(s, req.actor);
+            if (a && moved > 0) emit(out.events, EventKind::Moved, a->id, 0, moved, 0);
+        } else if (!opt.no_opportunity_attacks && req.leaves_reach && !leaving_reach_window(s, ctx, *a, req, out.events)) {
+            emit(out.events, EventKind::MoveInterrupted, a->id, 0, req.move_ft);
+        } else if (!a->dead && a->hp > 0) {
+            emit(out.events, EventKind::Moved, a->id, 0, req.move_ft, 0);
+            if (!s.zones.empty()) {
+                zone_membership(s, &ctx, a->id, req.zones_entered, req.zones_left, req.zones_within, out.events);
+                zone_changes(s, &ctx, req.zone_changes, out.events);
+            }
+        }
+    } else if (opt.use == LegendaryUse::Action || opt.use == LegendaryUse::Effect || opt.use == LegendaryUse::Spell) {
+        if (auto why = legendary_resolve_ref(s, ctx, *a, opt, req, out.events); !why.empty()) {
+            if (out.events.empty()) return fail(why);
+            // A spell may have ended concentration before a later failure. That path validates first.
+            return fail(why);
+        }
+    } else {
+        return fail("bad legendary option");
+    }
+    if (ctx.need) return out;   // a reaction paused the run; attempt discards it and re-runs with the answer
+    a = find_mut(s, req.actor);
+    if (!a) return out;
+    a->la_cur = uint8_t(a->la_cur - opt.cost);
+    const CombatantId first = req.target != 0 ? req.target : (req.targets.empty() ? CombatantId(0) : req.targets[0]);
+    emit(out.events, EventKind::LegendaryActionUsed, a->id, first, int32_t(req.feature_id), opt.cost, a->la_cur);
+    finish_legendary_offer(s, a->id, true, out.events);
+    return out;
+}
+
 // Small leftovers around the per-request core: Reckless Attack's declaration, Haste's extra action and Slow's limits.
 StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req);
 StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
@@ -6217,7 +6435,8 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     const bool own_turn = !s.ended && !s.order.empty() && req.actor == current_actor(s) &&
                           req.kind != ActionKind::Heal && req.kind != ActionKind::AbilityCheck &&
                           req.kind != ActionKind::EndConcentration &&
-                          req.kind != ActionKind::ReactionDecision && req.kind != ActionKind::OpportunityAttack;
+                          req.kind != ActionKind::ReactionDecision && req.kind != ActionKind::OpportunityAttack &&
+                          req.kind != ActionKind::LegendaryAction;
     Combatant* a = own_turn ? find_mut(s, req.actor) : nullptr;
     if (req.jump_ft != 0 && req.kind != ActionKind::Move) return fail("jump_ft: Move only");   // B8: never an ignored flag
     if ((req.forced_feet != 0 || req.teleport_feet != 0 || req.has_teleport_dest) && req.kind != ActionKind::CastSpell)
@@ -6336,6 +6555,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         return out;
     }
     if (req.kind == ActionKind::ReactionDecision) return fail("no pending reaction decision");
+    if (req.kind == ActionKind::LegendaryAction) return legendary_action(s, ctx, req);   // any time the window is open
 
     if (req.actor != current_actor(s)) return fail("not this combatant's turn");
     Combatant& a = *find_mut(s, req.actor);
@@ -6385,6 +6605,9 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         a.commanded = 0;   // R-G12 PR 2: a command lasts for the summon's one turn
         a.surprised = false;   // R-G16: surprise ends with the creature's first turn
         if (a.lethargy == 2) a.lethargy = 0;   // Haste lethargy lasts until after this turn
+        // Legendary window (D5): after every end-of-turn effect, TurnEnded and the surprise clear, before advance_turn.
+        // No window after this creature's own turn (it is X). None opens once the encounter has already ended.
+        if (!s.ended && open_legendary_window(s, a.id)) return out;
         advance_turn(s, out.events);
         return out;
     case ActionKind::Move: {
@@ -6965,7 +7188,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     case ActionKind::OpportunityAttack: case ActionKind::ReactionDecision:
     case ActionKind::Heal: case ActionKind::AbilityCheck: case ActionKind::EndConcentration:
     case ActionKind::GazeResponse:
-    case ActionKind::AppearanceResponse: break;  // handled above
+    case ActionKind::AppearanceResponse:
+    case ActionKind::LegendaryAction: break;  // handled above
     case ActionKind::InspectFigure: {   // spends the action. A free AbilityCheck is not this.
         Combatant* t = find_mut(s, req.target);
         if (!t || t->dead) return fail("bad target");
@@ -7124,6 +7348,58 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
 std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     std::vector<ActionRequest> out;
     if (s.ended || s.order.empty()) return out;
+    if (s.legendary_window.x != 0) {   // the window's answers, and nothing else (the turn has ended)
+        const Combatant* c = find(s, s.legendary_window.candidate);
+        if (!c) return out;
+        out.push_back(ActionRequest{c->id, ActionKind::LegendaryAction});   // pass, feature_id 0
+        for (std::size_t i = 0; i < c->legendary.size(); ++i) {
+            const LegendaryOption& o = c->legendary[i];
+            if (o.cost > c->la_cur) continue;
+            ActionRequest base{c->id, ActionKind::LegendaryAction};
+            base.feature_id = uint32_t(i + 1);
+            base.attack_index = o.attack_index;
+            if (o.use == LegendaryUse::Move) {
+                const int allow = o.half_speed ? modified_speed(s, *c) / 2 : modified_speed(s, *c);
+                if (allow <= 0) continue;
+                base.move_ft = int16_t(std::min(allow, 32767));
+                out.push_back(base);
+                continue;
+            }
+            if (o.use == LegendaryUse::Check) { out.push_back(base); continue; }
+            if (o.use == LegendaryUse::Attack) {
+                for (const auto& t : s.combatants) {
+                    if (t.dead || t.id == c->id || t.team == c->team) continue;
+                    ActionRequest r = base;
+                    r.target = t.id;
+                    out.push_back(r);
+                }
+                continue;
+            }
+            const SpellDef* d = o.ref_id != 0 && s.hooks.spells ? s.hooks.spells->find(o.ref_id) : nullptr;
+            if (o.use == LegendaryUse::Spell && (!d || !d->is_spell || d->casting_time != CastingTime::Action)) continue;
+            const bool self_only = d && d->range_ft == 0 && d->area == AreaShape::None && d->kind != SpellEffectKind::Heal;
+            const bool heal = d && d->kind == SpellEffectKind::Heal;
+            if (self_only) {
+                base.target = c->id;
+                if (d) base.spell_id = d->id;
+                out.push_back(base);
+                continue;
+            }
+            for (const auto& t : s.combatants) {
+                if (t.dead) continue;
+                if (heal) {
+                    if (t.team != c->team) continue;
+                } else if (t.id == c->id || t.team == c->team) {
+                    continue;
+                }
+                ActionRequest r = base;
+                r.target = t.id;
+                if (d) r.spell_id = d->id;
+                out.push_back(r);
+            }
+        }
+        return out;
+    }
     const Combatant& a = *find(s, current_actor(s));
     const TurnBudget& b = s.budget;
     auto add = [&](ActionKind k, bool bonus = false, CombatantId target = 0) {
@@ -8103,6 +8379,19 @@ bool apply_form(Combatant& c, FormKind kind, const FormStats& f) {
     } else {
         c.hp_max = n.hp_max; c.hp = n.hp_max;   // a fresh pool (temp HP stay on the creature, D8)
     }
+    if (kind == FormKind::Polymorph && (c.la_max > 0 || !c.legendary.empty() || c.legendary_pool != 0)) {
+        // Only a real legendary pool or Legendary Resistance is suspended. An empty Polymorph must not set
+        // la_suspended: Combat::hash 0xE8 is emitted for that flag, and a plain polymorph would move every digest.
+        c.la_saved_max = c.la_max;
+        c.la_saved_cur = c.la_cur;
+        c.la_saved_pool = c.legendary_pool;
+        c.la_saved = c.legendary;
+        c.la_suspended = true;
+        c.la_max = 0;
+        c.la_cur = 0;
+        c.legendary.clear();
+        c.legendary_pool = 0;
+    }
     c.form = kind;
     c.form_blocked_features = kind == FormKind::WildShape ? f.blocked_features : std::vector<uint32_t>{};
     return true;
@@ -8111,7 +8400,18 @@ bool apply_form(Combatant& c, FormKind kind, const FormStats& f) {
 bool revert_form(Combatant& c) {
     if (c.form == FormKind::None || !c.base) return false;
     const FormStats b = *c.base;
+    const bool poly = c.form == FormKind::Polymorph;
     put_stats(c, b);
+    if (poly && c.la_suspended) {   // the value at transformation, not a refill
+        c.la_max = c.la_saved_max;
+        c.la_cur = c.la_saved_cur;
+        c.legendary_pool = c.la_saved_pool;
+        c.legendary = std::move(c.la_saved);
+        c.la_suspended = false;
+        c.la_saved_max = 0;
+        c.la_saved_cur = 0;
+        c.la_saved_pool = 0;
+    }
     if (c.form == FormKind::Shapechanger) {
         c.hp_max = b.hp_max; c.hp = std::min(c.hp, b.hp_max);
     } else {

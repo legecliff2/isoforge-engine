@@ -65,7 +65,9 @@ TEST_CASE("event kinds 39-44 are appended after SpellCheckRolled") {
     CHECK(int(EventKind::Transformed) == 50);
     CHECK(int(EventKind::Reverted) == 51);
     CHECK(int(EventKind::Commanded) == 52);
-    CHECK(kEventKindCount == 53);
+    CHECK(int(EventKind::LegendaryActionUsed) == 53);
+    CHECK(int(EventKind::LegendaryActionsRegained) == 54);
+    CHECK(kEventKindCount == 55);
 }
 
 TEST_CASE("defaults preserve every existing spell and reaction option") {

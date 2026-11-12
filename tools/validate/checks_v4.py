@@ -121,7 +121,12 @@ for _typ in ("monster", "character"):
     TAG_TABLE[f"{_typ}@6"] = TagRow(True, _r5.action_kinds, _r5.effect_kinds, _r5.cost_values,
                                     _r5.top_level_keys | {"visual"},
                                     cross_refs=True, needs_api_level=2, legacy_stamps=True)
-MONSTER_SINCE_5 = frozenset({"monster@5", "monster@6"})
+# monster@7: monster@6 plus mechanical legendary actions. legendary_actions itself is already a top-level key.
+_r6m = TAG_TABLE["monster@6"]
+TAG_TABLE["monster@7"] = TagRow(True, _r6m.action_kinds, _r6m.effect_kinds, _r6m.cost_values,
+                                _r6m.top_level_keys | {"legendary_actions_per_round"},
+                                cross_refs=True, needs_api_level=2, legacy_stamps=True)
+MONSTER_SINCE_5 = frozenset({"monster@5", "monster@6", "monster@7"})
 CHARACTER_SINCE_5 = frozenset({"character@5", "character@6"})
 TAG_TABLE["item@2"] = TagRow(False, frozenset(), frozenset(), frozenset(), frozenset(), cross_refs=True,
                              needs_api_level=2)
@@ -276,6 +281,76 @@ def check_roll_attack_reaction(path: str, r: dict, errs: list[str], warns: list[
 
 
 # ---- the @4 stat-block checks (monster@4 / character@4) -----------------------------------------------
+
+def check_legendary_actions(doc: dict, ctx: dict, errs: list[str]) -> None:
+    """monster@7: per_round present, cost <= per_round, use ids resolve, option ids unique."""
+    schema = doc.get("$schema")
+    actions = doc.get("legendary_actions")
+    per = doc.get("legendary_actions_per_round")
+    mechanical = isinstance(actions, list) and any(
+        isinstance(a, dict) and ("use" in a or "effect" in a) for a in actions)
+    if schema != "monster@7":
+        if per is not None or mechanical:
+            errs.append("/legendary_actions: mechanical legendary actions need monster@7")
+        return
+    if not isinstance(actions, list) or not actions:
+        if per is not None:
+            errs.append("/legendary_actions_per_round: needs a non-empty legendary_actions")
+        return
+    if not is_int(per) or not 1 <= per <= 5:
+        errs.append("/legendary_actions_per_round: must be an integer 1..5")
+        per = None
+    by_id = {a.get("id"): a for a in (doc.get("actions") or []) if isinstance(a, dict)}
+    weapons = {"melee_weapon_attack", "ranged_weapon_attack"}
+    seen: set = set()
+    for i, opt in enumerate(actions):
+        if not isinstance(opt, dict):
+            continue
+        where = f"/legendary_actions/{i}"
+        oid = opt.get("id")
+        if oid in seen:
+            errs.append(f"{where}: duplicate id '{oid}'")
+        seen.add(oid)
+        cost = opt.get("cost", 1)
+        if not is_int(cost) or not 1 <= cost <= 3:
+            errs.append(f"{where}: cost must be 1..3")
+        elif per is not None and cost > per:
+            errs.append(f"{where}: cost {cost} exceeds legendary_actions_per_round {per}")
+        use, effect = opt.get("use"), opt.get("effect")
+        if (use is None) == (effect is None):
+            errs.append(f"{where}: needs exactly one of use or effect")
+            continue
+        if effect is not None:
+            continue
+        if not isinstance(use, dict):
+            errs.append(f"{where}/use: must be an object")
+            continue
+        if "attack" in use:
+            act = by_id.get(use.get("attack"))
+            if not act or act.get("kind") not in weapons:
+                errs.append(f"{where}/use/attack: '{use.get('attack')}' is not a weapon attack in actions[]")
+        elif "action" in use:
+            act = by_id.get(use.get("action"))
+            if not act or act.get("kind") in weapons:
+                errs.append(f"{where}/use/action: '{use.get('action')}' is not a non-attack action in actions[]")
+        elif "check" in use:
+            if use.get("check") != "perception":
+                errs.append(f"{where}/use/check: must be perception")
+        elif "move" in use:
+            if use.get("move") not in ("half_speed", "speed"):
+                errs.append(f"{where}/use/move: must be half_speed or speed")
+        elif "spell" in use:
+            ref = use.get("spell")
+            times = ctx.get("spell_times") or {}
+            if ref not in ctx.get("spell_ids", ()) and not ctx["external_ok"](ref):
+                errs.append(f"{where}/use/spell: '{ref}' is not a spell@1 in this pack or its depends")
+            elif ref not in times:
+                errs.append(f"{where}/use/spell: '{ref}' was not found; its casting time must be 1 action")
+            elif times[ref] != "action":
+                errs.append(f"{where}/use/spell: '{ref}' needs a casting time of 1 action")
+        else:
+            errs.append(f"{where}/use: needs attack, action, check, move, or spell")
+
 
 def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
     errs: list[str] = []
@@ -471,6 +546,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     check_monk_warlock_hooks(doc, ctx, errs, warns)   # 7.2zb
     errs += check_spell_gap_hooks(doc)   # 7.2zc
     check_spell_batch2_hooks(doc, errs, warns)   # 7.2zd
+    check_legendary_actions(doc, ctx, errs)
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:

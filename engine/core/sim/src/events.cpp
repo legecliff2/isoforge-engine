@@ -30,6 +30,8 @@ uint32_t event_stream_version(std::span<const SimEvent> events) {
                     v = std::max<uint32_t>(v, 9);
                 // v10: R-G12 summon / transform kinds (Summoned .. Commanded, 48-52)
                 if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKindV9)) v = std::max<uint32_t>(v, 10);
+                // v13: legendary actions (LegendaryActionUsed / LegendaryActionsRegained, 53-54). Kinds 48-52 stay v10.
+                if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKindV12)) v = std::max<uint32_t>(v, 13);
                 break;
             default: break;
         }

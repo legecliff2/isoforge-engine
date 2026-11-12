@@ -308,6 +308,9 @@ enum class EventKind : uint8_t {
     // appended (R-G12 summons and transforms, event schema v10; SUMMONS_TRANSFORMS.md §2.7, numbered 48-52). Rules PR 1 emits
     // Transformed / Reverted; Summoned, SummonEnded and Commanded are reserved for rules PR 2 (never emitted yet).
     Summoned, SummonEnded, Transformed, Reverted, Commanded,
+    // appended (legendary actions, event schema v13). LegendaryActionUsed: one per option used (several per window).
+    // LegendaryActionsRegained: start of the creature's turn, only when la_cur was below la_max.
+    LegendaryActionUsed, LegendaryActionsRegained,
     // Not an event: the number of kinds. Append new kinds ABOVE this line; consumers that lock the
     // numeric layout (sim's "event layout" test) compare against kEventKindCount.
     Count_ };
@@ -334,6 +337,8 @@ inline constexpr std::size_t kEventKindCount = std::size_t(EventKind::Count_);
 //   Summoned actor=summoner target=creature a=spell id b=archetype index c=initiative total; SummonEnded actor=summoner target=creature
 //   a=spell id b=reason (0 duration, 1 concentration, 3 0 HP, 5 encounter ended); a Spiritual Weapon: Summoned target=token id
 //   b=0 c=-1, SummonEnded b=0 / 5; Commanded actor=summoner target=creature (0 = all) a=command.
+//   v13: LegendaryActionUsed actor=user target=first target a=option (1-based) b=cost c=remaining;
+//   LegendaryActionsRegained actor a=la_cur before b=la_max.
 //   v7: RechargeRolled actor a=action/spell id b=d6 natural c=recharged(0/1); FeatureTriggered actor=owner
 //   target=subject a=trigger id b=TriggerOn c=outcome (0 none, 1 applied, 2 declined, 3 failed save);
 //   ResourceSpent actor a=pool id b=amount c=remaining; ModifierApplied actor=caster target a=modifier id
@@ -748,6 +753,15 @@ constexpr int passive_sight_penalty(const Sight& v, bool sunlight_sensitive = fa
 // dispels_light(light, darkness) with the roles swapped by the caller. Sim does the overlap test.
 constexpr bool dispels_light(uint8_t darkness_level, uint8_t light_level) { return light_level <= darkness_level; }
 
+// One tile of a sim-pathed legendary move, in path order. Rules tests leave the hook empty and
+// keep a single step (leaves_reach on the request). index -1 resets a re-run; -2 ends the walk.
+struct LegendaryStepFacts {
+    int16_t cost_ft = 0;
+    bool leaves_reach = false;
+    std::vector<uint32_t> zones_entered, zones_left, zones_within;
+    std::vector<ZoneChange> zone_changes;
+};
+
 struct EncounterHooks {
     // Checked after every state change. Empty = default_end_condition.
     EndConditionFn end_condition;
@@ -870,6 +884,11 @@ struct EncounterHooks {
     // not a def id); nullptr / empty = unknown, and PickUp is refused `equip: unknown ground item`.
     std::function<const ItemDef*(const EncounterState&, uint32_t instance)> ground_item_def;   // the state passed is the one being
     // evaluated (an AI lookahead copy uses its own), like loadout_of
+    // Legendary move, one tile at a time. Empty = the request is one step. Sim fills it from path_for
+    // of the logged destination; replay re-derives the same path. Not hashed.
+    std::function<std::optional<LegendaryStepFacts>(const EncounterState&, CombatantId, int step_index)> legendary_step;
+    // The tile of `step_index` was kept (the opportunity attack, if any, did not stop it).
+    std::function<void(const EncounterState&, CombatantId, int step_index)> legendary_step_kept;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
@@ -1087,6 +1106,17 @@ struct EncounterState {
     std::vector<VisibleFigure> figures{};
     std::vector<FigureDiscernment> figure_discerned{};
     uint32_t next_figure_instance = 1;
+    // appended (legendary actions). Open between TurnEnded and advance_turn. x is the creature whose turn ended
+    // (0 = closed). queue is the candidate order fixed at open (not hashed: replay rebuilds it). index and
+    // candidate are the offer. Combat::hash 0xE8 folds x, index and candidate with the live pools, and
+    // appends a Polymorph-suspended pool when la_suspended is set.
+    struct LegendaryWindow {
+        CombatantId x = 0;
+        uint8_t index = 0;
+        CombatantId candidate = 0;
+        std::vector<CombatantId> queue;
+    };
+    LegendaryWindow legendary_window;
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call

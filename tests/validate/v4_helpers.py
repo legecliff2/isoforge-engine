@@ -84,8 +84,9 @@ def edit(doc: dict, sets=(), dels=()) -> dict:
     return d
 
 
-def validate_in_memory(doc: dict, rel: str = "doc.json", spell_ids=(), item_ids=()) -> tuple[list[str], list[str]]:
+def validate_in_memory(doc: dict, rel: str = "doc.json", spell_ids=(), item_ids=(), spell_times=None) -> tuple[list[str], list[str]]:
     """Validate one document as an in-memory migration result (on_disk=False: inert stamps are accepted)."""
     reg, by_tag = registry()
-    ctx = {"ids": set(), "spell_ids": set(spell_ids), "items": set(item_ids), "external_ok": lambda a: a.startswith("srd51.")}
+    ctx = {"ids": set(), "spell_ids": set(spell_ids), "items": set(item_ids), "external_ok": lambda a: a.startswith("srd51."),
+           "spell_times": dict(spell_times or {})}
     return vp.validate_doc(rel, doc, doc["$schema"], reg, by_tag, PACK_ID, ctx, on_disk=False)

@@ -34,7 +34,7 @@ world::Chunk sample_chunk() {
 } // namespace
 
 TEST_CASE("event layout: schema version and numeric enum values are locked") {
-    CHECK(kSimEventSchemaVersion == 12);
+    CHECK(kSimEventSchemaVersion == 13);
     CHECK(int(SimEvent::Kind::ItemMoved) == 6);   // v11
     CHECK(int(SimEvent::Kind::AltitudeChanged) == 7);   // v12
     CHECK(kAltMove == 0); CHECK(kAltFall == 1); CHECK(kAltFlyEnded == 2); CHECK(kAltForced == 3);
@@ -66,7 +66,9 @@ TEST_CASE("event layout: schema version and numeric enum values are locked") {
         {EventKind::ModifierApplied, 42}, {EventKind::ModifierExpired, 43}, {EventKind::ActionUsed, 44},
         {EventKind::ZoneCreated, 45}, {EventKind::ZoneMoved, 46}, {EventKind::ZoneEnded, 47},   // v9 (R-G11)
         {EventKind::Summoned, 48}, {EventKind::SummonEnded, 49}, {EventKind::Transformed, 50},   // v10 (R-G12)
-        {EventKind::Reverted, 51}, {EventKind::Commanded, 52}};
+        {EventKind::Reverted, 51}, {EventKind::Commanded, 52},
+        {EventKind::LegendaryActionUsed, 53}, {EventKind::LegendaryActionsRegained, 54}};
+    CHECK(int(kLastRulesEventKindV12) == 52);
     CHECK(int(kLastRulesEventKindV9) == 47);
     CHECK(int(kLastRulesEventKindV8) == 44);
     // v9: the zone trigger values of TriggerOn (FeatureTriggered.b), appended after TurnEnd
@@ -173,8 +175,9 @@ TEST_CASE("event_stream_version: max over SimEvent::Kind and rules.kind construc
     REQUIRE(uint8_t(late.rules.kind) == 39);
     for (int k = 39; k <= int(kLastRulesEventKindV8); ++k) CHECK(v1({rules_ev(uint8_t(k))}) == 7);   // every v7 kind
     for (int k = int(kLastRulesEventKindV8) + 1; k <= int(kLastRulesEventKindV9); ++k) CHECK(v1({rules_ev(uint8_t(k))}) == 9);   // v9 zone kinds
-    for (int k = int(kLastRulesEventKindV9) + 1; k <= int(kLastRulesEventKind); ++k) CHECK(v1({rules_ev(uint8_t(k))}) == 10);   // v10 R-G12 kinds
-    CHECK(v1({rules_ev(uint8_t(kLastRulesEventKind) + 1)}) == 10);   // and anything later
+    for (int k = int(kLastRulesEventKindV9) + 1; k <= int(kLastRulesEventKindV12); ++k) CHECK(v1({rules_ev(uint8_t(k))}) == 10);   // v10 R-G12 kinds
+    for (int k = int(kLastRulesEventKindV12) + 1; k <= int(kLastRulesEventKind); ++k) CHECK(v1({rules_ev(uint8_t(k))}) == 13);   // v13 legendary kinds
+    CHECK(v1({rules_ev(uint8_t(kLastRulesEventKind) + 1)}) == 13);   // and anything later
     CHECK(event_stream_version(std::vector<SimEvent>{rules_ev(uint8_t(kLastRulesEventKind))}) <= kSimEventSchemaVersion);
     auto v = [](std::initializer_list<SimEvent> l) { std::vector<SimEvent> s(l); return event_stream_version(s); };
 
@@ -225,7 +228,7 @@ TEST_CASE("event_stream_version: max over SimEvent::Kind and rules.kind construc
     CHECK(v({zone, moved(kMovedForced)}) == 9);
     CHECK(v({rules_ev(uint8_t(rules5e::EventKind::Transformed)), zone}) == 10);
     CHECK(v({rules_ev(uint8_t(rules5e::EventKind::Reverted))}) == 10);
-    CHECK(kSimEventSchemaVersion == 12);
+    CHECK(kSimEventSchemaVersion == 13);
     CHECK(v({late}) <= kSimEventSchemaVersion);
     CHECK(v({sim_ev(SimEvent::Kind::ItemMoved)}) == 11);   // v11: equipment ItemMoved
     CHECK(v({sim_ev(SimEvent::Kind::AltitudeChanged)}) == 12);   // v12: altitude

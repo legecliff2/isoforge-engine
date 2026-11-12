@@ -105,6 +105,9 @@ struct Archetype {
     // ContentLibrary::add); Combat::create attaches one feature aura per id to each spawn of this archetype.
     std::vector<rules5e::SpellDef> aura_defs;
     std::vector<uint32_t> aura_spell_ids;   // synthetic Save SpellDefs of area_save riders and gaze features (SpellBook only, not spells_known)
+    // monster@7 legendary effect bodies compiled to synthetic SpellDefs (SpellBook only, not spells_known,
+    // so they are not ordinary actions). Erased with the archetype on replace.
+    std::vector<uint32_t> legendary_effect_ids;
     std::vector<std::string> forward_compat;         // monster@4 / character@4 "forward_compat" flags: listed, ignored
     CreatureSize size = CreatureSize::Medium;        // stat block "size"
     // Side of the footprint in tiles: footprint_of(size) for monster@3 / character@3, always 1 for
