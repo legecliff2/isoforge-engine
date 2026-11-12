@@ -753,6 +753,20 @@ constexpr int passive_sight_penalty(const Sight& v, bool sunlight_sensitive = fa
 // dispels_light(light, darkness) with the roles swapped by the caller. Sim does the overlap test.
 constexpr bool dispels_light(uint8_t darkness_level, uint8_t light_level) { return light_level <= darkness_level; }
 
+// Initiative count 20, lair loses ties. Engine convention, not SRD 5.1 text (lair-hooks contract v0.1 §1).
+// A creature whose total is exactly 20 acts before the lair. Dexterity is not a tiebreak. No gameplay
+// effect until lair content exists.
+inline constexpr int16_t kLairInitiative = 20;
+
+// One lair turn. round is the round it belongs to. slot is its place in order (how many entries have
+// total >= kLairInitiative). event_index is how many events this step has emitted so far. Not state.
+struct LairTurn {
+    uint16_t round = 0;
+    uint8_t slot = 0;
+    uint32_t event_index = 0;
+    friend bool operator==(const LairTurn&, const LairTurn&) = default;
+};
+
 // One tile of a sim-pathed legendary move, in path order. Rules tests leave the hook empty and
 // keep a single step (leaves_reach on the request). index -1 resets a re-run; -2 ends the walk.
 struct LegendaryStepFacts {
@@ -889,6 +903,10 @@ struct EncounterHooks {
     std::function<std::optional<LegendaryStepFacts>(const EncounterState&, CombatantId, int step_index)> legendary_step;
     // The tile of `step_index` was kept (the opportunity attack, if any, did not stop it).
     std::function<void(const EncounterState&, CombatantId, int step_index)> legendary_step_kept;
+    // Initiative count 20, lair loses ties. Engine convention, not SRD 5.1 text (lair-hooks contract v0.1 §1).
+    // Empty = no lair (the default). Read-only: it cannot change rules state, draw RNG, or emit events.
+    // Never serialized or hashed. Combat::install_hooks does not set it.
+    std::function<void(const EncounterState&, const LairTurn&)> lair_turn;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
