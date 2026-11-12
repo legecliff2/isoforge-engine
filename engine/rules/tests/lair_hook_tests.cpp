@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "spell_util.hpp"
@@ -25,18 +26,17 @@ struct Snap {
     int offers = 0;
 };
 
-void set_dex(Combatant& c, int score) { c.abilities.score[std::size_t(Ability::Dex)] = int8_t(score); }
+void set_dex(Combatant& c, int score) {
+    c.abilities.score[std::size_t(Ability::Dex)] = static_cast<int8_t>(score);
+}
 
-// A small aggregate so {id, total} is list-init. std::pair's converting constructor warns on
-// MSVC (/WX) when an int literal narrows to int16_t.
-struct OrderSlot { CombatantId id; int16_t total; };
-
-void set_order(EncounterState& s, std::initializer_list<OrderSlot> rows) {
+// int, not int16_t: MSVC (/WX) turns the pair converting constructor's int -> int16_t into C4244.
+void set_order(EncounterState& s, std::initializer_list<std::pair<CombatantId, int>> rows) {
     s.order.clear();
-    for (const OrderSlot& row : rows) {
-        const Combatant* c = find(s, row.id);
+    for (auto [id, total] : rows) {
+        const Combatant* c = find(s, id);
         const int dex = c ? modifier(c->abilities, Ability::Dex) : 0;
-        s.order.push_back(InitiativeEntry{row.id, row.total, int8_t(dex)});
+        s.order.push_back(InitiativeEntry{id, static_cast<int16_t>(total), static_cast<int8_t>(dex)});
     }
     s.turn_index = 0;
 }
@@ -363,7 +363,7 @@ TEST_CASE("lair hook: a summon inserted at total 22 moves the slot") {
         h.spells = book;
         h.build_summon = [](const EncounterState&, const Combatant&, const SpellDef&, uint8_t, uint8_t) {
             Combatant m = monster(0);
-            m.abilities.score[std::size_t(Ability::Dex)] = 30;   // +10; total 22 is a 12 on the d20
+            m.abilities.score[std::size_t(Ability::Dex)] = static_cast<int8_t>(30);   // +10; total 22 is a 12 on the d20
             m.hp = m.hp_max = 11;
             return m;
         };
@@ -506,4 +506,59 @@ TEST_CASE("lair hook: a readied action is neither offered nor expired") {
     CHECK_FALSE(find(s, 2)->dodging);         // cleared by 2's start_turn, which is after the hook
     CHECK_FALSE(seen[0].window);
     CHECK_FALSE(seen[0].pending);
+}
+
+// Edge (b): every entry ahead of the slot is dead, so the cross shares this advance_turn with the wrap.
+// The new round's tick (effect expiry) runs before the hook.
+TEST_CASE("lair hook: a post-wrap slot cross fires after the round-start tick") {
+    std::vector<Snap> seen;
+    EncounterHooks h = watch(seen);
+    h.end_condition = [](const EncounterState&) { return std::optional<EncounterOutcome>{}; };
+    auto s = begin_encounter({pc(1), monster(2)}, 1, nullptr, h);
+    set_order(s, {{1, 23}, {2, 19}});
+    mut(s, 1).dead = true;
+    mut(s, 1).hp = 0;
+    s.turn_index = 1;   // B is acting; A, the only entry ahead of the slot, is dead
+    plant_round_effect(s);
+    seen.clear();
+    const uint16_t round = s.round;
+    auto r = step(s, {2, ActionKind::EndTurn});
+    REQUIRE(r.ok);
+    REQUIRE(seen.size() == 1);
+    CHECK(seen[0].turn.round == uint16_t(round + 1));
+    CHECK(seen[0].turn.slot == 1);
+    CHECK(seen[0].round == uint16_t(round + 1));
+    CHECK(seen[0].effects == 0);
+    CHECK(s.effects.empty());
+    const std::size_t tick = find_kind(r.events, EventKind::SpellEffectEnded);
+    const std::size_t started = find_kind(r.events, EventKind::TurnStarted);
+    CHECK(tick < seen[0].turn.event_index);
+    CHECK(seen[0].turn.event_index == started);
+    CHECK(r.events[started].actor == 2);
+    end_ok(s);
+    end_ok(s);
+    REQUIRE(seen.size() == 3);
+    CHECK(seen[1].turn.round == uint16_t(round + 2));
+    CHECK(seen[1].turn.slot == 1);
+    CHECK(seen[2].turn.round == uint16_t(round + 3));
+    CHECK(seen[2].turn.slot == 1);
+}
+
+// Edge (a): every creature is already dead and every total is below 20. Round 1 fires in
+// begin_encounter; the dead-skip advance wraps and fires round 2; then the encounter ends.
+TEST_CASE("lair hook: every creature dead fires once per round, then the encounter ends") {
+    std::vector<Snap> seen;
+    auto party = [] {
+        auto cs = low_trio();
+        for (auto& c : cs) { c.dead = true; c.hp = 0; }
+        return cs;
+    };
+    auto s = begin_encounter(party(), 4, nullptr, watch(seen));
+    REQUIRE(seen.size() == 2);
+    CHECK(seen[0].turn.round == 1);
+    CHECK(seen[0].turn.slot == 0);
+    CHECK(seen[1].turn.round == 2);
+    CHECK(seen[1].turn.slot == 0);
+    CHECK(s.ended);
+    CHECK(s.round == 2);
 }
