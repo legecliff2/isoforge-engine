@@ -70,7 +70,7 @@ Hashes fight(const Json& fighter, const Json& goblin, uint64_t seed) {
 }
 } // namespace
 
-TEST_CASE("monster@6 / character@6: identity migration leaves the body unchanged") {
+TEST_CASE("monster@7 / character@6: identity migration leaves the body unchanged") {
     auto g5 = migrate(load_json("content/packs/srd51.core/monsters/goblin.json"));
     auto w5 = migrate(load_json("content/packs/srd51.core/monsters/wolf.json"));
     REQUIRE(g5.ok);

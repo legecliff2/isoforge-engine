@@ -47,7 +47,7 @@ TEST_CASE("monster 1->2: no ai is a no-op; v2 passes through; conflicts rejected
     CHECK_FALSE(make().load_text(R"({"$schema":"monster@8"})").ok);
 }
 
-TEST_CASE("frozen fl1 goblin (monster@1, no ai) migrates to monster@6; only effects marked inert") {
+TEST_CASE("frozen fl1 goblin (monster@1, no ai) migrates to monster@7; only effects marked inert") {
     const std::string path = kRoot + "/tests/compat/fl1/sample.vertical_slice/monsters/goblin.json";
     auto r = make().load_file(path);
     REQUIRE_MESSAGE(r.ok, r.error);
@@ -187,7 +187,8 @@ TEST_CASE("3 -> 4 parity: T&C's at3 fixtures migrate to the Python reference's e
 
 // EQUIPMENT.md section 7 (#245): item 1 -> 2, monster 4 -> 5 and character 4 -> 5 are identity.
 // Engine Core M0: monster 5 -> 6 and character 5 -> 6 are identity too (visual stays absent).
-TEST_CASE("item@2 / monster@6 / character@6: identity migrations, same body loads to the same data") {
+// monster 6 -> 7 is identity (legendary actions stay absent).
+TEST_CASE("item@2 / monster@7 / character@6: identity migrations, same body loads to the same data") {
     const SchemaRegistry reg = make();
     CHECK(reg.current_version("item") == 2u);
     CHECK(reg.current_version("monster") == 7u);
@@ -197,6 +198,7 @@ TEST_CASE("item@2 / monster@6 / character@6: identity migrations, same body load
         {"item", 1, R"("id":"t.item.dagger","name":"Dagger","category":"weapon","cost_gp":"2","weight_lb":"1")"},
         {"monster", 4, R"("id":"t.monster.m","name":"M","inert_mechanics":["reactions"],"reactions":[{"id":"r","inert":true}],"traits":[{"id":"t","effect":{"kind":"damage_bonus","amount":2}}])"},
         {"monster", 5, R"("id":"t.monster.m5","name":"M","traits":[{"id":"t","effect":{"kind":"damage_bonus","amount":2}}])"},
+        {"monster", 6, R"("id":"t.monster.m6","name":"M","traits":[{"id":"t","effect":{"kind":"damage_bonus","amount":2}}])"},
         {"character", 4, R"("id":"t.character.c","name":"C","equipment":["longsword",{"item":"srd51.item.shield","equipped":true}])"},
         {"character", 5, R"("id":"t.character.c5","name":"C","equipment":["longsword"])"},
     };

@@ -3018,7 +3018,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         synth.push_back(d);
     }
     a.aura_defs.clear();
-    // monster@7 legendary actions. @5/@6 (and anything migrated from them) keep a descriptive list: entries
+    // monster@7 legendary actions. @1 through @6 (and anything migrated from them) keep a descriptive list: entries
     // with neither use nor effect are ignored. Mechanical entries require the file to have declared @7.
     if (schema_type == "monster") {
         const auto la = doc.find("legendary_actions");

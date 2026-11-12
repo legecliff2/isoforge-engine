@@ -2028,7 +2028,7 @@ This section does not author `srd51.monster.unicorn`. The row stays deferred unt
 
 ## 57. Legendary actions (monster@7)
 
-A monster@7 file may declare `legendary_actions_per_round` (1-5) and `legendary_actions`. Each option has `id`, `name`, `cost` (1-3, default 1, at most the pool), `description`, and exactly one of `use` or `effect`. On a file that declared monster@5 or monster@6 the same array stays descriptive: the loader ignores an entry that has neither `use` nor `effect`, and a mechanical entry is a load error. The pool starts full (`la_cur` = `la_max`) and is not `Combatant::legendary_pool` (that pool is Legendary Resistance).
+A monster@7 file may declare `legendary_actions_per_round` (1-5) and `legendary_actions`. Each option has `id`, `name`, `cost` (1-3, default 1, at most the pool), `description`, and exactly one of `use` or `effect`. On a file that declared monster@1 through monster@6 the same array stays descriptive: the loader ignores an entry that has neither `use` nor `effect`, and a mechanical entry is a load error. The pool starts full (`la_cur` = `la_max`) and is not `Combatant::legendary_pool` (that pool is Legendary Resistance).
 
 `use` is one of:
 
@@ -2045,4 +2045,6 @@ A monster@7 file may declare `legendary_actions_per_round` (1-5) and `legendary_
 Legendary movement is a walk. The allowance is `modified_speed`, or half of that when the option says `half_speed`. The path is the ordinary walk path to the logged destination. Other creatures are obstacles. The price is the sum of those step costs. It does not use a fly, climb, swim, or burrow mode, it does not add the prone crawl multiplier, and it does not squeeze. A frightened creature cannot end closer to the source of its fear. Unless the option sets `no_opportunity_attacks`, each step that leaves a hostile's reach can provoke, and an interrupt stops on the last tile kept. A zone the path enters or leaves is entered or left on that step.
 
 Legendary Resistance is unchanged: a failed save still spends `Combatant::legendary_pool` automatically (product choice M4). That is not a legendary action.
+
+`Combat::hash` tag **0xE8** folds the live pool and the open window while some creature has `la_max > 0`, and appends a Polymorph-suspended pool (saved `la_max`, `la_cur`, option identity, and `legendary_pool`) only when `la_suspended` is set. That flag is set only when the creature had a pool, an option, or Legendary Resistance, so a Polymorph with none of those emits no 0xE8. `log_hash` tag **0xE9** folds a `LegendaryAction` creature-target list only. Next free is **0xEA**.
 

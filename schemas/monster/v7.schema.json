@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/monster/v7.schema.json",
   "title": "monster@7",
-  "description": "monster@7 = monster@6 carried in full, including huge in visual.standin_bin, plus mechanical legendary actions. monster@6 -> monster@7 is an identity migration. A monster@7 document's legendary_actions entries must each have use or effect; a descriptive common@1 list is not valid at this version. Files that declared monster@5 or monster@6 keep that descriptive list, and the loader ignores entries with neither use nor effect only for those older declarations. visual is presentation only. Integers only (4.3). size_short is not applied in M0. Gargantuan has no stand-in art bin.",
+  "description": "monster@7 = monster@6 carried in full, including huge in visual.standin_bin, plus mechanical legendary actions. monster@6 -> monster@7 is an identity migration. A monster@7 document's legendary_actions entries must each have use or effect; a descriptive common@1 list is not valid at this version. Files that declared monster@1 through monster@6 keep that descriptive list, and the loader ignores entries with neither use nor effect only for those older declarations. visual is presentation only. Integers only (4.3). size_short is not applied in M0. Huge resolves to standin.huge. Gargantuan has no stand-in art bin.",
   "$ref": "#/$defs/stat_block",
   "unevaluatedProperties": false,
   "required": [
