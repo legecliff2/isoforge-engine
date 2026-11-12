@@ -2046,5 +2046,5 @@ Legendary movement is a walk. The allowance is `modified_speed`, or half of that
 
 Legendary Resistance is unchanged: a failed save still spends `Combatant::legendary_pool` automatically (product choice M4). That is not a legendary action.
 
-`Combat::hash` tag **0xE8** folds the live pool and the open window while some creature has `la_max > 0`, and appends a Polymorph-suspended pool (saved `la_max`, `la_cur`, option identity, and `legendary_pool`) only when `la_suspended` is set. That flag is set only when the creature had a pool, an option, or Legendary Resistance, so a Polymorph with none of those emits no 0xE8. `log_hash` tag **0xE9** folds a `LegendaryAction` creature-target list only. Next free is **0xEA**.
+`Combat::hash` tag **0xE8** folds the live pool and the open window while some creature has `la_max > 0`, and appends a Polymorph-suspended pool (saved `la_max`, `la_cur`, option identity, and `legendary_pool`) only when `la_suspended` is set. That flag is set only when the creature had a pool, an option, or Legendary Resistance, so a Polymorph with none of those emits no 0xE8. `log_hash` tag **0xE9** folds a `LegendaryAction` creature-target list only. Next free is **0xEA**. Initiative count 20, lair loses ties, is an engine convention (lair-hooks contract v0.1), not SRD 5.1 text. monster@7 carries no lair key.
 

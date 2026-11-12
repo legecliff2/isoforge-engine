@@ -702,3 +702,36 @@ TEST_CASE("polymorph of a non-legendary creature does not fold 0xE8") {
     g->la_suspended = false;
     CHECK(fight->hash() == hashed);
 }
+
+// Lair hook is rules plumbing only. install_hooks does not set it, so these digests stay on the
+// pins from before the hook existed. Do not re-pin them.
+TEST_CASE("lair hook is unwired: pinned digests and log_hash stay put") {
+    auto l = lib_with();
+    auto ch = arena({{"srd51.character.fighter_1", {7, 4}}, {"test.legendary.beast", {8, 4}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 11);
+    REQUIRE(c);
+    CHECK(c->hash() == 0x40c5e7a2531bae06ull);
+
+    ecs::Registry reg_again;
+    auto again = Combat::create(reg_again, ch, l, 11);
+    REQUIRE(again);
+    CHECK(again->hash() == c->hash());
+    CHECK(again->log_hash() == c->log_hash());
+
+    ContentLibrary plain;
+    REQUIRE(plain.load(sample_set()).empty());
+    auto ch2 = arena({{"srd51.character.fighter_1", {4, 4}}, {"srd51.monster.goblin", {8, 4}}});
+    ecs::Registry reg2;
+    auto plain_fight = Combat::create(reg2, ch2, plain, 4);
+    REQUIRE(plain_fight);
+    REQUIRE(plain_fight->submit(end_turn(*plain_fight)).ok);
+    CHECK(plain_fight->hash() == 0x67bca9677135717dull);
+
+    ecs::Registry reg3;
+    auto plain_again = Combat::create(reg3, ch2, plain, 4);
+    REQUIRE(plain_again);
+    REQUIRE(plain_again->submit(end_turn(*plain_again)).ok);
+    CHECK(plain_again->hash() == plain_fight->hash());
+    CHECK(plain_again->log_hash() == plain_fight->log_hash());
+}

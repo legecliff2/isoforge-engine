@@ -3587,14 +3587,58 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     check_end(s, ev);
 }
 
+// Entries whose initiative total is at least kLairInitiative. They form a prefix of order
+// (highest total first). The lair slot is that count: a total of exactly 20 acts first.
+std::size_t lair_slot(const EncounterState& s) {
+    std::size_t p = 0;
+    for (const InitiativeEntry& e : s.order)
+        if (e.total >= kLairInitiative) ++p;
+    return p;
+}
+
+// Read-only. No event, no la_cur change, no window. Skipped once the encounter has ended.
+// Asserts the two states advance_turn does not run in today (contract v0.1 D1).
+void fire_lair(EncounterState& s, const std::vector<Event>& ev, uint16_t round, std::size_t slot) {
+    if (s.ended) return;
+    assert(!s.pending);
+    assert(s.legendary_window.x == 0);
+    if (!s.hooks.lair_turn) return;
+    assert(slot < 256);
+    s.hooks.lair_turn(s, LairTurn{round, static_cast<uint8_t>(slot), static_cast<uint32_t>(ev.size())});
+}
+
+// Lair hook (contract v0.1 D1). p is recomputed from order on every call, so a summon
+// place_summons just inserted moves the slot. Exactly one fire per round:
+//   0 < p < n  when the walk crosses p-1 -> p, before the next start_turn.
+//              If that cross is after the wrap in this same call (every entry ahead of
+//              the slot is dead), the fire waits until after the new round's tick.
+//   p == n     at the wrap, before ++round and the round-start tick (belongs to round r)
+//   p == 0     after ++round and the tick, before the first start_turn
+// Skipping a dead creature still crosses the slot once. No fire once s.ended is set.
 void advance_turn(EncounterState& s, std::vector<Event>& ev) {
     const auto n = s.order.size();
     const uint16_t round_before = s.round;
+    const std::size_t p = lair_slot(s);
+    bool fired = false;
+    bool deferred = false;
+    auto once = [&](uint16_t round, std::size_t slot) {
+        if (s.ended || fired) return;
+        fired = true;
+        fire_lair(s, ev, round, slot);
+    };
     for (std::size_t k = 0; k < n; ++k) {
+        const bool wrap = std::size_t(s.turn_index) + 1 >= n;
+        if (wrap && p == n) once(s.round, p);   // before ++round; this round, before the tick
         if (++s.turn_index >= n) { s.turn_index = 0; ++s.round; }
+        else if (p > 0 && p < n && std::size_t(s.turn_index) == p) {
+            if (s.round != round_before) deferred = true;   // after the wrap: fire after the tick
+            else once(s.round, p);
+        }
         if (!find_mut(s, s.order[s.turn_index].id)->dead) break;
     }
     if (s.round != round_before) tick_effects_round_start(s, ev);   // timed effects: a new round has started
+    if (deferred) once(s.round, p);                                 // same fired-once guard as the other paths
+    if (p == 0 && s.round != round_before) once(s.round, 0);        // after the tick, before start_turn
     start_turn(s, ev);
 }
 
@@ -5692,6 +5736,8 @@ EncounterState begin_encounter(std::vector<Combatant> cs, uint64_t seed, std::ve
     std::vector<Event> ev;
     for (const auto& e : s.order) emit(ev, EventKind::InitiativeRolled, e.id, 0, e.total);
     if (!s.order.empty()) {
+        // p == 0: round 1, after InitiativeRolled, before the first start_turn or the dead-skip.
+        if (lair_slot(s) == 0) fire_lair(s, ev, s.round, 0);
         if (find_mut(s, s.order[0].id)->dead) advance_turn(s, ev);
         else start_turn(s, ev);
     } else {
