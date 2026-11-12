@@ -27,12 +27,16 @@ struct Snap {
 
 void set_dex(Combatant& c, int score) { c.abilities.score[std::size_t(Ability::Dex)] = int8_t(score); }
 
-void set_order(EncounterState& s, std::initializer_list<std::pair<CombatantId, int16_t>> rows) {
+// A small aggregate so {id, total} is list-init. std::pair's converting constructor warns on
+// MSVC (/WX) when an int literal narrows to int16_t.
+struct OrderSlot { CombatantId id; int16_t total; };
+
+void set_order(EncounterState& s, std::initializer_list<OrderSlot> rows) {
     s.order.clear();
-    for (auto [id, total] : rows) {
-        const Combatant* c = find(s, id);
+    for (const OrderSlot& row : rows) {
+        const Combatant* c = find(s, row.id);
         const int dex = c ? modifier(c->abilities, Ability::Dex) : 0;
-        s.order.push_back(InitiativeEntry{id, total, int8_t(dex)});
+        s.order.push_back(InitiativeEntry{row.id, row.total, int8_t(dex)});
     }
     s.turn_index = 0;
 }
@@ -83,7 +87,7 @@ void plant_round_effect(EncounterState& s) {
     e.caster = 1;
     e.target = 1;
     e.no_condition = true;
-    e.timed = Timed{Expiry::Rounds, 1};   // runs out on the next round-start tick
+    e.timed = Timed{Expiry::Rounds, int16_t{1}};   // runs out on the next round-start tick
     s.effects.push_back(e);
 }
 
