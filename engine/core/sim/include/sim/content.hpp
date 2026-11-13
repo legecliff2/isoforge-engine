@@ -153,11 +153,23 @@ struct Archetype {
             std::string id;
             std::optional<CreatureSize> size;
             int16_t ac = -1;
-            int16_t speed_ft = -1;                          // speed.walk; -1 = the creature's own
+            int16_t speed_ft = -1;                          // speed.walk; -1 = keep the true form's value; 0 removes it
+            int16_t fly_ft = -1, swim_ft = -1, climb_ft = -1, burrow_ft = -1;   // B1: same sentinel. monster@5+
+            int8_t hover = -1;                              // -1 omitted, 0 false, 1 true
             std::optional<rules5e::CreatureType> creature_type;
-            std::vector<std::string> blocked_actions;       // own actions[] ids not in the form's actions[] (attacks dropped)
+            bool limit_actions = false;                     // actions[] present (omitted = every action)
+            std::vector<std::string> blocked_actions;       // own actions[] / multiattack option ids not in the form's actions[]
+            bool limit_traits = false;                      // B3: traits[] present (omitted = every trait)
+            std::vector<std::string> blocked_traits;
+            int32_t darkvision_ft = -1, blindsight_ft = -1, tremorsense_ft = -1, truesight_ft = -1;   // B3: -1 keep, 0 removes
+            uint8_t weapon_dice_multiplier = 0;             // B5: 0 = the monster's multiplier; 1..4 overrides it
         };
         std::vector<Shape> shapes;              // shapechanger forms (statistics other than these are the creature's own)
+        // B2: true form. Omitted list = every id. Ids not listed are blocked at spawn and restored on revert
+        // (the saved block is already that subset). build_form starts from the archetype's full lists.
+        bool limit_true_actions = false, limit_true_traits = false;
+        std::vector<std::string> true_blocked_actions, true_blocked_traits;
+        bool implies_shapechanger = true;       // B6: trait false neither requires nor sets the creature fact
     };
     std::map<uint32_t, FormFeature> form_features;
     // Feature ids whose effect sets requires_humanoid_form (Wild Shape blocks them in a beast form, D7).

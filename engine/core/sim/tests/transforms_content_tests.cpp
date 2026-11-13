@@ -769,10 +769,10 @@ TEST_CASE("shapechanger content: common@2 keys only (speed object, creature_type
     w["$schema"] = "monster@4";
     w["id"] = "test.monster.were2";
     w["shapechanger"] = true;
-    w["speed"]["burrow"] = 15;   // data field: a form speed object still replaces walk only, same as climb
+    w["speed"]["burrow"] = 15;   // a monster@4 form speed still contributes walk only; climb is a monster@5 key
     REQUIRE(w["actions"].size() >= 2);
     const std::string keep = w["actions"][0]["id"].get<std::string>();
-    Json form = {{"id", "beast"}, {"name", "Beast"}, {"speed", {{"walk", 50}, {"climb", 20}}}, {"creature_type", "beast"},
+    Json form = {{"id", "beast"}, {"name", "Beast"}, {"speed", {{"walk", 50}}}, {"creature_type", "beast"},
                  {"actions", Json::array({keep})}};
     w["traits"] = Json::array({{{"id", "shape"}, {"name", "Shapechanger"}, {"description", "x"},
                                 {"effect", {{"kind", "shapechanger"}, {"forms", Json::array({form})}}}}});
@@ -799,6 +799,12 @@ TEST_CASE("shapechanger content: common@2 keys only (speed object, creature_type
         d = w;
         d["traits"][0]["effect"]["forms"][0]["creature_type"] = "rock";
         CHECK(err(d).find("bad creature_type") != std::string::npos);
+        d = w;
+        d["traits"][0]["effect"]["forms"][0]["speed"]["climb"] = 20;
+        CHECK(err(d).find("speed.climb needs a monster@5 file") != std::string::npos);
+        d = w;
+        d["traits"][0]["effect"]["trait"] = false;
+        CHECK(err(d).find("trait needs a monster@5 file") != std::string::npos);
     }
     REQUIRE_FALSE(lib.add(w, "monster"));
     const Archetype& a = *lib.find("test.monster.were2");
@@ -812,7 +818,7 @@ TEST_CASE("shapechanger content: common@2 keys only (speed object, creature_type
     const auto fs = f.c->build_form(f.who(0), FormKind::Shapechanger, fid, 0);
     REQUIRE(fs);
     CHECK(fs->speed_ft == 50);
-    CHECK(fs->burrow_ft == 15);   // stats_of copies burrow with fly / swim / climb; the form speed's climb is not applied
+    CHECK(fs->burrow_ft == 15);   // omitted speed keys keep the stat block; monster@4 does not read climb
     CHECK(fs->climb_ft == 0);
     CHECK(fs->creature_type == rules5e::CreatureType::Beast);
     for (const auto& at : fs->attacks) CHECK(at.id != std::string_view(w["actions"][1]["id"].get<std::string>()));

@@ -1293,6 +1293,17 @@ def check_transforms(doc: dict, ctx: dict, errs: list[str], warns: list[str]) ->
     """common@2 wild_shape / shapechanger and requires_humanoid_form (monster@4 / character@4)."""
     res = {r.get("id"): r for r in doc.get("resources") or [] if isinstance(r, dict)}
     action_ids = {a.get("id") for a in doc.get("actions") or [] if isinstance(a, dict)}
+    for key in ("traits", "features"):
+        for feat in doc.get(key) or []:
+            if not isinstance(feat, dict) or not isinstance(feat.get("effect"), dict):
+                continue
+            ef = feat["effect"]
+            if ef.get("kind") != "multiattack":
+                continue
+            if isinstance(ef.get("options"), list):
+                action_ids.update(o.get("id") for o in ef["options"] if isinstance(o, dict))
+            elif "attacks" in ef:
+                action_ids.add("multiattack")
     classes = {c.get("class") for c in doc.get("classes") or [] if isinstance(c, dict)}
     seen: dict[str, str] = {}
     for path, _owner, eff in live_effects(doc):
@@ -1325,8 +1336,27 @@ def check_transforms(doc: dict, ctx: dict, errs: list[str], warns: list[str]) ->
             if cls not in classes:
                 warns.append(f"{path}: wild_shape: class '{cls}' not in classes[]")
         else:
-            if doc.get("shapechanger") is not True:
+            schema = doc.get("$schema") if isinstance(doc.get("$schema"), str) else ""
+            monster5 = schema in MONSTER_SINCE_5
+            trait_ids = {t.get("id") for key in ("traits", "features") for t in doc.get(key) or [] if isinstance(t, dict)}
+            if "trait" in eff:
+                if not monster5:
+                    errs.append(f"{path}: trait needs a monster@5 file")
+                elif eff.get("trait") is not True and eff.get("trait") is not False:
+                    errs.append(f"{path}: shapechanger bad trait")
+            if eff.get("trait") is not False and doc.get("shapechanger") is not True:
                 errs.append(f"{path}: shapechanger trait requires shapechanger: true")
+            if "true_form" in eff:
+                if not monster5:
+                    errs.append(f"{path}: true_form needs a monster@5 file")
+                elif isinstance(eff.get("true_form"), dict):
+                    tf = eff["true_form"]
+                    for a in tf.get("actions") or []:
+                        if a not in action_ids:
+                            errs.append(f"{path}: shapechanger true_form names unknown action '{a}'")
+                    for t in tf.get("traits") or []:
+                        if t not in trait_ids:
+                            errs.append(f"{path}: shapechanger true_form names unknown trait '{t}'")
             ids = set()
             for j, fm in enumerate(eff.get("forms") or []):
                 if not isinstance(fm, dict):
@@ -1338,6 +1368,21 @@ def check_transforms(doc: dict, ctx: dict, errs: list[str], warns: list[str]) ->
                 for a in fm.get("actions") or []:
                     if a not in action_ids:
                         errs.append(f"{path}/forms/{j}: shapechanger: form '{fid}' names unknown action '{a}'")
+                speed = fm.get("speed")
+                if isinstance(speed, dict):
+                    for sk in speed:
+                        if sk != "walk" and not monster5:
+                            errs.append(f"{path}/forms/{j}: speed.{sk} needs a monster@5 file")
+                if "traits" in fm and not monster5:
+                    errs.append(f"{path}/forms/{j}: traits needs a monster@5 file")
+                elif isinstance(fm.get("traits"), list):
+                    for t in fm["traits"]:
+                        if t not in trait_ids:
+                            errs.append(f"{path}/forms/{j}: shapechanger form '{fid}' names unknown trait '{t}'")
+                if "senses" in fm and not monster5:
+                    errs.append(f"{path}/forms/{j}: senses needs a monster@5 file")
+                if "weapon_dice_multiplier" in fm and not monster5:
+                    errs.append(f"{path}/forms/{j}: weapon_dice_multiplier needs a monster@5 file")
                 if not set(fm) - {"id", "name"}:
                     warns.append(f"{path}/forms/{j}: shapechanger: form '{fid}' changes nothing")
                 if fm.get("actions") == []:

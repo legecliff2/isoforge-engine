@@ -247,8 +247,9 @@ struct ZoneTriggerRow {
     // (Combatant::no_breath) when auto_success_no_breath (Stinking Cloud: poison, poisoned, no breath).
     uint32_t auto_success_damage = 0, auto_success_conditions = 0;
     bool auto_success_no_breath = false;
-    // Moonbeam: a shapechanger (Combatant::shapechanger) makes the save with disadvantage. Reverting its form on a failure
-    // is not modelled (rules has no shapechange state).
+    // Moonbeam: a shapechanger (Combatant::shapechanger) makes the save with disadvantage. A failed save by a creature
+    // that is in a Shapechanger form also reverts it (Reverted reason 6) and sets Combatant::form_lock_zone until it
+    // leaves the zone or the zone ends. Polymorph's shapechanger refusal is unchanged (G16, recorded only).
     bool shapechanger_disadvantage = false;
     // Spirit Guardians: the damage is evil_damage_type instead when the zone's owner is evil (Combatant::evil).
     bool has_evil_damage_type = false;

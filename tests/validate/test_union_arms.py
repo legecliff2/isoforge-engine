@@ -104,8 +104,9 @@ SPELL_EFFECT_RG12 = {"polymorph": (S({"kind", "forms"}), S({"max_cr", "save"}))}
 COMMON2_RG12 = {"wild_shape_effect": (S({"kind", "pool", "forms", "max_cr_by_level"}),
                                       S({"cost", "class", "no_fly_below", "no_swim_below"})),
                 "wild_shape_level_row": (S({"level", "max_cr"}), S()),
-                "shapechanger_effect": (S({"kind", "forms"}), S({"cost"})),
-                "shapechanger_form": (S({"id", "name"}), S({"size", "armor_class", "speed", "actions", "creature_type"}))}
+                "shapechanger_effect": (S({"kind", "forms"}), S({"cost", "trait", "true_form"})),
+                "shapechanger_form": (S({"id", "name"}), S({"size", "armor_class", "speed", "actions", "creature_type",
+                                                           "traits", "senses", "weapon_dice_multiplier"}))}
 _ICOMMON = {"source", "cost_cp", "weight_oz", "description", "visual"}   # visual: presentation only (LIGHTING.md 10.1)
 _IBASE = S({"$schema", "id", "name", "category"})
 _IMAT = {"material"}   # weapon / armor / shield. Absent keeps the category rule (CONTENT_CONVENTIONS section 22). Appended on item@1 and item@2.

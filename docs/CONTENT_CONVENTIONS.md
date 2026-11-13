@@ -1710,7 +1710,7 @@ Deferred, not this action:
 * Possession. `srd51.monster.ghost` carries the SRD sentences as a description-only action. No save, no recharge, and no control. It is not succubus `charm_command`.
 * Etherealness is §51, not this action.
 * Ethereal Sight and Incorporeal Movement stay description only on that row.
-* Shapechange. No shape, no forms, no shapechanger effect.
+* Shapechange. Monster forms are §58. The 9th-level spell and Change Shape catalogs stay deferred.
 
 ## 50. Bound (monster@5 trait `bound`)
 
@@ -1804,7 +1804,7 @@ Deferred, not this action:
 * Possession. `srd51.monster.ghost` carries the SRD sentences as a description-only action. No save, no recharge, and no control. It is not succubus `charm_command`.
 * Ethereal Sight. `srd51.monster.ghost` carries that sentence as a description-only trait. Sight range does not change.
 * Incorporeal Movement. `srd51.monster.ghost` carries that sentence as a description-only trait. No pass-through and no end-of-turn force damage.
-* Shapechange. No shape, no forms, no shapechanger effect.
+* Shapechange. Monster forms are §58. The 9th-level spell and Change Shape catalogs stay deferred.
 * Phase Spider Ethereal Jaunt.
 * The succubus Etherealness sentence. `srd51.monster.succubus` carries it as a description-only action and does not use this kind.
 * The Etherealness spell, Blink, and Force Cage.
@@ -1855,7 +1855,7 @@ These are not printed in the SRD sentence. Zach fixed them for this slice:
 * Invisible Passage. That action is §53. This action does not start it.
 * Voluntary concentration end. That is `ActionKind::EndConcentration` (the Heal / AbilityCheck admission; SRD "at any time, no action required"). It is not this action.
 * Passage's "wears or carries" reading. This action's covered set is the loadout at activation only.
-* Shapechange. No shape, no forms, no `shapechanger` effect.
+* Shapechange. Monster forms are §58. The 9th-level spell and Change Shape catalogs stay deferred.
 * Sea hag Illusory Appearance and `sea_hag.json`.
 * `srd51.monster.green_hag` authors this action (`dc` 20). A start while a figure is up is refused and the action is not spent. Discernment persists. Body art stays the true form (Art HOLD; no art assets). Innate Spellcasting and Mimicry stay description only on that row. Counts are 204 authored and 6 deferred.
 * Truesight and See Invisibility. The inspect uses the existing `sight` answer. Those calls stay open.
@@ -1900,7 +1900,7 @@ Dispel Magic is not in the sentence. The action has no spell level. A level of 0
 
 * Illusory Appearance (§52), including its three product choices. Body art stays the true form (Art HOLD).
 * `innate_invisibility`, the Invisibility spell, and Greater Invisibility.
-* Shapechange. No form.
+* Shapechange. Monster forms are §58. The 9th-level spell and Change Shape catalogs stay deferred.
 * `srd51.monster.green_hag` authors this action. Innate Spellcasting and Mimicry stay description only.
 * Hide, Survival, and surprise.
 
@@ -2046,5 +2046,61 @@ Legendary movement is a walk. The allowance is `modified_speed`, or half of that
 
 Legendary Resistance is unchanged: a failed save still spends `Combatant::legendary_pool` automatically (product choice M4). That is not a legendary action.
 
-`Combat::hash` tag **0xE8** folds the live pool and the open window while some creature has `la_max > 0`, and appends a Polymorph-suspended pool (saved `la_max`, `la_cur`, option identity, and `legendary_pool`) only when `la_suspended` is set. That flag is set only when the creature had a pool, an option, or Legendary Resistance, so a Polymorph with none of those emits no 0xE8. `log_hash` tag **0xE9** folds a `LegendaryAction` creature-target list only. Next free is **0xEA**. Initiative count 20, lair loses ties, is an engine convention (lair-hooks contract v0.1), not SRD 5.1 text. monster@7 carries no lair key.
+`Combat::hash` tag **0xE8** folds the live pool and the open window while some creature has `la_max > 0`, and appends a Polymorph-suspended pool (saved `la_max`, `la_cur`, option identity, and `legendary_pool`) only when `la_suspended` is set. That flag is set only when the creature had a pool, an option, or Legendary Resistance, so a Polymorph with none of those emits no 0xE8. `log_hash` tag **0xE9** folds a `LegendaryAction` creature-target list only. Next free is **0xEB** (§58 claims 0xEA while a Moonbeam form lock is set). Initiative count 20, lair loses ties, is an engine convention (lair-hooks contract v0.1), not SRD 5.1 text. monster@7 carries no lair key.
+
+## 58. Shapechanger forms (live)
+
+SRD 5.1 Shapechanger, the "statistics are the same except …" family, and Change Shape actions with that same sentence (the oni). Not the 9th-level Shapechange spell, and not Change Shape that replaces the stat block from a challenge-rating catalog. Those stay deferred. The lycanthrope, succubus, and oni JSON in the pack stay descriptive until a later content PR. This section is the engine. No monster file in `srd51.core` is flipped here.
+
+The kind is the existing `FormKind::Shapechanger`. There is no new `FormKind`, `ActionKind`, or `EventKind`. `kSimEventSchemaVersion` stays 13. The new keys are in place on common@2 `shapechanger_effect` / `shapechanger_form`. A file older than monster@5, and every character file, keeps the old key set: naming a new key is `<key> needs a monster@5 file`. A monster@4 form speed may still name `walk`. `fly`, `swim`, `climb`, `burrow`, and `hover` on that object are `speed.<key> needs a monster@5 file`.
+
+```json
+{ "kind": "shapechanger", "cost": "action", "trait": true,
+  "true_form": { "actions": ["multiattack", "spear"], "traits": ["shapechanger", "keen_hearing_and_smell"] },
+  "forms": [
+    { "id": "hybrid", "name": "Hybrid", "armor_class": 12,
+      "actions": ["multiattack_hybrid", "bite", "claws"] },
+    { "id": "wolf", "name": "Wolf", "armor_class": 12, "speed": { "walk": 40 },
+      "actions": ["bite"] } ] }
+```
+
+| key | rule | loader error |
+|---|---|---|
+| `trait` | bool, default true. true requires and sets the creature fact `shapechanger`. false does neither (the oni). Moonbeam disadvantage and the Polymorph refusal read only `Combatant::shapechanger` | `trait needs a monster@5 file` / `shapechanger bad trait` / `shapechanger trait requires shapechanger: true` |
+| `true_form.actions` | ids of this document's `actions[]`, or a multiattack option id. Omitted = all. Ids not listed are dropped from attacks, multiattacks, and triggers at spawn. Revert restores that saved subset | `true_form needs a monster@5 file` / `shapechanger true_form names unknown action '<id>'` |
+| `true_form.traits` | ids of this document's `traits[]` or `features[]`. Omitted = all. Same spawn drop, for triggers whose owner is that trait | `shapechanger true_form names unknown trait '<id>'` |
+| form `speed` | walk, fly, swim, climb, burrow, hover. A present key overrides that speed. 0 removes it. An omitted key keeps the true form's value | `shapechanger bad speed.<key>` / `speed.<key> needs a monster@5 file` |
+| form `actions` | subset of the same ids as `true_form.actions`. Omitted = all. `build_form` starts from the archetype's full block, so a form can regain an attack the true form lacks | `shapechanger form '<id>' names unknown action '<id>'` |
+| form `traits` | subset of trait ids. Triggers carry `Trigger::owner_id = spell_id_of(<owner>)`. A blocked owner is dropped | `traits needs a monster@5 file` / `shapechanger form '<id>' names unknown trait '<id>'` |
+| form `senses` | `darkvision`, `blindsight`, `tremorsense`, `truesight`. A present key overrides. 0 removes it. An omitted sense is kept. `put_stats` writes senses only when `FormStats::set_senses` is set, so Wild Shape and Polymorph do not | `senses needs a monster@5 file` / `shapechanger bad senses.<key>` |
+| form `weapon_dice_multiplier` | integer 1..4. Replaces the monster's `weapon_dice_multiplier` for weapon attacks whose printed count divides that monster multiplier (`Attack::weapon_dice_base`). Natural attacks are not scaled. Revert and death restore the true form's dice | `weapon_dice_multiplier needs a monster@5 file` / `shapechanger bad weapon_dice_multiplier` |
+
+What the sentences fix:
+
+* **Statistics are the same** except the keys the form lists. Abilities, saves, skills, resistances, the legendary pool, and `la_*` stay. One hit-point pool: damage in a form is still there after the revert.
+* **Speed.** A succubus humanoid form sets `fly: 0`. A werebear form sets climb. An imp-style raven form sets fly. Revert restores the true speeds.
+* **Form-only attacks.** The true form lists the attacks it has. A hybrid lists bite and claws. The wolf lists bite. The true form does not have bite.
+* **Form-only traits.** Charge and Pounce are triggers owned by those traits. They are on the creature only in a form that lists them.
+* **Senses.** Darkvision that the stat block prints for one form is that form's `senses` override.
+* **One action to change from one form to another** of the same feature. `UseFeature` emits `Reverted` with b = 3, then `Transformed`. A different feature, Wild Shape, or Polymorph is still `already transformed`.
+* **The glaive shrinks.** The oni's Small or Medium form sets `weapon_dice_multiplier: 1` (2d10 becomes 1d10). Death reverts first, so the glaive is 2d10 again.
+* **Change Shape without the shapechanger tag.** `trait: false`. No Moonbeam disadvantage and no Polymorph refusal.
+* **Moonbeam.** A shapechanger makes the save at disadvantage, as before. If it fails while in a Shapechanger form, it reverts (`Reverted` reason 6) and `form_lock_zone` is that zone. `UseFeature` of a form is refused with `can't assume a different form until you leave the light` while `zone_contains` says it is still inside (no hook: the lock stands). Leaving the zone, or the zone ending, clears the lock.
+* **It reverts if it dies.** Unchanged: `Reverted` b = 4 before `CombatantDied`.
+* **A bigger form must fit.** Unchanged: the action is not spent.
+
+`Combat::hash` tag **0xEA** folds only while some `form_lock_zone` is not 0: a u32 count, then per such combatant in `combatants` order the u32 id and the u32 zone id. B1-B6 claim no tag. The form state is already in 0xAF. `log_hash` is unchanged (0xBD already folds `form_archetype`). Next free is **0xEB**. The pins 0x40c5e7a2531bae06 (seed 11) and 0x67bca9677135717d (seed 4) are not re-pinned. The built-in AI never uses a Shapechanger feature (`driver.cpp`, the spawn form is kept).
+
+Recorded, not changed (G16): Polymorph refuses a creature with the shapechanger fact outright. The SRD says a shapechanger automatically succeeds on the save. Polymorph is 4th level and is not in the pack, so this step does not change that refusal.
+
+Deferred, not this section:
+
+* The 9th-level Shapechange spell, True Polymorph, and Polymorph content. Spell levels 4-9 stay held.
+* Change Shape with a challenge-rating catalog: couatl, deva, and the ancient metallic dragons. No union rule for "gains any statistics it lacks", and printed to-hit has no proficiency term.
+* The vampire, in bat and mist form. No sunlight gate and no running water.
+* The mimic and the doppelganger. Their traits are not live, and neither file is authored here.
+* The imp, the quasit, and the night hag. They are not in the pack. The speed and `trait: false` keys can express them later.
+* The lycanthropy curse on a bite.
+* AI form choice, and form art.
+* A shapechanger that fails Moonbeam while already in its true form is not locked. The approved trigger is a failed save while `form == Shapechanger`.
 
