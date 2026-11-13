@@ -557,3 +557,50 @@ TEST_CASE("Moonbeam B7 through content: reason 6, the lock, 0xEA only while lock
     CHECK(f.who(2).form_lock_zone == 0);
     f.check_replay();
 }
+
+TEST_CASE("Moonbeam B7: a failed save in the true form locks, and 0xEA is absent after leaving") {
+    ContentLibrary lib = library();
+    const uint32_t fid = shape_feature(*lib.find(kLycan));
+    Fight f(lib, {{kLycan, {4, 4}}, {kMage, {2, 2}}});
+    f.advance_to(f.id(1));
+    Command beam;
+    beam.request = {f.id(1), ActionKind::CastSpell, f.id(1)};
+    beam.request.spell_id = spell_id_of("test.spell.moonbeam");
+    beam.request.spell_level = 2;
+    beam.request.has_zone_dest = true;
+    beam.request.zone_x = 8;
+    beam.request.zone_y = 4;
+    REQUIRE(f.settle(f.c->submit(beam)).ok);
+    f.end_turn();
+    f.advance_to(f.id(0));
+    CHECK(f.who(0).form == FormKind::None);
+    const int mark = int(f.c->events().size());
+    for (int x : {5, 6, 7}) {
+        Command step;
+        step.kind = CommandKind::Step;
+        step.to = {x, 4};
+        REQUIRE(f.settle(f.c->submit(step)).ok);
+    }
+    CHECK(f.index_of(EventKind::Reverted, mark) < 0);
+    CHECK(f.who(0).form == FormKind::None);
+    REQUIRE(f.who(0).form_lock_zone != 0);
+    const uint64_t locked = f.c->hash();
+    auto& st = const_cast<rules5e::EncounterState&>(f.c->state());
+    for (auto& c : st.combatants) if (c.id == f.id(0)) {
+        const uint32_t zone = c.form_lock_zone;
+        c.form_lock_zone = 0;
+        CHECK(f.c->hash() != locked);
+        c.form_lock_zone = zone;
+        CHECK(f.c->hash() == locked);
+    }
+    CHECK(f.use(f.id(0), fid, 1).error == "can't assume a different form until you leave the light");
+    CHECK(f.c->hash() == locked);
+    Command out;
+    out.kind = CommandKind::Step;
+    out.to = {6, 4};
+    REQUIRE(f.settle(f.c->submit(out)).ok);
+    CHECK(f.who(0).form_lock_zone == 0);
+    CHECK(f.c->hash() != locked);
+    REQUIRE(f.use(f.id(0), fid, 1).ok);
+    f.check_replay();
+}

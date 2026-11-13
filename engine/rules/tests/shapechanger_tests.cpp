@@ -15,6 +15,7 @@ namespace {
 const uint32_t kChange = 9101;
 const uint32_t kOther = 9102;
 const uint32_t kBeam = spell_id_of("test.shape.moonbeam");
+const uint32_t kBeamSoft = spell_id_of("test.shape.moonbeam_soft");
 const uint32_t kBlast = spell_id_of("test.shape.blast");
 const uint32_t kHold = spell_id_of("test.shape.hold");
 const uint32_t kPoly = spell_id_of("test.shape.poly");
@@ -35,6 +36,8 @@ EncounterHooks hooks(const std::shared_ptr<Geo>& geo) {
     enter.shapechanger_disadvantage = true;
     beam.zone.triggers = {enter};
     book->add(beam);
+    SpellDef soft = beam; soft.id = kBeamSoft; soft.content_id = "test.shape.moonbeam_soft"; soft.fixed_dc = 1;
+    book->add(soft);
     SpellDef blast; blast.id = kBlast; blast.content_id = "test.shape.blast"; blast.level = 1; blast.range_ft = 60;
     blast.kind = SpellEffectKind::Save; blast.save_ability = Ability::Dex; blast.fixed_dc = 30;
     blast.dice = {0, 0, 40}; blast.damage_type = DamageType::Force; blast.on_save = OnSave::None;
@@ -93,7 +96,7 @@ Combatant caster(CombatantId id) {
     c.hp = c.hp_max = 40;
     c.spell_slots_max = {0, 4, 4, 2, 2, 0, 0, 0, 0, 0};
     c.spell_slots = c.spell_slots_max;
-    c.spells_known = {kBeam, kBlast, kHold, kPoly};
+    c.spells_known = {kBeam, kBeamSoft, kBlast, kHold, kPoly};
     never_react(c);
     return c;
 }
@@ -234,6 +237,60 @@ TEST_CASE("Moonbeam B7: a failed save in a Shapechanger form reverts with reason
     REQUIRE(step(s, out).ok);
     CHECK(find(s, 2)->form_lock_zone == 0);
     REQUIRE(step(s, change(2, 2)).ok);
+    CHECK(find(s, 2)->form == FormKind::Shapechanger);
+}
+
+TEST_CASE("Moonbeam B7: a failed save in the true form locks without a revert, and a success sets no lock") {
+    auto geo = std::make_shared<Geo>();
+    auto soft = start({caster(1), shifter(2, true)}, geo, 9);
+    end_turns_until(soft, 1);
+    ActionRequest easy{1, ActionKind::CastSpell, 0};
+    easy.spell_id = kBeamSoft; easy.spell_level = 2; easy.has_zone_dest = true; easy.zone_x = 3; easy.zone_y = 4;
+    REQUIRE(step(soft, easy).ok);
+    const uint32_t soft_zone = soft.zones[0].zone_id;
+    end_turns_until(soft, 2);
+    geo->inside.insert({soft_zone, 2});
+    ActionRequest in_soft{2, ActionKind::Move};
+    in_soft.move_ft = 5; in_soft.move_tiles = 1; in_soft.zones_entered = {soft_zone};
+    auto saved = step(soft, in_soft);
+    REQUIRE(saved.ok);
+    const Event* sv = first_of(saved.events, EventKind::SavingThrowRolled);
+    REQUIRE(sv);
+    CHECK(sv->c == 1);
+    CHECK(first_of(saved.events, EventKind::Reverted) == nullptr);
+    CHECK(find(soft, 2)->form == FormKind::None);
+    CHECK(find(soft, 2)->form_lock_zone == 0);
+    REQUIRE(step(soft, change(2, 1)).ok);
+    CHECK(find(soft, 2)->form == FormKind::Shapechanger);
+
+    geo->inside.clear();
+    auto s = start({caster(1), shifter(2, true)}, geo, 9);
+    end_turns_until(s, 1);
+    ActionRequest beam{1, ActionKind::CastSpell, 0};
+    beam.spell_id = kBeam; beam.spell_level = 2; beam.has_zone_dest = true; beam.zone_x = 3; beam.zone_y = 4;
+    REQUIRE(step(s, beam).ok);
+    const uint32_t zone = s.zones[0].zone_id;
+    end_turns_until(s, 2);
+    CHECK(find(s, 2)->form == FormKind::None);
+    geo->inside.insert({zone, 2});
+    ActionRequest mv{2, ActionKind::Move};
+    mv.move_ft = 5; mv.move_tiles = 1; mv.zones_entered = {zone};
+    auto entered = step(s, mv);
+    REQUIRE(entered.ok);
+    CHECK(first_of(entered.events, EventKind::Reverted) == nullptr);
+    CHECK(find(s, 2)->form == FormKind::None);
+    CHECK(find(s, 2)->form_lock_zone == zone);
+    const bool action_before = s.budget.action;
+    auto refused = step(s, change(2, 1));
+    CHECK(refused.error == "can't assume a different form until you leave the light");
+    CHECK(s.budget.action == action_before);
+    CHECK(find(s, 2)->form == FormKind::None);
+    geo->inside.erase({zone, 2});
+    ActionRequest out{2, ActionKind::Move};
+    out.move_ft = 5; out.move_tiles = 1; out.zones_left = {zone};
+    REQUIRE(step(s, out).ok);
+    CHECK(find(s, 2)->form_lock_zone == 0);
+    REQUIRE(step(s, change(2, 1)).ok);
     CHECK(find(s, 2)->form == FormKind::Shapechanger);
 }
 

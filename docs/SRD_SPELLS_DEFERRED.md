@@ -96,7 +96,7 @@ Pinned by the table rows and `test_batch_3_mechanics` in `tests/validate/test_sr
 | Divine Favor | 1 | `apply_modifier` `damage` 1d4 radiant, `applies_to self`, `when [weapon_attack]`, concentration; bonus action | |
 | Sleep | 1 | `hp_pool` 5d8 unconscious, `ends_on_damage`, `excludes_creature_type [undead]`; sphere 20 ft; `upcast.dice 2` | **partial**: creatures immune to charmed are not skipped; waking by an action is not modelled |
 | Shatter | 2 | `save` Con 3d8 thunder, half; sphere 10 ft; `upcast.dice 1` | **partial**: inorganic-creature disadvantage and object damage are not modelled |
-| Moonbeam | 2 | `zone` cylinder 5 ft x 40 ft, point; Enter + StartTurn Con save 2d10 radiant half (`shapechanger_disadvantage`); `move {action, 60}`; `upcast.dice 1` | **partial**: dim light is not modelled. A failed save reverts a creature that is in a Shapechanger form and has the shapechanger fact, and locks another change until it leaves the light (reason 6, hash 0xEA). A shapechanger already in its true form is not locked. |
+| Moonbeam | 2 | `zone` cylinder 5 ft x 40 ft, point; Enter + StartTurn Con save 2d10 radiant half (`shapechanger_disadvantage`); `move {action, 60}`; `upcast.dice 1` | **partial**: dim light is not modelled. A failed save by a creature with the shapechanger fact locks another change until it leaves the light (hash 0xEA), and reverts it when it is in a Shapechanger form (reason 6). |
 
 ## Authored after Rules #228 (3)
 

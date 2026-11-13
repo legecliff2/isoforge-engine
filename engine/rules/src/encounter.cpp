@@ -3162,10 +3162,11 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
         emit(ev, EventKind::SavingThrowRolled, who, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
         failed = !r.success;
         ev[at].c = failed ? 3 : 0;
-        // B7: a shapechanger in a Shapechanger form who fails Moonbeam reverts and cannot change form until it leaves.
-        // trait:false (no shapechanger fact) and any other form are not this sentence. Reason 6 is not a new EventKind.
-        if (failed && row.shapechanger_disadvantage && t->shapechanger && t->form == FormKind::Shapechanger) {
-            form_reverted(*t, 6, 0, ev);
+        // B7: a shapechanger who fails Moonbeam cannot assume a different form until it leaves the light.
+        // "Instantly reverts" only when it is in a Shapechanger form; a true form still takes the lock.
+        // trait:false (no shapechanger fact), Wild Shape, and Polymorph are not this sentence. Reason 6 is not a new EventKind.
+        if (failed && row.shapechanger_disadvantage && t->shapechanger) {
+            if (t->form == FormKind::Shapechanger) form_reverted(*t, 6, 0, ev);
             t->form_lock_zone = zone_id;
         }
         if (!failed && row.success_immunity_hours != 0)   // batch 3: "immune to the ghast's Stench for 24 hours"

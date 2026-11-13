@@ -2085,7 +2085,7 @@ What the sentences fix:
 * **One action to change from one form to another** of the same feature. `UseFeature` emits `Reverted` with b = 3, then `Transformed`. A different feature, Wild Shape, or Polymorph is still `already transformed`.
 * **The glaive shrinks.** The oni's Small or Medium form sets `weapon_dice_multiplier: 1` (2d10 becomes 1d10). Death reverts first, so the glaive is 2d10 again.
 * **Change Shape without the shapechanger tag.** `trait: false`. No Moonbeam disadvantage and no Polymorph refusal.
-* **Moonbeam.** A shapechanger makes the save at disadvantage, as before. If it fails while in a Shapechanger form, it reverts (`Reverted` reason 6) and `form_lock_zone` is that zone. `UseFeature` of a form is refused with `can't assume a different form until you leave the light` while `zone_contains` says it is still inside (no hook: the lock stands). Leaving the zone, or the zone ending, clears the lock.
+* **Moonbeam.** A shapechanger makes the save at disadvantage, as before. A failed save sets `form_lock_zone` to that zone whether or not the creature is already in its true form. `Reverted` reason 6 is emitted only when it was in a Shapechanger form. `UseFeature` of a form is refused with `can't assume a different form until you leave the light` while `zone_contains` says it is still inside (no hook: the lock stands). Leaving the zone, or the zone ending, clears the lock.
 * **It reverts if it dies.** Unchanged: `Reverted` b = 4 before `CombatantDied`.
 * **A bigger form must fit.** Unchanged: the action is not spent.
 
@@ -2102,5 +2102,4 @@ Deferred, not this section:
 * The imp, the quasit, and the night hag. They are not in the pack. The speed and `trait: false` keys can express them later.
 * The lycanthropy curse on a bite.
 * AI form choice, and form art.
-* A shapechanger that fails Moonbeam while already in its true form is not locked. The approved trigger is a failed save while `form == Shapechanger`.
 
