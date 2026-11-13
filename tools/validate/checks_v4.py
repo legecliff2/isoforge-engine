@@ -1376,6 +1376,9 @@ def check_transforms(doc: dict, ctx: dict, errs: list[str], warns: list[str]) ->
                 if "traits" in fm and not monster5:
                     errs.append(f"{path}/forms/{j}: traits needs a monster@5 file")
                 elif isinstance(fm.get("traits"), list):
+                    # traits[] gates triggers only (Trigger.owner_id). roll_traits, keen_senses,
+                    # regeneration and reactions are not filtered. Unknown ids are still an error;
+                    # an id that compiles to no trigger is accepted.
                     for t in fm["traits"]:
                         if t not in trait_ids:
                             errs.append(f"{path}/forms/{j}: shapechanger form '{fid}' names unknown trait '{t}'")

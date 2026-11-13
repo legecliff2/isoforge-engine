@@ -334,8 +334,76 @@ bool build_loadout(rules5e::EncounterState& st, rules5e::CombatantId owner, cons
             l.hit_adjust[i] = clamp8(int(c->attacks[i].to_hit) - r.attacks[i].to_hit);
             l.dmg_adjust[i] = clamp8(int(c->attacks[i].damage.bonus) - r.attacks[i].dmg);
         }
+    if (!l.view.attacks.empty()) {
+        for (std::size_t i = 0; i < c->attacks.size() && i < l.view.attacks.size(); ++i) {
+            rules5e::Loadout::AttackRow row;
+            row.id = c->attacks[i].id;
+            row.link = l.view.attacks[i];
+            if (i < l.hit_adjust.size()) row.hit = l.hit_adjust[i];
+            if (i < l.dmg_adjust.size()) row.dmg = l.dmg_adjust[i];
+            l.attack_rows.push_back(std::move(row));
+        }
+    }
     st.loadouts.push_back(std::move(l));
     return true;
+}
+
+void align_loadout_attacks(rules5e::EncounterState& st, rules5e::CombatantId id, const ItemDefTable& items) {
+    rules5e::Loadout* l = find_loadout(st, id);
+    rules5e::Combatant* c = nullptr;
+    for (auto& x : st.combatants) if (x.id == id) c = &x;
+    if (!l || !c || l->attack_rows.empty()) return;
+    auto row_of = [&](std::string_view attack_id) -> rules5e::Loadout::AttackRow* {
+        for (auto& r : l->attack_rows) if (r.id == attack_id) return &r;
+        return nullptr;
+    };
+    auto match_link = [&](const rules5e::Attack& at) -> rules5e::AttackLink {
+        const std::vector<std::string> aw = words(at.id);
+        std::vector<const rules5e::HeldItem*> pool{&l->view.main, &l->view.off};
+        for (const auto& x : l->view.carried) pool.push_back(&x);
+        for (const rules5e::HeldItem* h : pool) {
+            if (h->instance == 0) continue;
+            const ItemDef* d = items.find(h->def);
+            if (!d || !rules5e::is_weapon(*d) || words(d->weapon.id) != aw) continue;
+            const uint16_t p = d->weapon.properties;
+            rules5e::WeaponUse use = rules5e::WeaponUse::OneHand;
+            if (at.ranged && (p & rules5e::kWeaponThrown) && d->weapon.reach_ft > 0) use = rules5e::WeaponUse::Thrown;
+            else if (p & rules5e::kWeaponTwoHanded) use = rules5e::WeaponUse::TwoHands;
+            else if (p & rules5e::kWeaponVersatile) use = rules5e::WeaponUse::TwoHands;
+            return {h->def, use};
+        }
+        return {};
+    };
+    std::vector<rules5e::AttackLink> links(c->attacks.size());
+    std::vector<int8_t> hit(c->attacks.size(), 0), dmg(c->attacks.size(), 0);
+    bool any = false;
+    for (std::size_t i = 0; i < c->attacks.size(); ++i) {
+        rules5e::Loadout::AttackRow* row = row_of(c->attacks[i].id);
+        if (!row) {
+            rules5e::Loadout::AttackRow fresh;
+            fresh.id = std::string(c->attacks[i].id);
+            fresh.link = match_link(c->attacks[i]);
+            l->attack_rows.push_back(std::move(fresh));
+            row = &l->attack_rows.back();
+        }
+        links[i] = row->link;
+        hit[i] = row->hit;
+        dmg[i] = row->dmg;
+        if (row->link.def != 0) any = true;
+    }
+    if (!any) {
+        l->view.attacks.clear();
+        l->hit_adjust.clear();
+        l->dmg_adjust.clear();
+        return;
+    }
+    bool same = links.size() == l->view.attacks.size() && hit == l->hit_adjust && dmg == l->dmg_adjust;
+    for (std::size_t i = 0; same && i < links.size(); ++i)
+        same = links[i].def == l->view.attacks[i].def && links[i].use == l->view.attacks[i].use;
+    if (same) return;
+    l->view.attacks = std::move(links);
+    l->hit_adjust = std::move(hit);
+    l->dmg_adjust = std::move(dmg);
 }
 
 void recompute_derived(rules5e::EncounterState& st, rules5e::CombatantId id, const ItemDefTable& items) {

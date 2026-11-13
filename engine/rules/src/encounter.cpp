@@ -49,6 +49,7 @@ void kill(Combatant& c, std::vector<Event>& ev) {
     form_reverted(c, 4, 0, ev);   // R-G12: a creature that dies in a form reverts (shapechanger: "reverts on death")
     c.dead = true;
     c.hp = 0;
+    c.form_lock_zones.clear();   // a corpse cannot leave the light; keeping the lock would fold 0xEA until the zone ends
     emit(ev, EventKind::CombatantDied, c.id);
 }
 
@@ -636,14 +637,28 @@ void end_zone_effects(EncounterState& s, uint32_t zone_id, CombatantId who, std:
     }
 }
 
-// Shapechange B7: a Moonbeam lock names one zone. Leaving that zone, or the zone ending, clears it.
+// Shapechange B7: each failed Moonbeam is one zone id, kept sorted. Leaving that zone, or the zone ending, drops
+// only that id. The creature stays locked while any remaining zone still holds it.
+void add_form_lock(Combatant& c, uint32_t zone_id) {
+    const auto it = std::lower_bound(c.form_lock_zones.begin(), c.form_lock_zones.end(), zone_id);
+    if (it == c.form_lock_zones.end() || *it != zone_id) c.form_lock_zones.insert(it, zone_id);
+}
+void drop_form_lock(Combatant& c, uint32_t zone_id) {
+    const auto it = std::lower_bound(c.form_lock_zones.begin(), c.form_lock_zones.end(), zone_id);
+    if (it != c.form_lock_zones.end() && *it == zone_id) c.form_lock_zones.erase(it);
+}
 void clear_form_lock(EncounterState& s, CombatantId who, uint32_t zone_id) {
-    Combatant* c = find_mut(s, who);
-    if (c && c->form_lock_zone == zone_id) c->form_lock_zone = 0;
+    if (Combatant* c = find_mut(s, who)) drop_form_lock(*c, zone_id);
 }
 void clear_form_lock_zone(EncounterState& s, uint32_t zone_id) {
-    for (auto& c : s.combatants)
-        if (c.form_lock_zone == zone_id) c.form_lock_zone = 0;
+    for (auto& c : s.combatants) drop_form_lock(c, zone_id);
+}
+bool held_in_form_lock(const EncounterState& s, const Combatant& a) {
+    for (const uint32_t zone_id : a.form_lock_zones) {
+        if (!find_zone(s, zone_id)) continue;
+        if (!s.hooks.zone_contains || s.hooks.zone_contains(s, zone_id, a.id, false)) return true;
+    }
+    return false;
 }
 
 // Removes zone `i`: ZoneEnded{owner, a = zone id, b = reason}, then its "while in the zone" effects end.
@@ -3167,7 +3182,7 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
         // trait:false (no shapechanger fact), Wild Shape, and Polymorph are not this sentence. Reason 6 is not a new EventKind.
         if (failed && row.shapechanger_disadvantage && t->shapechanger) {
             if (t->form == FormKind::Shapechanger) form_reverted(*t, 6, 0, ev);
-            t->form_lock_zone = zone_id;
+            if (!t->dead) add_form_lock(*t, zone_id);
         }
         if (!failed && row.success_immunity_hours != 0)   // batch 3: "immune to the ghast's Stench for 24 hours"
             s.aura_immunities.push_back(AuraImmunity{who, z.owner, z.spell_id, uint32_t(s.round) + uint32_t(row.success_immunity_hours) * 600u});
@@ -6752,12 +6767,12 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (fs && fs->form != 0) {
             if (fs->form != uint8_t(FormKind::WildShape) && fs->form != uint8_t(FormKind::Shapechanger))
                 return fail("feature form: 2 (Wild Shape) or 3 (shapechanger)");
+            if (switch_shape && a.form_archetype == req.form_archetype) return fail("already in that form");
             if (a.form != FormKind::None && !switch_shape) return fail("already transformed");
             if (is_incapacitated(a)) return fail("incapacitated");
-            // B7: Moonbeam. Refused while the locking zone still exists and the creature is still in it
-            // (no zone_contains hook: the lock stands). Leaving and zone end clear form_lock_zone themselves.
-            if (a.form_lock_zone != 0 && find_zone(s, a.form_lock_zone) &&
-                (!s.hooks.zone_contains || s.hooks.zone_contains(s, a.form_lock_zone, a.id, false)))
+            // B7: Moonbeam. Refused while any locking zone still exists and the creature is still in it
+            // (no zone_contains hook: the lock stands). Leaving and zone end drop that zone themselves.
+            if (held_in_form_lock(s, a))
                 return fail("can't assume a different form until you leave the light");
             if (req.form_archetype == 0) return fail("form_archetype required");
             if (fs->form_choices != 0 && req.form_archetype > fs->form_choices) return fail("bad form_archetype");

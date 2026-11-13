@@ -1583,6 +1583,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     for (std::size_t i = 0; i < evs.size(); ++i) {
         const auto& e = evs[i];
         if (e.kind != rules5e::EventKind::Transformed && e.kind != rules5e::EventKind::Reverted) continue;
+        if (options_.equipment && items_) align_loadout_attacks(state_, e.actor, *items_);
         if (i >= tb) {
             form_footprint(e, teardown_sim[i - tb]);
         } else {
@@ -2677,16 +2678,21 @@ uint64_t Combat::hash() const {
             }
         }
     }
-    // 0xEA (Shapechange B7): Moonbeam's form lock. Folded only while some form_lock_zone is set,
+    // 0xEA (Shapechange B7): Moonbeam's form lock. Folded only while some form_lock_zones is non-empty,
     // so a fight that never fails that save hashes as before. Next free tag is 0xEB.
+    // u32 count of locked combatants, then per such combatant in combatants order: id, zone count, zone ids ascending.
     {
         uint32_t locked = 0;
-        for (const auto& c : state_.combatants) if (c.form_lock_zone != 0) ++locked;
+        for (const auto& c : state_.combatants) if (!c.form_lock_zones.empty()) ++locked;
         if (locked != 0) {
             h.byte(0xEA);
             h.u32(locked);
-            for (const auto& c : state_.combatants)
-                if (c.form_lock_zone != 0) { h.u32(c.id); h.u32(c.form_lock_zone); }
+            for (const auto& c : state_.combatants) {
+                if (c.form_lock_zones.empty()) continue;
+                h.u32(c.id);
+                h.u32(uint32_t(c.form_lock_zones.size()));
+                for (const uint32_t zone_id : c.form_lock_zones) h.u32(zone_id);
+            }
         }
     }
     return h.value();

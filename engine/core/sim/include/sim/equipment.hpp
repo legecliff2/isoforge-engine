@@ -81,6 +81,11 @@ const rules5e::Loadout* find_loadout(const rules5e::EncounterState& st, rules5e:
 // (modifiers, floors) stay dynamic in rules and are not baked. No-op for a creature without a loadout.
 void recompute_derived(rules5e::EncounterState& st, rules5e::CombatantId id, const ItemDefTable& items);
 
+// Rebuild view.attacks / hit_adjust / dmg_adjust so index i matches Combatant::attacks[i]. Rows remembered by attack
+// id (Loadout::attack_rows, not hashed) keep a weapon's link when a form drops it and a later form brings it back.
+// No-op when the loadout never linked an attack. A fight that never changes form keeps the links build_loadout wrote.
+void align_loadout_attacks(rules5e::EncounterState& st, rules5e::CombatantId id, const ItemDefTable& items);
+
 // What a recompute depends on besides the loadout (EQUIPMENT.md 7.2): ability scores, proficiency bonus, level, and the AC
 // effects on the creature. Conditions are deliberately absent. Sim compares it after every step.
 struct DeriveInputs {

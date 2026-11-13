@@ -3,6 +3,7 @@
 // and Moonbeam's forced revert (b = 6) plus the form lock. No new FormKind, ActionKind, or EventKind.
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <memory>
 #include <set>
 #include <string>
@@ -116,6 +117,11 @@ int index_of(const std::vector<Event>& ev, EventKind k) {
     for (int i = 0; i < int(ev.size()); ++i) if (ev[std::size_t(i)].kind == k) return i;
     return -1;
 }
+bool lock_is(const EncounterState& s, CombatantId id, std::vector<uint32_t> zones) {
+    std::sort(zones.begin(), zones.end());
+    const Combatant* c = find(s, id);
+    return c && c->form_lock_zones == zones;
+}
 
 }  // namespace
 
@@ -158,9 +164,15 @@ TEST_CASE("shapechanger B4: hybrid to wolf is Reverted 3 then Transformed; anyth
     CHECK(first_of(first.events, EventKind::Reverted) == nullptr);
     CHECK(index_of(first.events, EventKind::FeatureUsed) < index_of(first.events, EventKind::Transformed));
     CHECK(step(s, change(2, 2, kOther)).error == "already transformed");
-    CHECK(step(s, change(2, 1)).error == "no action available");   // the first change spent the action
+    CHECK(step(s, change(2, 1)).error == "already in that form");   // same form, before the spent action is considered
+    CHECK_FALSE(s.budget.action);
     CHECK(find(s, 2)->form == FormKind::Shapechanger);
     end_turns_until(s, 1); end_turns_until(s, 2);
+    auto same = step(s, change(2, 1));
+    CHECK(same.error == "already in that form");
+    CHECK(same.events.empty());
+    CHECK(s.budget.action);
+    CHECK(find(s, 2)->form_archetype == 1);
     auto sw = step(s, change(2, 2));
     REQUIRE(sw.ok);
     const int rev = index_of(sw.events, EventKind::Reverted), tr = index_of(sw.events, EventKind::Transformed);
@@ -225,7 +237,7 @@ TEST_CASE("Moonbeam B7: a failed save in a Shapechanger form reverts with reason
     REQUIRE(rev >= 0);
     CHECK(entered.events[std::size_t(rev)].b == 6);
     CHECK(find(s, 2)->form == FormKind::None);
-    CHECK(find(s, 2)->form_lock_zone == zone);
+    CHECK(lock_is(s, 2, {zone}));
     const bool action_before = s.budget.action;
     auto refused = step(s, change(2, 1));
     CHECK(refused.error == "can't assume a different form until you leave the light");
@@ -235,7 +247,7 @@ TEST_CASE("Moonbeam B7: a failed save in a Shapechanger form reverts with reason
     ActionRequest out{2, ActionKind::Move};
     out.move_ft = 5; out.move_tiles = 1; out.zones_left = {zone};
     REQUIRE(step(s, out).ok);
-    CHECK(find(s, 2)->form_lock_zone == 0);
+    CHECK(lock_is(s, 2, {}));
     REQUIRE(step(s, change(2, 2)).ok);
     CHECK(find(s, 2)->form == FormKind::Shapechanger);
 }
@@ -259,7 +271,7 @@ TEST_CASE("Moonbeam B7: a failed save in the true form locks without a revert, a
     CHECK(sv->c == 1);
     CHECK(first_of(saved.events, EventKind::Reverted) == nullptr);
     CHECK(find(soft, 2)->form == FormKind::None);
-    CHECK(find(soft, 2)->form_lock_zone == 0);
+    CHECK(lock_is(soft, 2, {}));
     REQUIRE(step(soft, change(2, 1)).ok);
     CHECK(find(soft, 2)->form == FormKind::Shapechanger);
 
@@ -279,7 +291,7 @@ TEST_CASE("Moonbeam B7: a failed save in the true form locks without a revert, a
     REQUIRE(entered.ok);
     CHECK(first_of(entered.events, EventKind::Reverted) == nullptr);
     CHECK(find(s, 2)->form == FormKind::None);
-    CHECK(find(s, 2)->form_lock_zone == zone);
+    CHECK(lock_is(s, 2, {zone}));
     const bool action_before = s.budget.action;
     auto refused = step(s, change(2, 1));
     CHECK(refused.error == "can't assume a different form until you leave the light");
@@ -289,7 +301,67 @@ TEST_CASE("Moonbeam B7: a failed save in the true form locks without a revert, a
     ActionRequest out{2, ActionKind::Move};
     out.move_ft = 5; out.move_tiles = 1; out.zones_left = {zone};
     REQUIRE(step(s, out).ok);
-    CHECK(find(s, 2)->form_lock_zone == 0);
+    CHECK(lock_is(s, 2, {}));
+    REQUIRE(step(s, change(2, 1)).ok);
+    CHECK(find(s, 2)->form == FormKind::Shapechanger);
+}
+
+TEST_CASE("Moonbeam B7: death clears a lock the beam would otherwise keep") {
+    auto geo = std::make_shared<Geo>();
+    auto s = start({caster(1), shifter(2, true)}, geo, 9);
+    end_turns_until(s, 1);
+    ActionRequest beam{1, ActionKind::CastSpell, 0};
+    beam.spell_id = kBeam; beam.spell_level = 2; beam.has_zone_dest = true; beam.zone_x = 3; beam.zone_y = 4;
+    REQUIRE(step(s, beam).ok);
+    const uint32_t zone = s.zones[0].zone_id;
+    end_turns_until(s, 2);
+    mut(s, 2).hp = 1;
+    geo->inside.insert({zone, 2});
+    ActionRequest mv{2, ActionKind::Move};
+    mv.move_ft = 5; mv.move_tiles = 1; mv.zones_entered = {zone};
+    auto entered = step(s, mv);
+    REQUIRE(entered.ok);
+    CHECK(first_of(entered.events, EventKind::Reverted) == nullptr);
+    CHECK(find(s, 2)->dead);
+    CHECK(lock_is(s, 2, {}));
+}
+
+TEST_CASE("Moonbeam B7: failing two beams stays locked until every beam is left") {
+    auto geo = std::make_shared<Geo>();
+    auto s = start({caster(1), shifter(2, true), caster(4)}, geo, 9);
+    end_turns_until(s, 1);
+    ActionRequest beam{1, ActionKind::CastSpell, 0};
+    beam.spell_id = kBeam; beam.spell_level = 2; beam.has_zone_dest = true; beam.zone_x = 3; beam.zone_y = 4;
+    REQUIRE(step(s, beam).ok);
+    end_turns_until(s, 4);
+    ActionRequest beam2{4, ActionKind::CastSpell, 0};
+    beam2.spell_id = kBeam; beam2.spell_level = 2; beam2.has_zone_dest = true; beam2.zone_x = 6; beam2.zone_y = 4;
+    REQUIRE(step(s, beam2).ok);
+    REQUIRE(s.zones.size() == 2);
+    const uint32_t zone_a = s.zones[0].zone_id, zone_b = s.zones[1].zone_id;
+    end_turns_until(s, 2);
+    geo->inside.insert({zone_a, 2});
+    ActionRequest in_a{2, ActionKind::Move};
+    in_a.move_ft = 5; in_a.move_tiles = 1; in_a.zones_entered = {zone_a};
+    REQUIRE(step(s, in_a).ok);
+    CHECK(lock_is(s, 2, {zone_a}));
+    geo->inside.insert({zone_b, 2});
+    ActionRequest in_b{2, ActionKind::Move};
+    in_b.move_ft = 5; in_b.move_tiles = 1; in_b.zones_entered = {zone_b};
+    REQUIRE(step(s, in_b).ok);
+    CHECK(lock_is(s, 2, {zone_a, zone_b}));
+    geo->inside.erase({zone_b, 2});
+    ActionRequest out_b{2, ActionKind::Move};
+    out_b.move_ft = 5; out_b.move_tiles = 1; out_b.zones_left = {zone_b};
+    REQUIRE(step(s, out_b).ok);
+    CHECK(lock_is(s, 2, {zone_a}));
+    CHECK(step(s, change(2, 1)).error == "can't assume a different form until you leave the light");
+    CHECK(s.budget.action);
+    geo->inside.erase({zone_a, 2});
+    ActionRequest out_a{2, ActionKind::Move};
+    out_a.move_ft = 5; out_a.move_tiles = 1; out_a.zones_left = {zone_a};
+    REQUIRE(step(s, out_a).ok);
+    CHECK(lock_is(s, 2, {}));
     REQUIRE(step(s, change(2, 1)).ok);
     CHECK(find(s, 2)->form == FormKind::Shapechanger);
 }
@@ -312,7 +384,7 @@ TEST_CASE("Moonbeam B7: the lock clears when the zone ends, and a creature witho
     ActionRequest mv{2, ActionKind::Move};
     mv.move_ft = 5; mv.move_tiles = 1; mv.zones_entered = {zone};
     REQUIRE(step(s, mv).ok);
-    CHECK(find(s, 2)->form_lock_zone == zone);
+    CHECK(lock_is(s, 2, {zone}));
     end_turns_until(s, 3);
     geo->inside.insert({zone, 3});
     ActionRequest mv3{3, ActionKind::Move};
@@ -321,13 +393,13 @@ TEST_CASE("Moonbeam B7: the lock clears when the zone ends, and a creature witho
     REQUIRE(oni.ok);
     CHECK(first_of(oni.events, EventKind::Reverted) == nullptr);
     CHECK(find(s, 3)->form == FormKind::Shapechanger);
-    CHECK(find(s, 3)->form_lock_zone == 0);
+    CHECK(lock_is(s, 3, {}));
     end_turns_until(s, 1);
     ActionRequest other{1, ActionKind::CastSpell, 1};
     other.spell_id = kHold; other.spell_level = 1;
     REQUIRE(step(s, other).ok);   // a new concentration spell ends Moonbeam
     CHECK(s.zones.empty());
-    CHECK(find(s, 2)->form_lock_zone == 0);
+    CHECK(lock_is(s, 2, {}));
 }
 
 TEST_CASE("Polymorph still refuses only the shapechanger fact (G16, no rule change)") {

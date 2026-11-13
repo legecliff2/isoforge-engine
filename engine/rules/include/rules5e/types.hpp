@@ -746,12 +746,13 @@ struct Combatant {
     uint32_t form_end_round = 0;
     std::optional<FormStats> base{};
     std::vector<uint32_t> form_blocked_features{};
-    // appended (Shapechange B7): the Moonbeam zone that locked this creature out of a new Shapechanger form.
-    // 0 = not locked. Set on a failed Moonbeam save by a creature with the shapechanger fact, including one
-    // already in its true form (Reverted reason 6 only when form == Shapechanger). Cleared when the creature
-    // leaves that zone or the zone ends. Combat::hash 0xEA folds it only while some combatant's value is
-    // non-zero. Not a FormStats field: revert does not clear it.
-    uint32_t form_lock_zone = 0;
+    // appended (Shapechange B7): Moonbeam zones this creature failed a save against and has not left.
+    // Empty = not locked. A failed save by a creature with the shapechanger fact inserts the zone (sorted,
+    // once), including a creature already in its true form. Reverted reason 6 is emitted only when
+    // form == Shapechanger. The creature stays locked while it is still inside any of these zones. Leaving
+    // a zone, or that zone ending, drops only that id. Death clears the set. Combat::hash 0xEA folds it
+    // only while some combatant's set is non-empty. Not a FormStats field: revert does not clear it.
+    std::vector<uint32_t> form_lock_zones{};
     // appended (EC deferred monsters, flagged): content tags (spell_id_of of monster `tags[]` and a character's race, plus
     // "elf" for elf races), read only by PredicateKind::TargetTag / NotTargetTag. Content-derived: not hashed.
     std::vector<uint32_t> tags{};

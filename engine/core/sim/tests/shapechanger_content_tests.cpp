@@ -507,7 +507,7 @@ TEST_CASE("Moonbeam B7 through content: reason 6, the lock, 0xEA only while lock
     beam.request.zone_x = 8;
     beam.request.zone_y = 4;
     REQUIRE(f.settle(f.c->submit(beam)).ok);
-    CHECK(f.who(0).form_lock_zone == 0);
+    CHECK(f.who(0).form_lock_zones.empty());
     CHECK(f.c->hash() != before);   // the zone itself folds under 0xAB; the lock does not
     f.end_turn();
     f.advance_to(f.id(0));
@@ -523,14 +523,14 @@ TEST_CASE("Moonbeam B7 through content: reason 6, the lock, 0xEA only while lock
     REQUIRE(rev >= 0);
     CHECK(f.c->events()[std::size_t(rev)].rules.b == 6);
     CHECK(f.who(0).form == FormKind::None);
-    REQUIRE(f.who(0).form_lock_zone != 0);
+    REQUIRE_FALSE(f.who(0).form_lock_zones.empty());
     const uint64_t locked = f.c->hash();
     auto& st = const_cast<rules5e::EncounterState&>(f.c->state());
     for (auto& c : st.combatants) if (c.id == f.id(0)) {
-        const uint32_t zone = c.form_lock_zone;
-        c.form_lock_zone = 0;
+        const auto zones = c.form_lock_zones;
+        c.form_lock_zones.clear();
         CHECK(f.c->hash() != locked);   // 0xEA is absent once nothing is locked
-        c.form_lock_zone = zone;
+        c.form_lock_zones = zones;
         CHECK(f.c->hash() == locked);
     }
     CHECK(f.use(f.id(0), fid, 2).error == "can't assume a different form until you leave the light");
@@ -539,7 +539,7 @@ TEST_CASE("Moonbeam B7 through content: reason 6, the lock, 0xEA only while lock
     out.kind = CommandKind::Step;
     out.to = {6, 4};
     REQUIRE(f.settle(f.c->submit(out)).ok);
-    CHECK(f.who(0).form_lock_zone == 0);
+    CHECK(f.who(0).form_lock_zones.empty());
     CHECK(f.c->hash() != locked);
     REQUIRE(f.use(f.id(0), fid, 2).ok);
 
@@ -554,7 +554,7 @@ TEST_CASE("Moonbeam B7 through content: reason 6, the lock, 0xEA only while lock
         REQUIRE(r.ok);
     }
     CHECK(f.who(2).form == FormKind::Shapechanger);
-    CHECK(f.who(2).form_lock_zone == 0);
+    CHECK(f.who(2).form_lock_zones.empty());
     f.check_replay();
 }
 
@@ -583,14 +583,14 @@ TEST_CASE("Moonbeam B7: a failed save in the true form locks, and 0xEA is absent
     }
     CHECK(f.index_of(EventKind::Reverted, mark) < 0);
     CHECK(f.who(0).form == FormKind::None);
-    REQUIRE(f.who(0).form_lock_zone != 0);
+    REQUIRE_FALSE(f.who(0).form_lock_zones.empty());
     const uint64_t locked = f.c->hash();
     auto& st = const_cast<rules5e::EncounterState&>(f.c->state());
     for (auto& c : st.combatants) if (c.id == f.id(0)) {
-        const uint32_t zone = c.form_lock_zone;
-        c.form_lock_zone = 0;
+        const auto zones = c.form_lock_zones;
+        c.form_lock_zones.clear();
         CHECK(f.c->hash() != locked);
-        c.form_lock_zone = zone;
+        c.form_lock_zones = zones;
         CHECK(f.c->hash() == locked);
     }
     CHECK(f.use(f.id(0), fid, 1).error == "can't assume a different form until you leave the light");
@@ -599,8 +599,79 @@ TEST_CASE("Moonbeam B7: a failed save in the true form locks, and 0xEA is absent
     out.kind = CommandKind::Step;
     out.to = {6, 4};
     REQUIRE(f.settle(f.c->submit(out)).ok);
-    CHECK(f.who(0).form_lock_zone == 0);
+    CHECK(f.who(0).form_lock_zones.empty());
     CHECK(f.c->hash() != locked);
     REQUIRE(f.use(f.id(0), fid, 1).ok);
     f.check_replay();
+}
+
+TEST_CASE("shapechanger: a form keeps each loadout attack link on its attack id") {
+    ContentLibrary lib = library();
+    auto item = lib.add_item(load_json("content/packs/srd51.core/items/spear.json"));
+    INFO(item.value_or(""));
+    REQUIRE_FALSE(item);
+    Json m = lycan();
+    m["id"] = "test.monster.lycan_gear";
+    m["actions"][0]["weapon"] = "srd51.item.spear";
+    m["equipment"] = Json::array({{{"item", "srd51.item.spear"}, {"equipped", true}}});
+    auto added = lib.add(m, "monster");
+    INFO(added.value_or(""));
+    REQUIRE_FALSE(added);
+    const uint32_t fid = shape_feature(*lib.find("test.monster.lycan_gear"));
+    world::Chunk chunk = arena({{"test.monster.lycan_gear", {4, 4}}, {kMage, {8, 8}}});
+    ecs::Registry reg;
+    std::string err;
+    auto c = Combat::create(reg, chunk, lib, 1, CombatOptions{true}, &err);
+    INFO(err);
+    REQUIRE(c);
+    const CombatantId me = chunk.spawns[0].stable_id;
+    const rules5e::ItemDef* spear_def = c->item_defs()->find("srd51.item.spear");
+    REQUIRE(spear_def);
+    const uint32_t spear = spear_def->id;
+    const rules5e::Loadout* born = c->loadout(me);
+    REQUIRE(born);
+    REQUIRE(born->view.attacks.size() == 1);
+    CHECK(born->view.attacks[0].def == spear);
+    REQUIRE_FALSE(born->hit_adjust.empty());
+    const int8_t hit = born->hit_adjust[0];
+    auto settle = [&](SubmitResult r) {
+        while (r.ok && r.needs) r = c->decide({r.needs->window_seq, false, 0});
+        return r;
+    };
+    auto advance = [&](CombatantId w) {
+        for (int i = 0; i < 8 && rules5e::current_actor(c->state()) != w; ++i) {
+            Command e;
+            e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn};
+            REQUIRE(settle(c->submit(e)).ok);
+        }
+        REQUIRE(rules5e::current_actor(c->state()) == w);
+    };
+    advance(me);
+    Command use;
+    use.request = {me, ActionKind::UseFeature};
+    use.request.feature_id = fid;
+    use.request.form_archetype = 1;
+    REQUIRE(settle(c->submit(use)).ok);
+    CHECK(rules5e::find(c->state(), me)->attacks[0].id == "bite");
+    const rules5e::Loadout* mid = c->loadout(me);
+    REQUIRE(mid);
+    CHECK(mid->view.attacks.empty());
+    bool remembered = false;
+    for (const auto& row : mid->attack_rows)
+        remembered = remembered || (row.id == "spear" && row.link.def == spear && row.hit == hit);
+    CHECK(remembered);
+    Command done;
+    done.request = {me, ActionKind::EndTurn};
+    REQUIRE(settle(c->submit(done)).ok);
+    advance(me);
+    Command back;
+    back.request = {me, ActionKind::Revert};
+    REQUIRE(settle(c->submit(back)).ok);
+    const rules5e::Loadout* restored = c->loadout(me);
+    REQUIRE(restored);
+    REQUIRE(restored->view.attacks.size() == 1);
+    CHECK(restored->view.attacks[0].def == spear);
+    REQUIRE_FALSE(restored->hit_adjust.empty());
+    CHECK(restored->hit_adjust[0] == hit);
+    CHECK(rules5e::find(c->state(), me)->attacks[0].id == "spear");
 }
