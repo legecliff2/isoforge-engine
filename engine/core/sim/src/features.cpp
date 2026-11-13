@@ -1062,34 +1062,100 @@ std::optional<std::string> apply_wild_shape(Archetype& a, const FeatureDecl& f, 
     return std::nullopt;
 }
 
-// shapechanger {cost: action (default) | bonus_action, forms: [{id, name, size?, armor_class?, speed?, actions?,
-// creature_type?}] (1..255)}: the SRD Shapechanger trait (werewolf, doppelganger, ...). Needs the creature fact
-// shapechanger: true (else a load error, like the validator). "Statistics other than size are the same" unless the form
-// lists them: speed replaces the speed object (sim keeps its walk speed: FormStats has one speed), actions = this
-// document's own actions[] ids usable in the form (omitted = all; the others' attacks / multiattacks are dropped),
-// creature_type replaces the type. One HP pool, no timer, no uses (at will).
-// Version gate as wild_shape: live at monster@4 / character@4 only; a file that declared < 4 lists it inert (no form swap;
-// the creature fact `shapechanger` is read as before).
+// shapechanger {cost, trait?, true_form?, forms[]} (CONTENT_CONVENTIONS §58). Live at monster@4 / character@4.
+// The keys added for B1-B6 (trait, true_form, and per form traits / senses / weapon_dice_multiplier, plus a speed
+// object that is more than walk) need a monster@5 file. character files keep the old key set. trait defaults true:
+// the feature requires and sets the creature fact. trait false (B6) does neither. One HP pool, no timer, at will.
+// A file that declared < 4 lists the feature inert (the creature fact is read as before).
 std::optional<std::string> apply_shapechanger(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx& ctx) {
     if (ctx.declared_version != 0 && ctx.declared_version < 4) {
         a.inert_features.push_back(f.id + " (shapechanger)");
         return std::nullopt;
     }
     std::string bad;
-    if (!only_keys(f.effect, {"kind", "cost", "forms"}, bad)) return f.id + ": shapechanger effect: unknown key '" + bad + "'";
-    if (ctx.doc.value("shapechanger", Json()) != Json(true)) return f.id + ": shapechanger trait requires shapechanger: true";
+    if (!only_keys(f.effect, {"kind", "cost", "forms", "trait", "true_form"}, bad))
+        return f.id + ": shapechanger effect: unknown key '" + bad + "'";
+    const bool monster5 = a.schema_type == "monster" && (ctx.declared_version == 0 || ctx.declared_version >= 5);
+    auto needs5 = [&](const char* key) -> std::optional<std::string> {
+        if (!monster5) return f.id + ": " + key + " needs a monster@5 file";
+        return std::nullopt;
+    };
     Archetype::FormFeature ff;
     ff.kind = uint8_t(rules5e::FormKind::Shapechanger);
-    const auto fl = f.effect.find("forms");
-    if (fl == f.effect.end() || !fl->is_array() || fl->empty() || fl->size() > 255) return f.id + ": shapechanger needs forms[] (1..255)";
+    ff.implies_shapechanger = true;
+    if (auto tr = f.effect.find("trait"); tr != f.effect.end()) {
+        if (auto e = needs5("trait")) return e;
+        if (!tr->is_boolean()) return f.id + ": shapechanger bad trait";
+        ff.implies_shapechanger = tr->get<bool>();
+    }
+    if (ff.implies_shapechanger && ctx.doc.value("shapechanger", Json()) != Json(true))
+        return f.id + ": shapechanger trait requires shapechanger: true";
     std::vector<std::string> own_actions;
     for (const Json& x : ctx.doc.value("actions", Json::array()))
         if (x.is_object() && x.value("id", Json()).is_string()) own_actions.push_back(x["id"].get<std::string>());
+    for (const char* key : {"traits", "features"})
+        for (const Json& feat : ctx.doc.value(key, Json::array())) {
+            if (!feat.is_object()) continue;
+            const auto ef = feat.find("effect");
+            if (ef == feat.end() || !ef->is_object() || ef->value("kind", "") != "multiattack") continue;
+            if (auto opts = ef->find("options"); opts != ef->end() && opts->is_array()) {
+                for (const Json& o : *opts)
+                    if (o.is_object() && o.value("id", Json()).is_string()) own_actions.push_back(o["id"].get<std::string>());
+            } else if (ef->contains("attacks")) {
+                own_actions.push_back("multiattack");
+            }
+        }
+    std::vector<std::string> own_traits;
+    for (const char* key : {"traits", "features"})
+        for (const Json& feat : ctx.doc.value(key, Json::array()))
+            if (feat.is_object() && feat.value("id", Json()).is_string()) own_traits.push_back(feat["id"].get<std::string>());
+    auto id_list = [&](const Json& arr, const char* what) -> std::optional<std::pair<std::string, std::vector<std::string>>> {
+        if (!arr.is_array() || arr.size() > 255) return std::make_pair(std::string("shapechanger bad ") + what, std::vector<std::string>{});
+        std::vector<std::string> keep;
+        for (const Json& id : arr) {
+            if (!id.is_string()) return std::make_pair(std::string("shapechanger bad ") + what, std::vector<std::string>{});
+            keep.push_back(id.get<std::string>());
+        }
+        return std::make_pair(std::string(), std::move(keep));
+    };
+    auto block_of = [](const std::vector<std::string>& all, const std::vector<std::string>& keep) {
+        std::vector<std::string> blocked;
+        for (const auto& o : all)
+            if (std::find(keep.begin(), keep.end(), o) == keep.end()) blocked.push_back(o);
+        return blocked;
+    };
+    if (auto tf = f.effect.find("true_form"); tf != f.effect.end()) {
+        if (auto e = needs5("true_form")) return e;
+        if (!tf->is_object() || !only_keys(*tf, {"actions", "traits"}, bad))
+            return f.id + ": shapechanger true_form: unknown key '" + (tf->is_object() ? bad : std::string("true_form")) + "'";
+        if (auto ac = tf->find("actions"); ac != tf->end()) {
+            auto got = id_list(*ac, "true_form.actions");
+            if (!got->first.empty()) return f.id + ": " + got->first;
+            for (const auto& id : got->second)
+                if (std::find(own_actions.begin(), own_actions.end(), id) == own_actions.end())
+                    return f.id + ": shapechanger true_form names unknown action '" + id + "'";
+            ff.limit_true_actions = true;
+            ff.true_blocked_actions = block_of(own_actions, got->second);
+        }
+        if (auto trs = tf->find("traits"); trs != tf->end()) {
+            auto got = id_list(*trs, "true_form.traits");
+            if (!got->first.empty()) return f.id + ": " + got->first;
+            for (const auto& id : got->second)
+                if (std::find(own_traits.begin(), own_traits.end(), id) == own_traits.end())
+                    return f.id + ": shapechanger true_form names unknown trait '" + id + "'";
+            ff.limit_true_traits = true;
+            ff.true_blocked_traits = block_of(own_traits, got->second);
+        }
+    }
+    const auto fl = f.effect.find("forms");
+    if (fl == f.effect.end() || !fl->is_array() || fl->empty() || fl->size() > 255) return f.id + ": shapechanger needs forms[] (1..255)";
     static const char* sizes[] = {"tiny", "small", "medium", "large", "huge", "gargantuan"};
+    static const char* speed_keys[] = {"walk", "fly", "swim", "climb", "burrow"};
     for (const Json& x : *fl) {
         if (!x.is_object() || !x.value("id", Json()).is_string() || x["id"].get<std::string>().empty())
             return f.id + ": shapechanger forms[] entries need an id";
-        if (!only_keys(x, {"id", "name", "size", "armor_class", "speed", "actions", "creature_type"}, bad))
+        if (!only_keys(x, {"id", "name", "size", "armor_class", "speed", "actions", "creature_type", "traits", "senses",
+                           "weapon_dice_multiplier"}, bad))
             return f.id + ": shapechanger form: unknown key '" + bad + "'";
         Archetype::FormFeature::Shape sh;
         sh.id = x["id"].get<std::string>();
@@ -1103,29 +1169,90 @@ std::optional<std::string> apply_shapechanger(Archetype& a, const FeatureDecl& f
         }
         if (auto ac = x.find("armor_class"); ac != x.end()) {
             if (!ac->is_number_integer() || ac->get<int>() < 0 || ac->get<int>() > 40) return f.id + ": shapechanger bad armor_class";
-            sh.ac = int16_t(ac->get<int>());
+            sh.ac = static_cast<int16_t>(ac->get<int>());
         }
         if (auto sp = x.find("speed"); sp != x.end()) {
             if (!sp->is_object()) return f.id + ": shapechanger bad speed";
-            const Json w = sp->value("walk", Json(0));
-            if (!w.is_number_integer() || w.get<int>() < 0 || w.get<int>() > 255) return f.id + ": shapechanger bad speed.walk";
-            sh.speed_ft = int16_t(w.get<int>());
+            for (auto it = sp->begin(); it != sp->end(); ++it) {
+                const std::string k = it.key();
+                bool known = false;
+                for (const char* sk : speed_keys) known = known || k == sk;
+                if (k == "hover") known = true;
+                if (!known) return f.id + ": shapechanger form: unknown key '" + k + "'";
+                if (k != "walk" && !monster5) return f.id + ": speed." + k + " needs a monster@5 file";
+            }
+            auto feet = [&](const char* k, int16_t& out) -> std::optional<std::string> {
+                auto it = sp->find(k);
+                if (it == sp->end()) return std::nullopt;
+                if (!it->is_number_integer() || it->get<int>() < 0 || it->get<int>() > 255)
+                    return f.id + ": shapechanger bad speed." + k;
+                out = static_cast<int16_t>(it->get<int>());
+                return std::nullopt;
+            };
+            if (auto e = feet("walk", sh.speed_ft)) return e;
+            if (monster5) {
+                if (auto e = feet("fly", sh.fly_ft)) return e;
+                if (auto e = feet("swim", sh.swim_ft)) return e;
+                if (auto e = feet("climb", sh.climb_ft)) return e;
+                if (auto e = feet("burrow", sh.burrow_ft)) return e;
+                if (auto hv = sp->find("hover"); hv != sp->end()) {
+                    if (!hv->is_boolean()) return f.id + ": shapechanger bad speed.hover";
+                    sh.hover = hv->get<bool>() ? int8_t(1) : int8_t(0);
+                }
+            }
         }
         if (auto ct = x.find("creature_type"); ct != x.end()) {
             const auto t = ct->is_string() ? creature_type_from_name(ct->get<std::string>()) : std::nullopt;
             if (!t) return f.id + ": shapechanger form '" + sh.id + "' has a bad creature_type";
             sh.creature_type = *t;
         }
-        if (auto ac = x.find("actions"); ac != x.end()) {
-            if (!ac->is_array() || ac->size() > 255) return f.id + ": shapechanger bad actions";
+        if (auto acts = x.find("actions"); acts != x.end()) {
+            if (!acts->is_array() || acts->size() > 255) return f.id + ": shapechanger bad actions";
             std::vector<std::string> keep;
-            for (const Json& id : *ac) {
+            for (const Json& id : *acts) {
                 if (!id.is_string() || std::find(own_actions.begin(), own_actions.end(), id.get<std::string>()) == own_actions.end())
                     return f.id + ": shapechanger form '" + sh.id + "' names unknown action '" + (id.is_string() ? id.get<std::string>() : "?") + "'";
                 keep.push_back(id.get<std::string>());
             }
-            for (const auto& o : own_actions)
-                if (std::find(keep.begin(), keep.end(), o) == keep.end()) sh.blocked_actions.push_back(o);
+            sh.limit_actions = true;
+            sh.blocked_actions = block_of(own_actions, keep);
+        }
+        if (auto trs = x.find("traits"); trs != x.end()) {
+            if (auto e = needs5("traits")) return e;
+            if (!trs->is_array() || trs->size() > 255) return f.id + ": shapechanger bad traits";
+            std::vector<std::string> keep;
+            for (const Json& id : *trs) {
+                if (!id.is_string() || std::find(own_traits.begin(), own_traits.end(), id.get<std::string>()) == own_traits.end())
+                    return f.id + ": shapechanger form '" + sh.id + "' names unknown trait '" + (id.is_string() ? id.get<std::string>() : "?") + "'";
+                keep.push_back(id.get<std::string>());
+            }
+            sh.limit_traits = true;
+            sh.blocked_traits = block_of(own_traits, keep);
+        }
+        if (auto se = x.find("senses"); se != x.end()) {
+            if (auto e = needs5("senses")) return e;
+            if (!se->is_object()) return f.id + ": shapechanger bad senses";
+            auto sense = [&](const char* k, int32_t& out) -> std::optional<std::string> {
+                auto it = se->find(k);
+                if (it == se->end()) return std::nullopt;
+                if (!it->is_number_integer() || it->get<int64_t>() < 0 || it->get<int64_t>() > 65535)
+                    return f.id + ": shapechanger bad senses." + k;
+                out = static_cast<int32_t>(it->get<int64_t>());
+                return std::nullopt;
+            };
+            for (auto it = se->begin(); it != se->end(); ++it)
+                if (it.key() != "darkvision" && it.key() != "blindsight" && it.key() != "tremorsense" && it.key() != "truesight")
+                    return f.id + ": shapechanger form: unknown key '" + it.key() + "'";
+            if (auto e = sense("darkvision", sh.darkvision_ft)) return e;
+            if (auto e = sense("blindsight", sh.blindsight_ft)) return e;
+            if (auto e = sense("tremorsense", sh.tremorsense_ft)) return e;
+            if (auto e = sense("truesight", sh.truesight_ft)) return e;
+        }
+        if (auto wm = x.find("weapon_dice_multiplier"); wm != x.end()) {
+            if (auto e = needs5("weapon_dice_multiplier")) return e;
+            if (!wm->is_number_integer() || wm->get<int>() < 1 || wm->get<int>() > 4)
+                return f.id + ": shapechanger bad weapon_dice_multiplier";
+            sh.weapon_dice_multiplier = static_cast<uint8_t>(wm->get<int>());
         }
         ff.shapes.push_back(std::move(sh));
     }
@@ -1141,7 +1268,7 @@ std::optional<std::string> apply_shapechanger(Archetype& a, const FeatureDecl& f
     spec.form = uint8_t(rules5e::FormKind::Shapechanger);
     spec.form_rounds = 0;
     spec.form_choices = uint8_t(ff.shapes.size());
-    a.base.shapechanger = true;
+    if (ff.implies_shapechanger) a.base.shapechanger = true;   // B6: trait false does not imply the fact
     a.feature_specs[fid] = spec;
     a.form_features[fid] = std::move(ff);
     a.active.push_back(std::move(af));

@@ -49,6 +49,7 @@ void kill(Combatant& c, std::vector<Event>& ev) {
     form_reverted(c, 4, 0, ev);   // R-G12: a creature that dies in a form reverts (shapechanger: "reverts on death")
     c.dead = true;
     c.hp = 0;
+    c.form_lock_zones.clear();   // a corpse cannot leave the light; keeping the lock would fold 0xEA until the zone ends
     emit(ev, EventKind::CombatantDied, c.id);
 }
 
@@ -636,12 +637,37 @@ void end_zone_effects(EncounterState& s, uint32_t zone_id, CombatantId who, std:
     }
 }
 
+// Shapechange B7: each failed Moonbeam is one zone id, kept sorted. Leaving that zone, or the zone ending, drops
+// only that id. The creature stays locked while any remaining zone still holds it.
+void add_form_lock(Combatant& c, uint32_t zone_id) {
+    const auto it = std::lower_bound(c.form_lock_zones.begin(), c.form_lock_zones.end(), zone_id);
+    if (it == c.form_lock_zones.end() || *it != zone_id) c.form_lock_zones.insert(it, zone_id);
+}
+void drop_form_lock(Combatant& c, uint32_t zone_id) {
+    const auto it = std::lower_bound(c.form_lock_zones.begin(), c.form_lock_zones.end(), zone_id);
+    if (it != c.form_lock_zones.end() && *it == zone_id) c.form_lock_zones.erase(it);
+}
+void clear_form_lock(EncounterState& s, CombatantId who, uint32_t zone_id) {
+    if (Combatant* c = find_mut(s, who)) drop_form_lock(*c, zone_id);
+}
+void clear_form_lock_zone(EncounterState& s, uint32_t zone_id) {
+    for (auto& c : s.combatants) drop_form_lock(c, zone_id);
+}
+bool held_in_form_lock(const EncounterState& s, const Combatant& a) {
+    for (const uint32_t zone_id : a.form_lock_zones) {
+        if (!find_zone(s, zone_id)) continue;
+        if (!s.hooks.zone_contains || s.hooks.zone_contains(s, zone_id, a.id, false)) return true;
+    }
+    return false;
+}
+
 // Removes zone `i`: ZoneEnded{owner, a = zone id, b = reason}, then its "while in the zone" effects end.
 void end_zone(EncounterState& s, std::size_t i, int32_t reason, std::vector<Event>& ev) {
     const ActiveZone z = s.zones[i];
     s.zones.erase(s.zones.begin() + std::ptrdiff_t(i));
     emit(ev, EventKind::ZoneEnded, z.owner, 0, int32_t(z.zone_id), reason);
     end_zone_effects(s, z.zone_id, 0, ev);
+    clear_form_lock_zone(s, z.zone_id);   // B7: the light is gone, so the form lock is gone
 }
 
 // Ends `c`'s concentration and every effect that depends on it.
@@ -3151,6 +3177,13 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
         emit(ev, EventKind::SavingThrowRolled, who, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
         failed = !r.success;
         ev[at].c = failed ? 3 : 0;
+        // B7: a shapechanger who fails Moonbeam cannot assume a different form until it leaves the light.
+        // "Instantly reverts" only when it is in a Shapechanger form; a true form still takes the lock.
+        // trait:false (no shapechanger fact), Wild Shape, and Polymorph are not this sentence. Reason 6 is not a new EventKind.
+        if (failed && row.shapechanger_disadvantage && t->shapechanger) {
+            if (t->form == FormKind::Shapechanger) form_reverted(*t, 6, 0, ev);
+            if (!t->dead) add_form_lock(*t, zone_id);
+        }
         if (!failed && row.success_immunity_hours != 0)   // batch 3: "immune to the ghast's Stench for 24 hours"
             s.aura_immunities.push_back(AuraImmunity{who, z.owner, z.spell_id, uint32_t(s.round) + uint32_t(row.success_immunity_hours) * 600u});
     }
@@ -3261,8 +3294,10 @@ void zone_membership(EncounterState& s, Ctx* ctx, CombatantId who, const std::ve
         const auto n_within = std::count(within.begin(), within.end(), id);
         if (n_in > 0) zone_event(s, ctx, id, who, ZoneTrigger::Enter, false, false, ev);
         for (std::ptrdiff_t k = 0; k < n_in + n_within; ++k) zone_event(s, ctx, id, who, ZoneTrigger::MoveWithin, false, false, ev);
-        if (std::find(left.begin(), left.end(), id) != left.end()) end_zone_effects(s, id, who, ev);   // exits never deal damage
-        else if (n_in + n_within > 0) silence_deafen(s, id, who, ev);   // PR 2: now completely inside a Silence zone
+        if (std::find(left.begin(), left.end(), id) != left.end()) {
+            end_zone_effects(s, id, who, ev);   // exits never deal damage
+            clear_form_lock(s, who, id);        // B7: leaving the light lifts the form lock
+        } else if (n_in + n_within > 0) silence_deafen(s, id, who, ev);   // PR 2: now completely inside a Silence zone
     }
 }
 
@@ -3285,7 +3320,10 @@ void zone_changes(EncounterState& s, Ctx* ctx, const std::vector<ZoneChange>& ch
         if (c.entered) {
             zone_event(s, ctx, c.zone_id, c.creature, ZoneTrigger::Enter, false, true, ev);
             silence_deafen(s, c.zone_id, c.creature, ev);   // PR 2: "while in the area" starts with the aura / zone move
-        } else end_zone_effects(s, c.zone_id, c.creature, ev);
+        } else {
+            end_zone_effects(s, c.zone_id, c.creature, ev);
+            clear_form_lock(s, c.creature, c.zone_id);   // B7: the beam moved off this creature
+        }
     }
 }
 
@@ -6723,11 +6761,19 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         std::optional<FeatureSpec> fs;
         if (s.hooks.feature_spec) fs = s.hooks.feature_spec(s, a, req.feature_id);
         std::optional<FormStats> form_stats;   // R-G12: a transform feature (Wild Shape, shapechanger)
+        // B4: hybrid -> wolf is one action of the same Shapechanger feature. Any other form still refuses.
+        const bool switch_shape = fs && fs->form == uint8_t(FormKind::Shapechanger) && a.form == FormKind::Shapechanger &&
+                                  a.form_source == req.feature_id;
         if (fs && fs->form != 0) {
             if (fs->form != uint8_t(FormKind::WildShape) && fs->form != uint8_t(FormKind::Shapechanger))
                 return fail("feature form: 2 (Wild Shape) or 3 (shapechanger)");
-            if (a.form != FormKind::None) return fail("already transformed");
+            if (switch_shape && a.form_archetype == req.form_archetype) return fail("already in that form");
+            if (a.form != FormKind::None && !switch_shape) return fail("already transformed");
             if (is_incapacitated(a)) return fail("incapacitated");
+            // B7: Moonbeam. Refused while any locking zone still exists and the creature is still in it
+            // (no zone_contains hook: the lock stands). Leaving and zone end drop that zone themselves.
+            if (held_in_form_lock(s, a))
+                return fail("can't assume a different form until you leave the light");
             if (req.form_archetype == 0) return fail("form_archetype required");
             if (fs->form_choices != 0 && req.form_archetype > fs->form_choices) return fail("bad form_archetype");
             if (s.hooks.build_form) form_stats = s.hooks.build_form(s, a, FormKind(fs->form), req.feature_id, uint8_t(req.form_archetype - 1));
@@ -6785,6 +6831,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         s.budget = b;
         if (fu && fu->max > 0) ++fu->used;
         emit(out.events, EventKind::FeatureUsed, a.id, 0, int32_t(req.feature_id), req.as_bonus_action ? 1 : 0);
+        if (form_stats && switch_shape) form_reverted(a, 3, 0, out.events);   // B4: Reverted b = 3, then Transformed
         if (form_stats && apply_form(a, FormKind(fs->form), *form_stats)) {   // R-G12: Transformed after FeatureUsed
             a.form_source = req.feature_id; a.form_caster = 0; a.form_archetype = req.form_archetype;
             a.form_end_round = fs->form_rounds != 0 ? uint32_t(s.round) + fs->form_rounds : 0u;
@@ -8386,6 +8433,9 @@ FormStats own_stats(const Combatant& c) {
     f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.burrow_ft = c.burrow_ft; f.hover = c.hover;   // feat/move-modes
     f.ability_reduction = c.ability_reduction;   // batch 3 Strength Drain
     f.keen_senses = c.keen_senses;   // Keen Senses (§30)
+    f.set_senses = true;   // the saved block restores these on revert; a form that leaves set_senses false does not write them
+    f.darkvision_ft = c.darkvision_ft; f.blindsight_ft = c.blindsight_ft;
+    f.tremorsense_ft = c.tremorsense_ft; f.truesight_ft = c.truesight_ft;
     return f;
 }
 void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_max
@@ -8399,6 +8449,10 @@ void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_m
     c.fly_ft = f.fly_ft; c.swim_ft = f.swim_ft; c.climb_ft = f.climb_ft; c.burrow_ft = f.burrow_ft; c.hover = f.hover;   // feat/move-modes
     c.ability_reduction = f.ability_reduction;   // batch 3 Strength Drain
     c.keen_senses = f.keen_senses;   // Keen Senses (§30)
+    if (f.set_senses) {   // Shapechange B3: Wild Shape / Polymorph leave senses (set_senses stays false)
+        c.darkvision_ft = f.darkvision_ft; c.blindsight_ft = f.blindsight_ft;
+        c.tremorsense_ft = f.tremorsense_ft; c.truesight_ft = f.truesight_ft;
+    }
 }
 template <class T> void append_all(std::vector<T>& to, const std::vector<T>& from) { to.insert(to.end(), from.begin(), from.end()); }
 }  // namespace

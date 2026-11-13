@@ -484,6 +484,7 @@ std::optional<std::string> add_trigger(const std::string& arch, const std::strin
                                        std::map<uint32_t, std::string>& ids, rules5e::Combatant& c) {
     const std::string name = arch + "#" + owner + "#" + std::to_string(index);
     t.id = rules5e::spell_id_of(name);
+    t.owner_id = rules5e::spell_id_of(owner);   // Shapechange B2/B3: forms filter triggers by this owner
     if (auto [it, fresh] = ids.emplace(t.id, name); !fresh)
         return arch + ": trigger id collision between '" + it->second + "' and '" + name + "'";
     if (c.triggers.size() >= 32) return arch + ": too many triggers (max 32)";
@@ -2700,6 +2701,16 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
         at.reach_or_range_ft = uint8_t(melee ? geti(act, "reach", 5) : std::min(normal, 255));
         if (ranged) { at.range_ft = uint16_t(normal); at.long_range_ft = uint16_t(lng); }
+        // Shapechange B5: a weapon attack (not a natural attack) remembers the die count before
+        // weapon_dice_multiplier, so a form can replace that multiplier. A count that is not a
+        // multiple of the monster's multiplier is left at 0 and is not rescaled.
+        if (schema_type == "monster" && act.contains("weapon") && !act.contains("natural") && at.damage.count > 0) {
+            int mult = 1;
+            if (auto wm = doc.find("weapon_dice_multiplier"); wm != doc.end() && wm->is_number_integer() && wm->get<int>() >= 1)
+                mult = wm->get<int>();
+            if (int(at.damage.count) % mult == 0)
+                at.weapon_dice_base = static_cast<uint8_t>(int(at.damage.count) / mult);
+        }
         c.attacks.push_back(at);
         a.normal_range_ft.push_back(uint16_t(normal));
         a.long_range_ft.push_back(uint16_t(lng));

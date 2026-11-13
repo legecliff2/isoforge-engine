@@ -802,7 +802,7 @@ WS = {"kind": "wild_shape", "pool": "wild_shape", "forms": [WOLF, BEAR, SNAKE],
       "max_cr_by_level": [{"level": 2, "max_cr": "1/4"}, {"level": 4, "max_cr": "1/2"}, {"level": 8, "max_cr": "1"}]}
 DRUID = [(["classes", 0, "class"], "druid"), (["resources", 1], WS_POOL), (["features", 1], _feat("wild_shape", WS))]
 SC = {"kind": "shapechanger", "forms": [{"id": "wolf", "name": "Wolf form", "size": "medium", "actions": ["bite"]},
-                                        {"id": "bat", "name": "Bat form", "speed": {"walk": 5, "fly": 30}}]}
+                                        {"id": "bat", "name": "Bat form", "speed": {"walk": 5}}]}
 SHAPER = [(["shapechanger"], True), (["traits", 6], _feat("shapechanger", SC))]
 WSF = ["features", 1, "effect"]
 SCF = ["traits", 6, "effect"]
@@ -846,6 +846,12 @@ RG12_CASES = [
     # EC #176: the loader's form key list (id, name, size, armor_class, speed, actions, creature_type); speed_walk is refused
     ("sc_form_speed_walk", D, [(SCF + ["forms", 0, "speed_walk"], 30)], [], "speed_walk"),
     ("sc_effect_extra_key", D, [(SCF + ["uses"], 1)], [], "uses"),
+    ("sc_speed_fly_at_4", D, [(SCF + ["forms", 1, "speed", "fly"], 30)], [], "speed.fly needs a monster@5 file"),
+    ("sc_trait_at_4", D, [(SCF + ["trait"], False)], [], "trait needs a monster@5 file"),
+    ("sc_true_form_at_4", D, [(SCF + ["true_form"], {"actions": ["bite"]})], [], "true_form needs a monster@5 file"),
+    ("sc_form_traits_at_4", D, [(SCF + ["forms", 0, "traits"], ["shapechanger"])], [], "traits needs a monster@5 file"),
+    ("sc_form_senses_at_4", D, [(SCF + ["forms", 0, "senses"], {"darkvision": 60})], [], "senses needs a monster@5 file"),
+    ("sc_form_dice_at_4", D, [(SCF + ["forms", 0, "weapon_dice_multiplier"], 1)], [], "weapon_dice_multiplier needs a monster@5 file"),
     # requires_humanoid_form
     ("warn_rhf_without_wild_shape", D, [(["traits", 0, "requires_humanoid_form"], True)], [], "requires_humanoid_form has no effect without wild_shape"),
     ("rhf_not_boolean", B, [(["features", 0, "requires_humanoid_form"], 1)], [], "is not of type 'boolean'"),
@@ -1028,8 +1034,9 @@ class ExtraAttack(unittest.TestCase):
         self.assertEqual(set(arm["properties"]), set(checks_v4.EXTRA_ATTACK_KEYS))
         self.assertEqual((arm["properties"]["attacks_per_action"]["minimum"], arm["properties"]["attacks_per_action"]["maximum"]), (2, 4))
         self.assertEqual(set(d["shapechanger_form"]["properties"]),
-                         {"id", "name", "size", "armor_class", "speed", "actions", "creature_type"})   # EC #176 only_keys
-        self.assertEqual(set(d["shapechanger_effect"]["properties"]), {"kind", "cost", "forms"})
+                         {"id", "name", "size", "armor_class", "speed", "actions", "creature_type",
+                          "traits", "senses", "weapon_dice_multiplier"})   # EC #176 only_keys, plus §58
+        self.assertEqual(set(d["shapechanger_effect"]["properties"]), {"kind", "cost", "forms", "trait", "true_form"})
 
 
 if __name__ == "__main__":

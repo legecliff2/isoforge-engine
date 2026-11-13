@@ -4,6 +4,7 @@
 // (sim/equipment.hpp) builds it at setup when CombatOptions::equipment is on and mutates it in apply_equip. Empty by default, so
 // every pre-equipment encounter is unchanged (Combat::hash folds 0xD0 / 0xD2 only when present).
 #include <cstdint>
+#include <string>
 #include <vector>
 #include "rules5e/item.hpp"
 #include "rules5e/types.hpp"
@@ -19,6 +20,15 @@ struct Loadout {
     // at setup, so recompute_derived reproduces the stat block exactly until something changes. One per view.attacks entry.
     int8_t ac_adjust = 0;
     std::vector<int8_t> hit_adjust{}, dmg_adjust{};
+    // Not folded. One row per attack id this loadout has linked, so a form that changes Combatant::attacks keeps
+    // the weapon link and the setup adjust on that id (index-parallel view.attacks is rebuilt to the new list).
+    struct AttackRow {
+        std::string id;
+        AttackLink link{};
+        int8_t hit = 0;
+        int8_t dmg = 0;
+    };
+    std::vector<AttackRow> attack_rows{};
     uint32_t interaction_turn = 0;      // sim's TurnStarted count when the free object interaction was spent (0 = never)
     // EQUIPMENT.md 2.5.1: ammunition spent this encounter per ammunition def (def order), +1 per shot from a stack, hit or
     // miss (thrown weapons and stackless / monster ammunition are not counted). recovered_ammo(count) returns at the end.

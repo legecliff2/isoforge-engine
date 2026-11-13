@@ -142,6 +142,11 @@ struct Attack {
     // B5: on_hit grapple no_damage. A hit deals no damage and the grapple applies. Not a request choice, so it is not
     // ActionRequest::grapple_instead and not log_hash 0xE2. Content-derived: not hashed.
     bool grapple_no_damage = false;
+    // appended (Shapechange B5): die count of a weapon attack before monster@5 weapon_dice_multiplier.
+    // 0 = not a scaled weapon (a natural attack, or a printed count that is not a multiple of the multiplier).
+    // A shapechanger form's weapon_dice_multiplier replaces the monster's: count = base * form multiplier.
+    // Content-derived. Not hashed.
+    uint8_t weapon_dice_base = 0;
 };
 inline constexpr int8_t kAttackAbilityFinesse = 6;
 inline constexpr int8_t kAttackAbilityNone = 7;
@@ -373,6 +378,9 @@ struct Trigger {
     // appended (7.2zb, Open Hand Technique): with choice ask (hit triggers), the HitRider window offers one option per
     // non-Spend effect and only the chosen one applies (ReactionOption::slot_level = 1 + effect index). Auto picks the first.
     bool pick_one = false;
+    // appended (Shapechange B2/B3): spell_id_of of the owning action or trait id. 0 = not a content owner.
+    // A form's actions[] / traits[] subset drops triggers with a blocked owner. Not hashed (static content).
+    uint32_t owner_id = 0;
 };
 
 // A mechanical reaction compiled from content (row 11): offered in the Damaged / AllyAttacked windows of its owner.
@@ -584,6 +592,11 @@ struct FormStats {
     // appended (Keen Senses, CONTENT_CONVENTIONS §30): the form's keen_senses. Wild Shape / Polymorph take the beast's;
     // revert restores the creature's own. 0 = none. Static, not hashed.
     uint8_t keen_senses = 0;
+    // appended (Shapechange B3): the form's senses. Written by put_stats only when set_senses is true, so Wild Shape
+    // and Polymorph (set_senses false) leave the creature's senses alone. A shapechanger form sets them from the
+    // stat block, then applies the shape's overrides (an explicit 0 removes that sense).
+    bool set_senses = false;
+    uint16_t darkvision_ft = 0, blindsight_ft = 0, tremorsense_ft = 0, truesight_ft = 0;
 };
 
 // One legendary-action option. Static content: no per-option state. feature_id on a LegendaryAction request is the
@@ -733,6 +746,13 @@ struct Combatant {
     uint32_t form_end_round = 0;
     std::optional<FormStats> base{};
     std::vector<uint32_t> form_blocked_features{};
+    // appended (Shapechange B7): Moonbeam zones this creature failed a save against and has not left.
+    // Empty = not locked. A failed save by a creature with the shapechanger fact inserts the zone (sorted,
+    // once), including a creature already in its true form. Reverted reason 6 is emitted only when
+    // form == Shapechanger. The creature stays locked while it is still inside any of these zones. Leaving
+    // a zone, or that zone ending, drops only that id. Death clears the set. Combat::hash 0xEA folds it
+    // only while some combatant's set is non-empty. Not a FormStats field: revert does not clear it.
+    std::vector<uint32_t> form_lock_zones{};
     // appended (EC deferred monsters, flagged): content tags (spell_id_of of monster `tags[]` and a character's race, plus
     // "elf" for elf races), read only by PredicateKind::TargetTag / NotTargetTag. Content-derived: not hashed.
     std::vector<uint32_t> tags{};

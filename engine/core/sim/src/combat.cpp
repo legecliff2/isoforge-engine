@@ -38,6 +38,70 @@ std::optional<std::string> spawn_team_name(const world::EntitySpawn& sp, const A
     return name;
 }
 
+// Shapechange B2/B3: drop attacks, multiattacks and triggers the true form or a shape does not list.
+// An omitted list (limit false) keeps every id. AttackIs predicates are remapped onto the kept attacks.
+void subset_form_block(std::vector<rules5e::Attack>& attacks, std::vector<rules5e::AttackSequence>& multiattacks,
+                       std::vector<rules5e::Trigger>& triggers, bool limit_actions, const std::vector<std::string>& blocked_actions,
+                       bool limit_traits, const std::vector<std::string>& blocked_traits) {
+    if (!limit_actions && !limit_traits) return;
+    auto listed = [](const std::vector<std::string>& ids, std::string_view id) {
+        return std::find(ids.begin(), ids.end(), id) != ids.end();
+    };
+    auto owner_blocked = [&](uint32_t owner) {
+        if (owner == 0) return false;
+        if (limit_actions)
+            for (const auto& id : blocked_actions)
+                if (rules5e::spell_id_of(id) == owner) return true;
+        if (limit_traits)
+            for (const auto& id : blocked_traits)
+                if (rules5e::spell_id_of(id) == owner) return true;
+        return false;
+    };
+    if (limit_actions && !blocked_actions.empty()) {
+        std::vector<rules5e::Attack> kept;
+        std::vector<int> remap(attacks.size(), -1);
+        for (std::size_t i = 0; i < attacks.size(); ++i) {
+            if (listed(blocked_actions, attacks[i].id)) continue;
+            remap[i] = static_cast<int>(kept.size());
+            kept.push_back(attacks[i]);
+        }
+        std::vector<rules5e::AttackSequence> seqs;
+        for (const auto& m : multiattacks) {
+            if (listed(blocked_actions, m.id)) continue;
+            rules5e::AttackSequence q = m;
+            q.attacks.clear();
+            bool ok = true;
+            for (uint8_t ai : m.attacks) {
+                if (ai >= remap.size() || remap[ai] < 0) { ok = false; break; }
+                q.attacks.push_back(static_cast<uint8_t>(remap[ai]));
+            }
+            if (ok) seqs.push_back(std::move(q));
+        }
+        attacks = std::move(kept);
+        multiattacks = std::move(seqs);
+        for (auto& t : triggers)
+            for (auto& p : t.when)
+                if (p.kind == rules5e::PredicateKind::AttackIs && p.a >= 0 && static_cast<std::size_t>(p.a) < remap.size() &&
+                    remap[static_cast<std::size_t>(p.a)] >= 0)
+                    p.a = static_cast<int16_t>(remap[static_cast<std::size_t>(p.a)]);
+    }
+    if (limit_actions || limit_traits) {
+        std::vector<rules5e::Trigger> kept;
+        for (const auto& t : triggers)
+            if (!owner_blocked(t.owner_id)) kept.push_back(t);
+        triggers = std::move(kept);
+    }
+}
+
+void apply_true_form(rules5e::Combatant& k, const Archetype& a) {
+    for (const auto& [fid, ff] : a.form_features) {
+        (void)fid;
+        if (ff.kind != static_cast<uint8_t>(rules5e::FormKind::Shapechanger)) continue;
+        subset_form_block(k.attacks, k.multiattacks, k.triggers, ff.limit_true_actions, ff.true_blocked_actions,
+                          ff.limit_true_traits, ff.true_blocked_traits);
+    }
+}
+
 // Tiles a Grappled entry still holds across. The Grapple action (via_attack 0xFF) is 5 ft. B11 Whelm records
 // 0xFE, which is not an attack index, so it is 5 ft as well. An extended rider (restrains, exclusive, max_grapples,
 // instead_of_damage, no_damage) records the attack, and that attack's reach is the grappling effect's reach
@@ -131,6 +195,7 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
                     }
         placed.push_back({ws.tile, fp});
         rules5e::Combatant k = a->base;
+        apply_true_form(k, *a);   // B2: the true form's action and trait subset; the archetype keeps the full block
         k.id = sp.stable_id;
         k.team = uint8_t(std::lower_bound(c.team_names_.begin(), c.team_names_.end(), team_name) - c.team_names_.begin());
         if (!sp.overrides_json.empty()) {   // B18: the amulet wearer. Not an item. Replay reads the same spawn override.
@@ -1518,6 +1583,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     for (std::size_t i = 0; i < evs.size(); ++i) {
         const auto& e = evs[i];
         if (e.kind != rules5e::EventKind::Transformed && e.kind != rules5e::EventKind::Reverted) continue;
+        if (options_.equipment && items_) align_loadout_attacks(state_, e.actor, *items_);
         if (i >= tb) {
             form_footprint(e, teardown_sim[i - tb]);
         } else {
@@ -2612,6 +2678,23 @@ uint64_t Combat::hash() const {
             }
         }
     }
+    // 0xEA (Shapechange B7): Moonbeam's form lock. Folded only while some form_lock_zones is non-empty,
+    // so a fight that never fails that save hashes as before. Next free tag is 0xEB.
+    // u32 count of locked combatants, then per such combatant in combatants order: id, zone count, zone ids ascending.
+    {
+        uint32_t locked = 0;
+        for (const auto& c : state_.combatants) if (!c.form_lock_zones.empty()) ++locked;
+        if (locked != 0) {
+            h.byte(0xEA);
+            h.u32(locked);
+            for (const auto& c : state_.combatants) {
+                if (c.form_lock_zones.empty()) continue;
+                h.u32(c.id);
+                h.u32(uint32_t(c.form_lock_zones.size()));
+                for (const uint32_t zone_id : c.form_lock_zones) h.u32(zone_id);
+            }
+        }
+    }
     return h.value();
 }
 
@@ -3452,34 +3535,49 @@ std::optional<rules5e::FormStats> Combat::build_form(const rules5e::Combatant& w
         if (ff == own->form_features.end() || ff->second.kind != uint8_t(kind) || index >= ff->second.shapes.size())
             return no("unknown shapechanger form");
         const auto& sh = ff->second.shapes[index];
-        f = stats_of(who);   // "statistics other than size are the same"; equipment is not transformed (attacks kept)
+        f = stats_of(who);   // abilities, saves, skills, resistances: the live creature ("statistics are the same")
         f.hp = who.hp;
-        f.size = own->base.size;   // the stat block size (the creature may already be in another shape)
+        f.ability_reduction = who.ability_reduction;   // D3: a shapechanger form keeps the reduction (Wild Shape still starts unreduced)
+        // Actions, traits, speeds, senses, size, AC and type come from the full stat block, not the true-form subset
+        // the creature may already be wearing (B2). A shape then overrides only what it lists.
+        f.attacks = own->base.attacks;
+        f.multiattacks = own->base.multiattacks;
+        f.triggers = own->base.triggers;
+        f.speed_ft = own->base.speed_ft;
+        f.fly_ft = own->base.fly_ft;
+        f.swim_ft = own->base.swim_ft;
+        f.climb_ft = own->base.climb_ft;
+        f.burrow_ft = own->base.burrow_ft;
+        f.hover = own->base.hover;
+        f.size = own->base.size;
+        f.ac = own->base.ac;
+        f.creature_type = own->base.creature_type;
+        f.set_senses = true;
+        f.darkvision_ft = own->base.darkvision_ft;
+        f.blindsight_ft = own->base.blindsight_ft;
+        f.tremorsense_ft = own->base.tremorsense_ft;
+        f.truesight_ft = own->base.truesight_ft;
         if (sh.size) f.size = rules5e::Size(uint8_t(*sh.size));
-        if (sh.ac >= 0) f.ac = int8_t(sh.ac);
-        if (sh.speed_ft >= 0) f.speed_ft = uint8_t(sh.speed_ft);
+        if (sh.ac >= 0) f.ac = static_cast<int8_t>(sh.ac);
+        if (sh.speed_ft >= 0) f.speed_ft = static_cast<uint8_t>(sh.speed_ft);
+        if (sh.fly_ft >= 0) f.fly_ft = static_cast<uint8_t>(sh.fly_ft);
+        if (sh.swim_ft >= 0) f.swim_ft = static_cast<uint8_t>(sh.swim_ft);
+        if (sh.climb_ft >= 0) f.climb_ft = static_cast<uint8_t>(sh.climb_ft);
+        if (sh.burrow_ft >= 0) f.burrow_ft = static_cast<uint8_t>(sh.burrow_ft);
+        if (sh.hover >= 0) f.hover = sh.hover != 0;
         if (sh.creature_type) f.creature_type = *sh.creature_type;
-        if (!sh.blocked_actions.empty()) {   // form actions[]: drop the other own actions' attacks (and multiattacks using them)
-            auto blocked = [&](std::string_view id) {
-                return std::find(sh.blocked_actions.begin(), sh.blocked_actions.end(), id) != sh.blocked_actions.end();
-            };
-            std::vector<rules5e::Attack> kept;
-            std::vector<int> remap(f.attacks.size(), -1);
-            for (std::size_t i = 0; i < f.attacks.size(); ++i)
-                if (!blocked(f.attacks[i].id)) { remap[i] = int(kept.size()); kept.push_back(f.attacks[i]); }
-            std::vector<rules5e::AttackSequence> seqs;
-            for (const auto& m : f.multiattacks) {
-                if (blocked(m.id)) continue;
-                rules5e::AttackSequence q{m.id, {}};
-                bool ok = true;
-                for (uint8_t ai : m.attacks) {
-                    if (ai >= remap.size() || remap[ai] < 0) { ok = false; break; }
-                    q.attacks.push_back(uint8_t(remap[ai]));
-                }
-                if (ok) seqs.push_back(std::move(q));
+        if (sh.darkvision_ft >= 0) f.darkvision_ft = static_cast<uint16_t>(sh.darkvision_ft);
+        if (sh.blindsight_ft >= 0) f.blindsight_ft = static_cast<uint16_t>(sh.blindsight_ft);
+        if (sh.tremorsense_ft >= 0) f.tremorsense_ft = static_cast<uint16_t>(sh.tremorsense_ft);
+        if (sh.truesight_ft >= 0) f.truesight_ft = static_cast<uint16_t>(sh.truesight_ft);
+        subset_form_block(f.attacks, f.multiattacks, f.triggers, sh.limit_actions, sh.blocked_actions, sh.limit_traits,
+                          sh.blocked_traits);
+        if (sh.weapon_dice_multiplier >= 1) {   // B5: weapon attacks only (weapon_dice_base 0 is a natural attack)
+            for (auto& at : f.attacks) {
+                if (at.weapon_dice_base == 0) continue;
+                const int n = int(at.weapon_dice_base) * int(sh.weapon_dice_multiplier);
+                at.damage.count = static_cast<uint8_t>(std::min(n, 255));
             }
-            f.attacks = std::move(kept);
-            f.multiattacks = std::move(seqs);
         }
     } else if (kind == rules5e::FormKind::WildShape || kind == rules5e::FormKind::Polymorph) {
         const Archetype* fa = form_archetype(who.id, kind, source, index);

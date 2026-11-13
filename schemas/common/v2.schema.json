@@ -4321,7 +4321,7 @@
         "id",
         "name"
       ],
-      "propertyNames": {
+        "propertyNames": {
         "enum": [
           "id",
           "name",
@@ -4329,7 +4329,10 @@
           "armor_class",
           "speed",
           "actions",
-          "creature_type"
+          "creature_type",
+          "traits",
+          "senses",
+          "weapon_dice_multiplier"
         ]
       },
       "properties": {
@@ -4348,7 +4351,7 @@
         },
         "speed": {
           "$ref": "../common/v1.schema.json#/$defs/speed",
-          "description": "Replaces the whole speed object (not merged)."
+          "description": "monster@5+: each present key overrides that speed (0 removes it; an omitted key keeps the true form's value). A file older than monster@5, and every character file, may still name walk only; fly, swim, climb, burrow and hover are `speed.<key> needs a monster@5 file`."
         },
         "actions": {
           "type": "array",
@@ -4361,6 +4364,32 @@
         },
         "creature_type": {
           "$ref": "../common/v1.schema.json#/$defs/creature_type"
+        },
+        "traits": {
+          "type": "array",
+          "maxItems": 255,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/local_id"
+          },
+          "description": "monster@5+: ids of this document's own traits[] (or features[]) kept in the form. Omitted = all. The others' triggers are dropped."
+        },
+        "senses": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "darkvision": { "$ref": "../common/v1.schema.json#/$defs/range_ft" },
+            "blindsight": { "$ref": "../common/v1.schema.json#/$defs/range_ft" },
+            "tremorsense": { "$ref": "../common/v1.schema.json#/$defs/range_ft" },
+            "truesight": { "$ref": "../common/v1.schema.json#/$defs/range_ft" }
+          },
+          "description": "monster@5+: each present sense replaces the true form's value. 0 removes it. An omitted sense is kept."
+        },
+        "weapon_dice_multiplier": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4,
+          "description": "monster@5+: replaces the monster's weapon_dice_multiplier for this form's weapon attacks (not natural attacks). Omitted keeps the monster's multiplier."
         }
       }
     },
@@ -4371,14 +4400,16 @@
         "kind",
         "forms"
       ],
-      "propertyNames": {
+        "propertyNames": {
         "enum": [
           "kind",
           "cost",
-          "forms"
+          "forms",
+          "trait",
+          "true_form"
         ]
       },
-      "description": "R-G12 (VERSION_BUMP_BATCH 7.2q) shapechanger trait (monster or character): the forms listed are merged over the creature's own block, one HP pool. Needs the #141 creature fact shapechanger: true. Loader: Engine Core build_form (FeatureSpec form 3). Reserved until that loader lands.",
+      "description": "R-G12 shapechanger trait, extended in place (CONTENT_CONVENTIONS §58). One HP pool. trait defaults true and then the #141 creature fact shapechanger: true is required and set. trait false (monster@5+) neither requires nor sets that fact. true_form (monster@5+) lists the actions and traits the creature has before it changes. Loader: Engine Core build_form (FeatureSpec form 3).",
       "properties": {
         "kind": {
           "const": "shapechanger"
@@ -4395,6 +4426,31 @@
             "$ref": "#/$defs/shapechanger_form"
           },
           "description": "form_archetype = 1 + index into this list."
+        },
+        "trait": {
+          "type": "boolean",
+          "description": "monster@5+. Default true: the feature requires and sets shapechanger: true. false: Change Shape without the shapechanger fact (oni). Moonbeam and Polymorph still read only that fact."
+        },
+        "true_form": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "actions": {
+              "type": "array",
+              "maxItems": 255,
+              "uniqueItems": true,
+              "items": { "$ref": "../common/v1.schema.json#/$defs/local_id" },
+              "description": "actions[] ids, or multiattack option ids, the creature has in its true form. Omitted = all."
+            },
+            "traits": {
+              "type": "array",
+              "maxItems": 255,
+              "uniqueItems": true,
+              "items": { "$ref": "../common/v1.schema.json#/$defs/local_id" },
+              "description": "traits[] / features[] ids kept in the true form. Omitted = all. Others' triggers are dropped at spawn and return with the saved block on revert."
+            }
+          },
+          "description": "monster@5+. The true form is a subset of the full block. build_form starts from the full block so a form can regain what the true form lacks."
         }
       }
     },
