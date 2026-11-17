@@ -1,6 +1,6 @@
 name: CI
 
-# Linux jobs run on ubuntu-latest for every event, including push to main, schedule,
+# Linux jobs run on ubuntu-24.04 for every event, including push to main, schedule,
 # and workflow_dispatch. Nothing in this workflow requests a self-hosted runner.
 # Retiring the old box: docs/CI_SELF_HOSTED.md.
 #
@@ -14,11 +14,11 @@ name: CI
 #   PRs; Windows Debug still builds and tests every PR. Every main commit is covered by the push
 #   run, so it is not added to the nightly schedule.
 # - Release jobs skip the python_only ctest label (pure-Python validator tests; the Debug jobs run them).
-# - linux-runner does not pick a machine. It only sets Linux compile/test caps, on ubuntu-latest.
+# - linux-runner does not pick a machine. It only sets Linux compile/test caps, on ubuntu-24.04.
 #   CI_BURST 'true': Linux test parallelism 8, compile 4. CI_BURST 'false': Linux test
 #   parallelism 4, compile 4. It never selects a runner. Every Linux job hard-codes
-#   runs-on: ubuntu-latest. In build-test, only the Windows MSVC Debug row is windows-latest.
-# - changes and ci-required stay on ubuntu-latest. Windows and macOS stay hosted.
+#   runs-on: ubuntu-24.04. In build-test, only the Windows MSVC Debug row is windows-latest.
+# - changes and ci-required stay on ubuntu-24.04. Windows and macOS stay hosted.
 # - Draft PRs skip build/test jobs. ci-required fails those runs: a skipped required
 #   check counts as success in a ruleset, so the gate must not go green and must not
 #   skip itself. ready_for_review is a pull_request type; marking the PR ready runs CI.
@@ -57,7 +57,7 @@ concurrency:
   # Not a global lock. Several PRs run at once: the group is the PR number, or the ref for a
   # branch that is not a PR. A new push cancels that group only. main (push, schedule, dispatch)
   # gets its own group per sha + event and is never cancelled.
-  # Linux is ubuntu-latest for every event, so runs overlap on hosted runners. CI_BURST
+  # Linux is ubuntu-24.04 for every event, so runs overlap on hosted runners. CI_BURST
   # only changes Linux test parallelism (8 vs 4). It does not choose a runner.
   # Windows is windows-latest and already overlaps Linux.
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && format('{0}-{1}', github.sha, github.event_name) || (github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number)) || github.ref }}
@@ -72,7 +72,7 @@ jobs:
     # A pull_request whose head repo is not this repo skips changes, so the jobs below
     # do not run. ci-required fails closed when changes did not succeed.
     if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -120,7 +120,7 @@ jobs:
               - '.github/actions/**'
 
   # Sets hosted Linux compile/test caps. Does not build and does not call the
-  # GitHub API. Every Linux job is ubuntu-latest regardless of event or ref.
+  # GitHub API. Every Linux job is ubuntu-24.04 regardless of event or ref.
   # CI_BURST 'true' uses test parallelism 8; 'false' uses 4. Compile stays 4.
   # Drafts never get here. A fork PR that does not edit this file never gets here
   # either (`changes` is skipped, and this job repeats that guard).
@@ -130,7 +130,7 @@ jobs:
     if: >-
       (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository)) &&
       (github.event_name == 'schedule' || ((github.event_name == 'push' || github.event_name == 'pull_request') && needs.changes.outputs.code == 'true'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
     outputs:
@@ -154,15 +154,15 @@ jobs:
             printf 'clang_jobs=%s\n' 4
             printf 'clang_tests=%s\n' "$tests"
           } >> "$GITHUB_OUTPUT"
-          echo "linux-runner: ubuntu-latest (compile 4 / test ${tests}, CI_BURST=${CI_BURST:-unset})"
+          echo "linux-runner: ubuntu-24.04 (compile 4 / test ${tests}, CI_BURST=${CI_BURST:-unset})"
 
   build-test:
     name: ${{ matrix.name }}
     needs: [changes, linux-runner]
     if: (github.event_name == 'push' || github.event_name == 'pull_request') && needs.changes.outputs.code == 'true'
-    # Linux is hard-coded to ubuntu-latest for every event and ref. The Windows
+    # Linux is hard-coded to ubuntu-24.04 for every event and ref. The Windows
     # row is windows-latest. This expression does not read a job output or a label list.
-    runs-on: ${{ matrix.name == 'Windows MSVC Debug' && 'windows-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.name == 'Windows MSVC Debug' && 'windows-latest' || 'ubuntu-24.04' }}
     timeout-minutes: 90
     env:
       # Linux caps come from linux-runner. CI_BURST true: compile 4 / test 8.
@@ -209,7 +209,7 @@ jobs:
     name: Nightly gate
     needs: [linux-runner]
     if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       actions: read
@@ -276,7 +276,7 @@ jobs:
     name: ci-required
     needs: [changes, linux-runner, nightly-gate, build-test, windows-release, macos]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Check job results
@@ -374,7 +374,7 @@ jobs:
     name: Report nightly macOS failure
     needs: macos
     if: always() && github.event_name == 'schedule' && needs.macos.result == 'failure'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       issues: write
