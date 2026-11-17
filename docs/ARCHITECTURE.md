@@ -949,7 +949,7 @@ _Resolved items have moved to the Decisions Log (D-001…D-008)._
 
 ---
 
-## 58. Shapechanger loadout: a freshly gained attack is not recalibrated
+## Appendix: shapechanger loadout gap (CONTENT_CONVENTIONS §58)
 
 `align_loadout_attacks` leaves a freshly gained attack row as it writes it today. `build_loadout`'s calibration is not copied onto that row. SRD 5.1 Versatile cannot be matched from the facts the row has, and a copy of the spawn-time guess would be a different rule.
 

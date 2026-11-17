@@ -2102,5 +2102,5 @@ Deferred, not this section:
 * The imp, the quasit, and the night hag. They are not in the pack. The speed and `trait: false` keys can express them later.
 * The lycanthropy curse on a bite.
 * AI form choice, and form art.
-* A form that gains a weapon attack the loadout has not linked. `align_loadout_attacks` still stores that fresh row with a word-matched weapon link, `WeaponUse::TwoHands` for every versatile weapon, and hit and damage adjusts of 0. Calibrating it the way `build_loadout` does cannot match SRD 5.1 Versatile, so the code is unchanged. The gap is `docs/ARCHITECTURE.md` §58.
+* A form that gains a weapon attack the loadout has not linked. `align_loadout_attacks` still stores that fresh row with a word-matched weapon link, `WeaponUse::TwoHands` for every versatile weapon, and hit and damage adjusts of 0. Calibrating it the way `build_loadout` does cannot match SRD 5.1 Versatile, so the code is unchanged. The gap is the appendix in `docs/ARCHITECTURE.md` (shapechanger loadout gap).
 
