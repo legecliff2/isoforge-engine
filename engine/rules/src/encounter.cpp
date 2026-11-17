@@ -283,6 +283,7 @@ void end_summon(EncounterState& s, Combatant& c, int32_t reason, std::vector<Eve
     c.form = FormKind::None; c.form_source = 0; c.form_caster = 0; c.form_archetype = 0; c.form_end_round = 0;
     c.base.reset(); c.form_blocked_features.clear();
     c.gone = true; c.dead = true; c.hp = 0; c.commanded = 0;
+    c.form_lock_zones.clear();   // same as kill: a removed summon cannot leave the light; keeping the lock would fold 0xEA
     emit(ev, EventKind::SummonEnded, c.summoner, c.id, int32_t(c.summon_source), reason);
 }
 

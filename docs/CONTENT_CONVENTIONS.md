@@ -2085,7 +2085,7 @@ What the sentences fix:
 * **One action to change from one form to another** of the same feature. `UseFeature` emits `Reverted` with b = 3, then `Transformed`. Naming the form the creature is already in is refused (`already in that form`) and spends nothing. A different feature, Wild Shape, or Polymorph is still `already transformed`.
 * **The glaive shrinks.** The oni's Small or Medium form sets `weapon_dice_multiplier: 1` (2d10 becomes 1d10). Death reverts first, so the glaive is 2d10 again.
 * **Change Shape without the shapechanger tag.** `trait: false`. No Moonbeam disadvantage and no Polymorph refusal.
-* **Moonbeam.** A shapechanger makes the save at disadvantage, as before. A failed save adds that zone to `form_lock_zones` (sorted, one entry per zone) whether or not the creature is already in its true form. `Reverted` reason 6 is emitted only when it was in a Shapechanger form. The creature stays locked while it is still inside any of those zones. `UseFeature` of a form is refused with `can't assume a different form until you leave the light` while `zone_contains` says it is still inside one of them (no hook: the lock stands). Leaving a zone, or that zone ending, drops only that zone. Death clears the set.
+* **Moonbeam.** A shapechanger makes the save at disadvantage, as before. A failed save adds that zone to `form_lock_zones` (sorted, one entry per zone) whether or not the creature is already in its true form. `Reverted` reason 6 is emitted only when it was in a Shapechanger form. The creature stays locked while it is still inside any of those zones. `UseFeature` of a form is refused with `can't assume a different form until you leave the light` while `zone_contains` says it is still inside one of them (no hook: the lock stands). Leaving a zone, or that zone ending, drops only that zone. Death clears the set. `end_summon` clears that creature's set the same way: a removed summon cannot leave the light, and keeping the lock would fold 0xEA until the zone ends. Another creature's lock is left as it is.
 * **It reverts if it dies.** Unchanged: `Reverted` b = 4 before `CombatantDied`.
 * **A bigger form must fit.** Unchanged: the action is not spent.
 
@@ -2102,4 +2102,5 @@ Deferred, not this section:
 * The imp, the quasit, and the night hag. They are not in the pack. The speed and `trait: false` keys can express them later.
 * The lycanthropy curse on a bite.
 * AI form choice, and form art.
+* A form that gains a weapon attack the loadout has not linked. `align_loadout_attacks` still stores that fresh row with a word-matched weapon link, `WeaponUse::TwoHands` for every versatile weapon, and hit and damage adjusts of 0. Calibrating it the way `build_loadout` does cannot match SRD 5.1 Versatile, so the code is unchanged. The gap is the appendix in `docs/ARCHITECTURE.md` (shapechanger loadout gap).
 
