@@ -442,3 +442,93 @@ TEST_CASE("Moonbeam disadvantage still reads only the shapechanger fact") {
     CHECK(shape <= plain);
     CHECK(rs != rp);
 }
+
+TEST_CASE("Moonbeam B7: end_summon clears a summoned shapechanger's lock; the summon digest ignores it") {
+    const uint32_t kSummon = spell_id_of("test.shape.summon");
+    auto geo = std::make_shared<Geo>();
+    auto h = hooks(geo);
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    SpellDef sm;
+    sm.id = kSummon;
+    sm.content_id = "test.shape.summon";
+    sm.level = 1;
+    sm.range_ft = 10;
+    sm.kind = SpellEffectKind::Summon;
+    sm.components = kComponentV | kComponentS;
+    sm.summon = SummonSpec{1, SummonInitiative::Own, SummonControl::Telepathic, true};
+    book->add(sm);
+    h.spells = book;
+    h.build_summon = [](const EncounterState&, const Combatant&, const SpellDef& def, uint8_t, uint8_t) -> std::optional<Combatant> {
+        if (def.id != spell_id_of("test.shape.summon")) return std::nullopt;
+        Combatant m = shifter(0, true);
+        m.hp = m.hp_max = 30;
+        return m;
+    };
+    Combatant foe = shifter(2, false);
+    Combatant ally = shifter(3, true);
+    ally.team = 0;
+    Combatant wiz = caster(1);
+    wiz.spells_known.push_back(kSummon);
+    auto s = begin_encounter({wiz, foe, ally}, 9, nullptr, h);
+    end_turns_until(s, 1);
+    ActionRequest summon_req = cast(1, kSummon, 1, 1);
+    summon_req.summon_archetypes = {0};
+    auto summoned = step(s, summon_req);
+    REQUIRE_MESSAGE(summoned.ok, summoned.error);
+    const Event* born = first_of(summoned.events, EventKind::Summoned);
+    REQUIRE(born);
+    const CombatantId sid = born->target;
+    REQUIRE(find(s, sid)->shapechanger);
+    REQUIRE(find(s, sid)->summoner == 1);
+    REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);   // the summon spent this action
+    end_turns_until(s, 1);
+    ActionRequest beam{1, ActionKind::CastSpell, 0};
+    beam.spell_id = kBeam;
+    beam.spell_level = 2;
+    beam.has_zone_dest = true;
+    beam.zone_x = 3;
+    beam.zone_y = 4;
+    auto beamed = step(s, beam);
+    REQUIRE_MESSAGE(beamed.ok, beamed.error);
+    REQUIRE(s.zones.size() == 1);
+    const uint32_t zone = s.zones[0].zone_id;
+    auto enter = [&](CombatantId who) {
+        end_turns_until(s, who);
+        REQUIRE(current_actor(s) == who);
+        geo->inside.insert({zone, who});
+        ActionRequest mv{who, ActionKind::Move};
+        mv.move_ft = 5;
+        mv.move_tiles = 1;
+        mv.zones_entered = {zone};
+        auto entered = step(s, mv);
+        REQUIRE_MESSAGE(entered.ok, entered.error);
+        CHECK(lock_is(s, who, {zone}));
+    };
+    enter(sid);
+    enter(3);
+    const uint64_t locked = summons_digest(s);
+    mut(s, sid).form_lock_zones.clear();
+    CHECK(summons_digest(s) == locked);   // 0xAF does not fold the lock; no new hash byte
+    mut(s, sid).form_lock_zones = {zone};
+    CHECK(summons_digest(s) == locked);
+    end_turns_until(s, 1);
+    auto killed = step(s, cast(1, kBlast, 2, 1));
+    REQUIRE_MESSAGE(killed.ok, killed.error);
+    REQUIRE(s.ended);
+    CHECK_FALSE(s.zones.empty());   // the beam is still up, so the zone-end clear did not run
+    const Combatant* gone = find(s, sid);
+    REQUIRE(gone);
+    CHECK(gone->gone);
+    CHECK(gone->form_lock_zones.empty());
+    CHECK(lock_is(s, 3, {zone}));   // a creature that is still here keeps its own lock
+    bool ended = false, died = false;
+    for (const auto& e : killed.events) {
+        if (e.kind == EventKind::SummonEnded && e.target == sid) {
+            ended = true;
+            CHECK(e.b == 5);
+        }
+        if (e.kind == EventKind::CombatantDied && e.actor == sid) died = true;
+    }
+    CHECK(ended);
+    CHECK_FALSE(died);   // kill() did not run; end_summon itself dropped the lock
+}
