@@ -14,7 +14,7 @@ namespace eng::sim {
 // Version of the event stream contract (SimEvent + rules5e::Event as surfaced by sim).
 inline constexpr uint32_t kSimEventSchemaVersion = 13;
 // Last rules5e::EventKind surfaced under this schema version (rules appends; sim bumps).
-inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::LegendaryActionsRegained;
+inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::PossessionEnded;
 // Last rules kind that existed at v12. A stream carrying a later kind (legendary actions, 53-54) is a v13 stream.
 inline constexpr rules5e::EventKind kLastRulesEventKindV12 = rules5e::EventKind::Commanded;
 // Last rules kind that existed at v9. A stream carrying a later kind (R-G12 kinds 48-52: Summoned .. Commanded) is a v10 stream.

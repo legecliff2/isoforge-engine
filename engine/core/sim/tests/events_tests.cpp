@@ -67,7 +67,8 @@ TEST_CASE("event layout: schema version and numeric enum values are locked") {
         {EventKind::ZoneCreated, 45}, {EventKind::ZoneMoved, 46}, {EventKind::ZoneEnded, 47},   // v9 (R-G11)
         {EventKind::Summoned, 48}, {EventKind::SummonEnded, 49}, {EventKind::Transformed, 50},   // v10 (R-G12)
         {EventKind::Reverted, 51}, {EventKind::Commanded, 52},
-        {EventKind::LegendaryActionUsed, 53}, {EventKind::LegendaryActionsRegained, 54}};
+        {EventKind::LegendaryActionUsed, 53}, {EventKind::LegendaryActionsRegained, 54},
+        {EventKind::Possessed, 55}, {EventKind::PossessionEnded, 56}};
     CHECK(int(kLastRulesEventKindV12) == 52);
     CHECK(int(kLastRulesEventKindV9) == 47);
     CHECK(int(kLastRulesEventKindV8) == 44);

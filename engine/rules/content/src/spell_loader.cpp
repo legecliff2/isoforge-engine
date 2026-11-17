@@ -1135,6 +1135,10 @@ SpellLoad spell_from_json(const Json& j) {
                 if (s.immune_from_types & bit(ct2)) return ("effect types items must be unique");
                 s.immune_from_types |= bit(ct2);
             }
+            if (e.contains("possession")) {
+                if (!e["possession"].is_boolean() || !e["possession"].get<bool>()) return ("effect possession must be true");
+                s.blocks_possession = true;
+            }
         } else if (kind == "max_hp_bonus") {   // 7.2zd Aid
             s.kind = SpellEffectKind::MaxHpBonus;
             int f = 0, p = 0;

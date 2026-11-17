@@ -311,6 +311,11 @@ enum class EventKind : uint8_t {
     // appended (legendary actions, event schema v13). LegendaryActionUsed: one per option used (several per window).
     // LegendaryActionsRegained: start of the creature's turn, only when la_cur was below la_max.
     LegendaryActionUsed, LegendaryActionsRegained,
+    // appended (Possession). Same rules-event fields as v13: no schema bump.
+    // Possessed: actor = ghost, target = body.
+    // PossessionEnded: actor = ghost, target = body, a = reason
+    // (1 body at 0 HP, 2 bonus action, 3 turned, 4 forced out reserved and never emitted, 5 possessor died).
+    Possessed, PossessionEnded,
     // Not an event: the number of kinds. Append new kinds ABOVE this line; consumers that lock the
     // numeric layout (sim's "event layout" test) compare against kEventKindCount.
     Count_ };
@@ -339,6 +344,9 @@ inline constexpr std::size_t kEventKindCount = std::size_t(EventKind::Count_);
 //   b=0 c=-1, SummonEnded b=0 / 5; Commanded actor=summoner target=creature (0 = all) a=command.
 //   v13: LegendaryActionUsed actor=user target=first target a=option (1-based) b=cost c=remaining;
 //   LegendaryActionsRegained actor a=la_cur before b=la_max.
+//   Possession (same v13 layout, no schema bump): Possessed actor=ghost target=body;
+//   PossessionEnded actor=ghost target=body a=reason (1 body at 0 HP, 2 bonus action, 3 turned,
+//   4 forced out reserved, 5 possessor died).
 //   v7: RechargeRolled actor a=action/spell id b=d6 natural c=recharged(0/1); FeatureTriggered actor=owner
 //   target=subject a=trigger id b=TriggerOn c=outcome (0 none, 1 applied, 2 declined, 3 failed save);
 //   ResourceSpent actor a=pool id b=amount c=remaining; ModifierApplied actor=caster target a=modifier id
@@ -521,6 +529,7 @@ struct ActiveSpellEffect {
     // appended (7.2zd): ConditionImmunityFrom masks (Protection from Evil and Good) and the MaxHpBonus applied (Aid; undone
     // when the effect ends). Derived from the SpellDef and slot level: not hashed (hp_max itself is).
     uint32_t immune_conditions = 0, immune_from_types = 0;
+    bool blocks_possession = false;   // PfEG: this ward blocks a new possession by immune_from_types. Does not end one.
     int16_t max_hp_bonus = 0;
     // appended (7.2zf): WeaponImbue: the imbued attack index + 1 (0 = none) and the magic bonus at the cast's slot (derived from
     // the SpellDef and the caster's attack list: not hashed). Duplicates: the duplicates left (Combat::hash 0xD3 while > 0).
@@ -571,6 +580,13 @@ struct ActiveSpellEffect {
 struct Landing { CombatantId id = 0; uint16_t fell_ft = 0; friend bool operator==(const Landing&, const Landing&) = default; };
 struct ContainExit { CombatantId container = 0, creature = 0; uint8_t kind = 0;
                      friend bool operator==(const ContainExit&, const ContainExit&) = default; };
+
+// Possession reappearance (cleared when each step starts, the contain_exits pattern).
+// Sim places `ghost` in an unoccupied space within 5 feet of `body`, else the nearest space
+// at any distance (engine convention, SRD-silent). `place` is false when the ghost is leaving
+// play (a summon that ends) and must not be put back on a tile.
+struct PossessionExit { CombatantId ghost = 0, body = 0; bool place = true;
+                        friend bool operator==(const PossessionExit&, const PossessionExit&) = default; };
 
 // A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
 struct ActiveModifier {
@@ -1090,6 +1106,7 @@ struct EncounterState {
     std::optional<PendingDecision> pending;   // set while an action waits for a reaction decision
     std::vector<ActiveSpellEffect> effects;   // lasting spell effects, in the order applied
     std::vector<ContainExit> contain_exits;   // 7.2w (appended in place of use; see ContainExit): output of the last step only
+    std::vector<PossessionExit> possession_exits;   // output of the last step only; not hashed (the link is 0xEB)
     std::vector<Landing> landed;              // altitude PR4 (see Landing): output of the last step only; not hashed
     std::vector<ActiveModifier> modifiers;    // row 12 (appended): timed modifiers in application order; empty for old content
     EncounterHooks hooks;                // behaviour, not state: never serialized/hashed
@@ -1431,6 +1448,33 @@ std::vector<ActionRequest> legal_actions(const EncounterState&);   // for AI + U
 // creature has total cover from everything but its container (rules applies it in cover_of, with or without the hook).
 CombatantId                container_of(const EncounterState&, CombatantId id);
 CombatantId                current_actor(const EncounterState&);
+// Whose action, bonus action, movement and budget this initiative slot spends.
+// The possessed body when the slot holder is possessing, otherwise the slot holder.
+// With no link this is current_actor. Slot-timing readers stay on current_actor.
+CombatantId                turn_body(const EncounterState&);
+// Hostility side. `team` unless `c` is a possessed body, then the possessor's team.
+// Raw `team` stays on the win check, visibility and hashing.
+uint8_t                    side_of(const EncounterState&, const Combatant&);
+// is_incapacitated, or a possessed body (SRD: incapacitated and loses control).
+// Not used by can_act: the ghost spends the body's actions without the condition bit.
+bool                       counts_as_incapacitated(const Combatant&);
+// The possessor when `id` is a possessed body, otherwise `id`.
+CombatantId                controller_of(const EncounterState&, CombatantId);
+// True only for a possessed body wearing armor (or a shield) its authored list does not grant.
+// Unpossessed creatures, and a body with no authored list (0xFF), are proficient.
+bool                       nonproficient_armor(const Combatant&);
+// Empty, or "possessed: printed attack has no proficiency split".
+std::string_view           possession_attack_refusal(const Combatant&, const Attack&);
+// Empty, or "can't target a possessing ghost". Turn Undead (control Turned, undead in target_types) is the exception.
+std::string_view           possession_target_refusal(const Combatant& target, const SpellDef* def);
+// Link the ghost to the body. Emits Possessed. Empty on success, a refusal otherwise (nothing spent here).
+std::string_view           begin_possession(EncounterState&, CombatantId ghost, CombatantId body, uint32_t spell_id,
+                                            uint16_t immunity_hours, uint8_t immunity_scope, std::vector<Event>&);
+// The only way the link ends. reason: 1 body at 0 HP, 2 bonus action, 3 turned, 5 possessor died.
+// place: sim puts the ghost back on a tile. False when the ghost is leaving play (end_summon).
+void                       end_possession(EncounterState&, CombatantId ghost, int reason, std::vector<Event>&, bool place = true);
+// Ends a link whose body is at 0 HP or whose possessor is dead. Called from check_end.
+void                       sweep_possession(EncounterState&, std::vector<Event>&);
 const Combatant*           find(const EncounterState&, CombatantId);
 
 } // namespace rules5e

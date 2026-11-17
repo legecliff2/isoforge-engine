@@ -2046,7 +2046,7 @@ Legendary movement is a walk. The allowance is `modified_speed`, or half of that
 
 Legendary Resistance is unchanged: a failed save still spends `Combatant::legendary_pool` automatically (product choice M4). That is not a legendary action.
 
-`Combat::hash` tag **0xE8** folds the live pool and the open window while some creature has `la_max > 0`, and appends a Polymorph-suspended pool (saved `la_max`, `la_cur`, option identity, and `legendary_pool`) only when `la_suspended` is set. That flag is set only when the creature had a pool, an option, or Legendary Resistance, so a Polymorph with none of those emits no 0xE8. `log_hash` tag **0xE9** folds a `LegendaryAction` creature-target list only. Next free is **0xEB** (§58 claims 0xEA while a Moonbeam form lock is set). Initiative count 20, lair loses ties, is an engine convention (lair-hooks contract v0.1), not SRD 5.1 text. monster@7 carries no lair key.
+`Combat::hash` tag **0xE8** folds the live pool and the open window while some creature has `la_max > 0`, and appends a Polymorph-suspended pool (saved `la_max`, `la_cur`, option identity, and `legendary_pool`) only when `la_suspended` is set. That flag is set only when the creature had a pool, an option, or Legendary Resistance, so a Polymorph with none of those emits no 0xE8. `log_hash` tag **0xE9** folds a `LegendaryAction` creature-target list only. §58 claims 0xEA while a Moonbeam form lock is set. §59 claims 0xEB while a possession link exists. Next free is **0xEC**. Initiative count 20, lair loses ties, is an engine convention (lair-hooks contract v0.1), not SRD 5.1 text. monster@7 carries no lair key.
 
 ## 58. Shapechanger forms (live)
 
@@ -2089,7 +2089,7 @@ What the sentences fix:
 * **It reverts if it dies.** Unchanged: `Reverted` b = 4 before `CombatantDied`.
 * **A bigger form must fit.** Unchanged: the action is not spent.
 
-`Combat::hash` tag **0xEA** folds only while some `form_lock_zones` is not empty: a u32 count of locked combatants, then per such combatant in `combatants` order the u32 id, the u32 zone count, and those zone ids in ascending order. B1-B6 claim no tag. The form state is already in 0xAF. `log_hash` is unchanged (0xBD already folds `form_archetype`). Next free is **0xEB**. The pins 0x40c5e7a2531bae06 (seed 11) and 0x67bca9677135717d (seed 4) are not re-pinned. The built-in AI never uses a Shapechanger feature (`driver.cpp`, the spawn form is kept).
+`Combat::hash` tag **0xEA** folds only while some `form_lock_zones` is not empty: a u32 count of locked combatants, then per such combatant in `combatants` order the u32 id, the u32 zone count, and those zone ids in ascending order. B1-B6 claim no tag. The form state is already in 0xAF. `log_hash` is unchanged (0xBD already folds `form_archetype`). Possession (§59) claims **0xEB**. Next free is **0xEC**. The pins 0x40c5e7a2531bae06 (seed 11) and 0x67bca9677135717d (seed 4) are not re-pinned. The built-in AI never uses a Shapechanger feature (`driver.cpp`, the spawn form is kept). `end_summon` still clears that summon's `form_lock_zones` after any possession link on it has ended.
 
 Recorded, not changed (G16): Polymorph refuses a creature with the shapechanger fact outright. The SRD says a shapechanger automatically succeeds on the save. Polymorph is 4th level and is not in the pack, so this step does not change that refusal.
 
@@ -2103,4 +2103,24 @@ Deferred, not this section:
 * The lycanthropy curse on a bite.
 * AI form choice, and form art.
 * A form that gains a weapon attack the loadout has not linked. `align_loadout_attacks` still stores that fresh row with a word-matched weapon link, `WeaponUse::TwoHands` for every versatile weapon, and hit and damage adjusts of 0. Calibrating it the way `build_loadout` does cannot match SRD 5.1 Versatile, so the code is unchanged. The gap is the appendix in `docs/ARCHITECTURE.md` (shapechanger loadout gap).
+
+## 59. Possession (engine)
+
+SRD 5.1 Ghost, Possession. This section is the engine. `ghost.json` stays description-only. No monster file is flipped here.
+
+The link is `Combatant::possessing` (the body) and `Combatant::possessed_by` (the ghost). The body's Int, Wis, Cha, save proficiencies, skill proficiencies, and condition immunities are saved on `possession_overlay` and replaced: the ghost's Int, Wis and Cha, no proficiencies, and immunity to charmed and frightened. The overlay is not `FormStats`. `apply_form` and `revert_form` re-apply it. `end_summon` ends a link on that summon first, then clears `form_lock_zones` as it does today.
+
+`turn_body` is the creature whose action, bonus action, movement and budget the current initiative slot spends. It is the body when the slot holder is possessing, and the slot holder otherwise. `current_actor` stays the slot. The body's own slot has an empty budget. Its `EndTurn` is the only legal request, and it is the only place the body's end-of-turn effects run. The possessor's `EndTurn` stays `actor` = the possessor. `ActionKind::Revert` on the possessor ends the link (reason 2) and does not add an ActionKind.
+
+A possessed body has no Incapacitated bit (`can_act` stays open so the ghost can spend the body's actions). `counts_as_incapacitated` is that bit or `possessed_by != 0`. It is what Pack Tactics, the hostile-within-5-ft ranged penalty, the grapple drop, and the incapacitated target gate read. Host spells and class features are refused. A weapon attack whose `pb_in_to_hit` is -1 (no `derive: true` source; the goblin and `fighter_1`) is refused. A derived attack drops that many points of proficiency bonus, including natural weapons (D12).
+
+`side_of` is `team`, or the possessor's team while the creature is a possessed body. The 29 hostility comparisons in `encounter.cpp`, `Combat::hostile`, `Combat::ally_near`, and the three AI `team` reads in `driver.cpp` use it. The win check, visibility, and `Combat::hash`'s team byte stay on raw `team`. A possessed creature does not count as conscious for its own team (D7).
+
+Armor non-proficiency (SRD p.62) is enforced only while `possessed_by != 0`, and only when the file lists `armor_proficiencies`. `0xFF` means the file has no list and the creature is treated as proficient. The six cleric samples wear chain mail and list light, medium, and shields. Unpossessed, they are unchanged. Possessed, the list does not include heavy, so they are treated as non-proficient. `bonus_proficiency` is descriptive and is not on the list.
+
+A possessing ghost has no tile in occupancy, areas, cover, or sight. Turn Undead is the exception: the ghost is perceived through the body's senses. When the link ends, sim places the ghost in the nearest unoccupied space within 5 feet of the body, then the nearest space at any distance (D11, an engine convention). A summon that is the possessor is not placed (`end_summon` removes it).
+
+`Combat::hash` **0xEB** folds only while a link exists. Kinds 55 `Possessed` and 56 `PossessionEnded` use the existing rules-event fields. `kSimEventSchemaVersion` stays 13. Next free tag is **0xEC**.
+
+Deferred, not this section: D9 legendary host or possessor beyond the B10 guard (a linked creature is never `legendary_ready` and is not refilled); D10 player possessor and Magic Jar; Dispel Evil and Good, Hallow, and Magic Circle (reason 4 is reserved and never emitted); Polymorph on a possessed body and a shapechanged possessor; the AI choosing Possession; languages as knowledge; Incorporeal Movement and Ethereal Sight. The reaction, Dodge, Disengage, Shield, and Help clears stay on the slot creature. The design puts the reaction reset on the body's turn. Moving those clears onto the possessor's turn would change when they end. Stinking Cloud's `loses_action` save stays on that same slot: the possessor's rebuilt budget does not inherit it. That disagreement is recorded in `docs/ARCHITECTURE.md`.
 

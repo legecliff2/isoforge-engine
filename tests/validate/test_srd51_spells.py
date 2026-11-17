@@ -184,7 +184,7 @@ class SpellTable(unittest.TestCase):
         self.assertEqual(pfeg["effects"][0], {"kind": "apply_modifier", "scope": {"from_types": types},
                                               "modifier": {"stat": "attack_roll", "mode": "disadvantage", "applies_to": "attackers",
                                                            "duration": {"kind": "concentration"}}})
-        self.assertEqual(pfeg["effects"][1], {"kind": "condition_immunity_from", "conditions": ["charmed", "frightened"], "types": types})
+        self.assertEqual(pfeg["effects"][1], {"kind": "condition_immunity_from", "conditions": ["charmed", "frightened"], "types": types, "possession": True})
         self.assertTrue(pfeg["components"]["m"]["consumed"])   # consumed with no cost_cp (#234): nothing is checked or removed
         self.assertNotIn("cost_cp", pfeg["components"]["m"])
         aid = load("aid")

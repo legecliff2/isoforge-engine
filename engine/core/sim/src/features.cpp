@@ -1740,6 +1740,7 @@ std::vector<FeatureDecl> declared_features(const Json& doc) {
             FeatureDecl d;
             d.id = f.value("id", "");
             d.requires_humanoid_form = f.value("requires_humanoid_form", Json()) == Json(true);   // R-G12: a trait / feature key
+            d.origin = f.value("origin", "");
             if (auto e = f.find("effect"); e != f.end() && e->is_object()) {
                 d.effect = *e;
                 d.kind = e->value("kind", "");

@@ -1463,6 +1463,10 @@
           "type": "boolean",
           "description": "B15 Death Glare (save_effect, monster@5): the user must be able to see the target (the existing caster_sees_target cast gate) or the cast is refused before the action is spent."
         },
+        "possess": {
+          "const": true,
+          "description": "Possession (save_effect, monster@5, CONTENT_CONVENTIONS §59). One humanoid the user can see. A failed Charisma save links the user to the body. No Incapacitated bit. Success uses immune_on_success. Not dispelled."
+        },
         "charm_command": {
           "const": true,
           "description": "B16 Charm (save_effect, monster@5, CONTENT_CONVENTIONS \u00a747): control command with no word at the cast. A failed save applies charmed and Command control. A later command_word 1..5 orders that target and does not spend the action. 6 is a suicidal command (the repeat save). One target at a time. Ending the effect grants immune_on_success. Needs control command, magical, caster_sees_target, a tracked charmed apply with repeat_save on_damage and a rounds duration, immune_on_success, and target_creature_types."

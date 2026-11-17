@@ -72,37 +72,44 @@
     {
       "id": "darkvision",
       "name": "Darkvision",
-      "description": "You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can't discern color in darkness, only shades of gray. (Modelled: senses.darkvision 60.)"
+      "description": "You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can't discern color in darkness, only shades of gray. (Modelled: senses.darkvision 60.)",
+      "origin": "race"
     },
     {
       "id": "keen_senses",
       "name": "Keen Senses",
-      "description": "You have proficiency in the Perception skill. (Modelled: skills.perception.)"
+      "description": "You have proficiency in the Perception skill. (Modelled: skills.perception.)",
+      "origin": "race"
     },
     {
       "id": "fey_ancestry",
       "name": "Fey Ancestry",
-      "description": "You have advantage on saving throws against being charmed, and magic can't put you to sleep. (Description only.)"
+      "description": "You have advantage on saving throws against being charmed, and magic can't put you to sleep. (Description only.)",
+      "origin": "race"
     },
     {
       "id": "trance",
       "name": "Trance",
-      "description": "Elves don't need to sleep. Instead, they meditate deeply, remaining semiconscious, for 4 hours a day."
+      "description": "Elves don't need to sleep. Instead, they meditate deeply, remaining semiconscious, for 4 hours a day.",
+      "origin": "race"
     },
     {
       "id": "elf_weapon_training",
       "name": "Elf Weapon Training",
-      "description": "You have proficiency with the longsword, shortsword, shortbow, and longbow."
+      "description": "You have proficiency with the longsword, shortsword, shortbow, and longbow.",
+      "origin": "race"
     },
     {
       "id": "cantrip",
       "name": "Cantrip",
-      "description": "You know one cantrip of your choice from the wizard spell list. Intelligence is your spellcasting ability for it. (Modelled: ray of frost in spellcasting.spells.)"
+      "description": "You know one cantrip of your choice from the wizard spell list. Intelligence is your spellcasting ability for it. (Modelled: ray of frost in spellcasting.spells.)",
+      "origin": "race"
     },
     {
       "id": "extra_language",
       "name": "Extra Language",
-      "description": "You can speak, read, and write one extra language of your choice. (Draconic.)"
+      "description": "You can speak, read, and write one extra language of your choice. (Draconic.)",
+      "origin": "race"
     }
   ],
   "equipment": [

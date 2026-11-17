@@ -949,6 +949,20 @@ _Resolved items have moved to the Decisions Log (D-001…D-008)._
 
 ---
 
+## Appendix: possession turn resets (CONTENT_CONVENTIONS §59)
+
+The design doc says the body's reaction resets at the start of the body's own initiative slot, and that slot is bookkeeping (reaction reset, effect ticks, save repeats, expiries). The feasibility note says `start_turn`'s per-turn clears (`reaction_used`, Dodge, Disengage, Shield's AC bonus, averted gaze, Help) should move onto `turn_body`, so they run for the body at the start of the possessor's turn.
+
+Those two timings are not the same. Doing both would clear the flags twice. This engine follows the design: those clears stay on the slot creature. On the possessor's turn the budget, Haste, Slow, Reckless declaration, Command, and `moved_at_least_ft` use the body. Dodge, Disengage, Shield, Help, and the reaction become available again at the body's next slot, not at the possessor's next slot.
+
+Rules Manager: confirm that timing, or say the clears should move to the possessor's turn and the body's slot should skip them.
+
+Stinking Cloud is the same split. `loses_action` is applied only when the creature the zone row resolves for is `turn_body`. Start-of-turn zone rows run for the slot creature, and the possessor's budget is then built from the body. On the body's slot the save can fail and is then discarded with the empty budget. On the possessor's turn the row runs for the ghost, so a body standing in the cloud keeps the action. Rolling that save again for the body on the possessor's turn would draw dice the body's slot had already drawn, or would skip the draw on the body's slot and move it. It stays on the slot with the other start-of-turn rows.
+
+Armor: the six cleric samples wear chain mail and do not list heavy armor. Enforcement is possession-only, so unpossessed fights are unchanged. A possessed cleric is treated as non-proficient in that chain mail because `bonus_proficiency` is not on `armor_proficiencies`.
+
+`kSimEventSchemaVersion` stays 13. Kinds 55 and 56 fit the existing rules-event fields. A schema bump to 14 was not required for the wire format. Say if streams that contain those kinds should report version 14 anyway.
+
 ## Appendix: shapechanger loadout gap (CONTENT_CONVENTIONS §58)
 
 `align_loadout_attacks` leaves a freshly gained attack row as it writes it today. `build_loadout`'s calibration is not copied onto that row. SRD 5.1 Versatile cannot be matched from the facts the row has, and a copy of the spawn-time guess would be a different rule.

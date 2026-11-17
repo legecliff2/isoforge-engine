@@ -147,6 +147,12 @@ struct Attack {
     // A shapechanger form's weapon_dice_multiplier replaces the monster's: count = base * form multiplier.
     // Content-derived. Not hashed.
     uint8_t weapon_dice_base = 0;
+    // Possession (B4). How much of `to_hit` is a proficiency bonus that can be removed exactly.
+    // -1 = a printed total with no exact split (refused while the wielder is possessed).
+    // 0 = derived, and the bonus was not included.
+    // >0 = that many points of proficiency bonus are in `to_hit`.
+    // Content-derived. Not hashed. A fight with no possession never reads it.
+    int8_t pb_in_to_hit = -1;
 };
 inline constexpr int8_t kAttackAbilityFinesse = 6;
 inline constexpr int8_t kAttackAbilityNone = 7;
@@ -883,6 +889,39 @@ struct Combatant {
     uint32_t la_saved_pool = 0;
     std::vector<LegendaryOption> la_saved;
     uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
+
+    // Possession (SRD 5.1 Ghost). `possessing` is the body this creature controls (0 = none).
+    // `possessed_by` is the ghost controlling this body (0 = none). Both are written together
+    // by begin_possession / end_possession. The overlay sits beside FormStats: it is the body's
+    // own Int/Wis/Cha, proficiencies and condition immunities, displaced while the link lasts.
+    // Combat::hash 0xEB folds the link and this block only while some `possessing` is non-zero.
+    // Not a condition bit: can_act stays open so the ghost can spend the body's actions.
+    struct PossessionOverlay {
+        int8_t body_int = 10, body_wis = 10, body_cha = 10;
+        int8_t ghost_int = 10, ghost_wis = 10, ghost_cha = 10;
+        uint32_t save_proficiencies = 0;
+        uint32_t skill_proficiencies = 0;
+        uint32_t condition_immunities = 0;
+        uint32_t suspended_conditions = 0;   // Charmed / Frightened bits taken off at link, restored at the end
+        uint32_t spell_id = 0;               // the Possession action, for the 24 h row
+        uint16_t immunity_hours = 0;
+        uint8_t immunity_scope = 0;          // 0 = every user, 1 = this ghost
+    };
+    CombatantId possessing = 0;
+    CombatantId possessed_by = 0;
+    std::optional<PossessionOverlay> possession_overlay{};
+    // Armor annotation for the possession non-proficiency rule only. Not hashed.
+    // armor_proficiency 0xFF = the file did not list proficiencies (treated as proficient).
+    // Otherwise bits: 1 light, 2 medium, 4 heavy, 8 shields.
+    // worn_armor: 0 none, 1 light, 2 medium, 4 heavy. worn_shield: a shield is worn.
+    // Read only while possessed_by != 0, so an unpossessed cleric in chain mail is unchanged.
+    uint8_t armor_proficiency = 0xFF;
+    uint8_t worn_armor = 0;
+    bool worn_shield = false;
+    // 1-based feature indexes (the UseFeature id) blocked while this creature is possessed:
+    // class and background features, and proficiency-granting race traits. Empty for monsters.
+    // Content-derived. Not hashed.
+    std::vector<uint32_t> possession_blocked_features{};
 };
 
 // SRD Etherealness: a creature cannot affect or be affected by anything on the other plane.

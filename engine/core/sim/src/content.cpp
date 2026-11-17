@@ -1701,6 +1701,22 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
         if (d.drop_to_zero) return where + ": charm_command takes no drop_to_zero";
         d.charm_command = true;
     }
+    if (act.contains("possess")) {
+        if (!monster_since_5()) return where + ": possess needs a monster@5 file";
+        if (has_area) return where + ": possess takes no area";
+        const Json& p = act["possess"];
+        if (!p.is_boolean() || !p.get<bool>()) return where + ": possess must be true";
+        if (!d.caster_sees_target) return where + ": possess needs caster_sees_target";
+        if (d.target_types != rules5e::bit(rules5e::CreatureType::Humanoid))
+            return where + ": possess needs target_creature_types [humanoid]";
+        if (d.targets != 1) return where + ": possess needs targets 1";
+        if (d.success_immunity_hours == 0 || d.success_immunity_scope != 1)
+            return where + ": possess needs immune_on_success same_source";
+        if (d.dice.count != 0 || d.dice.bonus != 0 || d.applies_condition || d.control != rules5e::ControlKind::None)
+            return where + ": possess takes no damage, apply, or control";
+        if (d.magical) return where + ": possess is not magical";
+        d.possess = true;
+    }
     // B16 Draining Kiss (CONTENT_CONVENTIONS §48). The same save's damage, full or half, reduces the maximum.
     // Not the weapon-attack drain object (that one can roll a second Constitution save).
     if (act.contains("drain_max_hp")) {
@@ -2711,6 +2727,21 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             if (int(at.damage.count) % mult == 0)
                 at.weapon_dice_base = static_cast<uint8_t>(int(at.damage.count) / mult);
         }
+        // Possession B4. Only a derive:true attack with a weapon or natural source and no attack_bonus
+        // has an exact proficiency split. Goblin and fighter_1 (no derive) stay -1 and are refused.
+        at.pb_in_to_hit = -1;
+        if (doc.value("derive", false) && !act.contains("attack_bonus") &&
+            (act.contains("weapon") || act.contains("natural")) && at.ability_used >= 0 &&
+            at.ability_used != rules5e::kAttackAbilityNone) {
+            int mod = 0;
+            if (at.ability_used == rules5e::kAttackAbilityFinesse)
+                mod = std::max(rules5e::modifier(c.abilities, rules5e::Ability::Str),
+                               rules5e::modifier(c.abilities, rules5e::Ability::Dex));
+            else
+                mod = rules5e::modifier(c.abilities, rules5e::Ability(at.ability_used));
+            if (int(at.to_hit) == mod + int(c.proficiency_bonus)) at.pb_in_to_hit = c.proficiency_bonus;
+            else if (int(at.to_hit) == mod) at.pb_in_to_hit = 0;
+        }
         c.attacks.push_back(at);
         a.normal_range_ft.push_back(uint16_t(normal));
         a.long_range_ft.push_back(uint16_t(lng));
@@ -2720,12 +2751,46 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         if (auto e = compile_resources(a, doc, schema_type == "character", c)) return *e;
     // Feature hooks (data-driven by effect.kind; see features.hpp).
     a.features = declared_features(doc);
+    if (auto ap = doc.find("armor_proficiencies"); ap != doc.end() && ap->is_array()) {
+        uint8_t mask = 0;
+        for (const Json& e : *ap) {
+            const std::string k = e.is_string() ? e.get<std::string>() : "";
+            if (k == "light") mask = uint8_t(mask | 1);
+            else if (k == "medium") mask = uint8_t(mask | 2);
+            else if (k == "heavy") mask = uint8_t(mask | 4);
+            else if (k == "shields") mask = uint8_t(mask | 8);
+        }
+        c.armor_proficiency = mask;
+    }
+    if (auto eq = doc.find("equipment"); eq != doc.end() && eq->is_array()) {
+        auto named = [](const std::string& id, const char* tail) {
+            const std::string dot = std::string(".") + tail;
+            const std::string slash = std::string("/") + tail;
+            return id == tail || (id.size() >= dot.size() && id.compare(id.size() - dot.size(), dot.size(), dot) == 0) ||
+                   (id.size() >= slash.size() && id.compare(id.size() - slash.size(), slash.size(), slash) == 0);
+        };
+        for (const Json& e : *eq) {
+            std::string id = e.is_string() ? e.get<std::string>() : "";
+            if (id.empty() && e.is_object()) id = e.value("item", e.value("id", ""));
+            if (named(id, "chain_mail") || named(id, "splint") || named(id, "plate") || named(id, "ring_mail")) c.worn_armor = 4;
+            else if (named(id, "chain_shirt") || named(id, "scale_mail") || named(id, "breastplate") ||
+                     named(id, "half_plate") || named(id, "hide")) c.worn_armor = 2;
+            else if (named(id, "padded") || named(id, "leather") || named(id, "studded_leather")) c.worn_armor = 1;
+            else if (named(id, "shield")) c.worn_shield = true;
+        }
+    }
     std::vector<rules5e::SpellDef> synth;   // synthetic SpellDefs: area_save riders first, then save_effect actions
     const RiderCtx rider_ctx{a.id, attack_actions, synth};
     std::map<uint32_t, std::string> trigger_ids;   // numeric trigger id -> its string (duplicates are load errors)
     const FeatureBuildCtx fctx{*features_, doc, declared, attack_actions};
     for (std::size_t i = 0; i < a.features.size(); ++i) {
         const FeatureDecl& f = a.features[i];
+        if (schema_type == "character") {
+            const std::string origin = f.origin.empty() ? "class" : f.origin;
+            const bool proficiency_race = f.id == "dwarven_combat_training" || f.id == "elf_weapon_training" || f.id == "stonecunning";
+            if (origin == "class" || origin == "background" || (origin == "race" && proficiency_race))
+                c.possession_blocked_features.push_back(uint32_t(i + 1));
+        }
         // Schema-version gate (docs/CONTENT_COMPAT.md): effects from pre-character@3 files are
         // marked inert by the 2 -> 3 migration; their numbers are already baked in.
         if (!f.kind.empty() && f.effect.value("inert", false)) {

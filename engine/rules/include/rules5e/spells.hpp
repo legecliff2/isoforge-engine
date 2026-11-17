@@ -660,6 +660,13 @@ struct SpellDef {
     // kind is Heal so the action is not a harmful spell. cast_spell_impl returns before resolve_effect.
     // Not a spell. usage_kind 2 is 3 long-rest uses, registered by Combat::create.
     bool healing_touch = false;
+    // appended (Possession, CONTENT_CONVENTIONS §59). Static content: not hashed.
+    // A failed Charisma save links the user to one humanoid. No Incapacitated bit (D3): the
+    // ghost spends the body's actions. Success uses immune_on_success. Not dispelled.
+    bool possess = false;
+    // Protection from Evil and Good: the warded creature can't be possessed by immune_from_types.
+    // A warded target spends the action and makes no save. An existing possession is not ended.
+    bool blocks_possession = false;
 };
 
 // B10 Whirlwind and B11 Whelm name creatures already in the user's space. Rules does not see tiles.

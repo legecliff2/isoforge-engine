@@ -4600,6 +4600,10 @@
         "requires_humanoid_form": {
           "type": "boolean",
           "description": "R-G12 (7.2q), default false: the feature is not usable while in a Wild Shape form (rules UseFeature refuses: 'feature not usable in this form'). Error on the wild_shape feature itself; warning without a wild_shape feature in the document."
+        },
+        "origin": {
+          "enum": ["class", "race", "background"],
+          "description": "Possession (character@5). Absent on a character means class. Class and background features, and proficiency-granting race traits, are unavailable while the character is possessed. Monster traits are statistics and do not need this key."
         }
       }
     },

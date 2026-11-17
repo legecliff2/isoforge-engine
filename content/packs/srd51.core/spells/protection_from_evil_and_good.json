@@ -6,7 +6,7 @@
     "ref": "SRD 5.1",
     "license": "CC-BY-4.0"
   },
-  "description": "Until the spell ends, one willing creature you touch is protected against certain types of creatures: aberrations, celestials, elementals, fey, fiends, and undead. The protection grants several benefits. Creatures of those types have disadvantage on attack rolls against the target. The target also can't be charmed, frightened, or possessed by them. If the target is already charmed, frightened, or possessed by such a creature, the target has advantage on any new saving throw against the relevant effect. (Modelled: apply_modifier attack_roll disadvantage applies_to attackers with scope from_types, and condition_immunity_from [charmed, frightened]. Not modelled: possession and the advantage on a new saving throw.)",
+  "description": "Until the spell ends, one willing creature you touch is protected against certain types of creatures: aberrations, celestials, elementals, fey, fiends, and undead. The protection grants several benefits. Creatures of those types have disadvantage on attack rolls against the target. The target also can't be charmed, frightened, or possessed by them. If the target is already charmed, frightened, or possessed by such a creature, the target has advantage on any new saving throw against the relevant effect. (Modelled: apply_modifier attack_roll disadvantage applies_to attackers with scope from_types, condition_immunity_from [charmed, frightened], and possession (a new attempt spends the action and makes no save; an existing possession is not ended). Not modelled: the advantage on a new saving throw, which possession never offers.)",
   "level": 1,
   "school": "abjuration",
   "classes": [
@@ -69,7 +69,8 @@
         "fey",
         "fiend",
         "undead"
-      ]
+      ],
+      "possession": true
     }
   ]
 }
