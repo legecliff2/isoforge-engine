@@ -192,17 +192,17 @@ assert [m['name'] for m in include]==['Linux GCC Debug','Linux Clang Release','W
 assert linux and all(m['jobs']==4 and m['tests']==4 and 'os' not in m for m in linux)
 assert 'os' not in include[2]
 assert J['build-test']['needs']==['changes','linux-runner']
-# Linux is the literal ubuntu-latest. Only the Windows check name selects windows-latest.
+# Linux is the literal ubuntu-24.04. Only the Windows check name selects windows-latest.
 # No fromJSON, no job output, no label list.
 bt=str(J['build-test']['runs-on'])
-assert bt=="${{ matrix.name == 'Windows MSVC Debug' && 'windows-latest' || 'ubuntu-latest' }}"
+assert bt=="${{ matrix.name == 'Windows MSVC Debug' && 'windows-latest' || 'ubuntu-24.04' }}"
 assert 'fromJSON' not in bt and 'needs.' not in bt and 'self-hosted' not in bt
 for job_id, runs, timeout, name in (
-    ('changes','ubuntu-latest',10,'Detect changes'),
-    ('linux-runner','ubuntu-latest',5,'Linux runner'),
-    ('nightly-gate','ubuntu-latest',10,'Nightly gate'),
-    ('ci-required','ubuntu-latest',10,'ci-required'),
-    ('nightly-report','ubuntu-latest',10,'Report nightly macOS failure'),
+    ('changes','ubuntu-24.04',10,'Detect changes'),
+    ('linux-runner','ubuntu-24.04',5,'Linux runner'),
+    ('nightly-gate','ubuntu-24.04',10,'Nightly gate'),
+    ('ci-required','ubuntu-24.04',10,'ci-required'),
+    ('nightly-report','ubuntu-24.04',10,'Report nightly macOS failure'),
 ):
     assert J[job_id]['runs-on']==runs, job_id
     assert J[job_id]['timeout-minutes']==timeout, job_id
@@ -278,7 +278,7 @@ for event, ref in [
 ]:
     for name in ('Linux GCC Debug','Linux Clang Release'):
         got=eval_runs_on(bt, name=name)
-        if got!='ubuntu-latest':
+        if got!='ubuntu-24.04':
             bad+=1; print('RUNS-ON', event, ref, name, got)
     win=eval_runs_on(bt, name='Windows MSVC Debug')
     if win!='windows-latest':
