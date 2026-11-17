@@ -946,3 +946,25 @@ _Resolved items have moved to the Decisions Log (D-001…D-008)._
 12. **Luau typecheck cost in shipping builds.** Always run `Luau::Frontend` at load (cached), or allow signed first-party packs to skip it with a precomputed "verified" stamp so Analysis isn't linked into the runtime?
 13. **Luau native codegen in sim/gen.** Is the extra speed worth qualifying CodeGen against the golden suite on every target, or should it stay interpreter-only for determinism?
 14. **Future non-desktop targets and determinism.** Should the bit-identical guarantee extend automatically to new devices (e.g. 32-bit ARM, WebAssembly)? That would put them in the golden matrix before they can ship.
+
+---
+
+## 58. Shapechanger loadout: a freshly gained attack is not recalibrated
+
+`align_loadout_attacks` leaves a freshly gained attack row as it writes it today. `build_loadout`'s calibration is not copied onto that row. SRD 5.1 Versatile cannot be matched from the facts the row has, and a copy of the spawn-time guess would be a different rule.
+
+A shapechanger form can list an attack the true form dropped. `build_form` starts from the archetype's full attack list and then keeps the form's ids (`CONTENT_CONVENTIONS.md` §58). On `Transformed` and `Reverted`, `align_loadout_attacks` rebuilds `Loadout::view.attacks` by attack id from `Loadout::attack_rows`. An id already in `attack_rows` keeps the link and the hit and damage adjusts `build_loadout` stored. An id that is not there gets a new row: the held or carried weapon whose id words match the attack id, `WeaponUse::TwoHands` when that weapon is versatile, and hit and damage adjusts of 0.
+
+`build_loadout` does two further things for each attack it links. It chooses `WeaponUse` (thrown when the attack is ranged and the weapon is thrown and has a reach; two hands when the weapon is two-handed; two hands when the weapon is versatile and `Archetype::two_handed_grip` has that attack's index; otherwise one hand). It then sets the adjusts to the printed to-hit and damage bonus minus `derive_weapon_attack` for that use, so a later `recompute_derived` reproduces the printed bonus.
+
+SRD 5.1 Versatile, from the weapons chapter: "This weapon can be used with one or two hands. A damage value in parentheses appears with the property—the damage when the weapon is used with two hands to make a melee attack." The parenthetical die is the damage of an attack made with two hands. The other die is the damage of an attack made with one hand. The choice is that attack.
+
+The engine does not make that choice. `do_attack` rolls `Attack::damage`, the printed die. `ActionRequest::two_handed_grip` is only the Great Weapon Fighting reroll of a 1 or a 2 on a versatile melee attack (`CONTENT_CONVENTIONS.md` §3.3). `recompute_derived` writes `to_hit` and `damage.bonus`. It does not write the die count or the die size. A `WeaponUse` on the loadout link therefore does not select the SRD parenthetical damage.
+
+The facts that would be needed to pick one use, and still match that sentence, are not on the attack:
+
+* `Archetype::two_handed_grip` is the v0 wield model, not the SRD sentence. Content load sets a bit for each versatile melee attack of a stat block that carries no shield, at that attack's index in the full attack list. `build_loadout` reads the bit at the index in the list it is linking, which at spawn is the true-form subset, so the index is already a different attack once `true_form.actions` has dropped an earlier one. A form's list is another subset. Using the form's index assigns some other attack's bit. Using the full-list index still means "the stat block listed no shield," which is not "this attack is made with two hands."
+* The monster@5 action key `use` (`one_hand`, `two_hands`, `thrown`; absent means one hand, and it is never inferred) is the authored grip. It is stored on `MonsterAttackSpec` for derivation. It is not stored on `rules5e::Attack`. The attack keeps the printed dice, the to-hit, and the `two_handed` and `versatile` property bits.
+* Comparing the printed die with the item's one-hand die and its versatile die does not name one use. A `damage_override` matches neither die (the Gladiator's thrown spear). A form's `weapon_dice_multiplier` changes the count and leaves the sides (the oni's glaive is 2d10 in the true form and 1d10 in the small form; both are the two-handed weapon, and the sides do not say which). A thrown versatile weapon's thrown damage is the one-hand die (a spear is 1d6 thrown and 1d6 in one hand, and 1d8 in two hands).
+
+`Combat::recompute` returns without calling `recompute_derived` while `form != None`, so the printed form attack is what is rolled. `apply_equip` and the thrown-weapon and death-drop path call `recompute_derived` directly. A fresh row whose adjusts are 0 then replaces the printed to-hit and damage bonus with the derived bonus. That is the gap. Filling the adjusts with `build_loadout`'s spawn-time use would preserve a bonus for a grip the SRD sentence does not require, and it would still roll the printed die. The row is left unchanged. No hash byte, no schema bump, and `kSimEventSchemaVersion` stays 13.

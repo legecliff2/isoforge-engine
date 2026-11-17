@@ -248,7 +248,8 @@ struct ZoneTriggerRow {
     uint32_t auto_success_damage = 0, auto_success_conditions = 0;
     bool auto_success_no_breath = false;
     // Moonbeam: a shapechanger (Combatant::shapechanger) makes the save with disadvantage. A failed save adds
-    // the zone to Combatant::form_lock_zones until the creature leaves that zone, the zone ends, or it dies,
+    // the zone to Combatant::form_lock_zones until the creature leaves that zone, the zone ends, it dies,
+    // or end_summon removes it (the same clear as kill),
     // and reverts it (Reverted reason 6) only when it is in a Shapechanger form. A true form is locked the
     // same way. A second beam stays in the set until that beam is left. Polymorph's shapechanger refusal is
     // unchanged (G16, recorded only).
