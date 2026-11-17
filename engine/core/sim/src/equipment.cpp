@@ -412,7 +412,10 @@ void recompute_derived(rules5e::EncounterState& st, rules5e::CombatantId id, con
     for (auto& x : st.combatants) if (x.id == id) c = &x;
     if (!l || !c) return;
     const Raw r = derive_raw(*c, *l, items);
-    c->ac = clamp8(r.ac + l->ac_adjust);
+    // n9: a form's armor class is the form's own number (Shapechanger armor_class, Wild Shape, Polymorph).
+    // Equipment derivation must not overwrite it. Revert restores the saved true-form AC (put_stats of base);
+    // a later recompute, once form is None, applies the worn armor again.
+    if (c->form == rules5e::FormKind::None) c->ac = clamp8(r.ac + l->ac_adjust);
     for (std::size_t i = 0; i < r.attacks.size() && i < c->attacks.size(); ++i) {
         if (!r.attacks[i].ok) continue;
         const int adj_hit = i < l->hit_adjust.size() ? l->hit_adjust[i] : 0;

@@ -6,7 +6,9 @@
 #include <string>
 
 #include "rules5e/encounter.hpp"
+#include "rules5e/equipment.hpp"
 #include "sim/combat.hpp"
+#include "sim/equipment.hpp"
 #include "sim/events.hpp"
 #include "world/chunk_codec.hpp"
 
@@ -674,4 +676,273 @@ TEST_CASE("shapechanger: a form keeps each loadout attack link on its attack id"
     REQUIRE_FALSE(restored->hit_adjust.empty());
     CHECK(restored->hit_adjust[0] == hit);
     CHECK(rules5e::find(c->state(), me)->attacks[0].id == "spear");
+}
+
+ContentLibrary pack_lib() {
+    ContentLibrary lib;
+    for (const char* m : {"werewolf", "wereboar", "weretiger", "werebear", "succubus", "oni"}) {
+        auto e = lib.add(load_json(std::string("content/packs/srd51.core/monsters/") + m + ".json"), "monster");
+        INFO(m);
+        INFO(e.value_or(""));
+        REQUIRE_FALSE(e);
+    }
+    auto foe = lib.add(load_json("content/packs/sample.vertical_slice/characters/fighter_1.json"), "character");
+    INFO(foe.value_or(""));
+    REQUIRE_FALSE(foe);
+    auto spear = lib.add_item(load_json("content/packs/srd51.core/items/spear.json"));
+    INFO(spear.value_or(""));
+    REQUIRE_FALSE(spear);
+    return lib;
+}
+bool legal_multi(const Fight& f, CombatantId a) {
+    for (const auto& r : rules5e::legal_actions(f.c->state()))
+        if (r.actor == a && r.kind == ActionKind::Attack && r.multiattack != 0) return true;
+    return false;
+}
+bool trigger_owned(const rules5e::Combatant& c, const char* owner) {
+    const uint32_t id = spell_id_of(owner);
+    for (const auto& t : c.triggers) if (t.owner_id == id) return true;
+    return false;
+}
+void set_ac(Fight& f, CombatantId id, int ac) {
+    auto& st = const_cast<rules5e::EncounterState&>(f.c->state());
+    for (auto& c : st.combatants) if (c.id == id) c.ac = int8_t(ac);
+}
+// Five feet away, then five feet back: 30 ft moved, adjacent again, enough for a 15 ft charge.
+int attack_fires(Fight& f, CombatantId me, CombatantId foe, const char* attack) {
+    int x = 7;
+    for (int step_x : {6, 5, 4, 5, 6, 7}) {
+        Command step;
+        step.kind = CommandKind::Step;
+        step.to = {step_x, 4};
+        auto r = f.settle(f.c->submit(step));
+        if (!r.ok) return -2;
+        x = step_x;
+    }
+    (void)x;
+    const int idx = [&] {
+        const auto& c = *rules5e::find(f.c->state(), me);
+        for (int i = 0; i < int(c.attacks.size()); ++i) if (c.attacks[i].id == attack) return i;
+        return -1;
+    }();
+    if (idx < 0) return -2;
+    const int mark = int(f.c->events().size());
+    Command atk;
+    atk.request = {me, ActionKind::Attack, foe, uint8_t(idx)};
+    auto r = f.settle(f.c->submit(atk));
+    if (!r.ok) return -2;
+    bool hit = false;
+    int fires = 0;
+    const auto& ev = f.c->events();
+    for (int i = mark; i < int(ev.size()); ++i) {
+        const auto& e = ev[std::size_t(i)];
+        if (e.kind != SimEvent::Kind::Rules || e.rules.actor != me) continue;
+        if (e.rules.kind == EventKind::AttackResolved && (e.rules.c & 1)) hit = true;
+        if (e.rules.kind == EventKind::FeatureTriggered) ++fires;
+    }
+    return hit ? fires : -1;
+}
+
+TEST_CASE("n9: a shape's AC stands while the form is active and comes back on revert") {
+    ContentLibrary lib = pack_lib();
+    const uint32_t fid = shape_feature(*lib.find("srd51.monster.werewolf"));
+    REQUIRE(fid != 0);
+    world::Chunk chunk = arena({{"srd51.monster.werewolf", {4, 4}}, {"srd51.character.fighter_1", {8, 8}}});
+    ecs::Registry reg;
+    std::string err;
+    auto c = Combat::create(reg, chunk, lib, 1, CombatOptions{true}, &err);
+    INFO(err);
+    REQUIRE(c);
+    const CombatantId me = chunk.spawns[0].stable_id;
+    CHECK(rules5e::find(c->state(), me)->ac == 11);
+    auto settle = [&](SubmitResult r) {
+        while (r.ok && r.needs) r = c->decide({r.needs->window_seq, false, 0});
+        return r;
+    };
+    auto advance = [&](CombatantId w) {
+        for (int i = 0; i < 8 && rules5e::current_actor(c->state()) != w; ++i) {
+            Command e;
+            e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn};
+            REQUIRE(settle(c->submit(e)).ok);
+        }
+        REQUIRE(rules5e::current_actor(c->state()) == w);
+    };
+    advance(me);
+    Command use;
+    use.request = {me, ActionKind::UseFeature};
+    use.request.feature_id = fid;
+    use.request.form_archetype = 1;   // hybrid, printed AC 12
+    auto used = settle(c->submit(use));
+    INFO(used.error);
+    REQUIRE(used.ok);
+    CHECK(rules5e::find(c->state(), me)->form == FormKind::Shapechanger);
+    CHECK(rules5e::find(c->state(), me)->ac == 12);
+    const rules5e::Loadout* lo = c->loadout(me);
+    REQUIRE(lo);
+    REQUIRE(lo->view.main.instance != 0);
+    Command stow;
+    stow.request = {me, ActionKind::UseObject};
+    stow.request.equip_op = uint8_t(rules5e::EquipOp::Stow);
+    stow.request.equip_item = lo->view.main.instance;
+    auto stowed = settle(c->submit(stow));
+    INFO(stowed.error);
+    REQUIRE(stowed.ok);   // apply_equip calls recompute_derived
+    CHECK(rules5e::find(c->state(), me)->ac == 12);
+    auto& st = const_cast<rules5e::EncounterState&>(c->state());
+    recompute_derived(st, me, *c->item_defs());
+    CHECK(rules5e::find(c->state(), me)->form == FormKind::Shapechanger);
+    CHECK(rules5e::find(c->state(), me)->ac == 12);
+    Command done;
+    done.request = {me, ActionKind::EndTurn};
+    REQUIRE(settle(c->submit(done)).ok);
+    advance(me);
+    Command back;
+    back.request = {me, ActionKind::Revert};
+    REQUIRE(settle(c->submit(back)).ok);
+    CHECK(rules5e::find(c->state(), me)->form == FormKind::None);
+    CHECK(rules5e::find(c->state(), me)->ac == 11);
+    recompute_derived(st, me, *c->item_defs());
+    CHECK(rules5e::find(c->state(), me)->ac == 11);
+}
+
+TEST_CASE("shapechanger pack: werewolf, werebear, succubus, and oni forms") {
+    ContentLibrary lib = pack_lib();
+    Fight wolf(lib, {{"srd51.monster.werewolf", {4, 4}}, {"srd51.character.fighter_1", {8, 8}}});
+    const uint32_t wfid = shape_feature(*lib.find("srd51.monster.werewolf"));
+    wolf.advance_to(wolf.id(0));
+    CHECK(legal_attack(wolf, wolf.id(0), "spear"));
+    CHECK(legal_multi(wolf, wolf.id(0)));
+    CHECK_FALSE(legal_attack(wolf, wolf.id(0), "bite"));
+    CHECK_FALSE(has_attack(wolf.who(0), "bite"));
+    CHECK(wolf.who(0).ac == 11);
+    CHECK(wolf.who(0).speed_ft == 30);
+    REQUIRE(wolf.use(wolf.id(0), wfid, 1).ok);
+    CHECK(has_attack(wolf.who(0), "bite"));
+    CHECK(has_attack(wolf.who(0), "claws"));
+    CHECK_FALSE(has_attack(wolf.who(0), "spear"));
+    CHECK(wolf.who(0).ac == 12);
+    CHECK(wolf.who(0).multiattacks.size() == 1);
+    wolf.end_turn();
+    wolf.advance_to(wolf.id(0));
+    CHECK(legal_attack(wolf, wolf.id(0), "bite"));
+    CHECK(legal_attack(wolf, wolf.id(0), "claws"));
+    CHECK(legal_multi(wolf, wolf.id(0)));
+    CHECK_FALSE(legal_attack(wolf, wolf.id(0), "spear"));
+    REQUIRE(wolf.use(wolf.id(0), wfid, 2).ok);
+    CHECK(has_attack(wolf.who(0), "bite"));
+    CHECK_FALSE(has_attack(wolf.who(0), "claws"));
+    CHECK_FALSE(has_attack(wolf.who(0), "spear"));
+    CHECK(wolf.who(0).multiattacks.empty());
+    CHECK(wolf.who(0).ac == 12);
+    CHECK(wolf.who(0).speed_ft == 40);
+    wolf.end_turn();
+    wolf.advance_to(wolf.id(0));
+    CHECK(legal_attack(wolf, wolf.id(0), "bite"));
+    CHECK_FALSE(legal_attack(wolf, wolf.id(0), "claws"));
+    CHECK_FALSE(legal_multi(wolf, wolf.id(0)));
+
+    Fight bear(lib, {{"srd51.monster.werebear", {4, 4}}, {"srd51.character.fighter_1", {10, 10}}});
+    const uint32_t bfid = shape_feature(*lib.find("srd51.monster.werebear"));
+    CHECK(bear.who(0).climb_ft == 0);
+    CHECK(bear.who(0).speed_ft == 30);
+    bear.advance_to(bear.id(0));
+    REQUIRE(bear.use(bear.id(0), bfid, 1).ok);   // hybrid
+    CHECK(bear.who(0).climb_ft == 30);
+    CHECK(bear.who(0).speed_ft == 40);
+    CHECK(bear.who(0).ac == 11);
+    CHECK(bear.who(0).size == rules5e::Size::Large);
+    bear.end_turn();
+    bear.advance_to(bear.id(0));
+    REQUIRE(bear.use(bear.id(0), bfid, 2).ok);   // bear
+    CHECK(bear.who(0).climb_ft == 30);
+    CHECK(bear.who(0).speed_ft == 40);
+
+    Fight succ(lib, {{"srd51.monster.succubus", {4, 4}}, {"srd51.character.fighter_1", {8, 8}}});
+    const uint32_t sfid = shape_feature(*lib.find("srd51.monster.succubus"));
+    CHECK(succ.who(0).shapechanger);
+    CHECK(succ.who(0).fly_ft == 60);
+    CHECK(has_attack(succ.who(0), "claw"));
+    succ.advance_to(succ.id(0));
+    REQUIRE(succ.use(succ.id(0), sfid, 1).ok);
+    CHECK(succ.who(0).fly_ft == 0);
+    CHECK(succ.who(0).speed_ft == 30);
+    CHECK(succ.who(0).size == rules5e::Size::Small);
+    CHECK_FALSE(has_attack(succ.who(0), "claw"));
+    succ.end_turn();
+    succ.advance_to(succ.id(0));
+    REQUIRE(succ.use(succ.id(0), sfid, 2).ok);
+    CHECK(succ.who(0).fly_ft == 0);
+    CHECK(succ.who(0).size == rules5e::Size::Medium);
+    CHECK_FALSE(has_attack(succ.who(0), "claw"));
+
+    Fight oni(lib, {{"srd51.monster.oni", {4, 4}}, {"srd51.character.fighter_1", {10, 10}}});
+    const uint32_t ofid = shape_feature(*lib.find("srd51.monster.oni"));
+    CHECK_FALSE(oni.who(0).shapechanger);
+    const auto* born = attack_named(oni.who(0), "glaive");
+    REQUIRE(born);
+    CHECK(born->damage == rules5e::DiceExpr{2, 10, 4});
+    CHECK(has_attack(oni.who(0), "claw"));
+    oni.advance_to(oni.id(0));
+    REQUIRE(oni.use(oni.id(0), ofid, 2).ok);   // medium
+    const auto* mid = attack_named(oni.who(0), "glaive");
+    REQUIRE(mid);
+    CHECK(mid->damage == rules5e::DiceExpr{1, 10, 4});
+    CHECK_FALSE(has_attack(oni.who(0), "claw"));
+    CHECK(oni.who(0).size == rules5e::Size::Medium);
+    oni.end_turn();
+    oni.advance_to(oni.id(0));
+    REQUIRE(oni.use(oni.id(0), ofid, 3).ok);   // large giant
+    const auto* giant = attack_named(oni.who(0), "glaive");
+    REQUIRE(giant);
+    CHECK(giant->damage == rules5e::DiceExpr{2, 10, 4});
+    CHECK_FALSE(has_attack(oni.who(0), "claw"));
+    oni.end_turn();
+    oni.advance_to(oni.id(0));
+    REQUIRE(oni.revert(oni.id(0)).ok);
+    const auto* back = attack_named(oni.who(0), "glaive");
+    REQUIRE(back);
+    CHECK(back->damage == rules5e::DiceExpr{2, 10, 4});
+    CHECK(has_attack(oni.who(0), "claw"));
+}
+
+TEST_CASE("shapechanger pack: wereboar Charge and weretiger Pounce fire only in the proper forms") {
+    ContentLibrary lib = pack_lib();
+    auto run = [&](const char* monster, uint8_t form, const char* attack, bool expect_rider, bool expect_fire) {
+        Fight f(lib, {{monster, {7, 4}}, {"srd51.character.fighter_1", {8, 4}}});
+        set_ac(f, f.id(1), 0);
+        const uint32_t fid = shape_feature(*lib.find(monster));
+        f.advance_to(f.id(0));
+        if (form != 0) REQUIRE(f.use(f.id(0), fid, form).ok);
+        f.end_turn();
+        f.advance_to(f.id(0));
+        CHECK(trigger_owned(f.who(0), attack) == expect_rider);
+        bool saw_hit = false;
+        int fires = 0;
+        for (int turn = 0; turn < 8 && !saw_hit; ++turn) {
+            if (turn != 0) f.advance_to(f.id(0));
+            const int n = attack_fires(f, f.id(0), f.id(1), attack);
+            REQUIRE(n != -2);
+            if (n >= 0) { saw_hit = true; fires = n; break; }
+            if (f.c->state().ended) break;
+            f.end_turn();
+        }
+        REQUIRE(saw_hit);
+        if (expect_fire) CHECK(fires > 0);
+        else CHECK(fires == 0);
+    };
+    run("srd51.monster.wereboar", 0, "maul", false, false);     // true form: no tusks, no Charge
+    run("srd51.monster.wereboar", 1, "maul", false, false);     // hybrid maul does not charge
+    run("srd51.monster.wereboar", 1, "tusks", true, true);      // hybrid tusks
+    run("srd51.monster.wereboar", 2, "tusks", true, true);      // boar
+    run("srd51.monster.weretiger", 0, "scimitar", false, false);
+    run("srd51.monster.weretiger", 1, "claw", true, true);      // hybrid
+    Fight tiger(lib, {{"srd51.monster.weretiger", {4, 4}}, {"srd51.character.fighter_1", {10, 4}}});
+    const uint32_t tfid = shape_feature(*lib.find("srd51.monster.weretiger"));
+    CHECK_FALSE(trigger_owned(tiger.who(0), "claw"));
+    tiger.advance_to(tiger.id(0));
+    REQUIRE(tiger.use(tiger.id(0), tfid, 2).ok);   // Large tiger: the rider is on, and the form fits
+    CHECK(trigger_owned(tiger.who(0), "claw"));
+    CHECK_FALSE(has_attack(tiger.who(0), "scimitar"));
+    CHECK(tiger.who(0).speed_ft == 40);
+    CHECK(tiger.who(0).size == rules5e::Size::Large);
 }
