@@ -196,7 +196,7 @@
           "type": "slashing"
         }
       ],
-      "description": "Melee Weapon Attack: +7 to hit, reach 10 ft., one target. Hit: 15 (2d10 + 4) slashing damage, or 10 (1d10 + 4) slashing damage in Small or Medium form. (Small and Medium forms set weapon_dice_multiplier 1, so this glaive is 1d10 + 4. The true form and the Large giant form keep 2d10 + 4.)"
+      "description": "Melee Weapon Attack: +7 to hit, reach 10 ft., one target. Hit: 15 (2d10 + 4) slashing damage, or 9 (1d10 + 4) slashing damage in Small or Medium form. (Small and Medium forms set weapon_dice_multiplier 1, so this glaive is 1d10 + 4. The true form and the Large giant form keep 2d10 + 4. The printed average is 9.)"
     }
   ]
 }

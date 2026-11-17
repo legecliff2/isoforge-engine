@@ -1619,12 +1619,10 @@ class MonsterTable(unittest.TestCase):
         self.assertIn("walk 40", trait("werewolf", "shapechanger")["description"])
         self.assertIn("AC 12", trait("werewolf", "shapechanger")["description"])
         self.assertNotIn("effect", trait("werewolf", "keen_hearing_and_smell"))
-        self.assertEqual(opts("werewolf"), {
-            "spear_x2": ["spear", "spear"],
-            "spear_two_handed_x2": ["spear_two_handed", "spear_two_handed"],
-            "spear_thrown_x2": ["spear_thrown", "spear_thrown"],
-            "bite_claws": ["bite", "claws"],
-        })
+        self.assertEqual(trait("werewolf", "multiattack")["name"], "Multiattack (Humanoid or Hybrid Form Only)")
+        self.assertEqual(trait("werewolf", "multiattack")["description"],
+                         "The werewolf makes two attacks: one with its bite and one with its claws or spear.")
+        self.assertEqual(opts("werewolf"), {"bite_claws": ["bite", "claws"]})
         bite = act("werewolf", "bite")
         self.assertEqual(bite["natural"], {"dice": "1d8", "ability": "str"})
         self.assertEqual((bite["to_hit"], bite["damage"]), (4, [{"dice": "1d8+2", "type": "piercing"}]))
@@ -2814,10 +2812,10 @@ class MonsterTable(unittest.TestCase):
         self.assertNotIn("attack_bonus", glaive)
         self.assertNotIn("damage_override", glaive)
         self.assertEqual(glaive["damage"], [{"dice": "2d10+4", "type": "slashing"}])
-        self.assertIn("10 (1d10 + 4)", glaive["description"])
+        self.assertIn("9 (1d10 + 4)", glaive["description"])
         self.assertIn("2d10 + 4", glaive["description"])
         self.assertNotIn("descriptive only", glaive["description"])
-        self.assertNotIn("9 (1d10 + 4)", glaive["description"])
+        self.assertNotIn("10 (1d10 + 4)", glaive["description"])
         change = trait("oni", "change_shape")
         self.assertEqual(change["effect"]["kind"], "shapechanger")
         self.assertIs(change["effect"]["trait"], False)
@@ -3592,7 +3590,7 @@ class MonsterTable(unittest.TestCase):
 
         wolf = forms("werewolf")
         self.assertEqual(wolf["true_form"]["actions"], [
-            "spear", "spear_two_handed", "spear_thrown", "spear_x2", "spear_two_handed_x2", "spear_thrown_x2"])
+            "spear", "spear_two_handed", "spear_thrown"])
         self.assertEqual([(f["id"], f["armor_class"], f.get("speed"), f["actions"]) for f in wolf["forms"]], [
             ("hybrid", 12, None, ["bite", "claws", "bite_claws"]),
             ("wolf", 12, {"walk": 40}, ["bite"]),

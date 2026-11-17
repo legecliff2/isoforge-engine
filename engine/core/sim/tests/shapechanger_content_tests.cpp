@@ -811,7 +811,8 @@ TEST_CASE("shapechanger pack: werewolf, werebear, succubus, and oni forms") {
     const uint32_t wfid = shape_feature(*lib.find("srd51.monster.werewolf"));
     wolf.advance_to(wolf.id(0));
     CHECK(legal_attack(wolf, wolf.id(0), "spear"));
-    CHECK(legal_multi(wolf, wolf.id(0)));
+    CHECK_FALSE(legal_multi(wolf, wolf.id(0)));   // SRD 5.1: one spear attack; bite + claws is the hybrid
+    CHECK(wolf.who(0).multiattacks.empty());
     CHECK_FALSE(legal_attack(wolf, wolf.id(0), "bite"));
     CHECK_FALSE(has_attack(wolf.who(0), "bite"));
     CHECK(wolf.who(0).ac == 11);
