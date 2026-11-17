@@ -1137,7 +1137,7 @@ bool choose_grapple_instead(const Combat& c, const rules5e::ActionRequest& q) {
     if (!me || !t || t->dead || q.attack_index >= me->attacks.size() || !me->attacks[q.attack_index].grapple_instead_ok) return false;
     // (b) already held by me, incapacitated or restrained: the Bite is legal already, so take the damage
     if (t->has(rules5e::Condition::Grappled) && rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) == me->id) return false;
-    if (rules5e::is_incapacitated(*t) || t->has(rules5e::Condition::Restrained)) return false;
+    if (rules5e::counts_as_incapacitated(*t) || t->has(rules5e::Condition::Restrained)) return false;
     // the claw's average damage would drop the target: take the damage
     const rules5e::DiceExpr& d = me->attacks[q.attack_index].damage;
     if ((int(d.count) * (int(d.sides) + 1)) / 2 + int(d.bonus) >= int(t->hp) + int(t->temp_hp)) return false;
@@ -1202,7 +1202,7 @@ std::optional<Command> summon_turn_command(const Combat& c, CombatantId self) {
         x.request = {self, s.budget.action ? ActionKind::Dodge : ActionKind::EndTurn};
         return x;
     }
-    if (rules5e::is_incapacitated(*me)) return std::nullopt;
+    if (rules5e::counts_as_incapacitated(*me)) return std::nullopt;
     std::vector<CombatantId> verbal, bonus;
     for (const auto& k : s.combatants) {
         if (k.summoner != self || k.gone || k.dead || k.commanded == 1) continue;

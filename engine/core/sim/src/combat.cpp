@@ -2777,9 +2777,9 @@ uint64_t Combat::hash() const {
         }
     }
     // 0xEB (Possession): the link and the overlay's saved mental block. Folded only while some
-    // possessing id is non-zero, so a fight with no possession hashes as before. class_live and the
-    // load-time class snapshot are not folded: they are a copy of fields the live combatant already
-    // hashes, and a fight with no link does not have them. Next free tag is 0xEC.
+    // possessing id is non-zero, so a fight with no possession hashes as before. Combat::hash never
+    // folds AC, attacks, or speed. class_live is captured deterministically at the link (kind 55 is
+    // in the hashed stream), and replay re-derives it. Next free tag is 0xEC.
     {
         uint32_t links = 0;
         for (const auto& c : state_.combatants) if (c.possessing != 0) ++links;

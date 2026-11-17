@@ -582,6 +582,45 @@ TEST_CASE("a printed attack is not offered as an opportunity attack") {
     }));
 }
 
+TEST_CASE("an opportunity attack is not offered against a possessing ghost") {
+    EncounterHooks h = spell_hooks();
+    h.ready_trigger = [](const EncounterState&, const ReadiedAction&, const Event& e) {
+        return e.kind == EventKind::Moved && e.actor == 3;
+    };
+    auto ghost = ghost_of(2);
+    ghost.reaction_policy.fill(ReactionPolicy::Auto);
+    auto foe = ally_of(3);
+    foe.reaction_policy.fill(ReactionPolicy::Auto);
+    foe.attacks = {derived_sword()};
+    auto s = begin_encounter({host_of(1), ghost, foe}, 55, nullptr, h);
+    end_turns_until(s, 2);
+    ActionRequest ready{2, ActionKind::Ready};
+    ready.ready_kind = ActionKind::Move;
+    ready.move_ft = 15;
+    ready.leaves_reach = true;
+    ready.trigger_id = 9;
+    REQUIRE(step(s, ready).ok);
+    REQUIRE(mut(s, 2).has_readied);
+    link(s, 2, 1);
+    CHECK(mut(s, 2).has_readied);
+    end_turns_until(s, 3);
+    ActionRequest mv{3, ActionKind::Move};
+    mv.move_ft = 5;
+    mv.move_tiles = 1;
+    auto fired = step(s, mv);
+    REQUIRE_MESSAGE(fired.ok, fired.error);
+    CHECK(std::any_of(fired.events.begin(), fired.events.end(), [](const Event& e) {
+        return e.kind == EventKind::ReadyTriggered && e.actor == 2;
+    }));
+    CHECK(std::none_of(fired.events.begin(), fired.events.end(), [](const Event& e) {
+        return e.kind == EventKind::ReactionWindowOpened && e.a == int32_t(ReactionTrigger::LeavingReach);
+    }));
+    CHECK_FALSE(mut(s, 3).reaction_used);
+    CHECK(std::none_of(fired.events.begin(), fired.events.end(), [](const Event& e) {
+        return e.kind == EventKind::AttackResolved && e.actor == 3;
+    }));
+}
+
 TEST_CASE("a readied printed attack does not spend the reaction") {
     EncounterHooks h = spell_hooks();
     h.in_range = [](const EncounterState&, const ReactionWindow&, const Combatant&) { return true; };
@@ -750,6 +789,18 @@ TEST_CASE("draconic resilience changes the maximum only") {
     CHECK(mut(summon, 1).hp == 0);
     CHECK(mut(summon, 1).hp_max == 12);
     CHECK(during > 0);
+
+    auto floored = host_of(1);
+    floored.hp = 1;
+    floored.hp_max = 2;
+    floored.possession_hp_bonus = 5;
+    auto floor = begin_encounter({floored, ghost_of(2), ally_of(3)}, 52, nullptr, spell_hooks());
+    link(floor, 2, 1);
+    CHECK(mut(floor, 1).hp_max == 1);
+    CHECK(mut(floor, 1).hp == 1);
+    end_possession(floor, 2, 2, ev, false);
+    CHECK(mut(floor, 1).hp_max == 2);
+    CHECK(mut(floor, 1).hp == 1);
 }
 
 TEST_CASE("a class feature already running is suspended for the link and resumed after") {
@@ -791,6 +842,98 @@ TEST_CASE("a class feature already running is suspended for the link and resumed
     const int mid = mut(s, 1).hp;
     REQUIRE(step(s, ActionRequest{3, ActionKind::Attack, 1, 0}).ok);
     CHECK(mid - mut(s, 1).hp == 4);
+}
+
+TEST_CASE("Sacred Weapon's attack bonus is suspended for the link and resumed after") {
+    EncounterHooks h = spell_hooks();
+    ModifierSpec weapon;
+    weapon.id = 81;
+    weapon.source = 81;
+    weapon.stat = ModStat::AttackRoll;
+    weapon.bonus = 2;
+    h.feature_modifiers = [&](const EncounterState&, const Combatant&, uint32_t feature_id) {
+        return feature_id == 1 ? std::vector<ModifierSpec>{weapon} : std::vector<ModifierSpec>{};
+    };
+    auto host = host_of(1);
+    host.possession_blocked_features = {1};
+    host.attacks[0].to_hit = 40;
+    host.attacks[0].pb_in_to_hit = 0;
+    host.attacks[0].damage = {0, 0, 1};
+    auto foe = ally_of(3);
+    foe.ac = 10;
+    auto s = begin_encounter({host, ghost_of(2), foe}, 53, nullptr, h);
+    ActiveModifier row;
+    row.spec = weapon;
+    row.caster = 1;
+    row.target = 1;
+    s.modifiers.push_back(row);
+    CHECK(modifier_flat(s, 1, ModStat::AttackRoll) == 2);
+    link(s, 2, 1);
+    CHECK(s.modifiers[0].possession_held);
+    CHECK(modifier_flat(s, 1, ModStat::AttackRoll) == 0);
+    end_turns_until(s, 2);
+    auto held = step(s, ActionRequest{1, ActionKind::Attack, 3, 0});
+    REQUIRE_MESSAGE(held.ok, held.error);
+    CHECK(std::any_of(held.events.begin(), held.events.end(), [](const Event& e) {
+        return e.kind == EventKind::AttackResolved && e.actor == 1 && e.b == e.a + 40;
+    }));
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    REQUIRE(step(s, ActionRequest{2, ActionKind::EndTurn}).ok);
+    CHECK_FALSE(s.modifiers[0].possession_held);
+    CHECK(modifier_flat(s, 1, ModStat::AttackRoll) == 2);
+    end_turns_until(s, 1);
+    auto back = step(s, ActionRequest{1, ActionKind::Attack, 3, 0});
+    REQUIRE_MESSAGE(back.ok, back.error);
+    CHECK(std::any_of(back.events.begin(), back.events.end(), [](const Event& e) {
+        return e.kind == EventKind::AttackResolved && e.actor == 1 && e.b == e.a + 42;
+    }));
+}
+
+TEST_CASE("Rage's damage bonus is suspended for the link and resumed after") {
+    EncounterHooks h = spell_hooks();
+    ModifierSpec rage;
+    rage.id = 82;
+    rage.source = 82;
+    rage.stat = ModStat::Damage;
+    rage.bonus = 2;
+    rage.scope = 1;
+    rage.scope_ability = 1;
+    h.feature_modifiers = [&](const EncounterState&, const Combatant&, uint32_t feature_id) {
+        return feature_id == 1 ? std::vector<ModifierSpec>{rage} : std::vector<ModifierSpec>{};
+    };
+    auto host = host_of(1);
+    host.possession_blocked_features = {1};
+    host.attacks[0].to_hit = 40;
+    host.attacks[0].pb_in_to_hit = 0;
+    host.attacks[0].damage = {0, 0, 4};
+    host.attacks[0].ability_used = int8_t(Ability::Str);
+    auto foe = ally_of(3);
+    foe.ac = 10;
+    auto s = begin_encounter({host, ghost_of(2), foe}, 54, nullptr, h);
+    ActiveModifier row;
+    row.spec = rage;
+    row.caster = 1;
+    row.target = 1;
+    s.modifiers.push_back(row);
+    CHECK(modifier_flat(s, 1, ModStat::Damage) == 2);
+    link(s, 2, 1);
+    CHECK(s.modifiers[0].possession_held);
+    CHECK(modifier_flat(s, 1, ModStat::Damage) == 0);
+    end_turns_until(s, 2);
+    const int before = mut(s, 3).hp;
+    REQUIRE(step(s, ActionRequest{1, ActionKind::Attack, 3, 0}).ok);
+    CHECK(before - mut(s, 3).hp == 4);
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    REQUIRE(step(s, ActionRequest{2, ActionKind::EndTurn}).ok);
+    CHECK_FALSE(s.modifiers[0].possession_held);
+    CHECK(modifier_flat(s, 1, ModStat::Damage) == 2);
+    end_turns_until(s, 1);
+    const int mid = mut(s, 3).hp;
+    auto again = step(s, ActionRequest{1, ActionKind::Attack, 3, 0});
+    REQUIRE_MESSAGE(again.ok, again.error);
+    CHECK(mid - mut(s, 3).hp == 6);
 }
 
 TEST_CASE("charm and fright on the host are suspended, then resume") {

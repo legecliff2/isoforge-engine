@@ -467,7 +467,7 @@ bool Session::step() {
     } else {
         // Same loop body as sim::run_to_end, one command per call, but a NeedsDecision pause is
         // left visible for one step instead of being settled immediately.
-        const sim::CombatantId self = rules5e::current_actor(c.state());
+        const sim::CombatantId self = rules5e::turn_body(c.state());
         if (c.state().round != m.round || c.state().turn_index != m.turn) {
             m.round = c.state().round;
             m.turn = c.state().turn_index;

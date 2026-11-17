@@ -2297,6 +2297,7 @@ void end_recast_bonds(EncounterState& s, const SpellDef& def, CombatantId neu, s
     if (!bond) return;
     std::vector<std::pair<CombatantId, uint32_t>> srcs;
     for (const auto& m : s.modifiers) {
+        if (m.possession_held) continue;
         if (m.spec.source != def.id || (m.spec.stat != ModStat::ShareDamage && m.spec.end_caster_at_zero == 0)) continue;
         if (m.caster != neu && m.target != neu) continue;
         if (std::find(srcs.begin(), srcs.end(), std::make_pair(m.caster, m.spec.source)) == srcs.end())
@@ -2343,12 +2344,12 @@ void share_ward_damage(EncounterState& s, Combatant& victim, const DamageApplied
     struct Pop { ~Pop() { if (!g_share_stack.empty()) g_share_stack.pop_back(); } } pop;
     std::vector<std::pair<CombatantId, uint32_t>> rows;
     for (const auto& m : s.modifiers)
-        if (m.target == victim.id && m.spec.stat == ModStat::ShareDamage) rows.push_back({m.caster, m.spec.source});
+        if (!m.possession_held && m.target == victim.id && m.spec.stat == ModStat::ShareDamage) rows.push_back({m.caster, m.spec.source});
     for (const auto& row : rows) {
         if (std::find(g_share_stack.begin(), g_share_stack.end(), row.first) != g_share_stack.end()) continue;
         bool live = false;
         for (const auto& m : s.modifiers)
-            live = live || (m.target == victim.id && m.caster == row.first && m.spec.source == row.second && m.spec.stat == ModStat::ShareDamage);
+            live = live || (!m.possession_held && m.target == victim.id && m.caster == row.first && m.spec.source == row.second && m.spec.stat == ModStat::ShareDamage);
         if (!live) continue;
         Combatant* caster = find_mut(s, row.first);
         if (!caster || caster->dead || caster == &victim) continue;
@@ -3030,7 +3031,7 @@ bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, const A
         return opts;
     };
     auto eligible = [&](const Combatant& r) {
-        return r.id != mover.id && side_of(s, r) != side_of(s, mover) && may_react(s, r, w.trigger) && in_range(s, w, r) &&
+        return r.id != mover.id && mover.possessing == 0 && side_of(s, r) != side_of(s, mover) && may_react(s, r, w.trigger) && in_range(s, w, r) &&
                !options_for(r).empty() && cover_of(s, r.id, mover.id, false, 0) != Cover::Total &&   // 7.2t: not offered
                plane_affect_refusal(r, mover).empty();   // B19: an opportunity attack does not cross planes
     };
@@ -3548,7 +3549,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         if (!gone.empty()) expire_effects(s, gone, ev);
     }
     for (const auto& m : s.modifiers)   // Heroism: temp hp again at the start of each turn
-        if (m.target == c.id && m.spec.stat == ModStat::TempHp && m.spec.per_turn && !c.dead && !c.no_regain_hp && m.spec.bonus > c.temp_hp) {
+        if (!m.possession_held && m.target == c.id && m.spec.stat == ModStat::TempHp && m.spec.per_turn && !c.dead && !c.no_regain_hp && m.spec.bonus > c.temp_hp) {
             c.temp_hp = m.spec.bonus;
             emit(ev, EventKind::ModifierApplied, m.caster, c.id, int32_t(m.spec.id), int32_t(m.spec.stat), m.spec.bonus);
         }
@@ -7683,7 +7684,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     }
     if (a.surprised) { add(ActionKind::EndTurn); return out; }   // R-G16
     if (awaits_command(a)) {   // R-G12 PR 2 (D4): Dodge until commanded
-        if ((b.action || b.extra_actions > 0) && !is_incapacitated(a)) add(ActionKind::Dodge);
+        if ((b.action || b.extra_actions > 0) && !counts_as_incapacitated(a)) add(ActionKind::Dodge);
         add(ActionKind::EndTurn);
         return out;
     }
@@ -8243,7 +8244,7 @@ int modified_speed(const EncounterState& s, const Combatant& c) {
     for (const auto& e : s.effects)
         if (e.target == c.id && (e.ends_on & kEndsOnShakeAwake)) return 0;
     for (const auto& m : s.modifiers)
-        if (m.target == c.id && m.spec.stat == ModStat::Speed && m.spec.speed_den > 0)
+        if (!m.possession_held && m.target == c.id && m.spec.stat == ModStat::Speed && m.spec.speed_den > 0)
             sp = std::max(0, sp * m.spec.speed_num / m.spec.speed_den - int(m.spec.speed_sub));
     return sp;
 }
@@ -8554,6 +8555,7 @@ void apply_class_strip(Combatant& body) {
     apply_attack_shape(body, b.attacks, b, -1);
     body.ac = int8_t(std::clamp(int(body.ac) - int(b.ac_delta), -128, 127));
     body.speed_ft = uint8_t(std::clamp(int(body.speed_ft) - int(b.speed_delta), 0, 255));
+    if (body.possession_overlay) body.possession_overlay->class_stripped = true;
 }
 
 void restore_overlay_stats(Combatant& body) {
@@ -8568,15 +8570,15 @@ void restore_overlay_stats(Combatant& body) {
         const int ac = body.ac;
         const int speed = body.speed_ft;
         put_class_base(body, *o.class_live);
-        if (body.possession_class_base) {
+        if (o.class_stripped && body.possession_class_base) {
             const Combatant::PossessionClassBase& d = *body.possession_class_base;
             apply_attack_shape(body, o.class_live->attacks, d, +1);
             body.ac = int8_t(std::clamp(ac + int(d.ac_delta), -128, 127));
             body.speed_ft = uint8_t(std::clamp(speed + int(d.speed_delta), 0, 255));
         }
     }
-    if (body.possession_hp_bonus != 0)
-        body.hp_max = int16_t(std::min(32767, int(body.hp_max) + int(body.possession_hp_bonus)));
+    if (o.hp_max_removed != 0)
+        body.hp_max = int16_t(std::min(32767, int(body.hp_max) + int(o.hp_max_removed)));
 }
 
 void suspend_charm_fear(EncounterState& s, Combatant& body, std::vector<Event>& ev) {
@@ -8718,9 +8720,11 @@ std::string_view begin_possession(EncounterState& s, CombatantId ghost_id, Comba
     apply_ghost_mind(*body);
     apply_class_strip(*body);
     if (body->possession_hp_bonus != 0) {
-        const int max = std::max(1, int(body->hp_max) - int(body->possession_hp_bonus));
+        const int before = body->hp_max;
+        const int max = std::max(1, before - int(body->possession_hp_bonus));
         body->hp_max = int16_t(max);
         if (body->hp > body->hp_max) body->hp = body->hp_max;
+        body->possession_overlay->hp_max_removed = int16_t(before - max);
     }
     if (body->has_readied) {
         std::erase_if(s.readied, [&](const ReadiedAction& r) { return r.actor == body->id; });

@@ -944,6 +944,12 @@ struct Combatant {
         uint8_t immunity_scope = 0;          // 0 = every user, 1 = this ghost
         // The body's class-feature fields as they were at the link, restored at the end.
         std::optional<PossessionClassBase> class_live{};
+        // True only after apply_class_strip ran (the body was not in a form). The end adds the
+        // class deltas back only then. Not hashed.
+        bool class_stripped = false;
+        // Hit-point maximum actually removed at the link (the bonus, or less when the floor of 1
+        // bites). Added back at the end. Not hashed.
+        int16_t hp_max_removed = 0;
     };
     CombatantId possessing = 0;
     CombatantId possessed_by = 0;
