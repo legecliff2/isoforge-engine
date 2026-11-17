@@ -8482,9 +8482,23 @@ Combatant::PossessionClassBase capture_class_live(const Combatant& body) {
     live.bonus_attacks = body.bonus_attacks;
     live.bonus_action_costs = body.bonus_action_costs;
     live.attacks = body.attacks;
+    live.reactions = body.reactions;
+    live.spell_mods = body.spell_mods;
     live.thieves_tools = body.thieves_tools;
+    live.evasion = body.evasion;
+    live.reckless_attack = body.reckless_attack;
+    live.great_weapon_fighting = body.great_weapon_fighting;
+    live.sculpt_spells = body.sculpt_spells;
+    live.has_heal_bonus = body.has_heal_bonus;
+    live.heal_bonus_per_level = body.heal_bonus_per_level;
     live.ac = body.ac;
+    live.attack_bonus_melee = body.attack_bonus_melee;
+    live.attack_bonus_ranged = body.attack_bonus_ranged;
+    live.crit_min = body.crit_min;
+    live.heal_bonus_flat = body.heal_bonus_flat;
     live.speed_ft = body.speed_ft;
+    live.climb_ft = body.climb_ft;
+    live.metamagic_known = body.metamagic_known;
     return live;
 }
 
@@ -8497,9 +8511,23 @@ void put_class_base(Combatant& body, const Combatant::PossessionClassBase& b) {
     body.bonus_attacks = b.bonus_attacks;
     body.bonus_action_costs = b.bonus_action_costs;
     body.attacks = b.attacks;
+    body.reactions = b.reactions;
+    body.spell_mods = b.spell_mods;
     body.thieves_tools = b.thieves_tools;
+    body.evasion = b.evasion;
+    body.reckless_attack = b.reckless_attack;
+    body.great_weapon_fighting = b.great_weapon_fighting;
+    body.sculpt_spells = b.sculpt_spells;
+    body.has_heal_bonus = b.has_heal_bonus;
+    body.heal_bonus_per_level = b.heal_bonus_per_level;
     body.ac = b.ac;
+    body.attack_bonus_melee = b.attack_bonus_melee;
+    body.attack_bonus_ranged = b.attack_bonus_ranged;
+    body.crit_min = b.crit_min;
+    body.heal_bonus_flat = b.heal_bonus_flat;
     body.speed_ft = b.speed_ft;
+    body.climb_ft = b.climb_ft;
+    body.metamagic_known = b.metamagic_known;
 }
 
 void apply_class_strip(Combatant& body) {
@@ -8516,6 +8544,10 @@ void restore_overlay_stats(Combatant& body) {
     body.skill_proficiencies = o.skill_proficiencies;
     body.condition_immunities = o.condition_immunities;
     if (o.class_live) put_class_base(body, *o.class_live);
+    if (body.possession_hp_bonus != 0) {
+        body.hp_max = int16_t(body.hp_max + body.possession_hp_bonus);
+        body.hp = int16_t(body.hp + body.possession_hp_bonus);
+    }
 }
 
 void suspend_charm_fear(EncounterState& s, Combatant& body, std::vector<Event>& ev) {
@@ -8616,6 +8648,7 @@ std::string_view begin_possession(EncounterState& s, CombatantId ghost_id, Comba
     if (ghost->possessing != 0) return "already possessing";
     if (body->possessed_by != 0) return "target is already possessed";
     if (body->possessing != 0) return "can't possess a possessing ghost";
+    if (!body->possession_refuse.empty()) return body->possession_refuse;
     if (body->possession_unsupported) return "possessed: unsupported host";
     if (!plane_affect_refusal(*ghost, *body).empty()) return plane_affect_refusal(*ghost, *body);
     Combatant::PossessionOverlay o;
@@ -8637,6 +8670,10 @@ std::string_view begin_possession(EncounterState& s, CombatantId ghost_id, Comba
     body->possessed_by = ghost->id;
     apply_ghost_mind(*body);
     apply_class_strip(*body);
+    if (body->possession_hp_bonus != 0) {
+        body->hp_max = int16_t(std::max(0, int(body->hp_max) - int(body->possession_hp_bonus)));
+        body->hp = int16_t(std::max(0, int(body->hp) - int(body->possession_hp_bonus)));
+    }
     if (body->concentration_spell != 0) end_concentration(s, body->id, ev);   // SRD: incapacitated ends concentration
     suspend_charm_fear(s, *body, ev);
     prune_sourced(s, ev);   // grapples the body holds end (the grappler counts as incapacitated)
@@ -8884,6 +8921,8 @@ FormStats own_stats(const Combatant& c) {
             f.bonus_attacks = live.bonus_attacks;
             f.ac = live.ac;
             f.speed_ft = live.speed_ft;
+            f.reactions = live.reactions;
+            f.climb_ft = live.climb_ft;
         }
     }
     return f;

@@ -3,6 +3,7 @@
 // one still work); highest wins; exact error strings; characters only; the AI uses all N; replay.
 #include <doctest/doctest.h>
 
+#include <filesystem>
 #include <fstream>
 #include <string>
 
@@ -245,4 +246,95 @@ TEST_CASE("possession class strip and armor category match the printed character
     REQUIRE(cleric);
     CHECK(cleric->base.worn_armor == 4);
     CHECK(cleric->base.worn_shield);
+    const auto* ranger = add("content/packs/srd51.core/characters/ranger_level_2.json");
+    REQUIRE(ranger);
+    CHECK_FALSE(ranger->base.possession_unsupported);
+    REQUIRE(ranger->base.possession_class_base);
+    CHECK(ranger->base.attack_bonus_ranged == 2);
+    CHECK(ranger->base.possession_class_base->attack_bonus_ranged == 0);
+    const auto* champ = add("content/packs/srd51.core/characters/fighter_level_3.json");
+    REQUIRE(champ);
+    CHECK_FALSE(champ->base.possession_unsupported);
+    REQUIRE(champ->base.possession_class_base);
+    CHECK(champ->base.crit_min == 19);
+    CHECK(champ->base.possession_class_base->crit_min == 20);
+    const auto* berserk = add("content/packs/srd51.core/characters/barbarian_level_2.json");
+    REQUIRE(berserk);
+    CHECK_FALSE(berserk->base.possession_unsupported);
+    REQUIRE(berserk->base.possession_class_base);
+    CHECK(berserk->base.reckless_attack);
+    CHECK_FALSE(berserk->base.possession_class_base->reckless_attack);
+    const auto* monk3 = add("content/packs/srd51.core/characters/monk_level_3.json");
+    REQUIRE(monk3);
+    CHECK_FALSE(monk3->base.possession_unsupported);
+    REQUIRE(monk3->base.possession_class_base);
+    CHECK_FALSE(monk3->base.reactions.empty());
+    CHECK(monk3->base.possession_class_base->reactions.empty());
+    const auto* thief = add("content/packs/srd51.core/characters/rogue_level_5.json");
+    REQUIRE(thief);
+    CHECK_FALSE(thief->base.possession_unsupported);
+    REQUIRE(thief->base.possession_class_base);
+    CHECK(thief->base.climb_ft == 30);
+    CHECK(thief->base.possession_class_base->climb_ft == 0);
+    CHECK(thief->base.possession_class_base->reactions.empty());
+    const auto* sorc = add("content/packs/srd51.core/characters/sorcerer_level_1.json");
+    REQUIRE(sorc);
+    CHECK_FALSE(sorc->base.possession_unsupported);
+    REQUIRE(sorc->base.possession_class_base);
+    CHECK(sorc->base.possession_class_base->ac == 12);
+    CHECK(sorc->base.possession_hp_bonus == 1);
+    const auto* lock = add("content/packs/srd51.core/characters/warlock_level_2.json");
+    REQUIRE(lock);
+    CHECK_FALSE(lock->base.possession_unsupported);
+    REQUIRE(lock->base.possession_class_base);
+    CHECK_FALSE(lock->base.spell_mods.empty());
+    CHECK(lock->base.possession_class_base->spell_mods.empty());
+    const auto* life = add("content/packs/srd51.core/characters/cleric_level_1.json");
+    REQUIRE(life);
+    CHECK_FALSE(life->base.possession_unsupported);
+    REQUIRE(life->base.possession_class_base);
+    CHECK(life->base.has_heal_bonus);
+    CHECK_FALSE(life->base.possession_class_base->has_heal_bonus);
+    const auto* bard = add("content/packs/srd51.core/characters/bard_level_3.json");
+    REQUIRE(bard);
+    CHECK_FALSE(bard->base.possession_unsupported);
+    REQUIRE(bard->base.possession_class_base);
+    CHECK_FALSE(bard->base.reactions.empty());
+    CHECK(bard->base.possession_class_base->reactions.empty());
+    const auto* meta = add("content/packs/srd51.core/characters/sorcerer_level_3.json");
+    REQUIRE(meta);
+    CHECK_FALSE(meta->base.possession_unsupported);
+    REQUIRE(meta->base.possession_class_base);
+    CHECK(meta->base.metamagic_known != 0);
+    CHECK(meta->base.possession_class_base->metamagic_known == 0);
+    const auto* sculpt = add("content/packs/srd51.core/characters/wizard_level_2.json");
+    REQUIRE(sculpt);
+    CHECK_FALSE(sculpt->base.possession_unsupported);
+    REQUIRE(sculpt->base.possession_class_base);
+    CHECK(sculpt->base.sculpt_spells);
+    CHECK_FALSE(sculpt->base.possession_class_base->sculpt_spells);
+}
+
+TEST_CASE("possession class strip accepts every printed character") {
+    ContentLibrary lib;
+    namespace fs = std::filesystem;
+    const fs::path root = fs::path(kRoot) / "content/packs/srd51.core";
+    for (const auto& ent : fs::directory_iterator(root / "items")) {
+        if (ent.path().extension() != ".json") continue;
+        REQUIRE_MESSAGE(lib.add_item(load_json(ent.path().string().substr(std::string(kRoot).size() + 1))).value_or("").empty(),
+                        ent.path().string());
+    }
+    for (const auto& ent : fs::directory_iterator(root / "characters")) {
+        if (ent.path().extension() != ".json") continue;
+        const std::string rel = ent.path().string().substr(std::string(kRoot).size() + 1);
+        Json d = load_json(rel);
+        const auto err = lib.add(d, "character");
+        const std::string loaded = rel + ": " + err.value_or("");
+        REQUIRE_MESSAGE(err.value_or("").empty(), loaded);
+        const auto* a = lib.find(d["id"].get<std::string>());
+        REQUIRE(a);
+        const std::string why = rel + " " + a->base.possession_refuse;
+        INFO(why);
+        CHECK_FALSE(a->base.possession_unsupported);
+    }
 }

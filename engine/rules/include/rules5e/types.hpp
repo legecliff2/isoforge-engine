@@ -2,8 +2,9 @@
 // Core SRD 5.1 value types (ARCHITECTURE.md §5.3). Pure data; no engine headers.
 #include <array>
 #include <cstdint>
-#include <string_view>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace rules5e {
@@ -907,9 +908,23 @@ struct Combatant {
         std::vector<BonusAttack> bonus_attacks{};
         std::vector<BonusActionCost> bonus_action_costs{};
         std::vector<Attack> attacks{};
+        std::vector<Reaction> reactions{};
+        std::vector<SpellMod> spell_mods{};
         bool thieves_tools = false;
+        bool evasion = false;
+        bool reckless_attack = false;
+        bool great_weapon_fighting = false;
+        bool sculpt_spells = false;
+        bool has_heal_bonus = false;
+        bool heal_bonus_per_level = false;
         int8_t ac = 10;
+        int8_t attack_bonus_melee = 0;
+        int8_t attack_bonus_ranged = 0;
+        int8_t crit_min = 20;
+        int8_t heal_bonus_flat = 0;
         uint8_t speed_ft = 30;
+        uint8_t climb_ft = 0;
+        uint8_t metamagic_known = 0;
     };
     struct PossessionOverlay {
         int8_t body_int = 10, body_wis = 10, body_cha = 10;
@@ -929,7 +944,12 @@ struct Combatant {
     std::optional<PossessionOverlay> possession_overlay{};
     std::optional<PossessionClassBase> possession_class_base{};
     // The loader could not split a class-origin baked number exactly. begin_possession refuses.
+    // possession_refuse names the feature when the split is not exact.
     bool possession_unsupported = false;
+    std::string possession_refuse{};
+    // Hit points added by a class feature (Draconic Resilience: 1 per sorcerer level). Subtracted
+    // at the link and added back at the end, so damage taken while possessed is kept. Not hashed.
+    int16_t possession_hp_bonus = 0;
     // The possessor's start_turn already cleared this body's turn-owner state since its last slot.
     // The body's next slot skips that clear so a reaction or Dodge is not refreshed twice. Not hashed.
     bool turn_owner_reset = false;

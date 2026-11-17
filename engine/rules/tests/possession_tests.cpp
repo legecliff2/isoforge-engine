@@ -520,6 +520,9 @@ TEST_CASE("an unsupported host is refused") {
     auto s = begin_encounter({host, ghost_of(2)}, 28, nullptr, spell_hooks());
     std::vector<Event> ev;
     CHECK(begin_possession(s, 2, 1, kPoss, 24, 1, ev) == "possessed: unsupported host");
+    host.possession_refuse = "possessed: unsupported host: improved_critical";
+    s = begin_encounter({host, ghost_of(2)}, 28, nullptr, spell_hooks());
+    CHECK(begin_possession(s, 2, 1, kPoss, 24, 1, ev) == "possessed: unsupported host: improved_critical");
 }
 
 TEST_CASE("turn-owner resets run on the possessor's turn and not twice after the link ends") {
@@ -561,4 +564,121 @@ TEST_CASE("a printed attack is not offered as an opportunity attack") {
     CHECK(std::none_of(moved.events.begin(), moved.events.end(), [](const Event& e) {
         return e.kind == EventKind::AttackResolved && e.actor == 1;
     }));
+}
+
+TEST_CASE("a readied printed attack does not spend the reaction") {
+    EncounterHooks h = spell_hooks();
+    h.in_range = [](const EncounterState&, const ReactionWindow&, const Combatant&) { return true; };
+    h.decide_reaction = [](const EncounterState&, const ReactionWindow&, const Combatant&, std::span<const ReactionOption>) {
+        return ReactionDecision{0, true, 0};
+    };
+    h.ready_trigger = [](const EncounterState&, const ReadiedAction&, const Event& e) {
+        return e.kind == EventKind::Moved && e.actor == 3;
+    };
+    auto host = host_of(1);
+    host.attacks = {printed_sword()};
+    host.reaction_policy.fill(ReactionPolicy::Auto);
+    auto s = begin_encounter({host, ghost_of(2), ally_of(3)}, 31, nullptr, h);
+    end_turns_until(s, 1);
+    ActionRequest ready{1, ActionKind::Ready, 3};
+    ready.ready_kind = ActionKind::Attack;
+    ready.trigger_id = 3;
+    ready.target_within_5ft = true;
+    REQUIRE(step(s, ready).ok);
+    REQUIRE(mut(s, 1).has_readied);
+    REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);
+    link(s, 2, 1);
+    end_turns_until(s, 3);
+    ActionRequest mv{3, ActionKind::Move};
+    mv.move_ft = 5;
+    auto fired = step(s, mv);
+    REQUIRE_MESSAGE(fired.ok, fired.error);
+    CHECK(count(fired.events, EventKind::ReactionWindowOpened) == 0);
+    CHECK(mut(s, 1).has_readied);
+    CHECK_FALSE(mut(s, 1).reaction_used);
+    // The same ready fires when the attack carries its own bonus, so the filter is what kept the reaction.
+    host.attacks = {derived_sword()};
+    auto offered = begin_encounter({host, ghost_of(2), ally_of(3)}, 31, nullptr, h);
+    end_turns_until(offered, 1);
+    REQUIRE(step(offered, ready).ok);
+    REQUIRE(step(offered, {1, ActionKind::EndTurn}).ok);
+    link(offered, 2, 1);
+    end_turns_until(offered, 3);
+    auto spent = step(offered, mv);
+    REQUIRE_MESSAGE(spent.ok, spent.error);
+    CHECK(count(spent.events, EventKind::ReactionWindowOpened) == 1);
+    CHECK_FALSE(mut(offered, 1).has_readied);
+    CHECK(mut(offered, 1).reaction_used);
+}
+
+TEST_CASE("evasion, reckless, archery, improved critical, great weapon fighting, and a class reaction are off, then restored") {
+    auto host = host_of(1);
+    host.evasion = true;
+    host.reckless_attack = true;
+    host.great_weapon_fighting = true;
+    host.sculpt_spells = true;
+    host.attack_bonus_ranged = 2;
+    host.attack_bonus_melee = 1;
+    host.crit_min = 19;
+    host.metamagic_known = 1;
+    host.has_heal_bonus = true;
+    host.heal_bonus_flat = 2;
+    host.heal_bonus_per_level = true;
+    host.climb_ft = 30;
+    Reaction deflect;
+    deflect.id = 44;
+    host.reactions = {deflect};
+    Combatant::PossessionClassBase base;
+    base.attacks = host.attacks;
+    base.ac = host.ac;
+    base.speed_ft = host.speed_ft;
+    base.evasion = false;
+    base.reckless_attack = false;
+    base.great_weapon_fighting = false;
+    base.sculpt_spells = false;
+    base.attack_bonus_ranged = 0;
+    base.attack_bonus_melee = 0;
+    base.crit_min = 20;
+    base.metamagic_known = 0;
+    base.has_heal_bonus = false;
+    base.heal_bonus_flat = 0;
+    base.heal_bonus_per_level = false;
+    base.climb_ft = 0;
+    host.possession_class_base = base;
+    host.possession_hp_bonus = 1;
+    const int hp0 = host.hp;
+    const int max0 = host.hp_max;
+    auto s = begin_encounter({host, ghost_of(2), ally_of(3)}, 32, nullptr, spell_hooks());
+    link(s, 2, 1);
+    CHECK_FALSE(mut(s, 1).evasion);
+    CHECK_FALSE(mut(s, 1).reckless_attack);
+    CHECK_FALSE(mut(s, 1).great_weapon_fighting);
+    CHECK_FALSE(mut(s, 1).sculpt_spells);
+    CHECK(mut(s, 1).attack_bonus_ranged == 0);
+    CHECK(mut(s, 1).attack_bonus_melee == 0);
+    CHECK(mut(s, 1).crit_min == 20);
+    CHECK(mut(s, 1).metamagic_known == 0);
+    CHECK_FALSE(mut(s, 1).has_heal_bonus);
+    CHECK(mut(s, 1).reactions.empty());
+    CHECK(mut(s, 1).climb_ft == 0);
+    CHECK(mut(s, 1).hp_max == max0 - 1);
+    CHECK(mut(s, 1).hp == hp0 - 1);
+    mut(s, 1).hp = int16_t(mut(s, 1).hp - 4);
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    CHECK(mut(s, 1).evasion);
+    CHECK(mut(s, 1).reckless_attack);
+    CHECK(mut(s, 1).great_weapon_fighting);
+    CHECK(mut(s, 1).sculpt_spells);
+    CHECK(mut(s, 1).attack_bonus_ranged == 2);
+    CHECK(mut(s, 1).attack_bonus_melee == 1);
+    CHECK(mut(s, 1).crit_min == 19);
+    CHECK(mut(s, 1).metamagic_known == 1);
+    CHECK(mut(s, 1).has_heal_bonus);
+    CHECK(mut(s, 1).heal_bonus_flat == 2);
+    REQUIRE(mut(s, 1).reactions.size() == 1);
+    CHECK(mut(s, 1).reactions[0].id == 44);
+    CHECK(mut(s, 1).climb_ft == 30);
+    CHECK(mut(s, 1).hp_max == max0);
+    CHECK(mut(s, 1).hp == hp0 - 4);
 }

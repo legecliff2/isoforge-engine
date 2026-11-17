@@ -2261,11 +2261,28 @@ void note_possession_class_base(rules5e::Combatant& c, const std::vector<Feature
     base.bonus_attacks = c.bonus_attacks;
     base.bonus_action_costs = c.bonus_action_costs;
     base.attacks = c.attacks;
+    base.reactions = c.reactions;
+    base.spell_mods = c.spell_mods;
     base.thieves_tools = false;
+    base.evasion = c.evasion;
+    base.reckless_attack = c.reckless_attack;
+    base.great_weapon_fighting = c.great_weapon_fighting;
+    base.sculpt_spells = c.sculpt_spells;
+    base.has_heal_bonus = c.has_heal_bonus;
+    base.heal_bonus_per_level = c.heal_bonus_per_level;
     base.ac = c.ac;
+    base.attack_bonus_melee = c.attack_bonus_melee;
+    base.attack_bonus_ranged = c.attack_bonus_ranged;
+    base.crit_min = c.crit_min;
+    base.heal_bonus_flat = c.heal_bonus_flat;
     base.speed_ft = c.speed_ft;
+    base.climb_ft = c.climb_ft;
+    base.metamagic_known = c.metamagic_known;
     bool any = false;
-    auto refuse = [&] { c.possession_unsupported = true; };
+    auto refuse = [&](const char* feature = "class feature") {
+        c.possession_unsupported = true;
+        c.possession_refuse = std::string("possessed: unsupported host: ") + feature;
+    };
 
     uint8_t from_class = 1, from_other = 1;
     bool saw_extra = false;
@@ -2506,6 +2523,136 @@ void note_possession_class_base(rules5e::Combatant& c, const std::vector<Feature
             hit = true;
         }
         if (!hit) { refuse(); return; }
+        any = true;
+    }
+    auto clear_flag = [&](const char* kind, bool live, bool& slot) {
+        bool klass = false, other = false;
+        for (const auto& f : feats) {
+            if (f.kind != kind || !feature_live(f, declared)) continue;
+            if (feature_is_class(f, schema_type)) klass = true;
+            else other = true;
+        }
+        if (!klass) return;
+        if (other || !live) { refuse(kind); return; }
+        slot = false;
+        any = true;
+    };
+    clear_flag("evasion", c.evasion, base.evasion);
+    clear_flag("reckless_attack", c.reckless_attack, base.reckless_attack);
+    clear_flag("great_weapon_fighting", c.great_weapon_fighting, base.great_weapon_fighting);
+    clear_flag("sculpt_spells", c.sculpt_spells, base.sculpt_spells);
+    if (c.possession_unsupported) return;
+    int melee_class = 0, ranged_class = 0, melee_other = 0, ranged_other = 0;
+    for (const auto& f : feats) {
+        if (f.kind != "attack_bonus" || !feature_live(f, declared)) continue;
+        const auto amt = f.effect.find("amount");
+        const std::string which = f.effect.value("attacks", "");
+        if (amt == f.effect.end() || !amt->is_number_integer() || (which != "melee" && which != "ranged")) {
+            refuse("attack_bonus"); return;
+        }
+        int& slot = feature_is_class(f, schema_type) ? (which == "ranged" ? ranged_class : melee_class)
+                                                     : (which == "ranged" ? ranged_other : melee_other);
+        slot += int(amt->get<int64_t>());
+    }
+    if (melee_class || ranged_class) {
+        if (int(c.attack_bonus_melee) != melee_class + melee_other || int(c.attack_bonus_ranged) != ranged_class + ranged_other) {
+            refuse("attack_bonus"); return;
+        }
+        base.attack_bonus_melee = int8_t(melee_other);
+        base.attack_bonus_ranged = int8_t(ranged_other);
+        any = true;
+    }
+    int crit_class = 20, crit_other = 20;
+    bool saw_crit = false;
+    for (const auto& f : feats) {
+        if (f.kind != "crit_range" || !feature_live(f, declared)) continue;
+        const int m = f.effect.value("min", 0);
+        if (m < 2 || m > 20) { refuse("crit_range"); return; }
+        saw_crit = true;
+        if (feature_is_class(f, schema_type)) crit_class = std::min(crit_class, m);
+        else crit_other = std::min(crit_other, m);
+    }
+    if (saw_crit) {
+        const int expect = std::min(crit_class, crit_other);
+        if (int(c.crit_min) != expect) { refuse("crit_range"); return; }
+        if (crit_class < 20) { base.crit_min = int8_t(crit_other); any = true; }
+    }
+    if (class_feature("metamagic")) {
+        if (c.metamagic_known == 0) { refuse("metamagic"); return; }
+        base.metamagic_known = 0;
+        any = true;
+    }
+    int heal_class = 0, heal_other = 0;
+    bool heal_class_per = false, heal_other_per = false, saw_heal = false;
+    for (const auto& f : feats) {
+        if (f.kind != "heal_bonus" || !feature_live(f, declared)) continue;
+        const auto pl = f.effect.find("per_spell_level");
+        if (pl == f.effect.end() || !pl->is_boolean()) { refuse("heal_bonus"); return; }
+        int flat = 0;
+        if (auto fl = f.effect.find("flat"); fl != f.effect.end()) {
+            if (!fl->is_number_integer()) { refuse("heal_bonus"); return; }
+            flat = int(fl->get<int64_t>());
+        }
+        if (feature_is_class(f, schema_type)) { heal_class += flat; heal_class_per = heal_class_per || pl->get<bool>(); saw_heal = true; }
+        else { heal_other += flat; heal_other_per = heal_other_per || pl->get<bool>(); }
+    }
+    if (saw_heal) {
+        if (int(c.heal_bonus_flat) != heal_class + heal_other || c.heal_bonus_per_level != (heal_class_per || heal_other_per)) {
+            refuse("heal_bonus"); return;
+        }
+        base.heal_bonus_flat = int8_t(heal_other);
+        base.heal_bonus_per_level = heal_other_per;
+        base.has_heal_bonus = heal_other != 0 || heal_other_per;
+        any = true;
+    }
+    for (const auto& f : feats) {
+        if (!feature_is_class(f, schema_type) || f.kind != "spell_mod" || !feature_live(f, declared)) continue;
+        const auto sp = f.effect.find("spell");
+        if (sp == f.effect.end() || !sp->is_string()) { refuse("spell_mod"); return; }
+        rules5e::SpellMod want;
+        want.spell_id = rules5e::spell_id_of(sp->get<std::string>());
+        if (auto ab = f.effect.find("damage_bonus_ability"); ab != f.effect.end() && ab->is_string()) {
+            static const char* names[] = {"str", "dex", "con", "int", "wis", "cha"};
+            const std::string s = ab->get<std::string>();
+            for (uint8_t i = 0; i < 6; ++i) if (s == names[i]) want.damage_ability = i;
+        }
+        if (auto push = f.effect.find("on_hit_push_ft"); push != f.effect.end() && push->is_number_integer())
+            want.push_ft = uint16_t(push->get<int>());
+        auto it = std::find_if(base.spell_mods.begin(), base.spell_mods.end(), [&](const rules5e::SpellMod& m) {
+            return m.spell_id == want.spell_id && m.damage_ability == want.damage_ability && m.push_ft == want.push_ft;
+        });
+        if (it == base.spell_mods.end()) { refuse(f.id.c_str()); return; }
+        base.spell_mods.erase(it);
+        any = true;
+    }
+    if (auto rs = doc.find("reactions"); rs != doc.end() && rs->is_array() && !rs->empty()) {
+        const std::string aid = doc.value("id", "");
+        std::vector<uint32_t> drop;
+        for (const Json& r : *rs) {
+            if (!r.is_object() || !r.contains("id") || !r["id"].is_string()) { refuse("reaction"); return; }
+            drop.push_back(rules5e::spell_id_of(aid + "#" + r["id"].get<std::string>()));
+        }
+        const auto before = base.reactions.size();
+        std::erase_if(base.reactions, [&](const rules5e::Reaction& r) {
+            return std::find(drop.begin(), drop.end(), r.id) != drop.end();
+        });
+        if (base.reactions.size() == before) { refuse("reaction"); return; }
+        any = true;
+    }
+    if (class_feature("second_story_work")) {
+        if (c.climb_ft == 0 || c.climb_ft != c.speed_ft) { refuse("second_story_work"); return; }
+        base.climb_ft = 0;
+        any = true;
+    }
+    if (class_feature("draconic_resilience")) {
+        if (c.worn_armor == 0) {
+            if (int(c.ac) != 13 + dex) { refuse("draconic_resilience"); return; }
+            base.ac = int8_t(10 + dex);
+            any = true;
+        }
+        const int sorc = class_level("sorcerer");
+        if (sorc < 1 || int(c.hp_max) < sorc || int(c.hp) < sorc) { refuse("draconic_resilience"); return; }
+        c.possession_hp_bonus = int16_t(sorc);
         any = true;
     }
     if (c.possession_unsupported) return;
