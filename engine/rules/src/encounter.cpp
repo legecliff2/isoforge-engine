@@ -82,7 +82,7 @@ void strength_drain(Combatant& t, int amount, std::vector<Event>& ev) {
 void refresh_mod_cache(EncounterState& s) {
     for (auto& c : s.combatants) c.mod_resist = 0;
     for (const auto& m : s.modifiers)
-        if (m.spec.stat == ModStat::Resistance && (m.spec.has_damage_type || m.spec.resist_all))
+        if (!m.possession_held && m.spec.stat == ModStat::Resistance && (m.spec.has_damage_type || m.spec.resist_all))
             for (auto& c : s.combatants) if (c.id == m.target)
                 c.mod_resist |= m.spec.resist_all ? uint32_t((1u << 13) - 1u) : bit(m.spec.damage_type);
 }
@@ -98,7 +98,7 @@ bool mod_in_scope(const ModifierSpec& m, ModStat st, int ability) {
 // Advantage / disadvantage sources from the modifiers of `id` for `st` (AttackRoll, Save, AbilityCheck, AttacksAgainst).
 void mod_modes(const EncounterState& s, CombatantId id, ModStat st, int ability, bool& adv, bool& dis) {
     for (const auto& m : s.modifiers) {
-        if (m.gated || m.target != id || !mod_in_scope(m.spec, st, ability)) continue;
+        if (m.possession_held || m.gated || m.target != id || !mod_in_scope(m.spec, st, ability)) continue;
         if (m.spec.mode == RollMode::Advantage) adv = true;
         else if (m.spec.mode == RollMode::Disadvantage) dis = true;
     }
@@ -113,7 +113,7 @@ bool is_outlined(const EncounterState& s, CombatantId id) {
 int mod_roll(EncounterState& s, CombatantId id, ModStat st, int ability) {
     int total = 0;
     for (const auto& m : s.modifiers) {
-        if (m.gated || m.target != id || !mod_in_scope(m.spec, st, ability) || m.spec.die.count == 0) continue;
+        if (m.possession_held || m.gated || m.target != id || !mod_in_scope(m.spec, st, ability) || m.spec.die.count == 0) continue;
         total += m.spec.die_mult * roll_dice(s.rng, m.spec.die, false);
     }
     return total;
@@ -134,7 +134,7 @@ void remove_modifier(EncounterState& s, std::size_t i, int reason, std::vector<E
 
 bool has_marker(const EncounterState& s, CombatantId id, ModStat st) {
     return std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) {
-        return m.target == id && m.spec.stat == st; });
+        return !m.possession_held && m.target == id && m.spec.stat == st; });
 }
 
 // 7.2u: Chill Touch: a NoHealing marker stops hit point regain on every path (temp HP is not regaining hit points).
@@ -2793,6 +2793,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         bool attackers_dis = false, attackers_adv = false;
         for (auto& m : s.modifiers) {   // `when` scope of roll-time modifiers (follow-up): gate the ones that do not hold
             m.gated = false;
+            if (m.possession_held) { m.gated = true; continue; }   // a class feature suspended for the possession
             if (m.spec.on_next_turn && !m.zi_armed) { m.gated = true; continue; }   // 7.2zi True Strike: not until the caster's next turn
             if (m.spec.mark_scope != 0 && m.spec.stat == ModStat::AttackRoll && m.target == a.id && m.mark != t.id) {
                 m.gated = true; continue;   // 7.2zi: advantage and consume only against the marked creature
@@ -2928,7 +2929,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         std::vector<std::pair<int, DamageType>> modp;   // Damage modifiers (Rage): weapon attacks only; marked rows: any attack
         if (!s.modifiers.empty()) {
             for (const auto& m : s.modifiers) {
-                if (m.target != a.id || m.spec.stat != ModStat::Damage) continue;
+                if (m.possession_held || m.target != a.id || m.spec.stat != ModStat::Damage) continue;
                 if (m.spec.mark_scope != 0 ? m.mark != t.id : spell_id != 0) continue;   // 7.2zc: a marked row: hits on the mark only
                 if (m.weapon != 0 && !wields(a, m, atk)) continue;   // 7.2y: bound to another weapon
                 if ((m.spec.scope == 1 && atk.ranged) || (m.spec.scope == 2 && !atk.ranged)) continue;
@@ -3513,16 +3514,11 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         c.la_cur = c.la_max;
         emit(ev, EventKind::LegendaryActionsRegained, c.id, 0, before, c.la_max);
     }
-    // The body's slot skips the turn-owner clear while the link lasts, and also the first slot after
-    // the link ends when the possessor already cleared this cycle (no second refresh).
-    const bool skip_owner = c.possessed_by != 0 || c.turn_owner_reset;
-    if (c.possessed_by != 0 || c.turn_owner_reset) c.turn_owner_reset = false;
-    if (!skip_owner) clear_turn_owner(s, c, ev);
-    if (c.possessing != 0 && find(s, c.possessing)) {
-        Combatant& body = *find_mut(s, c.possessing);
-        clear_turn_owner(s, body, ev);
-        body.turn_owner_reset = true;
-    }
+    // The body's slot skips the turn-owner clear only while the link is live. Once the link ends,
+    // that slot is the body's own next turn and resets Dodge, Shield and the reaction (SRD p.91, p.93).
+    if (c.possessed_by == 0) clear_turn_owner(s, c, ev);
+    if (c.possessing != 0 && find(s, c.possessing))
+        clear_turn_owner(s, *find_mut(s, c.possessing), ev);
     emit(ev, EventKind::TurnStarted, c.id, 0, s.round);
     if (!c.dead) disease_checks(s, c, ev);   // B6: the 24-hour disease save, before the rest of the turn
     for (auto& e : s.effects)   // 7.2zh Heat Metal: disadvantage lasts until the start of the caster's next turn
@@ -6220,6 +6216,7 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         return out;
     }
     if (req.special > 4) return fail("bad special attack");
+    if (req.special == 1 && counts_as_incapacitated(a)) return fail("incapacitated");
     if (req.as_bonus_action) return fail("not a bonus action");
     if (req.multiattack != 0 || b.sequence != 0) return fail("a multiattack is in progress or declared");
     const bool escape = req.special == 4;
@@ -6884,7 +6881,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (a.form == FormKind::Polymorph || a.form == FormKind::WildShape) return fail("cannot cast spells in this form");   // R-G12
         const SpellDef* def = spell_def(s, req.spell_id);
         if ((!def || def->is_spell) && std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) {
-                return m.target == a.id && (m.spec.blocks & 1); }))
+                return !m.possession_held && m.target == a.id && (m.spec.blocks & 1); }))
             return fail("cannot cast spells while this effect lasts (blocks casting)");   // 7.2z Rage
         if (def) { SaveFromGuard g(a.id); return cast_spell(s, ctx, a, b, *def, req); }   // 7.2z: the save's source (Danger Sense)
         if (req.innate) return fail("innate spells must be in the spell book");
@@ -7177,6 +7174,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         emit(out.events, EventKind::Disengaged, a.id);
         return out;
     case ActionKind::Dodge:
+        if (counts_as_incapacitated(a)) return fail("incapacitated");
         if (!bonus_cost_ok(s, a, b, req)) return fail("not enough resource for this bonus action");
         if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
         pay_bonus_cost(s, a, req, out.events);
@@ -7244,6 +7242,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (const auto why = possession_target_refusal(*t, nullptr); !why.empty()) return fail(why);
         if (const auto why = target_gate_refusal(s, a, *t, a.attacks[req.attack_index].target_requires_any, req.target_willing); !why.empty()) return fail(why);
         if (attack_locked(s, a.id, req.attack_index, t->id)) return fail("that attack holds a grappled creature: it can't attack another target");
+        if (req.grapple_instead && counts_as_incapacitated(a)) return fail("incapacitated");
         if (req.grapple_instead && !a.attacks[req.attack_index].grapple_instead_ok) return fail("grapple_instead needs an instead_of_damage grapple rider");
         if (s.hooks.loadout_of) {   // EQUIPMENT.md 3: hands / ammunition (only creatures with a loadout view)
             const std::string_view why = attack_refusal(s, a.id, req.attack_index);
@@ -7692,7 +7691,9 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     const bool familiar = a.summoner != 0 && a.summon_control == uint8_t(SummonControl::Telepathic);   // R-G12 PR 3: no attacks
     auto push_attack = [&](ActionRequest r) {   // Tier-A §27: an instead_of_damage grapple attack is listed both ways
         out.push_back(r);
-        if (r.attack_index < a.attacks.size() && a.attacks[r.attack_index].grapple_instead_ok) { r.grapple_instead = true; out.push_back(r); }
+        if (!counts_as_incapacitated(a) && r.attack_index < a.attacks.size() && a.attacks[r.attack_index].grapple_instead_ok) {
+            r.grapple_instead = true; out.push_back(r);
+        }
     };
     if (!familiar && (can_act || b.attacks_remaining > 0)) {
         for (const auto& t : s.combatants) {
@@ -7721,14 +7722,15 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         }
     }
     if (can_act) {
-        add(ActionKind::Dash); add(ActionKind::Disengage); add(ActionKind::Dodge); add(ActionKind::Hide);
+        add(ActionKind::Dash); add(ActionKind::Disengage); add(ActionKind::Hide);
+        if (!counts_as_incapacitated(a)) add(ActionKind::Dodge);
         for (const auto& t : s.combatants)
             if (t.id != a.id && is_dying(t) && !t.regen_down && side_of(s, t) == side_of(s, a)) add(ActionKind::Stabilize, false, t.id);
         // Help and Ready need sim facts (adjacency, trigger); sim builds those requests.
     }
     if (b.bonus_action)
         for (ActionKind k : {ActionKind::Dash, ActionKind::Disengage, ActionKind::Dodge, ActionKind::Hide})
-            if (a.bonus_action_grants & bit(k)) add(k, true);
+            if (a.bonus_action_grants & bit(k) && !(k == ActionKind::Dodge && counts_as_incapacitated(a))) add(k, true);
     if (b.bonus_action && !(a.bonus_action_grants & bit(ActionKind::Dash)) && has_marker(s, a.id, ModStat::BonusDash))
         add(ActionKind::Dash, true);   // 7.2zi Expeditious Retreat: the grant is the modifier, not a class bit
     if (b.bonus_action && a.sorcery_pool != 0 && !is_incapacitated(a)) {   // Font of Magic: every valid conversion
@@ -8198,7 +8200,7 @@ bool apply_modifier(EncounterState& s, CombatantId caster, CombatantId target, c
 int modifier_flat(const EncounterState& s, CombatantId id, ModStat st, int ability) {
     int sum = 0;
     for (const auto& m : s.modifiers)
-        if (!m.gated && m.target == id && mod_in_scope(m.spec, st, ability)) sum += m.spec.bonus;
+        if (!m.possession_held && !m.gated && m.target == id && mod_in_scope(m.spec, st, ability)) sum += m.spec.bonus;
     return sum;
 }
 
@@ -8209,7 +8211,7 @@ int modified_ac_bonus(const EncounterState& s, CombatantId id) {
     if (!c) return bonus;
     int floor_ac = 0;   // Barkskin / Mage Armor: AC is at least this before the bonuses
     for (const auto& m : s.modifiers)
-        if (!m.gated && m.target == id && m.spec.stat == ModStat::Ac && m.spec.ac_floor > 0)
+        if (!m.possession_held && !m.gated && m.target == id && m.spec.stat == ModStat::Ac && m.spec.ac_floor > 0)
             floor_ac = std::max(floor_ac, int(m.spec.ac_floor) + (m.spec.ac_floor_dex ? modifier(c->abilities, Ability::Dex) : 0));
     return bonus + std::max(0, floor_ac - int(c->ac));
 }
@@ -8279,6 +8281,7 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
             byte(0x5F); byte(p.on_next_turn); byte(uint8_t(m.zi_armed)); u32(p.save_vs_conditions);
             byte(p.death_save_adv); byte(p.heal_maximum); byte(p.resist_all); u32(p.end_beyond_ft); byte(p.end_caster_at_zero);
         }
+        if (m.possession_held) byte(0x61);   // possession suspend: only while a class feature is held
     }
     return h;
 }
@@ -8510,7 +8513,6 @@ void put_class_base(Combatant& body, const Combatant::PossessionClassBase& b) {
     body.triggers = b.triggers;
     body.bonus_attacks = b.bonus_attacks;
     body.bonus_action_costs = b.bonus_action_costs;
-    body.attacks = b.attacks;
     body.reactions = b.reactions;
     body.spell_mods = b.spell_mods;
     body.thieves_tools = b.thieves_tools;
@@ -8520,19 +8522,38 @@ void put_class_base(Combatant& body, const Combatant::PossessionClassBase& b) {
     body.sculpt_spells = b.sculpt_spells;
     body.has_heal_bonus = b.has_heal_bonus;
     body.heal_bonus_per_level = b.heal_bonus_per_level;
-    body.ac = b.ac;
     body.attack_bonus_melee = b.attack_bonus_melee;
     body.attack_bonus_ranged = b.attack_bonus_ranged;
     body.crit_min = b.crit_min;
     body.heal_bonus_flat = b.heal_bonus_flat;
-    body.speed_ft = b.speed_ft;
     body.climb_ft = b.climb_ft;
     body.metamagic_known = b.metamagic_known;
 }
 
+// AC, speed and attack to-hit / damage move by the load-time class deltas (`deltas`), applied to
+// the live numbers. The attack's other fields come from `shape` (the stripped row, or the row saved
+// at the link). sign is -1 while the link starts and +1 when it ends.
+void apply_attack_shape(Combatant& body, const std::vector<Attack>& shape,
+                        const Combatant::PossessionClassBase& deltas, int sign) {
+    const auto n = std::min(body.attacks.size(), shape.size());
+    for (std::size_t i = 0; i < n; ++i) {
+        const int hit = body.attacks[i].to_hit;
+        const int bonus = body.attacks[i].damage.bonus;
+        body.attacks[i] = shape[i];
+        const int hd = i < deltas.attack_hit_delta.size() ? int(deltas.attack_hit_delta[i]) : 0;
+        const int dd = i < deltas.attack_dmg_delta.size() ? int(deltas.attack_dmg_delta[i]) : 0;
+        body.attacks[i].to_hit = int8_t(std::clamp(hit + sign * hd, -128, 127));
+        body.attacks[i].damage.bonus = int16_t(std::clamp(bonus + sign * dd, -32768, 32767));
+    }
+}
+
 void apply_class_strip(Combatant& body) {
     if (body.form != FormKind::None || !body.possession_class_base) return;
-    put_class_base(body, *body.possession_class_base);
+    const Combatant::PossessionClassBase& b = *body.possession_class_base;
+    put_class_base(body, b);
+    apply_attack_shape(body, b.attacks, b, -1);
+    body.ac = int8_t(std::clamp(int(body.ac) - int(b.ac_delta), -128, 127));
+    body.speed_ft = uint8_t(std::clamp(int(body.speed_ft) - int(b.speed_delta), 0, 255));
 }
 
 void restore_overlay_stats(Combatant& body) {
@@ -8543,11 +8564,19 @@ void restore_overlay_stats(Combatant& body) {
     body.save_proficiencies = o.save_proficiencies;
     body.skill_proficiencies = o.skill_proficiencies;
     body.condition_immunities = o.condition_immunities;
-    if (o.class_live) put_class_base(body, *o.class_live);
-    if (body.possession_hp_bonus != 0) {
-        body.hp_max = int16_t(body.hp_max + body.possession_hp_bonus);
-        body.hp = int16_t(body.hp + body.possession_hp_bonus);
+    if (o.class_live) {
+        const int ac = body.ac;
+        const int speed = body.speed_ft;
+        put_class_base(body, *o.class_live);
+        if (body.possession_class_base) {
+            const Combatant::PossessionClassBase& d = *body.possession_class_base;
+            apply_attack_shape(body, o.class_live->attacks, d, +1);
+            body.ac = int8_t(std::clamp(ac + int(d.ac_delta), -128, 127));
+            body.speed_ft = uint8_t(std::clamp(speed + int(d.speed_delta), 0, 255));
+        }
     }
+    if (body.possession_hp_bonus != 0)
+        body.hp_max = int16_t(std::min(32767, int(body.hp_max) + int(body.possession_hp_bonus)));
 }
 
 void suspend_charm_fear(EncounterState& s, Combatant& body, std::vector<Event>& ev) {
@@ -8596,10 +8625,6 @@ uint8_t side_of(const EncounterState& s, const Combatant& c) {
     return g ? g->team : c.team;
 }
 
-bool counts_as_incapacitated(const Combatant& c) {
-    return is_incapacitated(c) || c.possessed_by != 0;
-}
-
 CombatantId controller_of(const EncounterState& s, CombatantId id) {
     const Combatant* c = find(s, id);
     if (c && c->possessed_by != 0 && find(s, c->possessed_by)) return c->possessed_by;
@@ -8634,9 +8659,31 @@ void reapply_possession_overlay(Combatant& body) {
     o.save_proficiencies = body.save_proficiencies;
     o.skill_proficiencies = body.skill_proficiencies;
     o.condition_immunities = body.condition_immunities;
+    // A true-form revert restores the body's own attacks and AC. Save those before the strip,
+    // so the link's end does not write the form the body was in at the link back onto it.
+    if (body.form == FormKind::None) o.class_live = capture_class_live(body);
     body.possession_overlay = o;
     apply_ghost_mind(body);
     if (body.form == FormKind::None) apply_class_strip(body);
+}
+
+void suspend_class_modifiers(EncounterState& s, const Combatant& body) {
+    if (!s.hooks.feature_modifiers) return;
+    for (const uint32_t fid : body.possession_blocked_features) {
+        for (const ModifierSpec& spec : s.hooks.feature_modifiers(s, body, fid)) {
+            for (auto& m : s.modifiers) {
+                if (m.possession_held || m.target != body.id || m.caster != body.id) continue;
+                if (m.spec.id == spec.id) m.possession_held = true;
+            }
+        }
+    }
+    refresh_mod_cache(s);
+}
+
+void resume_class_modifiers(EncounterState& s, CombatantId body) {
+    for (auto& m : s.modifiers)
+        if (m.target == body) m.possession_held = false;
+    refresh_mod_cache(s);
 }
 
 std::string_view begin_possession(EncounterState& s, CombatantId ghost_id, CombatantId body_id, uint32_t spell_id,
@@ -8671,9 +8718,16 @@ std::string_view begin_possession(EncounterState& s, CombatantId ghost_id, Comba
     apply_ghost_mind(*body);
     apply_class_strip(*body);
     if (body->possession_hp_bonus != 0) {
-        body->hp_max = int16_t(std::max(0, int(body->hp_max) - int(body->possession_hp_bonus)));
-        body->hp = int16_t(std::max(0, int(body->hp) - int(body->possession_hp_bonus)));
+        const int max = std::max(1, int(body->hp_max) - int(body->possession_hp_bonus));
+        body->hp_max = int16_t(max);
+        if (body->hp > body->hp_max) body->hp = body->hp_max;
     }
+    if (body->has_readied) {
+        std::erase_if(s.readied, [&](const ReadiedAction& r) { return r.actor == body->id; });
+        body->has_readied = false;
+        emit(ev, EventKind::ReadyExpired, body->id);
+    }
+    suspend_class_modifiers(s, *body);
     if (body->concentration_spell != 0) end_concentration(s, body->id, ev);   // SRD: incapacitated ends concentration
     suspend_charm_fear(s, *body, ev);
     prune_sourced(s, ev);   // grapples the body holds end (the grappler counts as incapacitated)
@@ -8697,6 +8751,7 @@ void end_possession(EncounterState& s, CombatantId ghost_id, int reason, std::ve
         const uint16_t hours = body->possession_overlay->immunity_hours;
         const uint8_t scope = body->possession_overlay->immunity_scope;
         restore_overlay_stats(*body);
+        resume_class_modifiers(s, body->id);
         resume_charm_fear(s, *body, ev);
         body->possession_overlay.reset();
         body->possessed_by = 0;

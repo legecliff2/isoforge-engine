@@ -3,6 +3,8 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include "rules5e/attack.hpp"
+#include "rules5e/conditions.hpp"
 #include "spell_util.hpp"
 
 using namespace enc;
@@ -525,7 +527,7 @@ TEST_CASE("an unsupported host is refused") {
     CHECK(begin_possession(s, 2, 1, kPoss, 24, 1, ev) == "possessed: unsupported host: improved_critical");
 }
 
-TEST_CASE("turn-owner resets run on the possessor's turn and not twice after the link ends") {
+TEST_CASE("turn-owner resets run on the possessor's turn, and the body's own turn resets after the link ends") {
     auto s = begin_encounter({host_of(1), ghost_of(2), ally_of(3)}, 29, nullptr, spell_hooks());
     link(s, 2, 1);
     end_turns_until(s, 2);
@@ -540,11 +542,15 @@ TEST_CASE("turn-owner resets run on the possessor's turn and not twice after the
     CHECK_FALSE(mut(s, 1).reaction_used);
     CHECK_FALSE(mut(s, 1).dodging);
     mut(s, 1).reaction_used = true;
+    mut(s, 1).dodging = true;
+    mut(s, 1).reaction_ac_bonus = 5;
     std::vector<Event> ev;
     end_possession(s, 2, 2, ev, true);
     end_turns_until(s, 1);
     CHECK(current_actor(s) == 1);
-    CHECK(mut(s, 1).reaction_used);
+    CHECK_FALSE(mut(s, 1).reaction_used);
+    CHECK_FALSE(mut(s, 1).dodging);
+    CHECK(mut(s, 1).reaction_ac_bonus == 0);
 }
 
 TEST_CASE("a printed attack is not offered as an opportunity attack") {
@@ -562,6 +568,16 @@ TEST_CASE("a printed attack is not offered as an opportunity attack") {
     REQUIRE_MESSAGE(moved.ok, moved.error);
     CHECK_FALSE(mut(s, 1).reaction_used);
     CHECK(std::none_of(moved.events.begin(), moved.events.end(), [](const Event& e) {
+        return e.kind == EventKind::AttackResolved && e.actor == 1;
+    }));
+    host.attacks = {derived_sword()};
+    auto offered = begin_encounter({host, ghost_of(2), mover}, 30, nullptr, spell_hooks());
+    link(offered, 2, 1);
+    end_turns_until(offered, 3);
+    auto hit = step(offered, mv);
+    REQUIRE_MESSAGE(hit.ok, hit.error);
+    CHECK(mut(offered, 1).reaction_used);
+    CHECK(std::any_of(hit.events.begin(), hit.events.end(), [](const Event& e) {
         return e.kind == EventKind::AttackResolved && e.actor == 1;
     }));
 }
@@ -587,7 +603,13 @@ TEST_CASE("a readied printed attack does not spend the reaction") {
     REQUIRE(step(s, ready).ok);
     REQUIRE(mut(s, 1).has_readied);
     REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);
-    link(s, 2, 1);
+    std::vector<Event> began;
+    REQUIRE(begin_possession(s, 2, 1, kPoss, 24, 1, began).empty());
+    CHECK(count(began, EventKind::ReadyExpired) == 1);
+    CHECK_FALSE(mut(s, 1).has_readied);
+    end_turns_until(s, 2);
+    REQUIRE(step(s, ready).ok);
+    REQUIRE(mut(s, 1).has_readied);
     end_turns_until(s, 3);
     ActionRequest mv{3, ActionKind::Move};
     mv.move_ft = 5;
@@ -599,10 +621,9 @@ TEST_CASE("a readied printed attack does not spend the reaction") {
     // The same ready fires when the attack carries its own bonus, so the filter is what kept the reaction.
     host.attacks = {derived_sword()};
     auto offered = begin_encounter({host, ghost_of(2), ally_of(3)}, 31, nullptr, h);
-    end_turns_until(offered, 1);
-    REQUIRE(step(offered, ready).ok);
-    REQUIRE(step(offered, {1, ActionKind::EndTurn}).ok);
     link(offered, 2, 1);
+    end_turns_until(offered, 2);
+    REQUIRE(step(offered, ready).ok);
     end_turns_until(offered, 3);
     auto spent = step(offered, mv);
     REQUIRE_MESSAGE(spent.ok, spent.error);
@@ -646,7 +667,6 @@ TEST_CASE("evasion, reckless, archery, improved critical, great weapon fighting,
     base.climb_ft = 0;
     host.possession_class_base = base;
     host.possession_hp_bonus = 1;
-    const int hp0 = host.hp;
     const int max0 = host.hp_max;
     auto s = begin_encounter({host, ghost_of(2), ally_of(3)}, 32, nullptr, spell_hooks());
     link(s, 2, 1);
@@ -662,7 +682,7 @@ TEST_CASE("evasion, reckless, archery, improved critical, great weapon fighting,
     CHECK(mut(s, 1).reactions.empty());
     CHECK(mut(s, 1).climb_ft == 0);
     CHECK(mut(s, 1).hp_max == max0 - 1);
-    CHECK(mut(s, 1).hp == hp0 - 1);
+    CHECK(mut(s, 1).hp == max0 - 1);
     mut(s, 1).hp = int16_t(mut(s, 1).hp - 4);
     std::vector<Event> ev;
     end_possession(s, 2, 2, ev, false);
@@ -680,5 +700,242 @@ TEST_CASE("evasion, reckless, archery, improved critical, great weapon fighting,
     CHECK(mut(s, 1).reactions[0].id == 44);
     CHECK(mut(s, 1).climb_ft == 30);
     CHECK(mut(s, 1).hp_max == max0);
-    CHECK(mut(s, 1).hp == hp0 - 4);
+    CHECK(mut(s, 1).hp == max0 - 5);
+}
+
+TEST_CASE("draconic resilience changes the maximum only") {
+    auto low = host_of(1);
+    low.hp = 1;
+    low.hp_max = 9;
+    low.possession_hp_bonus = 1;
+    auto s = begin_encounter({low, ghost_of(2), ally_of(3)}, 40, nullptr, spell_hooks());
+    link(s, 2, 1);
+    CHECK(mut(s, 1).hp_max == 8);
+    CHECK(mut(s, 1).hp == 1);
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    CHECK(mut(s, 1).hp_max == 9);
+    CHECK(mut(s, 1).hp == 1);
+
+    auto down = host_of(1);
+    down.hp_max = 9;
+    down.possession_hp_bonus = 3;
+    down.uses_death_saves = true;
+    auto dropped = begin_encounter({down, ghost_of(2), ally_of(3)}, 41, nullptr, spell_hooks());
+    link(dropped, 2, 1);
+    mut(dropped, 1).hp = 0;
+    add_condition(mut(dropped, 1), Condition::Unconscious);
+    end_possession(dropped, 2, 1, ev, false);
+    CHECK(mut(dropped, 1).hp == 0);
+    CHECK(mut(dropped, 1).hp_max == 9);
+    CHECK(mut(dropped, 1).has(Condition::Unconscious));
+
+    auto killed = host_of(1);
+    killed.summoner = 3;
+    killed.hp_max = 12;
+    killed.possession_hp_bonus = 4;
+    killed.uses_death_saves = false;
+    auto summon = begin_encounter({killed, ghost_of(2), ally_of(3)}, 42, nullptr, spell_hooks());
+    summon.summons = 1;
+    link(summon, 2, 1);
+    const int during = mut(summon, 1).hp;
+    mut(summon, 1).hp = 0;
+    mut(summon, 1).dead = true;
+    end_turns_until(summon, 2);
+    auto gone = step(summon, ActionRequest{2, ActionKind::EndTurn});
+    REQUIRE_MESSAGE(gone.ok, gone.error);
+    CHECK(std::any_of(gone.events.begin(), gone.events.end(), [](const Event& e) {
+        return e.kind == EventKind::PossessionEnded && e.a == 1;
+    }));
+    CHECK(mut(summon, 1).hp == 0);
+    CHECK(mut(summon, 1).hp_max == 12);
+    CHECK(during > 0);
+}
+
+TEST_CASE("a class feature already running is suspended for the link and resumed after") {
+    EncounterHooks h = spell_hooks();
+    ModifierSpec rage;
+    rage.id = 77;
+    rage.source = 77;
+    rage.stat = ModStat::Resistance;
+    rage.has_damage_type = true;
+    rage.damage_type = DamageType::Bludgeoning;
+    h.feature_modifiers = [&](const EncounterState&, const Combatant&, uint32_t feature_id) {
+        return feature_id == 1 ? std::vector<ModifierSpec>{rage} : std::vector<ModifierSpec>{};
+    };
+    auto host = host_of(1);
+    host.possession_blocked_features = {1};
+    host.ac = 10;
+    auto striker = ally_of(3);
+    striker.attacks[0].to_hit = 40;
+    striker.attacks[0].damage = {0, 0, 8};
+    striker.attacks[0].type = DamageType::Bludgeoning;
+    striker.attacks_per_action = 2;
+    auto s = begin_encounter({host, ghost_of(2), striker}, 43, nullptr, h);
+    ActiveModifier row;
+    row.spec = rage;
+    row.caster = 1;
+    row.target = 1;
+    s.modifiers.push_back(row);
+    link(s, 2, 1);
+    CHECK(s.modifiers[0].possession_held);
+    CHECK((mut(s, 1).mod_resist & bit(DamageType::Bludgeoning)) == 0);
+    end_turns_until(s, 3);
+    const int before = mut(s, 1).hp;
+    REQUIRE(step(s, ActionRequest{3, ActionKind::Attack, 1, 0}).ok);
+    CHECK(before - mut(s, 1).hp == 8);
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    CHECK_FALSE(s.modifiers[0].possession_held);
+    CHECK((mut(s, 1).mod_resist & bit(DamageType::Bludgeoning)) != 0);
+    const int mid = mut(s, 1).hp;
+    REQUIRE(step(s, ActionRequest{3, ActionKind::Attack, 1, 0}).ok);
+    CHECK(mid - mut(s, 1).hp == 4);
+}
+
+TEST_CASE("charm and fright on the host are suspended, then resume") {
+    auto s = begin_encounter({host_of(1), ghost_of(2), ally_of(3)}, 44, nullptr, spell_hooks());
+    add_condition(mut(s, 1), Condition::Charmed);
+    add_condition(mut(s, 1), Condition::Frightened);
+    link(s, 2, 1);
+    CHECK_FALSE(mut(s, 1).has(Condition::Charmed));
+    CHECK_FALSE(mut(s, 1).has(Condition::Frightened));
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    CHECK(mut(s, 1).has(Condition::Charmed));
+    CHECK(mut(s, 1).has(Condition::Frightened));
+}
+
+TEST_CASE("a linked creature is not refilled with legendary actions") {
+    auto host = host_of(1);
+    host.la_max = 3;
+    host.la_cur = 1;
+    auto ghost = ghost_of(2);
+    ghost.la_max = 2;
+    ghost.la_cur = 0;
+    auto s = begin_encounter({host, ghost, ally_of(3)}, 45, nullptr, spell_hooks());
+    link(s, 2, 1);
+    mut(s, 1).la_cur = 1;
+    mut(s, 2).la_cur = 0;
+    end_turns_until(s, 1);
+    CHECK(mut(s, 1).la_cur == 1);
+    end_turns_until(s, 2);
+    CHECK(mut(s, 2).la_cur == 0);
+}
+
+TEST_CASE("destroy undead ends the link and kills the ghost") {
+    SpellDef turn;
+    turn.id = spell_id_of("test.destroy_undead");
+    turn.content_id = "test.destroy_undead";
+    turn.level = 0;
+    turn.is_spell = false;
+    turn.kind = SpellEffectKind::Save;
+    turn.save_ability = Ability::Wis;
+    turn.fixed_dc = 30;
+    turn.control = ControlKind::Turned;
+    turn.target_types = bit(CreatureType::Undead);
+    turn.targets = 1;
+    turn.range_ft = 60;
+    turn.destroy_cr8_max = 8;
+    EncounterHooks h = spell_hooks();
+    auto book = std::make_shared<SpellBook>();
+    REQUIRE(book->add(turn));
+    h.spells = book;
+    auto ghost = ghost_of(2);
+    ghost.cr8 = 0;
+    auto s = begin_encounter({host_of(1), ghost, ally_of(3)}, 46, nullptr, h);
+    mut(s, 3).spells_known = {turn.id};
+    link(s, 2, 1);
+    end_turns_until(s, 3);
+    ActionRequest req{3, ActionKind::CastSpell, 2};
+    req.spell_id = turn.id;
+    auto ended = step(s, req);
+    REQUIRE_MESSAGE(ended.ok, ended.error);
+    CHECK(std::any_of(ended.events.begin(), ended.events.end(), [](const Event& e) {
+        return e.kind == EventKind::PossessionEnded && e.a == 3;
+    }));
+    CHECK(mut(s, 2).dead);
+    CHECK(mut(s, 2).possessing == 0);
+}
+
+TEST_CASE("a possessing ghost cannot be attacked, and a form revert while linked keeps the true form") {
+    auto s = begin_encounter({host_of(1), ghost_of(2), ally_of(3)}, 47, nullptr, spell_hooks());
+    link(s, 2, 1);
+    end_turns_until(s, 3);
+    auto denied = step(s, ActionRequest{3, ActionKind::Attack, 2, 0});
+    CHECK_FALSE(denied.ok);
+    CHECK(denied.error == "can't target a possessing ghost");
+
+    auto shaped = host_of(1);
+    shaped.attacks_per_action = 2;
+    shaped.ac = 18;
+    shaped.attacks[0].id = "true-sword";
+    Combatant::PossessionClassBase base;
+    base.attacks_per_action = 1;
+    base.ac = 14;
+    base.ac_delta = 4;
+    base.attacks = shaped.attacks;
+    base.speed_ft = shaped.speed_ft;
+    shaped.possession_class_base = base;
+    FormStats beast;
+    beast.ac = 11;
+    beast.speed_ft = 40;
+    beast.attacks_per_action = 1;
+    Attack bite = printed_sword();
+    bite.id = "beast-bite";
+    beast.attacks = {bite};
+    REQUIRE(apply_form(shaped, FormKind::Shapechanger, beast));
+    auto formed = begin_encounter({shaped, ghost_of(2), ally_of(3)}, 48, nullptr, spell_hooks());
+    link(formed, 2, 1);
+    CHECK(mut(formed, 1).attacks[0].id == "beast-bite");
+    REQUIRE(revert_form(mut(formed, 1)));
+    CHECK(mut(formed, 1).form == FormKind::None);
+    CHECK(mut(formed, 1).attacks_per_action == 1);
+    CHECK(mut(formed, 1).ac == 14);
+    CHECK(mut(formed, 1).attacks[0].id == "true-sword");
+    std::vector<Event> ev;
+    end_possession(formed, 2, 2, ev, false);
+    CHECK(mut(formed, 1).attacks_per_action == 2);
+    CHECK(mut(formed, 1).ac == 18);
+    CHECK(mut(formed, 1).attacks[0].id == "true-sword");
+}
+
+TEST_CASE("a possessed body is incapacitated for Dodge and Grapple, and the possessor can still attack") {
+    auto host = host_of(1);
+    host.dodging = true;
+    host.attacks[0].grapple_instead_ok = true;
+    host.attacks[0].to_hit = 40;
+    auto foe = ally_of(3);
+    foe.ac = 10;
+    auto s = begin_encounter({host, ghost_of(2), foe}, 49, nullptr, spell_hooks());
+    link(s, 2, 1);
+    AttackContext ctx;
+    ctx.target_within_5ft = true;
+    CHECK(attack_roll_mode(mut(s, 3), mut(s, 1), ctx) == RollMode::Normal);
+    CHECK(save_roll_mode(mut(s, 1), Ability::Dex) == RollMode::Normal);
+    end_turns_until(s, 2);
+    auto dodge = step(s, ActionRequest{1, ActionKind::Dodge});
+    CHECK_FALSE(dodge.ok);
+    CHECK(dodge.error == "incapacitated");
+    ActionRequest grab{1, ActionKind::Attack, 3};
+    grab.special = 1;
+    grab.target_within_5ft = true;
+    auto grappled = step(s, grab);
+    CHECK_FALSE(grappled.ok);
+    CHECK(grappled.error == "incapacitated");
+    ActionRequest instead{1, ActionKind::Attack, 3, 0};
+    instead.grapple_instead = true;
+    instead.target_within_5ft = true;
+    auto swapped = step(s, instead);
+    CHECK_FALSE(swapped.ok);
+    CHECK(swapped.error == "incapacitated");
+    auto swing = step(s, ActionRequest{1, ActionKind::Attack, 3, 0});
+    REQUIRE_MESSAGE(swing.ok, swing.error);
+    CHECK(std::any_of(swing.events.begin(), swing.events.end(), [](const Event& e) {
+        return e.kind == EventKind::AttackResolved && e.actor == 1;
+    }));
+    const auto offered = legal_actions(s);
+    CHECK(std::none_of(offered.begin(), offered.end(), [](const ActionRequest& r) {
+        return r.kind == ActionKind::Dodge || r.grapple_instead;
+    }));
 }

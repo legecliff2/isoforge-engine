@@ -140,6 +140,17 @@ TEST_CASE("v13 legendary kinds 53-54 are known (not counted as unknown, not show
     CHECK(st.log.empty());
 }
 
+TEST_CASE("v14 possession kinds 55-56 are known (not counted as unknown, not shown)") {
+    std::vector<SimEvent> evs;
+    for (int k = 55; k <= 56; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));
+    FeedState st;
+    slice::apply_events(evs, st, nm);
+    CHECK(st.skipped_unknown == 0);
+    CHECK(st.log.empty());
+    CHECK(slice::known_rules_kind(EventKind(55)));
+    CHECK(slice::known_rules_kind(EventKind(56)));
+}
+
 TEST_CASE("unknown event kinds are skipped (above kLastRulesEventKind, future sim kinds)") {
     std::vector<SimEvent> evs;
     const int future_kind = int(sim::kLastRulesEventKind) + 1;

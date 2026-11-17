@@ -606,6 +606,9 @@ struct ActiveModifier {
     // appended (7.2zi True Strike; modifiers_digest sub-byte 0x5F with ModifierSpec::on_next_turn): false until the caster's
     // next start_turn. While false the row is gated (no advantage, and consume does not spend it).
     bool zi_armed = false;
+    // Class or background feature the body had already used on itself. Off for the link, back on
+    // at the end if the row is still in duration. Hashed only when set (sub-byte 0x61).
+    bool possession_held = false;
 };
 
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,
@@ -1455,9 +1458,6 @@ CombatantId                turn_body(const EncounterState&);
 // Hostility side. `team` unless `c` is a possessed body, then the possessor's team.
 // Raw `team` stays on the win check, visibility and hashing.
 uint8_t                    side_of(const EncounterState&, const Combatant&);
-// is_incapacitated, or a possessed body (SRD: incapacitated and loses control).
-// Not used by can_act: the ghost spends the body's actions without the condition bit.
-bool                       counts_as_incapacitated(const Combatant&);
 // The possessor when `id` is a possessed body, otherwise `id`.
 CombatantId                controller_of(const EncounterState&, CombatantId);
 // True only for a possessed body wearing armor (or a shield) its authored list does not grant.

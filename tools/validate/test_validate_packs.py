@@ -776,6 +776,10 @@ class PossessCheck(unittest.TestCase):
         errs, warns = c4.check_possess(self.action(), "monster@5")
         self.assertEqual(errs, [])
         self.assertEqual(warns, [])
+        bare = self.action()
+        del bare["actions"][0]["targets"]
+        errs, _ = c4.check_possess(bare, "monster@5")
+        self.assertEqual(errs, [])
 
     def test_each_loader_refusal(self):
         import checks_v4 as c4

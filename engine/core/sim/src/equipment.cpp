@@ -420,6 +420,18 @@ void recompute_derived(rules5e::EncounterState& st, rules5e::CombatantId id, con
         c->attacks[i].to_hit = clamp8(r.attacks[i].to_hit + adj_hit);
         c->attacks[i].damage.bonus = int16_t(r.attacks[i].dmg + adj_dmg);
     }
+    // The setup adjustments still contain Unarmored Defense, Draconic AC and Dueling. While the
+    // body is possessed those class contributions stay off, including after an equip.
+    if (c->possessed_by != 0 && c->possession_class_base) {
+        const rules5e::Combatant::PossessionClassBase& b = *c->possession_class_base;
+        c->ac = clamp8(int(c->ac) - int(b.ac_delta));
+        for (std::size_t i = 0; i < c->attacks.size(); ++i) {
+            if (i < b.attack_hit_delta.size())
+                c->attacks[i].to_hit = clamp8(int(c->attacks[i].to_hit) - int(b.attack_hit_delta[i]));
+            if (i < b.attack_dmg_delta.size())
+                c->attacks[i].damage.bonus = int16_t(std::clamp(int(c->attacks[i].damage.bonus) - int(b.attack_dmg_delta[i]), -32768, 32767));
+        }
+    }
 }
 
 DeriveInputs derive_inputs(const rules5e::EncounterState& st, rules5e::CombatantId id) {

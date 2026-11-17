@@ -925,6 +925,12 @@ struct Combatant {
         uint8_t speed_ft = 30;
         uint8_t climb_ft = 0;
         uint8_t metamagic_known = 0;
+        // Class contribution at load (live minus the stripped value). Applied to whatever the
+        // body has now, so an equip before or during the link is kept. Not hashed.
+        int8_t ac_delta = 0;
+        int8_t speed_delta = 0;
+        std::vector<int8_t> attack_hit_delta{};
+        std::vector<int16_t> attack_dmg_delta{};
     };
     struct PossessionOverlay {
         int8_t body_int = 10, body_wis = 10, body_cha = 10;
@@ -947,12 +953,10 @@ struct Combatant {
     // possession_refuse names the feature when the split is not exact.
     bool possession_unsupported = false;
     std::string possession_refuse{};
-    // Hit points added by a class feature (Draconic Resilience: 1 per sorcerer level). Subtracted
-    // at the link and added back at the end, so damage taken while possessed is kept. Not hashed.
+    // Draconic Resilience: 1 hit point of maximum per sorcerer level. At the link the maximum
+    // drops by this and current HP is only capped. At the end the maximum rises and current HP
+    // stays. Not hashed.
     int16_t possession_hp_bonus = 0;
-    // The possessor's start_turn already cleared this body's turn-owner state since its last slot.
-    // The body's next slot skips that clear so a reaction or Dodge is not refreshed twice. Not hashed.
-    bool turn_owner_reset = false;
     // Armor annotation for the possession non-proficiency rule only. Not hashed.
     // armor_proficiency is the file's list and is not read while possessed (the ghost has none).
     // worn_armor: 0 none, 1 light, 2 medium, 4 heavy. worn_shield: a shield is worn.

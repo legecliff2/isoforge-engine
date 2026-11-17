@@ -7,6 +7,7 @@
 #include <fstream>
 #include <string>
 
+#include "rules5e/equipment.hpp"
 #include "sim/combat.hpp"
 #include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
@@ -337,4 +338,162 @@ TEST_CASE("possession class strip accepts every printed character") {
         INFO(why);
         CHECK_FALSE(a->base.possession_unsupported);
     }
+}
+
+TEST_CASE("possession loader: possess, origin, and the armor note") {
+    ContentLibrary lib;
+    Json gob = load_json("content/packs/srd51.core/monsters/goblin.json");
+    gob["$schema"] = "monster@5";
+    gob["id"] = "t.possess";
+    Json act = {{"id", "possession"}, {"name", "Possession"}, {"kind", "save_effect"},
+                {"possess", true}, {"caster_sees_target", true},
+                {"target_creature_types", Json::array({"humanoid"})},
+                {"save", {{"ability", "cha"}, {"dc", 13}}},
+                {"immune_on_success", {{"hours", 24}, {"scope", "same_source"}}}};
+    gob["actions"].push_back(act);
+    const auto added = lib.add(gob, "monster", "", 5);
+    INFO(added.value_or(""));
+    REQUIRE_FALSE(added);
+    const auto* arch = lib.find("t.possess");
+    REQUIRE(arch);
+    REQUIRE_FALSE(arch->save_actions.empty());
+    const auto* def = lib.spells()->find(arch->save_actions.back().spell_id);
+    REQUIRE(def);
+    CHECK(def->possess);
+    act.erase("caster_sees_target");
+    gob["id"] = "t.possess.bad";
+    gob["actions"].back() = act;
+    CHECK(lib.add(gob, "monster", "", 5).value_or("").find("caster_sees_target") != std::string::npos);
+    Json tagged = load_json("content/packs/srd51.core/monsters/goblin.json");
+    tagged["id"] = "t.origin.monster";
+    tagged["traits"] = Json::array({{{"id", "keen"}, {"name", "Keen"}, {"origin", "race"}}});
+    CHECK(lib.add(tagged, "monster", "", 5).value_or("").find("origin is character@5 only") != std::string::npos);
+    Json old = load_json("content/packs/srd51.core/characters/fighter_level_1.json");
+    old["id"] = "t.origin.old";
+    old["features"][0]["origin"] = "class";
+    CHECK(lib.add(old, "character", "", 4).value_or("").find("origin is character@5 only") != std::string::npos);
+    old["id"] = "t.origin.ok";
+    REQUIRE_FALSE(lib.add(old, "character", "", 5));
+    Json guard = load_json("content/packs/srd51.core/monsters/guard.json");
+    guard["equipment"] = Json::array();
+    guard["id"] = "t.guard.note";
+    REQUIRE_FALSE(lib.add(guard, "monster", "", 5));
+    const auto* noted = lib.find("t.guard.note");
+    REQUIRE(noted);
+    CHECK(noted->base.worn_armor == 2);
+    CHECK(noted->base.worn_shield);
+    guard["id"] = "t.guard.natural";
+    guard["armor_class"]["note"] = "natural armor";
+    REQUIRE_FALSE(lib.add(guard, "monster", "", 5));
+    CHECK(lib.find("t.guard.natural")->base.worn_armor == 0);
+    CHECK_FALSE(lib.find("t.guard.natural")->base.worn_shield);
+}
+
+TEST_CASE("possession class deltas follow an equip before and during the link") {
+    ContentLibrary lib;
+    for (const char* rel : {"content/packs/srd51.core/items/greataxe.json",
+                            "content/packs/srd51.core/items/handaxe.json",
+                            "content/packs/srd51.core/items/shield.json",
+                            "content/packs/srd51.core/items/chain_mail.json",
+                            "content/packs/srd51.core/items/longsword.json"})
+        REQUIRE_FALSE(lib.add_item(load_json(rel)));
+    Json barb = load_json("content/packs/srd51.core/characters/barbarian_level_5.json");
+    barb["equipment"].push_back({{"item", "srd51.item.shield"}});
+    REQUIRE_FALSE(lib.add(barb, "character"));
+    Json gob = load_json("content/packs/srd51.core/monsters/goblin.json");
+    gob["id"] = "t.ghost.equip";
+    REQUIRE_FALSE(lib.add(gob, "monster"));
+    world::Chunk chunk{};
+    chunk.coord = {5, 5, 0};
+    chunk.origin = world::Chunk::Origin::Handcrafted;
+    chunk.palette = {"", "floor"};
+    for (auto& cell : chunk.layers[0]) cell.tile = 1;
+    chunk.spawns.push_back({barb["id"].get<std::string>(), {4, 4}, world::spawn_stable_id(chunk.coord, 0), ""});
+    chunk.spawns.push_back({"t.ghost.equip", {5, 4}, world::spawn_stable_id(chunk.coord, 1), ""});
+    chunk.spawns.push_back({barb["id"].get<std::string>(), {6, 6}, world::spawn_stable_id(chunk.coord, 2), ""});
+    chunk.content_hash = world::compute_content_hash(chunk);
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, lib, 5, CombatOptions{true});
+    REQUIRE(combat);
+    const CombatantId body = chunk.spawns[0].stable_id;
+    const CombatantId ghost = chunk.spawns[1].stable_id;
+    auto until = [&](CombatantId who) {
+        for (int i = 0; i < 8 && rules5e::current_actor(combat->state()) != who; ++i) {
+            Command e;
+            e.request = {rules5e::current_actor(combat->state()), ActionKind::EndTurn};
+            REQUIRE(combat->submit(e).ok);
+        }
+        REQUIRE(rules5e::current_actor(combat->state()) == who);
+    };
+    auto equip = [&](CombatantId who, rules5e::EquipOp op, uint32_t item) {
+        Command c;
+        c.request = {who, ActionKind::UseObject};
+        c.request.equip_op = uint8_t(op);
+        c.request.equip_item = item;
+        auto r = combat->submit(c);
+        REQUIRE_MESSAGE(r.ok, r.error);
+    };
+    const rules5e::Loadout* lo = combat->loadout(body);
+    REQUIRE(lo);
+    const uint32_t shield_def = lib.items()->find("srd51.item.shield")->id;
+    uint32_t shield = 0, axe = lo->view.main.instance;
+    for (const auto& h : lo->view.carried)
+        if (h.def == shield_def) shield = h.instance;
+    REQUIRE(shield != 0);
+    REQUIRE(axe != 0);
+    until(body);
+    CHECK(rules5e::find(combat->state(), body)->ac == 14);
+    equip(body, rules5e::EquipOp::Stow, axe);
+    equip(body, rules5e::EquipOp::DonShield, shield);
+    CHECK(rules5e::find(combat->state(), body)->ac == 16);
+    std::vector<rules5e::Event> ev;
+    auto& st = const_cast<rules5e::EncounterState&>(combat->state());
+    REQUIRE(rules5e::begin_possession(st, ghost, body, 1, 24, 1, ev).empty());
+    CHECK(rules5e::find(combat->state(), body)->ac == 14);
+    until(ghost);
+    equip(body, rules5e::EquipOp::DoffShield, shield);
+    CHECK(rules5e::find(combat->state(), body)->ac == 12);
+    rules5e::end_possession(st, ghost, 2, ev, false);
+    CHECK(rules5e::find(combat->state(), body)->ac == 14);
+
+    Json fighter = load_json("content/packs/srd51.core/characters/fighter_level_1.json");
+    REQUIRE_FALSE(lib.add(fighter, "character"));
+    world::Chunk chunk2 = chunk;
+    chunk2.spawns[0].archetype = fighter["id"].get<std::string>();
+    chunk2.spawns[0].stable_id = world::spawn_stable_id(chunk2.coord, 4);
+    chunk2.spawns[1].stable_id = world::spawn_stable_id(chunk2.coord, 5);
+    chunk2.spawns[2].archetype = fighter["id"].get<std::string>();
+    chunk2.spawns[2].tile = {8, 8};
+    chunk2.spawns[2].stable_id = world::spawn_stable_id(chunk2.coord, 6);
+    chunk2.content_hash = world::compute_content_hash(chunk2);
+    ecs::Registry reg2;
+    auto duel = Combat::create(reg2, chunk2, lib, 6, CombatOptions{true});
+    REQUIRE(duel);
+    const CombatantId pc = chunk2.spawns[0].stable_id;
+    const CombatantId gh = chunk2.spawns[1].stable_id;
+    const auto* sword = rules5e::find(duel->state(), pc);
+    REQUIRE(sword);
+    CHECK(sword->attacks[0].damage.bonus == 5);
+    ev.clear();
+    auto& st2 = const_cast<rules5e::EncounterState&>(duel->state());
+    REQUIRE(rules5e::begin_possession(st2, gh, pc, 1, 24, 1, ev).empty());
+    CHECK(rules5e::find(duel->state(), pc)->attacks[0].damage.bonus == 3);
+    for (int i = 0; i < 8 && rules5e::current_actor(duel->state()) != gh; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(duel->state()), ActionKind::EndTurn};
+        REQUIRE(duel->submit(e).ok);
+    }
+    const auto* flo = duel->loadout(pc);
+    REQUIRE(flo);
+    Command off;
+    off.request = {pc, ActionKind::UseObject};
+    off.request.equip_op = uint8_t(rules5e::EquipOp::DoffShield);
+    off.request.equip_item = flo->view.off.instance;
+    auto doffed = duel->submit(off);
+    REQUIRE_MESSAGE(doffed.ok, doffed.error);
+    CHECK(rules5e::find(duel->state(), pc)->ac == 16);
+    CHECK(rules5e::find(duel->state(), pc)->attacks[0].damage.bonus == 3);
+    rules5e::end_possession(st2, gh, 2, ev, false);
+    CHECK(rules5e::find(duel->state(), pc)->ac == 16);
+    CHECK(rules5e::find(duel->state(), pc)->attacks[0].damage.bonus == 5);
 }

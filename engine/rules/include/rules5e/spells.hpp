@@ -197,6 +197,7 @@ struct SpellEffect {
     bool has_ward = false; Ability ward_save = Ability::Wis; uint8_t ward_on_fail = 1;   // 7.2zd: see SpellDef
     uint32_t immune_conditions = 0, immune_from_types = 0;                              // 7.2zd: see SpellDef
     int16_t hp_bonus_flat = 0, hp_bonus_per_slot = 0;                                   // 7.2zd: see SpellDef
+    bool blocks_possession = false;                                                     // 7.2zd PfEG: the ward blocks a new possession
 };
 // 7.2zc (Invisibility): apply_condition `ends_on` bits: the effect ends when its target makes an attack / casts a spell.
 // kEndsOnHarmfulCast (7.2zd Sanctuary): a spell it cast affected a creature of another team.

@@ -35,7 +35,7 @@ bool auto_fails_save(const Combatant& c, Ability a) {
 RollMode save_roll_mode(const Combatant& c, Ability a, RollMode extra) {
     bool adv = extra == RollMode::Advantage, dis = extra == RollMode::Disadvantage;
     if (a == Ability::Dex && c.has(C::Restrained)) dis = true;
-    if (a == Ability::Dex && c.dodging) adv = true;
+    if (a == Ability::Dex && c.dodging && !counts_as_incapacitated(c)) adv = true;
     if (c.exhaustion_level >= 3) dis = true;
     return combine_modes(adv, dis);
 }

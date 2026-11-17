@@ -1777,7 +1777,8 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             d.age_years_per = uint8_t(per);
         }
     }
-    if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition && d.control == rules5e::ControlKind::None && !d.drop_to_zero)
+    if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition && d.control == rules5e::ControlKind::None &&
+        !d.drop_to_zero && !d.possess)
         return where + ": needs damage[], apply[] or control";
     if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported); e || unsupported) return e;
     sa.usage_kind = d.usage_kind;
@@ -2627,14 +2628,14 @@ void note_possession_class_base(rules5e::Combatant& c, const std::vector<Feature
     }
     if (auto rs = doc.find("reactions"); rs != doc.end() && rs->is_array() && !rs->empty()) {
         const std::string aid = doc.value("id", "");
-        std::vector<uint32_t> drop;
+        std::vector<uint32_t> reaction_ids;
         for (const Json& r : *rs) {
             if (!r.is_object() || !r.contains("id") || !r["id"].is_string()) { refuse("reaction"); return; }
-            drop.push_back(rules5e::spell_id_of(aid + "#" + r["id"].get<std::string>()));
+            reaction_ids.push_back(rules5e::spell_id_of(aid + "#" + r["id"].get<std::string>()));
         }
         const auto before = base.reactions.size();
         std::erase_if(base.reactions, [&](const rules5e::Reaction& r) {
-            return std::find(drop.begin(), drop.end(), r.id) != drop.end();
+            return std::find(reaction_ids.begin(), reaction_ids.end(), r.id) != reaction_ids.end();
         });
         if (base.reactions.size() == before) { refuse("reaction"); return; }
         any = true;
@@ -2651,11 +2652,18 @@ void note_possession_class_base(rules5e::Combatant& c, const std::vector<Feature
             any = true;
         }
         const int sorc = class_level("sorcerer");
-        if (sorc < 1 || int(c.hp_max) < sorc || int(c.hp) < sorc) { refuse("draconic_resilience"); return; }
-        c.possession_hp_bonus = int16_t(sorc);
-        any = true;
+        if (sorc >= 1) { c.possession_hp_bonus = int16_t(sorc); any = true; }
     }
     if (c.possession_unsupported) return;
+    base.ac_delta = int8_t(std::clamp(int(c.ac) - int(base.ac), -128, 127));
+    base.speed_delta = int8_t(std::clamp(int(c.speed_ft) - int(base.speed_ft), -128, 127));
+    const auto natk = std::min(c.attacks.size(), base.attacks.size());
+    base.attack_hit_delta.assign(natk, 0);
+    base.attack_dmg_delta.assign(natk, 0);
+    for (std::size_t i = 0; i < natk; ++i) {
+        base.attack_hit_delta[i] = int8_t(std::clamp(int(c.attacks[i].to_hit) - int(base.attacks[i].to_hit), -128, 127));
+        base.attack_dmg_delta[i] = int16_t(std::clamp(int(c.attacks[i].damage.bonus) - int(base.attacks[i].damage.bonus), -32768, 32767));
+    }
     if (any) c.possession_class_base = std::move(base);
 }
 }  // namespace
@@ -3240,6 +3248,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     for (std::size_t i = 0; i < a.features.size(); ++i) {
         const FeatureDecl& f = a.features[i];
         if (f.origin_invalid) return a.id + ": " + f.id + ": origin must be a string";
+        if (!f.origin.empty() && (schema_type != "character" || declared < 5))
+            return a.id + ": " + f.id + ": origin is character@5 only";
         if (schema_type == "character") {
             const std::string origin = f.origin.empty() ? "class" : f.origin;
             if (origin != "class" && origin != "race" && origin != "background")
@@ -3781,7 +3791,8 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
             errors.push_back(pack_id + ":" + d.path + ": " + ex.what());
         }
     }
-    // item@1 (EQUIPMENT.md 9): the def table; no archetype reads it (only Combat with CombatOptions::equipment on).
+    // item@1 (EQUIPMENT.md 9): the def table. Archetype load reads it for worn armor and shields
+    // (possession). Combat with CombatOptions::equipment on reads it again for the loadout.
     for (const assets::PackDocument& d : packs.documents()) {
         if (!d.doc.ok || d.doc.current.type != "item") continue;
         const std::string& pack_id = packs.packs()[d.pack].id;

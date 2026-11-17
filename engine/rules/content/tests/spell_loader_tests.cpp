@@ -732,6 +732,12 @@ TEST_CASE("loader 7.2zd: warded + ward, ends_on harmful_cast, scope from_types +
     REQUIRE(p.def->extra_effects.size() == 1);
     CHECK(p.def->extra_effects[0].kind == SpellEffectKind::ConditionImmunityFrom);
     CHECK(p.def->extra_effects[0].immune_conditions == (bit(Condition::Charmed) | bit(Condition::Frightened)));
+    CHECK_FALSE(p.def->extra_effects[0].blocks_possession);
+    pfeg["effects"][1]["possession"] = true;
+    auto held = spell_from_json(pfeg);
+    REQUIRE(held.def);
+    REQUIRE_FALSE(held.def->extra_effects.empty());
+    CHECK(held.def->extra_effects[0].blocks_possession);
     auto aid = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.aid","level":2,"name":"Aid",
         "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":30},"components":{"v":true,"s":true,"m":{"text":"strip"}},
         "duration":{"kind":"rounds","amount":4800},"targets":{"count":3},

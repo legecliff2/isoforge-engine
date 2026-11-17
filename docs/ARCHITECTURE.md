@@ -951,7 +951,7 @@ _Resolved items have moved to the Decisions Log (D-001…D-008)._
 
 ## Appendix: possession turn resets (CONTENT_CONVENTIONS §59)
 
-Reaction, Dodge, Disengage, Shield, Help, Reckless, gaze aversion, and an unused readied action clear on the body at the start of the possessor's turn. The body's own slot skips those clears while the link lasts. The first body slot after the link ends also skips them when `turn_owner_reset` is set, so a clear the possessor already ran is not run again. Repeat saves, start-of-turn damage, and reaction denial that other creatures tie to the body's turns stay on the body's slot.
+Reaction, Dodge, Disengage, Shield, Help, Reckless, gaze aversion, and an unused readied action clear on the body at the start of the possessor's turn. The body's own slot skips those clears only while the link is live. Once the link ends, the body's next slot is its own next turn and resets Dodge, Shield and the reaction. Repeat saves, start-of-turn damage, and reaction denial that other creatures tie to the body's turns stay on the body's slot.
 
 Stinking Cloud's `loses_action` save stays on the body's slot. The possessor's budget does not inherit `action_lost`. The cloud never costs the possessor an action.
 

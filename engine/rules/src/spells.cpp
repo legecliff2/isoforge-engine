@@ -80,7 +80,8 @@ SpellDef effect_view(const SpellDef& base, const SpellEffect& e) {
     v.requires_jumped_ft = 0; v.has_save_choice = false; v.leap_push_ft = 0;   // B8: the leap is the primary save only
     v.whirl_ft = 0; v.impact_per_ft = 0; v.impact_die = {}; v.impact_dc = 0;   // B10: the fling is the primary save only
     v.whelm = false; v.whelm_escape_dc = 0; v.whelm_max_size = -1; v.whelm_crush = {};   // B11: the grapple is the primary save only
-    v.possess = false; v.blocks_possession = false;   // Possession and PfEG's ward are the primary effect only
+    v.possess = false;
+    v.blocks_possession = e.blocks_possession;   // PfEG's ward rides the condition_immunity effect
     v.cantrip_scales = false; v.cantrip_adds_beams = false;
     v.upcast_beams = 0; v.upcast_dice = e.upcast_dice; v.upcast_darts = 0; v.upcast_targets = 0;   // upcast_dice: delayed_damage only
     return v;

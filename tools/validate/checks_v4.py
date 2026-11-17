@@ -1982,7 +1982,7 @@ def check_possess(doc: dict, tag: str) -> tuple[list[str], list[str]]:
         types = act.get("target_creature_types")
         if types != ["humanoid"]:
             errs.append(f"{where}: possess needs target_creature_types [humanoid]")
-        if act.get("targets") != 1:
+        if act.get("targets", 1) != 1:
             errs.append(f"{where}: possess needs targets 1")
         immune = act.get("immune_on_success")
         if not isinstance(immune, dict) or immune.get("scope") != "same_source" or not immune.get("hours"):

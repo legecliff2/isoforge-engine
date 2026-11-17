@@ -2776,8 +2776,10 @@ uint64_t Combat::hash() const {
             }
         }
     }
-    // 0xEB (Possession): the link and the overlay's saved block. Folded only while some possessing
-    // id is non-zero, so a fight with no possession hashes as before. Next free tag is 0xEC.
+    // 0xEB (Possession): the link and the overlay's saved mental block. Folded only while some
+    // possessing id is non-zero, so a fight with no possession hashes as before. class_live and the
+    // load-time class snapshot are not folded: they are a copy of fields the live combatant already
+    // hashes, and a fight with no link does not have them. Next free tag is 0xEC.
     {
         uint32_t links = 0;
         for (const auto& c : state_.combatants) if (c.possessing != 0) ++links;
