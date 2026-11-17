@@ -1417,24 +1417,31 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
             if (!sl || sl->gone || !reg_->alive(sl->entity)) continue;
             const Spot anchor = spot(ex.body);
             const int fp = std::max(1, footprint_size(ex.ghost));
+            const auto occ = occupied_except(ex.ghost);
             auto free_at = [&](Vec2i p) {
                 if (!grid_.footprint_walkable(p, fp)) return false;
-                const auto occ = occupied_except(ex.ghost);
                 for (int dy = 0; dy < fp; ++dy)
                     for (int dx = 0; dx < fp; ++dx)
                         if (std::find(occ.begin(), occ.end(), Vec2i{p.x + dx, p.y + dy}) != occ.end()) return false;
                 return true;
             };
+            int x0 = 0, y0 = 0, x1 = -1, y1 = -1;
+            grid_.world_bounds(x0, y0, x1, y1);
             Vec2i chosen{};
             bool got = false;
-            for (int dy = -1; dy <= 1 && !got; ++dy)
-                for (int dx = -1; dx <= 1 && !got; ++dx) {
-                    const Vec2i p{anchor.p.x + dx, anchor.p.y + dy};
-                    if (free_at(p)) { chosen = p; got = true; }
+            int best_near = 0;
+            // Within 5 ft of the body's whole footprint, nearest the anchor, ties in row-major order.
+            for (int y = y0; y <= y1; ++y)
+                for (int x = x0; x <= x1; ++x) {
+                    const Vec2i p{x, y};
+                    if (rect_distance(p, fp, anchor.p, anchor.n) > 1 || !free_at(p)) continue;
+                    const int dx = p.x > anchor.p.x ? p.x - anchor.p.x : anchor.p.x - p.x;
+                    const int dy = p.y > anchor.p.y ? p.y - anchor.p.y : anchor.p.y - p.y;
+                    const int near = dx > dy ? dx : dy;
+                    if (!got || near < best_near) { best_near = near; chosen = p; got = true; }
                 }
             if (!got) {
-                int x0 = 0, y0 = 0, x1 = -1, y1 = -1, best = 0;
-                grid_.world_bounds(x0, y0, x1, y1);
+                int best = 0;
                 for (int y = y0; y <= y1; ++y)
                     for (int x = x0; x <= x1; ++x) {
                         const Vec2i p{x, y};

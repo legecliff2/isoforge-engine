@@ -388,3 +388,23 @@ TEST_CASE("Combat::log_hash: the chosen condition (0xCF), 7.2ze Blindness/Deafne
     q.condition_choice = 1;
     CHECK(c0->log_hash() == h1);
 }
+
+TEST_CASE("Combat::hash 0xEB folds only while a possession link exists") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    const auto ch = arena();
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 9);
+    REQUIRE(c);
+    const uint64_t h0 = c->hash();
+    auto& st = CombatTestAccess::state(*c);
+    const rules5e::CombatantId body = ch.spawns[0].stable_id;
+    const rules5e::CombatantId ghost = ch.spawns[1].stable_id;
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(st, ghost, body, 1, 24, 1, ev).empty());
+    CHECK(c->hash() != h0);
+    rules5e::end_possession(st, ghost, 2, ev, false);
+    st.action_immunities.clear();
+    st.possession_exits.clear();
+    CHECK(c->hash() == h0);
+}

@@ -896,6 +896,21 @@ struct Combatant {
     // own Int/Wis/Cha, proficiencies and condition immunities, displaced while the link lasts.
     // Combat::hash 0xEB folds the link and this block only while some `possessing` is non-zero.
     // Not a condition bit: can_act stays open so the ghost can spend the body's actions.
+    // The class-feature snapshot is the body's statistics with class-origin baked numbers removed.
+    // Static content. Not hashed. Empty means there is nothing to strip.
+    struct PossessionClassBase {
+        uint8_t attacks_per_action = 1;
+        uint8_t half_proficiency = 0;
+        uint32_t bonus_action_grants = 0;
+        std::vector<SaveAdvantage> save_advantages{};
+        std::vector<Trigger> triggers{};
+        std::vector<BonusAttack> bonus_attacks{};
+        std::vector<BonusActionCost> bonus_action_costs{};
+        std::vector<Attack> attacks{};
+        bool thieves_tools = false;
+        int8_t ac = 10;
+        uint8_t speed_ft = 30;
+    };
     struct PossessionOverlay {
         int8_t body_int = 10, body_wis = 10, body_cha = 10;
         int8_t ghost_int = 10, ghost_wis = 10, ghost_cha = 10;
@@ -906,15 +921,22 @@ struct Combatant {
         uint32_t spell_id = 0;               // the Possession action, for the 24 h row
         uint16_t immunity_hours = 0;
         uint8_t immunity_scope = 0;          // 0 = every user, 1 = this ghost
+        // The body's class-feature fields as they were at the link, restored at the end.
+        std::optional<PossessionClassBase> class_live{};
     };
     CombatantId possessing = 0;
     CombatantId possessed_by = 0;
     std::optional<PossessionOverlay> possession_overlay{};
+    std::optional<PossessionClassBase> possession_class_base{};
+    // The loader could not split a class-origin baked number exactly. begin_possession refuses.
+    bool possession_unsupported = false;
+    // The possessor's start_turn already cleared this body's turn-owner state since its last slot.
+    // The body's next slot skips that clear so a reaction or Dodge is not refreshed twice. Not hashed.
+    bool turn_owner_reset = false;
     // Armor annotation for the possession non-proficiency rule only. Not hashed.
-    // armor_proficiency 0xFF = the file did not list proficiencies (treated as proficient).
-    // Otherwise bits: 1 light, 2 medium, 4 heavy, 8 shields.
+    // armor_proficiency is the file's list and is not read while possessed (the ghost has none).
     // worn_armor: 0 none, 1 light, 2 medium, 4 heavy. worn_shield: a shield is worn.
-    // Read only while possessed_by != 0, so an unpossessed cleric in chain mail is unchanged.
+    // Any worn armor or shield is non-proficient while possessed_by != 0.
     uint8_t armor_proficiency = 0xFF;
     uint8_t worn_armor = 0;
     bool worn_shield = false;

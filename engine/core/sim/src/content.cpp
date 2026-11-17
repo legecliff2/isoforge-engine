@@ -9,6 +9,7 @@
 #include <map>
 #include <set>
 
+#include "rules5e/abilities.hpp"
 #include "rules5e/encounter.hpp"
 #include "rules5e/weapon.hpp"
 #include "assets/content_migrations.hpp"
@@ -2225,6 +2226,293 @@ std::optional<int> cr_x8_of(const Json& r) {
     return v * 8;
 }
 
+// Proficiency-granting race traits. They are not class features, but they grant a proficiency the
+// ghost does not keep (CONTENT_CONVENTIONS §59). The ids are the SRD trait ids; a renamed trait is
+// not on this list and is not blocked.
+constexpr const char* kProficiencyRaceTraits[] = {"dwarven_combat_training", "elf_weapon_training", "stonecunning"};
+
+namespace {
+bool feature_is_class(const FeatureDecl& f, const std::string& schema_type) {
+    if (schema_type != "character" || f.origin_invalid) return false;
+    const std::string origin = f.origin.empty() ? "class" : f.origin;
+    return origin == "class";
+}
+
+bool feature_live(const FeatureDecl& f, uint32_t declared) {
+    if (f.effect.is_object() && f.effect.value("inert", false)) return false;
+    if (declared != 0 && declared < 4 &&
+        (f.kind == "extra_attack" || f.kind == "half_proficiency" || f.kind == "bonus_action_grant"))
+        return false;
+    return true;
+}
+
+// Record the body's statistics with class-origin baked numbers removed. A split that is not exact
+// sets possession_unsupported; the file still loads, and begin_possession refuses that host.
+void note_possession_class_base(rules5e::Combatant& c, const std::vector<FeatureDecl>& feats, const Json& doc,
+                                const std::string& schema_type, uint32_t declared, const FeatureRegistry& reg,
+                                const std::vector<const Json*>& attack_actions) {
+    if (schema_type != "character") return;
+    rules5e::Combatant::PossessionClassBase base;
+    base.attacks_per_action = c.attacks_per_action;
+    base.half_proficiency = c.half_proficiency;
+    base.bonus_action_grants = c.bonus_action_grants;
+    base.save_advantages = c.save_advantages;
+    base.triggers = c.triggers;
+    base.bonus_attacks = c.bonus_attacks;
+    base.bonus_action_costs = c.bonus_action_costs;
+    base.attacks = c.attacks;
+    base.thieves_tools = false;
+    base.ac = c.ac;
+    base.speed_ft = c.speed_ft;
+    bool any = false;
+    auto refuse = [&] { c.possession_unsupported = true; };
+
+    uint8_t from_class = 1, from_other = 1;
+    bool saw_extra = false;
+    for (const auto& f : feats) {
+        if (f.kind != "extra_attack" || !feature_live(f, declared)) continue;
+        const auto n = f.effect.find("attacks_per_action");
+        if (n == f.effect.end() || !n->is_number_integer()) { refuse(); return; }
+        const int v = int(n->get<int64_t>());
+        saw_extra = true;
+        if (feature_is_class(f, schema_type)) from_class = std::max<uint8_t>(from_class, uint8_t(v));
+        else from_other = std::max<uint8_t>(from_other, uint8_t(v));
+    }
+    if (saw_extra) {
+        const uint8_t expect = std::max(from_class, from_other);
+        if (c.attacks_per_action != expect) { refuse(); return; }
+        if (from_class > from_other) { base.attacks_per_action = from_other; any = true; }
+    }
+
+    uint8_t class_half = 0, other_half = 0;
+    for (const auto& f : feats) {
+        if (f.kind != "half_proficiency" || !feature_live(f, declared)) continue;
+        uint32_t on = 0;
+        const auto o = f.effect.find("on");
+        if (o == f.effect.end() || !o->is_array()) { refuse(); return; }
+        for (const Json& x : *o) {
+            const std::string s = x.is_string() ? x.get<std::string>() : "";
+            if (s == "checks") on |= 1u;
+            else if (s == "initiative") on |= 2u;
+            else { refuse(); return; }
+        }
+        if (feature_is_class(f, schema_type)) class_half = uint8_t(class_half | on);
+        else other_half = uint8_t(other_half | on);
+    }
+    if (class_half != 0) {
+        if ((c.half_proficiency & class_half) != class_half) { refuse(); return; }
+        base.half_proficiency = uint8_t((c.half_proficiency & ~class_half) | other_half);
+        any = true;
+    }
+
+    uint32_t class_grants = 0, other_grants = 0;
+    for (const auto& f : feats) {
+        if (f.kind != "bonus_action_grant" || !feature_live(f, declared)) continue;
+        const auto acts = f.effect.find("actions");
+        if (acts == f.effect.end() || !acts->is_array()) { refuse(); return; }
+        uint32_t bits = 0;
+        for (const Json& v : *acts) {
+            const std::string s = v.is_string() ? v.get<std::string>() : "";
+            rules5e::ActionKind k;
+            if (s == "dash") k = rules5e::ActionKind::Dash;
+            else if (s == "disengage") k = rules5e::ActionKind::Disengage;
+            else if (s == "hide") k = rules5e::ActionKind::Hide;
+            else if (s == "dodge") k = rules5e::ActionKind::Dodge;
+            else if (s == "use_object") k = rules5e::ActionKind::UseObject;
+            else { refuse(); return; }
+            bits |= rules5e::bit(k);
+        }
+        if (feature_is_class(f, schema_type)) class_grants |= bits;
+        else other_grants |= bits;
+    }
+    if (class_grants != 0) {
+        if ((c.bonus_action_grants & class_grants) != class_grants) { refuse(); return; }
+        base.bonus_action_grants = (c.bonus_action_grants & ~class_grants) | other_grants;
+        std::erase_if(base.bonus_action_costs, [&](const rules5e::BonusActionCost& cost) {
+            return (class_grants & rules5e::bit(cost.kind)) != 0 && (other_grants & rules5e::bit(cost.kind)) == 0;
+        });
+        any = true;
+    }
+
+    std::vector<rules5e::SaveAdvantage> drop;
+    for (const auto& f : feats) {
+        if (!feature_is_class(f, schema_type) || f.kind != "apply_modifier" || !feature_live(f, declared)) continue;
+        if (!f.effect.value("passive", false)) continue;
+        const auto ao = f.effect.find("advantage_on");
+        const auto w = f.effect.find("when");
+        if (ao == f.effect.end() || w == f.effect.end() || !w->is_object()) { refuse(); return; }
+        static const char* abs[] = {"str", "dex", "con", "int", "wis", "cha"};
+        static const char* conds[] = {"blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated",
+                                      "invisible", "paralyzed", "petrified", "poisoned", "prone", "restrained",
+                                      "stunned", "unconscious", "exhaustion"};
+        const std::string save = w->value("save", "");
+        int which = -1;
+        for (int i = 0; i < 6; ++i) if (save == abs[i]) which = i;
+        if (which < 0) { refuse(); return; }
+        rules5e::SaveAdvantage sa;
+        sa.ability = rules5e::Ability(which);
+        if (auto ss = w->find("source_seen"); ss != w->end() && ss->is_boolean()) sa.source_seen = ss->get<bool>();
+        if (auto nc = w->find("not_conditions"); nc != w->end() && nc->is_array()) {
+            for (const Json& x : *nc) {
+                const std::string s = x.is_string() ? x.get<std::string>() : "";
+                int k = -1;
+                for (int i = 0; i < 15; ++i) if (s == conds[i]) k = i;
+                if (k < 0) { refuse(); return; }
+                sa.not_conditions |= rules5e::bit(rules5e::Condition(k));
+            }
+        }
+        drop.push_back(sa);
+    }
+    for (const auto& sa : drop) {
+        auto it = std::find_if(base.save_advantages.begin(), base.save_advantages.end(), [&](const rules5e::SaveAdvantage& o) {
+            return o.ability == sa.ability && o.source_seen == sa.source_seen && o.not_conditions == sa.not_conditions;
+        });
+        if (it == base.save_advantages.end()) { refuse(); return; }
+        base.save_advantages.erase(it);
+        any = true;
+    }
+
+    std::vector<uint32_t> class_owners;
+    for (const auto& f : feats)
+        if (feature_is_class(f, schema_type) && f.kind == "on_event" && feature_live(f, declared))
+            class_owners.push_back(rules5e::spell_id_of(f.id));
+    if (!class_owners.empty()) {
+        const auto before = base.triggers.size();
+        std::erase_if(base.triggers, [&](const rules5e::Trigger& t) {
+            return std::find(class_owners.begin(), class_owners.end(), t.owner_id) != class_owners.end();
+        });
+        if (base.triggers.size() == before) { refuse(); return; }
+        any = true;
+    }
+
+    auto class_feature = [&](const char* id) {
+        for (const auto& f : feats)
+            if (f.id == id && feature_is_class(f, schema_type) && feature_live(f, declared)) return true;
+        return false;
+    };
+    {
+        std::vector<std::string> drop_names;
+        if (class_feature("martial_arts")) drop_names.push_back("martial_arts");
+        if (class_feature("flurry_of_blows")) drop_names.push_back("flurry_of_blows");
+        if (class_feature("frenzy")) drop_names.push_back("frenzy");
+        for (const auto& f : feats)
+            if (feature_is_class(f, schema_type) && f.kind == "bonus_attack" && feature_live(f, declared))
+                drop_names.push_back(f.id);
+        if (!drop_names.empty()) {
+            const std::string aid = doc.value("id", "");
+            const auto before = base.bonus_attacks.size();
+            std::erase_if(base.bonus_attacks, [&](const rules5e::BonusAttack& b) {
+                for (const auto& name : drop_names)
+                    if (b.id == rules5e::spell_id_of(aid + "#bonus#" + name)) return true;
+                return false;
+            });
+            if (base.bonus_attacks.size() == before) { refuse(); return; }
+            any = true;
+        }
+    }
+    if (class_feature("two_weapon_fighting")) {
+        for (auto& b : base.bonus_attacks) {
+            if (!b.different_weapon || b.has_damage) continue;
+            if (b.attack_index >= c.attacks.size()) { refuse(); return; }
+            b.has_damage = true;
+            b.damage = c.attacks[b.attack_index].damage;
+            b.damage.bonus = 0;
+            any = true;
+        }
+    }
+
+    for (const auto& f : feats) {
+        if (!feature_is_class(f, schema_type) || f.kind != "damage_bonus" || !feature_live(f, declared)) continue;
+        const auto amount = f.effect.find("amount");
+        if (amount == f.effect.end() || !amount->is_number_integer()) { refuse(); return; }
+        const int add = int(amount->get<int64_t>());
+        const std::string cond = f.effect.value("condition", "");
+        const ActionPredicate* pred = cond.empty() ? nullptr : reg.condition(cond);
+        if (!cond.empty() && !pred) { refuse(); return; }
+        bool hit = false;
+        for (std::size_t i = 0; i < base.attacks.size() && i < attack_actions.size(); ++i) {
+            if (pred && !(*pred)(doc, *attack_actions[i])) continue;
+            if (int(base.attacks[i].damage.bonus) < add) { refuse(); return; }
+            base.attacks[i].damage.bonus = int16_t(int(base.attacks[i].damage.bonus) - add);
+            hit = true;
+        }
+        if (!hit) { refuse(); return; }
+        any = true;
+    }
+
+    if (c.thieves_tools) { base.thieves_tools = false; any = true; }
+
+    auto class_level = [&](const char* name) {
+        int lvl = 0;
+        for (const Json& k : doc.value("classes", Json::array()))
+            if (k.is_object() && k.value("class", "") == name) lvl += k.value("level", 0);
+        return lvl;
+    };
+    const int dex = rules5e::modifier(c.abilities, rules5e::Ability::Dex);
+    const int str = rules5e::modifier(c.abilities, rules5e::Ability::Str);
+    const int con = rules5e::modifier(c.abilities, rules5e::Ability::Con);
+    const int wis = rules5e::modifier(c.abilities, rules5e::Ability::Wis);
+    if (class_feature("unarmored_defense") && c.worn_armor == 0) {
+        const bool barb = class_level("barbarian") > 0;
+        const bool monk = class_level("monk") > 0 && !c.worn_shield;
+        if (barb) {
+            const int shield = c.worn_shield ? 2 : 0;
+            if (int(c.ac) != 10 + dex + con + shield) { refuse(); return; }
+            base.ac = int8_t(10 + dex + shield);
+            any = true;
+        } else if (monk) {
+            if (int(c.ac) != 10 + dex + wis) { refuse(); return; }
+            base.ac = int8_t(10 + dex);
+            any = true;
+        } else { refuse(); return; }
+    }
+    int speed_bonus = 0;
+    if (class_feature("fast_movement") && c.worn_armor != 4) speed_bonus += 10;
+    if (class_feature("unarmored_movement") && c.worn_armor == 0 && !c.worn_shield) {
+        const int lvl = class_level("monk");
+        if (lvl >= 18) speed_bonus += 30;
+        else if (lvl >= 14) speed_bonus += 25;
+        else if (lvl >= 10) speed_bonus += 20;
+        else if (lvl >= 6) speed_bonus += 15;
+        else if (lvl >= 2) speed_bonus += 10;
+    }
+    if (speed_bonus != 0) {
+        if (int(c.speed_ft) < speed_bonus || (int(c.speed_ft) - speed_bonus) % 5 != 0) { refuse(); return; }
+        base.speed_ft = uint8_t(int(c.speed_ft) - speed_bonus);
+        any = true;
+    }
+    if (class_feature("martial_arts")) {
+        const int lvl = std::max(1, class_level("monk"));
+        const int die = lvl >= 17 ? 10 : lvl >= 11 ? 8 : lvl >= 5 ? 6 : 4;
+        bool hit = false;
+        for (std::size_t i = 0; i < base.attacks.size() && i < attack_actions.size(); ++i) {
+            const Json& act = *attack_actions[i];
+            bool unarmed = false;
+            if (auto p = act.find("properties"); p != act.end() && p->is_array())
+                for (const Json& x : *p) unarmed = unarmed || (x.is_string() && x.get<std::string>() == "unarmed");
+            if (!unarmed) continue;
+            auto& at = base.attacks[i];
+            if (int(at.damage.count) != 1 || int(at.damage.sides) != die) { refuse(); return; }
+            const int pb = int(c.proficiency_bonus);
+            const int used = std::max(str, dex);
+            if (int(at.damage.bonus) != used || (int(at.to_hit) != used + pb && int(at.to_hit) != used)) { refuse(); return; }
+            at.damage.count = 0;
+            at.damage.sides = 0;
+            at.damage.bonus = int16_t(1 + str);
+            at.to_hit = int8_t(str + (int(at.to_hit) == used + pb ? pb : 0));
+            at.ability_used = int8_t(rules5e::Ability::Str);
+            if (int(at.to_hit) == str + pb) at.pb_in_to_hit = int8_t(pb);
+            else if (int(at.to_hit) == str) at.pb_in_to_hit = 0;
+            hit = true;
+        }
+        if (!hit) { refuse(); return; }
+        any = true;
+    }
+    if (c.possession_unsupported) return;
+    if (any) c.possession_class_base = std::move(base);
+}
+}  // namespace
+
 std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type, const std::string& pack_id,
                                                  uint32_t declared_version, std::string_view pack_dir) {
     Archetype a;
@@ -2763,21 +3051,40 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         c.armor_proficiency = mask;
     }
     if (auto eq = doc.find("equipment"); eq != doc.end() && eq->is_array()) {
-        auto named = [](const std::string& id, const char* tail) {
-            const std::string dot = std::string(".") + tail;
-            const std::string slash = std::string("/") + tail;
-            return id == tail || (id.size() >= dot.size() && id.compare(id.size() - dot.size(), dot.size(), dot) == 0) ||
-                   (id.size() >= slash.size() && id.compare(id.size() - slash.size(), slash.size(), slash) == 0);
-        };
         for (const Json& e : *eq) {
-            std::string id = e.is_string() ? e.get<std::string>() : "";
-            if (id.empty() && e.is_object()) id = e.value("item", e.value("id", ""));
-            if (named(id, "chain_mail") || named(id, "splint") || named(id, "plate") || named(id, "ring_mail")) c.worn_armor = 4;
-            else if (named(id, "chain_shirt") || named(id, "scale_mail") || named(id, "breastplate") ||
-                     named(id, "half_plate") || named(id, "hide")) c.worn_armor = 2;
-            else if (named(id, "padded") || named(id, "leather") || named(id, "studded_leather")) c.worn_armor = 1;
-            else if (named(id, "shield")) c.worn_shield = true;
+            if (!e.is_object() || e.value("equipped", false) != true) continue;
+            const std::string id = e.value("item", e.value("id", ""));
+            const rules5e::ItemDef* d = id.empty() ? nullptr : items_->find(id);
+            if (!d) continue;
+            if (d->kind == rules5e::ItemKind::Armor) {
+                c.worn_armor = d->armor.category == rules5e::ArmorCategory::Heavy ? 4
+                             : d->armor.category == rules5e::ArmorCategory::Medium ? 2 : 1;
+            } else if (d->kind == rules5e::ItemKind::Shield) {
+                c.worn_shield = true;
+            }
         }
+    }
+    if (c.worn_armor == 0 && !c.worn_shield) {
+        // Monsters often name the armor only in armor_class.note ("chain shirt, shield", "splint").
+        // "natural armor" names no worn piece.
+        std::string note;
+        if (auto ac = doc.find("armor_class"); ac != doc.end() && ac->is_object())
+            note = ac->value("note", "");
+        for (char& ch : note) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+        auto has = [&](const char* w) { return note.find(w) != std::string::npos; };
+        if (has("half plate") || has("half-plate")) c.worn_armor = 2;
+        else if (has("chain mail") || has("chainmail")) c.worn_armor = 4;
+        else if (has("chain shirt")) c.worn_armor = 2;
+        else if (has("studded leather") || has("studded")) c.worn_armor = 1;
+        else if (has("scale mail") || has("scale")) c.worn_armor = 2;
+        else if (has("ring mail")) c.worn_armor = 4;
+        else if (has("breastplate")) c.worn_armor = 2;
+        else if (has("splint")) c.worn_armor = 4;
+        else if (has("hide")) c.worn_armor = 2;
+        else if (has("padded")) c.worn_armor = 1;
+        else if (has("leather")) c.worn_armor = 1;
+        else if (has("plate")) c.worn_armor = 4;
+        if (has("shield")) c.worn_shield = true;
     }
     std::vector<rules5e::SpellDef> synth;   // synthetic SpellDefs: area_save riders first, then save_effect actions
     const RiderCtx rider_ctx{a.id, attack_actions, synth};
@@ -2785,9 +3092,13 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     const FeatureBuildCtx fctx{*features_, doc, declared, attack_actions};
     for (std::size_t i = 0; i < a.features.size(); ++i) {
         const FeatureDecl& f = a.features[i];
+        if (f.origin_invalid) return a.id + ": " + f.id + ": origin must be a string";
         if (schema_type == "character") {
             const std::string origin = f.origin.empty() ? "class" : f.origin;
-            const bool proficiency_race = f.id == "dwarven_combat_training" || f.id == "elf_weapon_training" || f.id == "stonecunning";
+            if (origin != "class" && origin != "race" && origin != "background")
+                return a.id + ": " + f.id + ": origin must be class, race, or background";
+            bool proficiency_race = false;
+            for (const char* id : kProficiencyRaceTraits) proficiency_race = proficiency_race || f.id == id;
             if (origin == "class" || origin == "background" || (origin == "race" && proficiency_race))
                 c.possession_blocked_features.push_back(uint32_t(i + 1));
         }
@@ -3276,6 +3587,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     ent.count = uint16_t(std::clamp<int64_t>(n->get<int64_t>(), 0, 65535));
             a.equipment.push_back(std::move(ent));
         }
+    note_possession_class_base(c, a.features, doc, schema_type, declared, *features_, attack_actions);
     by_id_[a.id] = std::move(a);
     return std::nullopt;
 }

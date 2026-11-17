@@ -34,6 +34,7 @@ struct FeatureDecl {
     assets::Json effect;       // full effect object
     bool requires_humanoid_form = false;   // R-G12 (7.2q): the feature / trait object's flag (not the effect's)
     std::string origin;                    // "class", "race", "background", or empty (character: class)
+    bool origin_invalid = false;           // present and not a string: the loader reports it
 };
 
 enum class FeatureCost : uint8_t { Action, BonusAction, Free };   // Free: no action economy (Action Surge)

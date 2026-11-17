@@ -195,3 +195,54 @@ TEST_CASE("extra_attack: the AI uses both attacks of its Attack action; replay")
     CHECK(r.c->state().budget.attacks_remaining == 0);
     r.check_replay();
 }
+
+TEST_CASE("possession strips a level-5 fighter's extra attack exactly") {
+    ContentLibrary lib;
+    Json d = load_json("content/packs/srd51.core/characters/fighter_level_5.json");
+    REQUIRE_FALSE(lib.add(d, "character"));
+    const auto* a = lib.find(kFighter);
+    REQUIRE(a);
+    CHECK(a->base.attacks_per_action == 2);
+    REQUIRE(a->base.possession_class_base);
+    CHECK(a->base.possession_class_base->attacks_per_action == 1);
+    CHECK_FALSE(a->base.possession_unsupported);
+}
+
+TEST_CASE("possession class strip and armor category match the printed character") {
+    ContentLibrary lib;
+    for (const char* rel : {"content/packs/srd51.core/items/chain_mail.json",
+                            "content/packs/srd51.core/items/shield.json",
+                            "content/packs/srd51.core/items/leather_armor.json",
+                            "content/packs/srd51.core/items/plate_armor.json"})
+        REQUIRE_FALSE(lib.add_item(load_json(rel)));
+    auto add = [&](const char* rel) {
+        Json d = load_json(rel);
+        REQUIRE_MESSAGE(lib.add(d, "character").value_or("").empty(), rel);
+        return lib.find(d["id"].get<std::string>());
+    };
+    const auto* barb = add("content/packs/srd51.core/characters/barbarian_level_5.json");
+    REQUIRE(barb);
+    CHECK_FALSE(barb->base.possession_unsupported);
+    REQUIRE(barb->base.possession_class_base);
+    CHECK(barb->base.possession_class_base->attacks_per_action == 1);
+    CHECK(barb->base.possession_class_base->speed_ft == 30);
+    CHECK(barb->base.possession_class_base->ac == 12);
+    CHECK(barb->base.possession_class_base->save_advantages.empty());
+    const auto* monk = add("content/packs/srd51.core/characters/monk_level_1.json");
+    REQUIRE(monk);
+    CHECK_FALSE(monk->base.possession_unsupported);
+    REQUIRE(monk->base.possession_class_base);
+    CHECK(monk->base.possession_class_base->ac == 13);
+    CHECK(monk->base.possession_class_base->attacks[0].damage.count == 0);
+    CHECK(monk->base.possession_class_base->attacks[0].damage.bonus == 2);   // 1 + Str 13
+    const auto* rogue = add("content/packs/srd51.core/characters/rogue_level_1.json");
+    REQUIRE(rogue);
+    CHECK_FALSE(rogue->base.possession_unsupported);
+    REQUIRE(rogue->base.possession_class_base);
+    CHECK_FALSE(rogue->base.possession_class_base->thieves_tools);
+    CHECK(rogue->base.possession_class_base->triggers.empty());
+    const auto* cleric = add("content/packs/srd51.core/characters/sample_hill_dwarf_cleric_1.json");
+    REQUIRE(cleric);
+    CHECK(cleric->base.worn_armor == 4);
+    CHECK(cleric->base.worn_shield);
+}

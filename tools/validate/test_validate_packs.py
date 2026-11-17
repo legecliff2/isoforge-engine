@@ -759,3 +759,53 @@ class ParkedEncounterSoftBlock(unittest.TestCase):
             ]
         }
         self.assertEqual(vp.scenario_soft_block_warnings(playable, self.book), [])
+
+
+class PossessCheck(unittest.TestCase):
+    def action(self, **over):
+        act = {
+            "id": "possession", "name": "Possession", "kind": "save_effect", "possess": True,
+            "caster_sees_target": True, "target_creature_types": ["humanoid"], "targets": 1,
+            "immune_on_success": {"hours": 24, "scope": "same_source"},
+        }
+        act.update(over)
+        return {"id": "t.ghost", "actions": [act]}
+
+    def test_a_complete_possess_action_is_clean(self):
+        import checks_v4 as c4
+        errs, warns = c4.check_possess(self.action(), "monster@5")
+        self.assertEqual(errs, [])
+        self.assertEqual(warns, [])
+
+    def test_each_loader_refusal(self):
+        import checks_v4 as c4
+        cases = [
+            ({"kind": "melee_weapon_attack"}, "possess is save_effect only"),
+            ({}, "possess needs a monster@5 file"),
+            ({"area": {"shape": "sphere"}}, "possess takes no area"),
+            ({"possess": False}, "possess must be true"),
+            ({"caster_sees_target": False}, "possess needs caster_sees_target"),
+            ({"target_creature_types": ["undead"]}, "possess needs target_creature_types [humanoid]"),
+            ({"targets": 2}, "possess needs targets 1"),
+            ({"immune_on_success": {"hours": 24, "scope": "same_action"}}, "possess needs immune_on_success same_source"),
+            ({"damage": [{"dice": "1d6", "type": "necrotic"}]}, "possess takes no damage, apply, or control"),
+            ({"magical": True}, "possess is not magical"),
+        ]
+        for i, (over, needle) in enumerate(cases):
+            tag = "monster@4" if needle.endswith("monster@5 file") else "monster@5"
+            doc = self.action(**over)
+            if "kind" in over:
+                doc["actions"][0]["kind"] = over["kind"]
+            errs, _ = c4.check_possess(doc, tag)
+            self.assertTrue(any(needle in e for e in errs), (i, needle, errs))
+
+    def test_origin_is_character_at_5_only(self):
+        import checks_v4 as c4
+        monster = {"id": "t.m", "traits": [{"id": "x", "name": "X", "origin": "race"}]}
+        errs, _ = c4.check_feature_origin(monster, "monster@5")
+        self.assertTrue(any("character@5 only" in e for e in errs))
+        old = {"id": "t.c", "features": [{"id": "x", "name": "X", "origin": "class"}]}
+        errs, _ = c4.check_feature_origin(old, "character@4")
+        self.assertTrue(any("character@5 only" in e for e in errs))
+        errs, _ = c4.check_feature_origin(old, "character@5")
+        self.assertEqual(errs, [])

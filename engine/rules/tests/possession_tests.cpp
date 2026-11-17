@@ -192,6 +192,9 @@ TEST_CASE("a printed attack is refused; a derived attack drops the proficiency b
     CHECK(refused.error == "possessed: printed attack has no proficiency split");
     auto ok = step(s, ActionRequest{1, ActionKind::Attack, 3, 1});
     CHECK(ok.ok);
+    CHECK(std::any_of(ok.events.begin(), ok.events.end(), [](const Event& e) {
+        return e.kind == EventKind::AttackResolved && e.actor == 1 && e.b == e.a + 5;   // to_hit 7, drop PB 2
+    }));
 }
 
 TEST_CASE("link ends the body's concentration and grapples, and the end restores the overlay") {
@@ -233,20 +236,43 @@ TEST_CASE("a possessed body does not count as conscious for its team, and its si
     CHECK(outcome->reason == EndReason::TeamNoConscious);
 }
 
-TEST_CASE("non-proficient armor on a possessed body blocks spells and is not applied when nobody is possessed") {
-    auto host = host_of(1);
-    host.armor_proficiency = uint8_t(1 | 2 | 8);   // light, medium, shields. No heavy.
-    host.worn_armor = 4;
-    auto s = begin_encounter({host, ghost_of(2), ally_of(3)}, 7, nullptr, spell_hooks());
-    CHECK_FALSE(nonproficient_armor(mut(s, 1)));   // worn heavy, not possessed: the six clerics stay proficient
-    link(s, 2, 1);
-    CHECK(nonproficient_armor(mut(s, 1)));
-    end_turns_until(s, 2);
-    ActionRequest cast{1, ActionKind::CastSpell, 1};
-    cast.spell_id = 1;
-    auto refused = step(s, cast);
-    CHECK_FALSE(refused.ok);
-    CHECK(refused.error == "possessed: the body's spells are not available");
+TEST_CASE("every worn armor and shield is non-proficient while possessed") {
+    bool saw_lower = false;
+    for (uint64_t seed = 1; seed < 30 && !saw_lower; ++seed) {
+        auto host = host_of(1);
+        host.armor_proficiency = 0xFF;
+        host.worn_armor = 1;
+        host.worn_shield = true;
+        auto bare = host_of(1);
+        auto s = begin_encounter({host, ghost_of(2), ally_of(3)}, seed, nullptr, spell_hooks());
+        CHECK_FALSE(nonproficient_armor(mut(s, 1)));
+        link(s, 2, 1);
+        CHECK(nonproficient_armor(mut(s, 1)));
+        auto plain = begin_encounter({bare, ghost_of(2), ally_of(3)}, seed, nullptr, spell_hooks());
+        link(plain, 2, 1);
+        end_turns_until(s, 2);
+        end_turns_until(plain, 2);
+        auto armored = step(s, ActionRequest{1, ActionKind::Attack, 3, 0});
+        auto open = step(plain, ActionRequest{1, ActionKind::Attack, 3, 0});
+        REQUIRE(armored.ok);
+        REQUIRE(open.ok);
+        const Event* ahit = nullptr;
+        const Event* ohit = nullptr;
+        for (const auto& e : armored.events) if (e.kind == EventKind::AttackResolved) ahit = &e;
+        for (const auto& e : open.events) if (e.kind == EventKind::AttackResolved) ohit = &e;
+        REQUIRE(ahit);
+        REQUIRE(ohit);
+        CHECK(ahit->b <= ohit->b);
+        if (ahit->b < ohit->b) saw_lower = true;
+        if (seed == 1) {
+            ActionRequest cast{1, ActionKind::CastSpell, 1};
+            cast.spell_id = 1;
+            auto refused = step(s, cast);
+            CHECK_FALSE(refused.ok);
+            CHECK(refused.error == "can't cast spells in armor you aren't proficient with");
+        }
+    }
+    CHECK(saw_lower);
 }
 
 TEST_CASE("end_summon clears a form lock after it ends a possession link") {
@@ -313,4 +339,226 @@ TEST_CASE("class features are refused on a possessed body; a race feature that i
     auto blocked = step(s, use);
     CHECK_FALSE(blocked.ok);
     CHECK(blocked.error == "possessed: class features are not available");
+    ActionRequest race{1, ActionKind::UseFeature};
+    race.feature_id = 2;
+    auto stayed = step(s, race);
+    CHECK(stayed.ok);
+    CHECK(std::any_of(stayed.events.begin(), stayed.events.end(), [](const Event& e) {
+        return e.kind == EventKind::FeatureUsed && e.a == 2;
+    }));
+}
+
+namespace {
+SpellDef possess_def(int dc) {
+    SpellDef d;
+    d.id = kPoss; d.content_id = "test.possession"; d.level = 0; d.is_spell = false;
+    d.kind = SpellEffectKind::Save; d.save_ability = Ability::Cha; d.fixed_dc = int8_t(dc);
+    d.possess = true; d.targets = 1; d.range_ft = 5; d.target_types = bit(CreatureType::Humanoid);
+    d.success_immunity_hours = 24; d.success_immunity_scope = 1;
+    return d;
+}
+EncounterHooks poss_hooks(int dc) {
+    EncounterHooks h = spell_hooks();
+    auto b = std::make_shared<SpellBook>(*srd_spellbook());
+    REQUIRE(b->add(possess_def(dc)));
+    h.spells = b;
+    return h;
+}
+Combatant caster_ghost(CombatantId id) {
+    auto c = ghost_of(id);
+    c.spells_known = {kPoss};
+    return c;
+}
+bool has_kind(const std::vector<Event>& ev, EventKind k) {
+    return std::any_of(ev.begin(), ev.end(), [&](const Event& e) { return e.kind == k; });
+}
+}  // namespace
+
+TEST_CASE("a successful possession save and an ended possession each grant 24 hours of immunity") {
+    auto host = host_of(1);
+    host.abilities.score[std::size_t(Ability::Cha)] = 12;   // mod +1, so a DC 1 Charisma save always succeeds
+    auto s = begin_encounter({host, caster_ghost(2), ally_of(3)}, 21, nullptr, poss_hooks(1));
+    end_turns_until(s, 2);
+    ActionRequest saved_req{2, ActionKind::CastSpell, 1}; saved_req.spell_id = kPoss;
+    auto saved = step(s, saved_req);
+    REQUIRE_MESSAGE(saved.ok, saved.error);
+    CHECK(has_kind(saved.events, EventKind::SavingThrowRolled));
+    CHECK_FALSE(has_kind(saved.events, EventKind::Possessed));
+    CHECK(mut(s, 1).possessed_by == 0);
+    REQUIRE(step(s, ActionRequest{2, ActionKind::EndTurn}).ok);
+    end_turns_until(s, 2);
+    ActionRequest again_req{2, ActionKind::CastSpell, 1}; again_req.spell_id = kPoss;
+    auto again = step(s, again_req);
+    REQUIRE_MESSAGE(again.ok, again.error);
+    CHECK_FALSE(has_kind(again.events, EventKind::SavingThrowRolled));
+    CHECK_FALSE(has_kind(again.events, EventKind::Possessed));
+
+    auto failed = begin_encounter({host_of(1), caster_ghost(2), caster_ghost(4), ally_of(3)}, 22, nullptr, poss_hooks(30));
+    end_turns_until(failed, 2);
+    ActionRequest took_req{2, ActionKind::CastSpell, 1}; took_req.spell_id = kPoss;
+    auto took = step(failed, took_req);
+    REQUIRE_MESSAGE(took.ok, took.error);
+    CHECK(has_kind(took.events, EventKind::Possessed));
+    auto ended = step(failed, [&] { ActionRequest r{2, ActionKind::Revert}; r.as_bonus_action = true; return r; }());
+    REQUIRE(ended.ok);
+    CHECK(std::any_of(ended.events.begin(), ended.events.end(), [](const Event& e) {
+        return e.kind == EventKind::PossessionEnded && e.a == 2;
+    }));
+    REQUIRE(step(failed, ActionRequest{2, ActionKind::EndTurn}).ok);
+    end_turns_until(failed, 2);
+    ActionRequest retry_req{2, ActionKind::CastSpell, 1}; retry_req.spell_id = kPoss;
+    auto retry = step(failed, retry_req);
+    REQUIRE_MESSAGE(retry.ok, retry.error);
+    CHECK_FALSE(has_kind(retry.events, EventKind::Possessed));
+    end_turns_until(failed, 4);
+    ActionRequest other_req{4, ActionKind::CastSpell, 1}; other_req.spell_id = kPoss;
+    auto other = step(failed, other_req);
+    REQUIRE_MESSAGE(other.ok, other.error);
+    CHECK(has_kind(other.events, EventKind::Possessed));
+    CHECK(mut(failed, 1).possessed_by == 4);
+}
+
+TEST_CASE("a PfEG ward spends the action and makes no save") {
+    auto s = begin_encounter({host_of(1), caster_ghost(2), ally_of(3)}, 23, nullptr, poss_hooks(30));
+    ActiveSpellEffect ward{};
+    ward.spell_id = 77; ward.caster = 3; ward.target = 1; ward.blocks_possession = true;
+    ward.immune_from_types = bit(CreatureType::Undead);
+    s.effects.push_back(ward);
+    end_turns_until(s, 2);
+    CHECK(s.budget.action);
+    ActionRequest ward_req{2, ActionKind::CastSpell, 1}; ward_req.spell_id = kPoss;
+    auto warded = step(s, ward_req);
+    REQUIRE_MESSAGE(warded.ok, warded.error);
+    CHECK_FALSE(s.budget.action);
+    CHECK_FALSE(has_kind(warded.events, EventKind::SavingThrowRolled));
+    CHECK_FALSE(has_kind(warded.events, EventKind::Possessed));
+    CHECK(mut(s, 1).possessed_by == 0);
+}
+
+TEST_CASE("possession ends for 0 HP, Turn Undead, and the possessor's death") {
+    auto victim = host_of(1);
+    victim.hp = victim.hp_max = 4;
+    victim.ac = 1;
+    auto striker = ally_of(3);
+    striker.attacks[0].to_hit = 40;
+    striker.attacks[0].damage = {1, 8, 20};
+    auto down = begin_encounter({victim, ghost_of(2), striker}, 24, nullptr, spell_hooks());
+    link(down, 2, 1);
+    end_turns_until(down, 3);
+    auto ended = step(down, ActionRequest{3, ActionKind::Attack, 1, 0});
+    REQUIRE_MESSAGE(ended.ok, ended.error);
+    CHECK(std::any_of(ended.events.begin(), ended.events.end(), [](const Event& e) {
+        return e.kind == EventKind::PossessionEnded && e.a == 1 && e.actor == 2 && e.target == 1;
+    }));
+
+    SpellDef turn;
+    turn.id = spell_id_of("test.turn_undead"); turn.content_id = "test.turn_undead"; turn.level = 0; turn.is_spell = false;
+    turn.kind = SpellEffectKind::Save; turn.save_ability = Ability::Wis; turn.fixed_dc = 30;
+    turn.control = ControlKind::Turned; turn.target_types = bit(CreatureType::Undead); turn.targets = 1; turn.range_ft = 60;
+    EncounterHooks th = spell_hooks();
+    auto book = std::make_shared<SpellBook>();
+    REQUIRE(book->add(turn));
+    th.spells = book;
+    auto turned = begin_encounter({host_of(1), ghost_of(2), ally_of(3)}, 25, nullptr, th);
+    mut(turned, 3).spells_known = {turn.id};
+    link(turned, 2, 1);
+    end_turns_until(turned, 3);
+    ActionRequest tu_req{3, ActionKind::CastSpell, 2}; tu_req.spell_id = turn.id;
+    auto tu = step(turned, tu_req);
+    REQUIRE_MESSAGE(tu.ok, tu.error);
+    CHECK(std::any_of(tu.events.begin(), tu.events.end(), [](const Event& e) {
+        return e.kind == EventKind::PossessionEnded && e.a == 3;
+    }));
+    CHECK(mut(turned, 2).possessing == 0);
+
+    auto dead = begin_encounter({host_of(1), ghost_of(2), ally_of(3)}, 26, nullptr, spell_hooks());
+    link(dead, 2, 1);
+    end_turns_until(dead, 3);
+    mut(dead, 2).hp = 0;
+    mut(dead, 2).dead = true;
+    auto gone = step(dead, ActionRequest{3, ActionKind::EndTurn});
+    REQUIRE_MESSAGE(gone.ok, gone.error);
+    CHECK(std::any_of(gone.events.begin(), gone.events.end(), [](const Event& e) {
+        return e.kind == EventKind::PossessionEnded && e.a == 5;
+    }));
+}
+
+TEST_CASE("extra attack and a class trigger are off while the body is possessed") {
+    auto host = host_of(1);
+    host.attacks_per_action = 2;
+    host.attacks[0].to_hit = 40;
+    Trigger sneak;
+    sneak.id = 9; sneak.on = TriggerOn::Hit; sneak.owner_id = 9; sneak.limit = TriggerLimit::OncePerTurn;
+    RiderEffect extra; extra.kind = RiderKind::ExtraDamage; extra.dice = {1, 6, 0}; extra.same_as_weapon = true;
+    sneak.effects = {extra};
+    host.triggers = {sneak};
+    Combatant::PossessionClassBase base;
+    base.attacks_per_action = 1;
+    base.attacks = host.attacks;
+    base.ac = host.ac;
+    base.speed_ft = host.speed_ft;
+    host.possession_class_base = base;
+    auto s = begin_encounter({host, ghost_of(2), ally_of(3)}, 27, nullptr, spell_hooks());
+    link(s, 2, 1);
+    CHECK(mut(s, 1).attacks_per_action == 1);
+    CHECK(mut(s, 1).triggers.empty());
+    end_turns_until(s, 2);
+    auto hit = step(s, ActionRequest{1, ActionKind::Attack, 3, 0});
+    CHECK(hit.ok);
+    CHECK(count(hit.events, EventKind::FeatureTriggered) == 0);
+    auto second = step(s, ActionRequest{1, ActionKind::Attack, 3, 0});
+    CHECK_FALSE(second.ok);
+    auto ended = step(s, [&] { ActionRequest r{2, ActionKind::Revert}; r.as_bonus_action = true; return r; }());
+    REQUIRE(ended.ok);
+    CHECK(mut(s, 1).attacks_per_action == 2);
+    CHECK(mut(s, 1).triggers.size() == 1);
+}
+
+TEST_CASE("an unsupported host is refused") {
+    auto host = host_of(1);
+    host.possession_unsupported = true;
+    auto s = begin_encounter({host, ghost_of(2)}, 28, nullptr, spell_hooks());
+    std::vector<Event> ev;
+    CHECK(begin_possession(s, 2, 1, kPoss, 24, 1, ev) == "possessed: unsupported host");
+}
+
+TEST_CASE("turn-owner resets run on the possessor's turn and not twice after the link ends") {
+    auto s = begin_encounter({host_of(1), ghost_of(2), ally_of(3)}, 29, nullptr, spell_hooks());
+    link(s, 2, 1);
+    end_turns_until(s, 2);
+    mut(s, 1).reaction_used = true;
+    mut(s, 1).dodging = true;
+    end_turns_until(s, 1);
+    CHECK(current_actor(s) == 1);
+    CHECK(mut(s, 1).reaction_used);
+    CHECK(mut(s, 1).dodging);
+    end_turns_until(s, 2);
+    CHECK(current_actor(s) == 2);
+    CHECK_FALSE(mut(s, 1).reaction_used);
+    CHECK_FALSE(mut(s, 1).dodging);
+    mut(s, 1).reaction_used = true;
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, true);
+    end_turns_until(s, 1);
+    CHECK(current_actor(s) == 1);
+    CHECK(mut(s, 1).reaction_used);
+}
+
+TEST_CASE("a printed attack is not offered as an opportunity attack") {
+    auto host = host_of(1);
+    host.attacks = {printed_sword()};
+    host.reaction_policy.fill(ReactionPolicy::Auto);
+    auto mover = ally_of(3);
+    mover.team = 0;
+    auto s = begin_encounter({host, ghost_of(2), mover}, 30, nullptr, spell_hooks());
+    link(s, 2, 1);
+    end_turns_until(s, 3);
+    ActionRequest mv{3, ActionKind::Move};
+    mv.move_ft = 5; mv.move_tiles = 1; mv.leaves_reach = true;
+    auto moved = step(s, mv);
+    REQUIRE_MESSAGE(moved.ok, moved.error);
+    CHECK_FALSE(mut(s, 1).reaction_used);
+    CHECK(std::none_of(moved.events.begin(), moved.events.end(), [](const Event& e) {
+        return e.kind == EventKind::AttackResolved && e.actor == 1;
+    }));
 }

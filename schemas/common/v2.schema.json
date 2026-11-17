@@ -4603,7 +4603,7 @@
         },
         "origin": {
           "enum": ["class", "race", "background"],
-          "description": "Possession (character@5). Absent on a character means class. Class and background features, and proficiency-granting race traits, are unavailable while the character is possessed. Monster traits are statistics and do not need this key."
+          "description": "Possession, character@5 features only. Absent on a character means class. The validator rejects this key on a monster trait and on a character file before @5. Class and background features, and proficiency-granting race traits, are unavailable while the character is possessed."
         }
       }
     },
