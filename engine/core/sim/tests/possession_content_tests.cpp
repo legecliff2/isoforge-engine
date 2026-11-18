@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "rules5e/conditions.hpp"
@@ -498,30 +499,33 @@ TEST_CASE("the built-in AI uses withering touch against an incapacitated target"
 
 TEST_CASE("the same seed runs the same multi-round ghost fight") {
     ContentLibrary lib = pack_lib();
-    // Goblins, not the fighter: a possessed fighter's class feature is refused and the
-    // built-in policy stops. Two party goblins keep the fight open after a link.
-    REQUIRE_FALSE(lib.add(load_json("content/packs/srd51.core/monsters/goblin.json"), "monster"));
-    world::Chunk chunk = arena({{kGhost, {4, 4}}, {"srd51.monster.goblin", {5, 4}}, {"srd51.monster.goblin", {6, 4}}});
-    chunk.spawns[1].overrides_json = R"({"team":"party"})";
-    chunk.spawns[2].overrides_json = R"({"team":"party"})";
-    chunk.content_hash = world::compute_content_hash(chunk);
+    // The second fighter keeps the party conscious after the link, so the ghost keeps
+    // driving the possessed fighter_level_1 for later rounds.
+    const std::vector<std::pair<std::string, Vec2i>> spawns{{kGhost, {4, 4}}, {kFighter, {5, 4}}, {kFighter, {4, 23}}};
     auto play = [&](uint64_t seed) {
-        ecs::Registry reg;
-        std::string err;
-        auto c = Combat::create(reg, chunk, lib, seed, {}, &err);
-        INFO(err);
-        REQUIRE(c);
+        Fight f(lib, spawns, seed);
         NearestEnemyPolicy pol;
-        const RunResult rr = run_to_end(*c, [&](CombatantId) -> IActorPolicy* { return &pol; }, 80);
+        const RunResult rr = run_to_end(*f.c, [&](CombatantId) -> IActorPolicy* { return &pol; }, 400);
         REQUIRE_MESSAGE(rr.error.empty(), rr.error);
-        REQUIRE(c->state().round >= 2);
-        return std::pair{c->hash(), c->log_hash()};
+        REQUIRE(rr.ended);
+        REQUIRE(f.c->state().round >= 2);
+        int open_round = 1;
+        int possessed_round = 0;
+        for (const auto& e : f.c->events()) {
+            if (e.kind != SimEvent::Kind::Rules) continue;
+            if (e.rules.kind == EventKind::TurnStarted) open_round = e.rules.a;
+            if (e.rules.kind == EventKind::Possessed && possessed_round == 0) possessed_round = open_round;
+        }
+        REQUIRE(possessed_round >= 1);
+        return std::tuple{f.c->hash(), f.c->log_hash(), possessed_round};
     };
-    const auto a = play(11);
-    const auto b = play(11);
-    CHECK(a.first == b.first);
-    CHECK(a.second == b.second);
-    CHECK(a.first != 0);
+    constexpr uint64_t kSeed = 11;
+    const auto a = play(kSeed);
+    const auto b = play(kSeed);
+    CHECK(std::get<0>(a) == std::get<0>(b));
+    CHECK(std::get<1>(a) == std::get<1>(b));
+    CHECK(std::get<2>(a) == std::get<2>(b));
+    CHECK(std::get<0>(a) != 0);
 }
 
 TEST_CASE("a possessed body acts for the ghost's side under AI control") {
