@@ -1961,6 +1961,10 @@
               "types": {
                 "$ref": "../common/v1.schema.json#/$defs/creature_types"
               },
+              "possession": {
+                "const": true,
+                "description": "The warded creature can't be possessed by the listed types. A new possession spends the action and makes no save. An existing possession is not ended (the spell has no repeat save)."
+              },
               "applies_to": {
                 "enum": [
                   "all",

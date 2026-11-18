@@ -142,7 +142,9 @@ Fight play(bool noop) {
 TEST_CASE("lair hook: no lair is bit-identical") {
     CHECK(kLairInitiative == 20);
     CHECK(int(EventKind::LegendaryActionsRegained) == 54);
-    CHECK(kEventKindCount == 55);
+    CHECK(int(EventKind::Possessed) == 55);
+    CHECK(int(EventKind::PossessionEnded) == 56);
+    CHECK(kEventKindCount == 57);
     CHECK(int(ActionKind::LegendaryAction) == 27);   // next ActionKind stays 28
     const Fight empty = play(false);
     const Fight noop = play(true);

@@ -1959,6 +1959,52 @@ def check_death_glare(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     return errs, []
 
 
+def check_possess(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Possession (CONTENT_CONVENTIONS §59; sim content.cpp compile_save_action). The loader's refusals as errors."""
+    errs: list[str] = []
+    for i, act in enumerate(doc.get("actions") or []):
+        if not isinstance(act, dict) or "possess" not in act:
+            continue
+        where = f"actions[{i}]: {doc.get('id', '?')}: save_effect '{act.get('id', '')}'"
+        if act.get("kind") != "save_effect":
+            errs.append(f"{where}: possess is save_effect only")
+            continue
+        if tag not in MONSTER_SINCE_5:
+            errs.append(f"{where}: possess needs a monster@5 file")
+            continue
+        if "area" in act:
+            errs.append(f"{where}: possess takes no area")
+        if act.get("possess") is not True:
+            errs.append(f"{where}: possess must be true")
+            continue
+        if act.get("caster_sees_target") is not True:
+            errs.append(f"{where}: possess needs caster_sees_target")
+        types = act.get("target_creature_types")
+        if types != ["humanoid"]:
+            errs.append(f"{where}: possess needs target_creature_types [humanoid]")
+        if act.get("targets", 1) != 1:
+            errs.append(f"{where}: possess needs targets 1")
+        immune = act.get("immune_on_success")
+        if not isinstance(immune, dict) or immune.get("scope") != "same_source" or not immune.get("hours"):
+            errs.append(f"{where}: possess needs immune_on_success same_source")
+        if act.get("damage") or act.get("apply") or act.get("control"):
+            errs.append(f"{where}: possess takes no damage, apply, or control")
+        if act.get("magical") is True:
+            errs.append(f"{where}: possess is not magical")
+    return errs, []
+
+
+def check_feature_origin(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """origin on a trait is character@5 only. Monster traits and older character files reject it."""
+    errs: list[str] = []
+    allowed = tag in CHARACTER_SINCE_5
+    for key in ("features", "traits"):
+        for i, feat in enumerate(doc.get(key) or []):
+            if isinstance(feat, dict) and "origin" in feat and not allowed:
+                errs.append(f"{key}[{i}]: {doc.get('id', '?')}: origin is character@5 only")
+    return errs, []
+
+
 def check_charm_command(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     """Charm (CONTENT_CONVENTIONS §47; sim content.cpp compile_save_action). The loader's refusals as errors."""
     errs: list[str] = []

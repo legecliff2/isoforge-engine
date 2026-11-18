@@ -10,6 +10,12 @@ namespace rules5e {
 // no actions, bonus actions, or reactions.
 bool is_incapacitated(const Combatant&);
 
+// The same, or a possessed body. Possession says the target is incapacitated. can_act stays on
+// is_incapacitated so the possessor can still take the body's actions. Every other reader uses this.
+inline bool counts_as_incapacitated(const Combatant& c) {
+    return is_incapacitated(c) || c.possessed_by != 0;
+}
+
 // Speed after conditions and exhaustion: 0 for Grappled, Restrained, Paralyzed, Petrified,
 // Stunned, Unconscious, or exhaustion >= 5; halved (round down) at exhaustion >= 2.
 int effective_speed(const Combatant&);

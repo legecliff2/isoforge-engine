@@ -949,6 +949,16 @@ _Resolved items have moved to the Decisions Log (D-001…D-008)._
 
 ---
 
+## Appendix: possession turn resets (CONTENT_CONVENTIONS §59)
+
+Reaction, Dodge, Disengage, Shield, Help, Reckless, gaze aversion, and an unused readied action clear on the body at the start of the possessor's turn. The body's own slot skips those clears only while the link is live. Once the link ends, the body's next slot is its own next turn and resets Dodge, Shield and the reaction. Repeat saves, start-of-turn damage, and reaction denial that other creatures tie to the body's turns stay on the body's slot.
+
+Stinking Cloud's `loses_action` save stays on the body's slot. The possessor's budget does not inherit `action_lost`. The cloud never costs the possessor an action.
+
+Armor: while possessed, every worn armor and every worn shield is non-proficient, whatever the host's list says. Unpossessed fights do not read that annotation. The six clerics' chain mail is unchanged until one of them is possessed.
+
+`kSimEventSchemaVersion` is 14. `event_stream_version` returns 14 only for a stream that contains kind 55 or 56. Every other stream stays at 13 or below.
+
 ## Appendix: shapechanger loadout gap (CONTENT_CONVENTIONS §58)
 
 `align_loadout_attacks` leaves a freshly gained attack row as it writes it today. `build_loadout`'s calibration is not copied onto that row. SRD 5.1 Versatile cannot be matched from the facts the row has, and a copy of the spawn-time guess would be a different rule.

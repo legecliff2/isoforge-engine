@@ -741,6 +741,8 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         ha_errs, ha_warns = c4.check_horrific_appearance(doc, tag)   # Horrific Appearance (CONTENT_CONVENTIONS §45, monster@5 only)
         dg_errs, dg_warns = c4.check_death_glare(doc, tag)   # Death Glare (CONTENT_CONVENTIONS §46, monster@5 save_effect)
         ch_errs, ch_warns = c4.check_charm_command(doc, tag)   # Charm (CONTENT_CONVENTIONS §47, monster@5 save_effect)
+        po_errs, po_warns = c4.check_possess(doc, tag)   # Possession (CONTENT_CONVENTIONS §59, monster@5 save_effect)
+        og_errs, og_warns = c4.check_feature_origin(doc, tag)   # feature origin is character@5 only
         dk_errs, dk_warns = c4.check_drain_max_hp(doc, tag)   # Draining Kiss (CONTENT_CONVENTIONS §48, monster@5 save_effect)
         hv_errs, hv_warns = c4.check_horrifying_visage(doc, tag)   # Horrifying Visage (CONTENT_CONVENTIONS §49, monster@5 save_effect)
         bd_errs, bd_warns = c4.check_bound(doc, tag)   # Bound (CONTENT_CONVENTIONS §50, monster@5 only)
@@ -753,6 +755,10 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         warns += [f"{rel}: {m}" for m in dg_warns]
         errs += [f"{rel}: {m}" for m in ch_errs]
         warns += [f"{rel}: {m}" for m in ch_warns]
+        errs += [f"{rel}: {m}" for m in po_errs]
+        warns += [f"{rel}: {m}" for m in po_warns]
+        errs += [f"{rel}: {m}" for m in og_errs]
+        warns += [f"{rel}: {m}" for m in og_warns]
         errs += [f"{rel}: {m}" for m in dk_errs]
         warns += [f"{rel}: {m}" for m in dk_warns]
         errs += [f"{rel}: {m}" for m in hv_errs]

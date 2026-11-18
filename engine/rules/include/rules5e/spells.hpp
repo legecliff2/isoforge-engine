@@ -197,6 +197,7 @@ struct SpellEffect {
     bool has_ward = false; Ability ward_save = Ability::Wis; uint8_t ward_on_fail = 1;   // 7.2zd: see SpellDef
     uint32_t immune_conditions = 0, immune_from_types = 0;                              // 7.2zd: see SpellDef
     int16_t hp_bonus_flat = 0, hp_bonus_per_slot = 0;                                   // 7.2zd: see SpellDef
+    bool blocks_possession = false;                                                     // 7.2zd PfEG: the ward blocks a new possession
 };
 // 7.2zc (Invisibility): apply_condition `ends_on` bits: the effect ends when its target makes an attack / casts a spell.
 // kEndsOnHarmfulCast (7.2zd Sanctuary): a spell it cast affected a creature of another team.
@@ -660,6 +661,13 @@ struct SpellDef {
     // kind is Heal so the action is not a harmful spell. cast_spell_impl returns before resolve_effect.
     // Not a spell. usage_kind 2 is 3 long-rest uses, registered by Combat::create.
     bool healing_touch = false;
+    // appended (Possession, CONTENT_CONVENTIONS §59). Static content: not hashed.
+    // A failed Charisma save links the user to one humanoid. No Incapacitated bit (D3): the
+    // ghost spends the body's actions. Success uses immune_on_success. Not dispelled.
+    bool possess = false;
+    // Protection from Evil and Good: the warded creature can't be possessed by immune_from_types.
+    // A warded target spends the action and makes no save. An existing possession is not ended.
+    bool blocks_possession = false;
 };
 
 // B10 Whirlwind and B11 Whelm name creatures already in the user's space. Rules does not see tiles.
