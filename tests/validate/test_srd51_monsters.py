@@ -24,7 +24,18 @@ AUTHORED = sorted(TABLE)
 # Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 206 authored / 4 deferred): batch 3 and tier-A triage (mimic and doppelganger; green hag left when the stat block was authored). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. CR 2 batch K authored druid, priest, merrow and wererat (druid's four missing spells stay in the trait text only; priest Divine Eminence is text only and Religion +4 is the printed total; merrow Pull is text only; wererat is the humanoid form, with shapechange, bite and the curse as text). Sea hag is a new deferral. Mimic stays deferred. CR 2 batch L authored grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp and ochre jelly. Grick's beak-if-tentacles-hit gate stays in the Multiattack description. Gibbering Mouther Blinding Spittle is a point-origin sphere save_effect (recharge 5-6). Will-o'-wisp Consume Life, Ephemeral, Incorporeal Movement, Variable Illumination and Invisibility stay description only on the authored monster. Ochre Jelly Split stays a description-only trait. CR 3 batch M authored giant scorpion, minotaur, hell hound and winter wolf (no new deferrals). Minotaur has no Multiattack (one greataxe or one gore). CR 3 batch N authored manticore, werewolf and phase spider. Manticore Tail Spike Regrowth spike count is description only and the row stays green. Werewolf is the humanoid form (a6212be werewolf-human); hybrid/wolf AC 12, wolf speed 40, bite, claws and the lycanthropy curse stay description only. Phase spider Ethereal Jaunt stays description only (no Ethereal Plane). Stealth +6 is expertise (Dex +2 and 2×PB). CR 4 batch O authored black pudding, elephant and ettin. Black Pudding Corrosive Form contact acid, weapon and armor corrosion, and Split stay description only; condition immunities follow the SRD line (deafened) over a6212be. Elephant Stomp stays description only (no prone-target gate). Ettin battleaxe and morningstar are naturals at the printed 2d8. Chuul and ghost are new deferrals. CR 4 batch P authored wereboar, weretiger, lamia and couatl. Wereboar and weretiger are the humanoid forms (a6212be wereboar-human / weretiger-human); hybrid and animal forms, tusks, bite, claws, lycanthropy and Charge/Pounce stay description only. Wereboar Relentless is live (damage_at_most 14, per_rest short) and keeps the SRD recharge name (a6212be omits it from the trait text, as giant boar). Lamia Innate Spellcasting and Intoxicating Touch stay description only (claws + dagger is the authored multiattack). Couatl Magic Weapons is {kind: magic_weapons}. Bite poisoned 24 hours (14400 rounds) is a save_condition; unconscious-while-poisoned and the wake action stay description only (no zero_hp.while). Constrict grapple restrains and is exclusive; the Medium-or-smaller gate stays in the text. Change Shape does not set shapechanger. Succubus is parked. CR 5 batch Q authored triceratops, giant crocodile and giant shark. Triceratops Stomp stays description only (elephant). Giant crocodile Tail's not-grappled gate stays in the text. Giant shark Blood Frenzy stays description only (hunter shark). Troll, bulette and otyugh are new deferrals. CR 5 batch R authored earth elemental, fire elemental, salamander and xorn. Earth Glide and Siege Monster stay description only. Fire Form contact fire, Ignite, Illumination and Water Susceptibility stay description only (not emits_light). Salamander Heated Body and the tail's automatic hit stay description only; the spear is srd51.item.spear with weapon_dice_multiplier 2 and a printed extra 1d6 fire, and the tail grapple restrains and is exclusive. Xorn Earth Glide, Treasure Sense and Stone Camouflage stay descriptive and the row stays green. Xorn Claw is the printed 1d6 + 3. Air elemental and water elemental are parked. CR 5 batch S authored werebear and wraith. Werebear is the humanoid form (a6212be werebear-human); hybrid and bear forms, bite, claw, the lycanthropy curse, and Keen Smell stay description only. Wraith Create Specter stays a description-only special (no spawn construct). Gorgon, shambling mound, roper and unicorn are new deferrals. CR 6 batch T authored young white dragon, young brass dragon, chimera and wyvern (no new parks). Young white dragon is green (Ice Walk descriptive). Young brass Sleep Breath and the shared recharge stay description only (CONTENT_CONVENTIONS 29). Chimera's breath in place of bite or horns stays description only on Multiattack. Wyvern's claws-while-flying substitution stays description only; claws is a standalone action. CR 6 batch U, merged onto Batch T (tip caab78fe, 186/16), authored mammoth and drider. Mammoth follows elephant / triceratops: Gore on_hit save_condition Str DC 18 when moved_at_least_ft 20, Stomp description only. Drider Multiattack is exactly four options (longsword x3, longsword x2 + bite, longbow x3, longbow x2 + bite; no mixed sword and bow). The two-handed longsword is the versatile action, not a fifth option. Innate Spellcasting (Wisdom DC 13), Sunlight Sensitivity, and the sleep clause stay description only. Perception +5 is proficiency; Stealth +9 is expertise. Invisible stalker and mage are new deferrals. CR 7 batch V, from tip 5ccd71cc (188/18), authored young black dragon and young copper dragon (Elf LOCK Option A, 190/18). Young black is green (Amphibious descriptive, black wyrmling; no partial flag). Young copper Slowing Breath and the shared recharge stay description only (young brass Sleep Breath; no mechanical Slow, no apply, no second recharge). Acid Breath is the mechanical save_effect line. No new parks. CR 7 batch W, merged onto Batch V (tip 1ed0dfa, 190/18), authored oni and parked shield guardian. Oni Multiattack is exactly two options (claw x2 or glaive x2; the SRD line is either/or, so the mixed glaive-and-claw option in a6212be action_options is not authored). Chain mail is srd51.item.chain_mail (AC 16). Glaive is srd51.item.glaive with weapon_dice_multiplier 2 (reach 10, +7 / 2d10+4). Claw is natural 1d8 Str (+7 / 1d8+4). Magic Weapons is {kind: magic_weapons}. Fly 30 is on speed. Arcana +5 and Perception +4 are proficiency; Deception +8 is expertise. Innate Spellcasting (Charisma DC 13), Change Shape, and Regeneration stay description only. Shield guardian is a new deferral (Bound and Spell Storing). Troll left the deferred list when regen content shipped (Phase B after the #383 loader): Keen Smell is keen_senses smell and Regeneration is regen amount 10 suppressed by acid and fire (test_troll_regen_content). Mimic, doppelganger, unicorn, and mage stay deferred. Shambling mound left Deferred when the stat block was authored (test_shambling_mound). Roper left Deferred when the stat block was authored (test_roper). Bulette left Deferred when the stat block was authored (test_bulette). Gorgon left Deferred in B4 (area save_effect escalates). Chuul left Deferred in B3b (tentacles free rider). Otyugh left Deferred when the stat block was authored (test_otyugh). Air elemental left Deferred when the stat block was authored (test_air_elemental): air_form, whirlwind, multiattack slam x2. The 1-inch gap stays description only. The built-in AI does not use Whirlwind. Water elemental stays deferred. Invisible stalker left Deferred when the stat block was authored (test_invisible_stalker): innate_invisibility, multiattack slam x2, slam natural 2d6 Str. Faultless Tracker stays description only (not innate_invisibility, and not a tracking mechanic). See Invisibility, Faerie Fire outlined, and Branding Smite reveal_invisible versus a permanent holder stay open. Built-in AI targeting is unchanged.  Whether Invisible needs a Combat::hash tag stays open. Sea hag left Deferred when the stat block was authored (test_sea_hag): horrific_appearance, Death Glare drop_to_zero, claws natural 2d6 Str. There is no Multiattack. Amphibious stays descriptive. Illusory Appearance stays description only (not a disguise mechanic, no Investigation DC, no sudden-revelation flag). Water elemental left Deferred when the stat block was authored (test_water_elemental): water_form, freeze, whelm, multiattack slam x2, slam natural 2d8 Str. The 1-inch gap stays description only. Unable to breathe unless it can breathe water stays unmodelled. An ally's DC 14 Strength check to pull a creature or object out stays unmodelled. The built-in AI does not use Whelm. Green hag left Deferred when the stat block was authored (test_green_hag): illusory_appearance dc 20, invisible_passage, claws natural 2d8 Str. There is no Multiattack. Amphibious stays descriptive. Innate Spellcasting stays description only (the three at-will spells are in the pack; a6212be prints no caster level, so there is no innate block and no fake slots). Mimicry stays description only (as raven; the DC 14 Wisdom (Insight) check is not a check). The equipment sentence and which magic tracks stay escalated. A start while a figure is up is refused and the action is not spent. Discernment persists. Body art stays the true form (Art HOLD; no art assets). The built-in AI does not use either action. No new hash tag. Succubus left Deferred when the stat block was authored (test_succubus): charm_command, drain_max_hp, claw natural 1d6 Dex. Shapechanger, Etherealness, and Telepathic Bond stay description only. Etherealness is not the ghost §51 action. No new hash tag. Ghost left Deferred when the stat block was authored (test_ghost): horrifying_visage, etherealness, withering touch printed +5 / 4d6+3. Possession, Ethereal Sight, and Incorporeal Movement stay description only. Greater restoration does not reverse aging. aged_years is not hashed. Deep Ethereal is not a plane. No new hash tag. Shield guardian left Deferred when the stat block was authored (test_shield_guardian): bound radius 60, Shield ally_attacked ac_bonus 2, regain amount 10, multiattack fist x2, fist natural 2d6 Str reach 5. Spell Storing stays description only (HOLD). Same plane, the telepathic call, and the distance and direction stay descriptive. No amulet item. No new hash tag.
 DEFERRED: list[str] = ["doppelganger", "mage", "mimic", "unicorn"]   # docs/SRD_MONSTERS_DEFERRED.md: 206 / 4
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
-EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
+EXTRA_ATTACKS = {
+    ("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2.",
+    # a6212be pins the humanoid form. These are the SRD 5.1 form attacks (checked in test_shapechanger_forms).
+    ("wererat", "bite"): "Rat or hybrid only. +4 / 1d4 + 2 piercing. The lycanthropy curse stays description-only.",
+    ("werewolf", "bite"): "Wolf or hybrid only. +4 / 1d8 + 2 piercing. The lycanthropy curse stays description-only.",
+    ("werewolf", "claws"): "Hybrid only. +4 / 2d4 + 2 slashing.",
+    ("wereboar", "tusks"): "Boar or hybrid only. +5 / 2d6 + 3 slashing. Charge is the on_hit. The curse stays description-only.",
+    ("weretiger", "bite"): "Tiger or hybrid only. +5 / 1d10 + 3 piercing. The lycanthropy curse stays description-only.",
+    ("weretiger", "claw"): "Tiger or hybrid only. +5 / 1d8 + 3 slashing. Pounce is the on_hit.",
+    ("werebear", "bite"): "Bear or hybrid only. +7 / 2d10 + 4 piercing. The lycanthropy curse stays description-only.",
+    ("werebear", "claw"): "Bear or hybrid only. +7 / 2d8 + 4 slashing.",
+}
 # Table attacks kept verbatim that are not weapon actions. Elephant Stomp is a bonus action
 # against one prone creature; there is no prone-target gate, so it is not an ungated action.
 DESCRIPTION_ONLY_ATTACKS = {
@@ -60,14 +71,14 @@ DEVIATIONS = {
     "deep-gnome": "xp: the table lists 50 XP; SRD 5.1 prints Challenge 1/2 (100 XP), and the SRD is authoritative (CR 1/2 = 100 XP, as riding-horse). One stat block: the a6212be index is deep-gnome-svirfneblin; Svirfneblin is an alias of srd51.monster.deep_gnome, not a separate document.",
     "polar-bear": "One SRD 5.1 stat block. Cave Bear is an alias of srd51.monster.polar_bear, not a separate document.",
     "saber-toothed-tiger": "Bite and Claw damage: the SRD prints +5 (1d10 + 5 / 2d6 + 5); Str 18 derives +4. Carried as an approved damage_override (CONTENT_CONVENTIONS 21; printed value wins). To-hit +6 derives (Str +4 and PB +2) and needs no attack_bonus.",
-    "wererat": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, CONTENT_EFFECTS werewolf example; as gargoyle, but an immunity). The pin is the humanoid form (a6212be wererat-human); bite is not a weapon attack on that form.",
+    "wererat": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, CONTENT_EFFECTS werewolf example; as gargoyle, but an immunity). The pin is the humanoid form (a6212be wererat-human). Bite is an EXTRA_ATTACKS form attack, not a row of that pin.",
     "priest": "skills.religion is the SRD print +4. Int 13 (+1) with PB 2 is proficiency +3 or expertise +5; neither matches. validate_packs.PRINTED_SKILL_TOTALS allowlists this one printed total. Medicine +7 is expertise and Persuasion +3 is proficiency.",
     "grick": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as specter).",
     "will-o-wisp": "damage_resistances lists the five plain types: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as specter). speed.hover is the printed fly hover flag. Shock to_hit: the SRD prints +4 (the table agrees); Dex 28 + PB 2 = +11. Carried as an approved attack_bonus override of +4 (printed value wins).",
     "ochre-jelly": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, charmed, deafened, exhaustion, frightened, prone (as gray ooze / gelatinous cube; same mirror shape as shrieker).",
-    "werewolf": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be werewolf-human); bite and claws are not weapon attacks on that form.",
-    "wereboar": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be wereboar-human); tusks are not a weapon attack on that form.",
-    "weretiger": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be weretiger-human); bite and claw are not weapon attacks on that form.",
+    "werewolf": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be werewolf-human). Bite and claws are EXTRA_ATTACKS form attacks, not rows of that pin.",
+    "wereboar": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be wereboar-human). Tusks are an EXTRA_ATTACKS form attack, not a row of that pin.",
+    "weretiger": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be weretiger-human). Bite and claw are EXTRA_ATTACKS form attacks, not rows of that pin.",
     "couatl": "damage_immunities lists psychic only: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (immunities.nonmagical, the mummy/specter qualifier, as an immunity). Bite to_hit: the SRD prints +8 (the table agrees); Dex 20 (+5) + PB 2 = +7. Constrict to_hit: the SRD prints +6 (the table agrees); Str 16 (+3) + PB 2 = +5. Both are approved attack_bonus overrides (printed value wins).",
     "earth-elemental": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as grick).",
     "fire-elemental": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as grick).",
@@ -79,7 +90,7 @@ DEVIATIONS = {
     "elephant": "Stomp: the table lists +8, 3d10+6 bludgeoning, one prone creature. No prone-target gate, so Stomp stays in the Trampling Charge description and is not an ungated action (unlike elk Hooves). Gore is the authored attack.",
     "triceratops": "Stomp: the table lists +9, 3d10+6 bludgeoning, one prone creature. No prone-target gate, so Stomp stays in the Trampling Charge description and is not an ungated action (as elephant). Gore is the authored attack.",
     "mammoth": "Stomp: the table lists +10, 4d10+7 bludgeoning, one prone creature. No prone-target gate, so Stomp stays in the Trampling Charge description and is not an ungated action (as elephant). Gore is the authored attack.",
-    "werebear": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be werebear-human); bite and claw are not weapon attacks on that form.",
+    "werebear": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, as wererat). The pin is the humanoid form (a6212be werebear-human). Bite and claw are EXTRA_ATTACKS form attacks, not rows of that pin.",
     "wraith": "damage_resistances lists the five plain types: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (resistances.nonmagical_not_silvered, as wight). speed.hover is the printed fly hover flag. Create Specter is not an attack.",
     "shambling-mound": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, exhaustion (as ochre jelly / shrieker). senses.blindsight is the integer 60; the printed parenthetical 'blind beyond this radius' has no separate key (as gray ooze). Engulf is not a weapon attack: both-hits contain is engulf_both_hits on Multiattack (CONTENT_CONVENTIONS §37).",
     "invisible-stalker": "The fixture row was absent while deferred (tests asserted the index was not in the table). Appended at authoring from 5e-database a6212be index invisible-stalker (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27), reduced like the other rows; the pinned fields match that object. damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (resistances.nonmagical, as air elemental).",
@@ -1264,16 +1275,22 @@ class MonsterTable(unittest.TestCase):
             "kind": "damage_mitigation",
             "immunities": {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]},
         })
-        self.assertNotIn("effect", trait("wererat", "shapechanger"))
-        self.assertNotIn("forms", trait("wererat", "shapechanger"))
+        self.assertEqual(trait("wererat", "shapechanger")["effect"]["kind"], "shapechanger")
         self.assertEqual(opts("wererat"), {
             "shortsword_x2": ["shortsword", "shortsword"],
             "hand_crossbow_x2": ["hand_crossbow", "hand_crossbow"],
             "shortsword_hand_crossbow": ["shortsword", "hand_crossbow"],
+            "shortsword_bite": ["shortsword", "bite"],
+            "bite_shortsword": ["bite", "shortsword"],
+            "hand_crossbow_bite": ["hand_crossbow", "bite"],
+            "bite_hand_crossbow": ["bite", "hand_crossbow"],
         })
-        self.assertEqual(act("wererat", "bite")["kind"], "special")
-        self.assertNotIn("natural", act("wererat", "bite"))
-        self.assertIn("lycanthropy", act("wererat", "bite")["description"])
+        bite = act("wererat", "bite")
+        self.assertEqual(bite["kind"], "melee_weapon_attack")
+        self.assertEqual(bite["natural"], {"dice": "1d4", "ability": "dex"})
+        self.assertEqual((bite["to_hit"], bite["damage"]), (4, [{"dice": "1d4+2", "type": "piercing"}]))
+        self.assertIn("lycanthropy", bite["description"])
+        self.assertNotIn("save", bite)
         sword = act("wererat", "shortsword")
         bow = act("wererat", "hand_crossbow")
         self.assertEqual(sword["weapon"], "srd51.item.shortsword")
@@ -1598,22 +1615,22 @@ class MonsterTable(unittest.TestCase):
             "kind": "damage_mitigation",
             "immunities": {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]},
         })
-        self.assertNotIn("effect", trait("werewolf", "shapechanger"))
-        self.assertNotIn("forms", trait("werewolf", "shapechanger"))
-        self.assertIn("wolf form speed 40", trait("werewolf", "shapechanger")["description"])
-        self.assertIn("hybrid/wolf AC 12", trait("werewolf", "shapechanger")["description"])
+        self.assertEqual(trait("werewolf", "shapechanger")["effect"]["kind"], "shapechanger")
+        self.assertIn("walk 40", trait("werewolf", "shapechanger")["description"])
+        self.assertIn("AC 12", trait("werewolf", "shapechanger")["description"])
         self.assertNotIn("effect", trait("werewolf", "keen_hearing_and_smell"))
-        self.assertEqual(opts("werewolf"), {
-            "spear_x2": ["spear", "spear"],
-            "spear_two_handed_x2": ["spear_two_handed", "spear_two_handed"],
-            "spear_thrown_x2": ["spear_thrown", "spear_thrown"],
-        })
-        self.assertEqual(act("werewolf", "bite")["kind"], "special")
-        self.assertNotIn("natural", act("werewolf", "bite"))
-        self.assertIn("lycanthropy", act("werewolf", "bite")["description"])
-        self.assertEqual(act("werewolf", "claws")["kind"], "special")
-        self.assertNotIn("natural", act("werewolf", "claws"))
-        self.assertIn("2d4 + 2", act("werewolf", "claws")["description"])
+        self.assertEqual(trait("werewolf", "multiattack")["name"], "Multiattack (Humanoid or Hybrid Form Only)")
+        self.assertEqual(trait("werewolf", "multiattack")["description"],
+                         "The werewolf makes two attacks: one with its bite and one with its claws or spear.")
+        self.assertEqual(opts("werewolf"), {"bite_claws": ["bite", "claws"]})
+        bite = act("werewolf", "bite")
+        self.assertEqual(bite["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual((bite["to_hit"], bite["damage"]), (4, [{"dice": "1d8+2", "type": "piercing"}]))
+        self.assertIn("lycanthropy", bite["description"])
+        self.assertNotIn("save", bite)
+        claws = act("werewolf", "claws")
+        self.assertEqual(claws["natural"], {"dice": "2d4", "ability": "str"})
+        self.assertEqual((claws["to_hit"], claws["damage"]), (4, [{"dice": "2d4+2", "type": "slashing"}]))
         spear = act("werewolf", "spear")
         two = act("werewolf", "spear_two_handed")
         thrown = act("werewolf", "spear_thrown")
@@ -1795,9 +1812,9 @@ class MonsterTable(unittest.TestCase):
             "kind": "damage_mitigation",
             "immunities": {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]},
         })
-        self.assertNotIn("effect", trait("wereboar", "shapechanger"))
-        self.assertIn("boar form speed 40", trait("wereboar", "shapechanger")["description"])
-        self.assertIn("hybrid/boar AC 11", trait("wereboar", "shapechanger")["description"])
+        self.assertEqual(trait("wereboar", "shapechanger")["effect"]["kind"], "shapechanger")
+        self.assertIn("walk 40", trait("wereboar", "shapechanger")["description"])
+        self.assertIn("AC 11", trait("wereboar", "shapechanger")["description"])
         self.assertNotIn("effect", trait("wereboar", "charge"))
         self.assertIn("15 feet", trait("wereboar", "charge")["description"])
         rel = trait("wereboar", "relentless")
@@ -1809,13 +1826,21 @@ class MonsterTable(unittest.TestCase):
             "usage": {"kind": "per_rest", "uses": 1, "rest": "short"},
             "effects": [{"kind": "set_hp", "value": 1}],
         })
-        self.assertEqual(opts("wereboar"), {"maul_x2": ["maul", "maul"]})
+        self.assertEqual(opts("wereboar"), {
+            "maul_x2": ["maul", "maul"],
+            "maul_tusks": ["maul", "tusks"],
+            "tusks_maul": ["tusks", "maul"],
+        })
         maul = act("wereboar", "maul")
         self.assertEqual((maul["weapon"], maul["use"], maul["to_hit"], maul["damage"]),
                          ("srd51.item.maul", "two_hands", 5, [{"dice": "2d6+3", "type": "bludgeoning"}]))
-        self.assertEqual(act("wereboar", "tusks")["kind"], "special")
-        self.assertNotIn("natural", act("wereboar", "tusks"))
-        self.assertIn("lycanthropy", act("wereboar", "tusks")["description"])
+        tusks = act("wereboar", "tusks")
+        self.assertEqual(tusks["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual((tusks["to_hit"], tusks["damage"]), (5, [{"dice": "2d6+3", "type": "slashing"}]))
+        self.assertIn("lycanthropy", tusks["description"])
+        self.assertNotIn("save", tusks)
+        self.assertEqual(tusks["on_hit"][0]["when"], [{"kind": "moved_at_least_ft", "ft": 15}])
+        self.assertEqual(tusks["on_hit"][1]["save"], {"ability": "str", "dc": 13})
 
         tiger = load("weretiger")
         self.assertIs(tiger["shapechanger"], True)
@@ -1833,14 +1858,16 @@ class MonsterTable(unittest.TestCase):
         self.assertNotIn("damage_immunities", tiger)
         self.assertEqual(trait("weretiger", "damage_immunities_nonmagical")["effect"]["immunities"],
                          {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]})
-        self.assertNotIn("effect", trait("weretiger", "shapechanger"))
-        self.assertIn("tiger form speed 40", trait("weretiger", "shapechanger")["description"])
+        self.assertEqual(trait("weretiger", "shapechanger")["effect"]["kind"], "shapechanger")
+        self.assertIn("walk 40", trait("weretiger", "shapechanger")["description"])
         self.assertNotIn("effect", trait("weretiger", "keen_hearing_and_smell"))
         self.assertNotIn("effect", trait("weretiger", "pounce"))
         self.assertIn("DC 14", trait("weretiger", "pounce")["description"])
+        self.assertIn("bonus-action bite", trait("weretiger", "pounce")["description"])
         self.assertEqual(opts("weretiger"), {
             "scimitar_x2": ["scimitar", "scimitar"],
             "longbow_x2": ["longbow", "longbow"],
+            "claw_x2": ["claw", "claw"],
         })
         scimitar = act("weretiger", "scimitar")
         self.assertEqual((scimitar["weapon"], scimitar["ability"], scimitar["to_hit"], scimitar["damage"]),
@@ -1848,10 +1875,16 @@ class MonsterTable(unittest.TestCase):
         bow = act("weretiger", "longbow")
         self.assertEqual((bow["weapon"], bow["ability"], bow["to_hit"], bow["range"], bow["damage"]),
                          ("srd51.item.longbow", "dex", 4, [150, 600], [{"dice": "1d8+2", "type": "piercing"}]))
-        self.assertEqual(act("weretiger", "bite")["kind"], "special")
-        self.assertIn("lycanthropy", act("weretiger", "bite")["description"])
-        self.assertEqual(act("weretiger", "claw")["kind"], "special")
-        self.assertNotIn("natural", act("weretiger", "claw"))
+        tbite = act("weretiger", "bite")
+        self.assertEqual(tbite["natural"], {"dice": "1d10", "ability": "str"})
+        self.assertEqual((tbite["to_hit"], tbite["damage"]), (5, [{"dice": "1d10+3", "type": "piercing"}]))
+        self.assertIn("lycanthropy", tbite["description"])
+        self.assertNotIn("save", tbite)
+        tclaw = act("weretiger", "claw")
+        self.assertEqual(tclaw["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual((tclaw["to_hit"], tclaw["damage"]), (5, [{"dice": "1d8+3", "type": "slashing"}]))
+        self.assertEqual(tclaw["on_hit"][0]["save"], {"ability": "str", "dc": 14})
+        self.assertEqual(tclaw["on_hit"][0]["when"], [{"kind": "moved_at_least_ft", "ft": 15}])
 
         lamia = load("lamia")
         self.assertNotIn("shapechanger", lamia)
@@ -2243,23 +2276,28 @@ class MonsterTable(unittest.TestCase):
             "kind": "damage_mitigation",
             "immunities": {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]},
         })
-        self.assertNotIn("effect", trait("werebear", "shapechanger"))
-        self.assertNotIn("forms", trait("werebear", "shapechanger"))
-        self.assertIn("bear form speed 40", trait("werebear", "shapechanger")["description"])
+        self.assertEqual(trait("werebear", "shapechanger")["effect"]["kind"], "shapechanger")
+        self.assertIn("walk 40", trait("werebear", "shapechanger")["description"])
         self.assertIn("climb 30", trait("werebear", "shapechanger")["description"])
-        self.assertIn("hybrid/bear AC 11", trait("werebear", "shapechanger")["description"])
+        self.assertIn("AC 11", trait("werebear", "shapechanger")["description"])
         self.assertNotIn("effect", trait("werebear", "keen_smell"))
-        self.assertEqual(opts("werebear"), {"greataxe_x2": ["greataxe", "greataxe"]})
+        self.assertEqual(opts("werebear"), {
+            "greataxe_x2": ["greataxe", "greataxe"],
+            "claw_x2": ["claw", "claw"],
+        })
         axe = act("werebear", "greataxe")
         self.assertEqual((axe["weapon"], axe["use"], axe["to_hit"], axe["damage"]),
                          ("srd51.item.greataxe", "two_hands", 7, [{"dice": "1d12+4", "type": "slashing"}]))
         self.assertNotIn("attack_bonus", axe)
-        self.assertEqual(act("werebear", "bite")["kind"], "special")
-        self.assertNotIn("natural", act("werebear", "bite"))
-        self.assertIn("lycanthropy", act("werebear", "bite")["description"])
-        self.assertIn("DC 14", act("werebear", "bite")["description"])
-        self.assertEqual(act("werebear", "claw")["kind"], "special")
-        self.assertNotIn("natural", act("werebear", "claw"))
+        bbite = act("werebear", "bite")
+        self.assertEqual(bbite["natural"], {"dice": "2d10", "ability": "str"})
+        self.assertEqual((bbite["to_hit"], bbite["damage"]), (7, [{"dice": "2d10+4", "type": "piercing"}]))
+        self.assertIn("lycanthropy", bbite["description"])
+        self.assertIn("DC 14", bbite["description"])
+        self.assertNotIn("save", bbite)
+        bclaw = act("werebear", "claw")
+        self.assertEqual(bclaw["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual((bclaw["to_hit"], bclaw["damage"]), (7, [{"dice": "2d8+4", "type": "slashing"}]))
         self.assertEqual([a["name"] for a in TABLE["werebear"]["attacks"]], ["Greataxe"])
 
         wraith = load("wraith")
@@ -2774,13 +2812,15 @@ class MonsterTable(unittest.TestCase):
         self.assertNotIn("attack_bonus", glaive)
         self.assertNotIn("damage_override", glaive)
         self.assertEqual(glaive["damage"], [{"dice": "2d10+4", "type": "slashing"}])
-        self.assertIn("1d10 + 4", glaive["description"])
-        self.assertIn("descriptive only", glaive["description"])
-        shape = act("oni", "change_shape")
-        self.assertEqual(shape["kind"], "special")
-        self.assertNotIn("effect", shape)
-        self.assertIn("no shapechanger forms", shape["description"])
-        self.assertEqual([a["id"] for a in oni["actions"]], ["claw", "glaive", "change_shape"])
+        self.assertIn("9 (1d10 + 4)", glaive["description"])
+        self.assertIn("2d10 + 4", glaive["description"])
+        self.assertNotIn("descriptive only", glaive["description"])
+        self.assertNotIn("10 (1d10 + 4)", glaive["description"])
+        change = trait("oni", "change_shape")
+        self.assertEqual(change["effect"]["kind"], "shapechanger")
+        self.assertIs(change["effect"]["trait"], False)
+        self.assertNotIn("change_shape", [a["id"] for a in oni["actions"]])
+        self.assertEqual([a["id"] for a in oni["actions"]], ["claw", "glaive"])
         self.assertEqual([a["name"] for a in TABLE["oni"]["attacks"]], ["Claw (Oni Form Only)", "Glaive"])
 
         self.assertNotIn("oni", DEFERRED)
@@ -3540,9 +3580,94 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual([a["name"] for a in TABLE["green-hag"]["attacks"]], ["Claws"])
 
 
+    def test_shapechanger_forms(self):
+        # SRD 5.1 printed AC and speed for each fixed form (CONTENT_CONVENTIONS §58).
+        # The stat-block AC and speed stay the true form. Couatl Change Shape stays a special action.
+        def forms(idx):
+            eff = {t["id"]: t["effect"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "shapechanger"}
+            self.assertEqual(len(eff), 1, idx)
+            return next(iter(eff.values()))
+
+        wolf = forms("werewolf")
+        self.assertEqual(wolf["true_form"]["actions"], [
+            "spear", "spear_two_handed", "spear_thrown"])
+        self.assertEqual([(f["id"], f["armor_class"], f.get("speed"), f["actions"]) for f in wolf["forms"]], [
+            ("hybrid", 12, None, ["bite", "claws", "bite_claws"]),
+            ("wolf", 12, {"walk": 40}, ["bite"]),
+        ])
+        self.assertEqual((load("werewolf")["armor_class"]["value"], load("werewolf")["speed"]), (11, {"walk": 30}))
+
+        rat = forms("wererat")
+        self.assertEqual(rat["forms"][0]["id"], "hybrid")
+        self.assertEqual(rat["forms"][0]["size"], "medium")
+        self.assertNotIn("armor_class", rat["forms"][0])
+        self.assertNotIn("speed", rat["forms"][0])
+        self.assertNotIn("senses", rat["forms"][0])
+        self.assertEqual(rat["forms"][1], {
+            "id": "rat", "name": "Rat", "size": "small",
+            "senses": {"darkvision": 60}, "actions": ["bite"],
+        })
+        self.assertEqual((load("wererat")["armor_class"]["value"], load("wererat")["speed"]), (12, {"walk": 30}))
+        self.assertNotIn("darkvision", load("wererat")["senses"])
+
+        boar = forms("wereboar")
+        self.assertEqual([(f["id"], f["armor_class"], f.get("speed")) for f in boar["forms"]], [
+            ("hybrid", 11, None),
+            ("boar", 11, {"walk": 40}),
+        ])
+        self.assertEqual((load("wereboar")["armor_class"]["value"], load("wereboar")["speed"]), (10, {"walk": 30}))
+        self.assertNotIn("tusks", boar["true_form"]["actions"])
+        self.assertIn("tusks", boar["forms"][0]["actions"])
+        self.assertEqual(boar["forms"][1]["actions"], ["tusks"])
+
+        tiger = forms("weretiger")
+        self.assertEqual([(f["id"], f.get("size"), f.get("speed"), f["actions"]) for f in tiger["forms"]], [
+            ("hybrid", "medium", None, ["scimitar", "longbow", "bite", "claw", "scimitar_x2", "longbow_x2", "claw_x2"]),
+            ("tiger", "large", {"walk": 40}, ["bite", "claw"]),
+        ])
+        self.assertNotIn("armor_class", tiger["forms"][0])
+        self.assertNotIn("armor_class", tiger["forms"][1])
+        self.assertEqual((load("weretiger")["armor_class"]["value"], load("weretiger")["speed"]), (12, {"walk": 30}))
+        self.assertEqual(load("weretiger")["senses"]["darkvision"], 60)
+
+        bear = forms("werebear")
+        bear_speed = {"walk": 40, "climb": 30}
+        self.assertEqual([(f["id"], f["size"], f["armor_class"], f["speed"]) for f in bear["forms"]], [
+            ("hybrid", "large", 11, bear_speed),
+            ("bear", "large", 11, bear_speed),
+        ])
+        self.assertEqual((load("werebear")["armor_class"]["value"], load("werebear")["speed"]), (10, {"walk": 30}))
+
+        succubus = forms("succubus")
+        humanoid_speed = {"walk": 30, "fly": 0}
+        self.assertEqual([(f["id"], f["size"], f["speed"], "claw" in f["actions"]) for f in succubus["forms"]], [
+            ("small_humanoid", "small", humanoid_speed, False),
+            ("medium_humanoid", "medium", humanoid_speed, False),
+        ])
+        self.assertIn("claw", succubus["true_form"]["actions"])
+        self.assertEqual(load("succubus")["speed"], {"walk": 30, "fly": 60})
+        self.assertIs(load("succubus")["shapechanger"], True)
+
+        oni = forms("oni")
+        self.assertIs(oni["trait"], False)
+        self.assertNotIn("shapechanger", load("oni"))
+        self.assertEqual([(f["id"], f["size"], f.get("weapon_dice_multiplier"), f["actions"]) for f in oni["forms"]], [
+            ("small_humanoid", "small", 1, ["glaive", "glaive_x2"]),
+            ("medium_humanoid", "medium", 1, ["glaive", "glaive_x2"]),
+            ("large_giant", "large", None, ["glaive", "glaive_x2"]),
+        ])
+        self.assertEqual(oni["true_form"]["actions"], ["claw", "glaive", "claw_x2", "glaive_x2"])
+        self.assertEqual(load("oni")["speed"], {"walk": 30, "fly": 30})
+        self.assertEqual(load("oni")["weapon_dice_multiplier"], 2)
+        for idx in ("werewolf", "wererat", "wereboar", "weretiger", "werebear", "succubus", "oni", "couatl"):
+            self.assertEqual(load(idx)["$schema"], "monster@5")
+        couatl_shape = {a["id"]: a for a in load("couatl")["actions"]}["change_shape"]
+        self.assertEqual(couatl_shape["kind"], "special")
+        self.assertNotIn("effect", couatl_shape)
+
     def test_succubus(self):
         # Charm is charm_command (CONTENT_CONVENTIONS §47). Draining Kiss is drain_max_hp
-        # (CONTENT_CONVENTIONS §48). Shapechanger, Etherealness, and Telepathic Bond are
+        # (CONTENT_CONVENTIONS §48). Shapechanger is §58. Etherealness and Telepathic Bond stay
         # description only. Etherealness is not the ghost Border Ethereal action (§51).
         # The SRD line has no Multiattack. a6212be index succubus-incubus is this one block.
         s = load("succubus")
@@ -3551,7 +3676,7 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(s["name"], "Succubus/Incubus")
         self.assertEqual((s["size"], s["type"], s["alignment"], s["hands"]),
                          ("medium", "fiend", "neutral evil", 0))
-        self.assertNotIn("shapechanger", s)
+        self.assertIs(s["shapechanger"], True)
         self.assertNotIn("tags", s)
         self.assertEqual(s["natural_armor"], {"base": 12, "dex": True})
         self.assertEqual(s["armor_class"], {"value": 15, "note": "natural armor"})
@@ -3589,15 +3714,11 @@ class MonsterTable(unittest.TestCase):
         self.assertIn("no telepathy channel", bond["description"])
         shape = traits["shapechanger"]
         self.assertEqual(shape["name"], "Shapechanger")
-        self.assertNotIn("effect", shape)
-        self.assertNotIn("forms", shape)
+        self.assertEqual(shape["effect"]["kind"], "shapechanger")
+        self.assertNotIn("trait", shape["effect"])
         self.assertIn("Small or Medium humanoid", shape["description"])
         self.assertIn("loses its flying speed", shape["description"])
-        self.assertIn("Descriptive only", shape["description"])
-        self.assertIn("no shape", shape["description"])
-        self.assertIn("shapechanger is not set", shape["description"])
         self.assertFalse(any(t.get("effect", {}).get("kind") == "multiattack" for t in s["traits"]))
-        self.assertFalse(any(t.get("effect", {}).get("kind") == "shapechanger" for t in s["traits"]))
         acts = {a["id"]: a for a in s["actions"]}
         self.assertEqual(list(acts), ["claw", "charm", "draining_kiss", "etherealness"])
         claw = acts["claw"]
@@ -3609,7 +3730,8 @@ class MonsterTable(unittest.TestCase):
         self.assertNotIn("on_hit", claw)
         self.assertEqual((claw["to_hit"], claw["reach"], claw["damage"]),
                          (5, 5, [{"dice": "1d6+3", "type": "slashing"}]))
-        self.assertIn("Fiend Form Only is descriptive", claw["description"])
+        self.assertIn("Fiend Form Only", claw["description"])
+        self.assertNotIn("not live", claw["description"])
         charm = acts["charm"]
         self.assertEqual(charm["kind"], "save_effect")
         self.assertEqual(charm["name"], "Charm")

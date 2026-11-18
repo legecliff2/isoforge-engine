@@ -78,7 +78,47 @@
     {
       "id": "shapechanger",
       "name": "Shapechanger",
-      "description": "The weretiger can use its action to polymorph into a tiger-humanoid hybrid or into a tiger, or back into its true form, which is humanoid. Its statistics, other than its size, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (Descriptive only: no shapechanger forms. The humanoid form is the authored stat block. Hybrid and tiger, including the tiger form speed 40, are not separate statistics. shapechanger: true is the Moonbeam fact. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "description": "The weretiger can use its action to polymorph into a tiger-humanoid hybrid or into a tiger, or back into its true form, which is humanoid. Its statistics, other than its size, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (CONTENT_CONVENTIONS §58. AC 12 in every form. True form: Medium, walk 30, scimitar and longbow. Hybrid: Medium, walk 30, those weapons or two claws, plus bite. Tiger: Large, walk 40, bite and claw. Darkvision 60 stays in every form. Keen Hearing and Smell stays description-only. Can't speak in tiger form is not a speech rule.)",
+      "effect": {
+        "kind": "shapechanger",
+        "cost": "action",
+        "true_form": {
+          "actions": [
+            "scimitar",
+            "longbow",
+            "scimitar_x2",
+            "longbow_x2"
+          ]
+        },
+        "forms": [
+          {
+            "id": "hybrid",
+            "name": "Hybrid",
+            "size": "medium",
+            "actions": [
+              "scimitar",
+              "longbow",
+              "bite",
+              "claw",
+              "scimitar_x2",
+              "longbow_x2",
+              "claw_x2"
+            ]
+          },
+          {
+            "id": "tiger",
+            "name": "Tiger",
+            "size": "large",
+            "speed": {
+              "walk": 40
+            },
+            "actions": [
+              "bite",
+              "claw"
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "keen_hearing_and_smell",
@@ -88,12 +128,12 @@
     {
       "id": "pounce",
       "name": "Pounce (Tiger or Hybrid Form Only)",
-      "description": "If the weretiger moves at least 15 feet straight toward a creature and then hits it with a claw attack on the same turn, that target must succeed on a DC 14 Strength saving throw or be knocked prone. If the target is prone, the weretiger can make one bite attack against it as a bonus action. (Descriptive only: claws and bite are not weapon attacks on the authored humanoid form. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "description": "If the weretiger moves at least 15 feet straight toward a creature and then hits it with a claw attack on the same turn, that target must succeed on a DC 14 Strength saving throw or be knocked prone. If the target is prone, the weretiger can make one bite attack against it as a bonus action. (The prone save is the claw on_hit, so it exists only in the tiger and hybrid forms. \"Straight toward\" is not checked. The bonus-action bite against the prone target stays description-only: no prone-target gate.)"
     },
     {
       "id": "multiattack",
       "name": "Multiattack",
-      "description": "In humanoid form, the weretiger makes two scimitar attacks or two longbow attacks. In hybrid form, it can attack like a humanoid or make two claw attacks. (Humanoid form, authored: two scimitars or two longbows. Claws are hybrid or tiger form. See docs/SRD_MONSTERS_DEFERRED.md.)",
+      "description": "In humanoid form, the weretiger makes two scimitar attacks or two longbow attacks. In hybrid form, it can attack like a humanoid or make two claw attacks.",
       "effect": {
         "kind": "multiattack",
         "options": [
@@ -110,6 +150,13 @@
               "longbow",
               "longbow"
             ]
+          },
+          {
+            "id": "claw_x2",
+            "attacks": [
+              "claw",
+              "claw"
+            ]
           }
         ]
       }
@@ -119,14 +166,62 @@
     {
       "id": "bite",
       "name": "Bite",
-      "kind": "special",
-      "description": "Bite (Tiger or Hybrid Form Only). Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 8 (1d10 + 3) piercing damage. If the target is a humanoid, it must succeed on a DC 13 Constitution saving throw or be cursed with weretiger lycanthropy. (Descriptive only: not a weapon attack on the authored humanoid form. The lycanthropy curse is not encoded. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d10",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d10+3",
+          "type": "piercing"
+        }
+      ],
+      "description": "Bite (Tiger or Hybrid Form Only). Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 8 (1d10 + 3) piercing damage. If the target is a humanoid, it must succeed on a DC 13 Constitution saving throw or be cursed with weretiger lycanthropy. (The lycanthropy curse stays description-only. HOLD. No save is rolled.)"
     },
     {
       "id": "claw",
       "name": "Claw",
-      "kind": "special",
-      "description": "Claw (Tiger or Hybrid Form Only). Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 7 (1d8 + 3) slashing damage. (Descriptive only: not a weapon attack on the authored humanoid form. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d8",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "slashing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "str",
+            "dc": 14
+          },
+          "apply": [
+            {
+              "condition": "prone"
+            }
+          ],
+          "when": [
+            {
+              "kind": "moved_at_least_ft",
+              "ft": 15
+            }
+          ]
+        }
+      ],
+      "description": "Claw (Tiger or Hybrid Form Only). Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 7 (1d8 + 3) slashing damage. (Pounce's Strength DC 14 prone save is this on_hit after moving at least 15 feet.)"
     },
     {
       "id": "scimitar",

@@ -9,6 +9,7 @@
 
 #include "rules5e/equipment.hpp"
 #include "sim/combat.hpp"
+#include "sim/equipment.hpp"
 #include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
 
@@ -581,4 +582,89 @@ TEST_CASE("a possessed monk's unarmed strike does not lose its class delta twice
     CHECK(strike(*ended).damage.count == 1);
     CHECK(strike(*ended).damage.sides == 6);
     CHECK(strike(*ended).damage.bonus == 4);
+}
+
+// The content possess action targets a humanoid. A Wild Shape or Polymorph beast is not that
+// target, so this drives recompute_derived on a link whose form was set here.
+TEST_CASE("a possessed form keeps its AC, and the normal-form class delta returns once") {
+    ContentLibrary lib;
+    for (const char* rel : {"content/packs/srd51.core/items/greataxe.json",
+                            "content/packs/srd51.core/items/handaxe.json",
+                            "content/packs/srd51.core/items/shield.json",
+                            "content/packs/srd51.core/items/chain_mail.json",
+                            "content/packs/srd51.core/items/longsword.json"})
+        REQUIRE_FALSE(lib.add_item(load_json(rel)));
+    Json barb = load_json("content/packs/srd51.core/characters/barbarian_level_5.json");
+    REQUIRE_FALSE(lib.add(barb, "character"));
+    Json gob = load_json("content/packs/srd51.core/monsters/goblin.json");
+    gob["id"] = "t.ghost.formac";
+    REQUIRE_FALSE(lib.add(gob, "monster"));
+    world::Chunk chunk{};
+    chunk.coord = {5, 5, 0};
+    chunk.origin = world::Chunk::Origin::Handcrafted;
+    chunk.palette = {"", "floor"};
+    for (auto& cell : chunk.layers[0]) cell.tile = 1;
+    chunk.spawns.push_back({barb["id"].get<std::string>(), {4, 4}, world::spawn_stable_id(chunk.coord, 0), ""});
+    chunk.spawns.push_back({"t.ghost.formac", {5, 4}, world::spawn_stable_id(chunk.coord, 1), ""});
+    chunk.spawns.push_back({barb["id"].get<std::string>(), {6, 6}, world::spawn_stable_id(chunk.coord, 2), ""});
+    chunk.content_hash = world::compute_content_hash(chunk);
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, lib, 8, CombatOptions{true});
+    REQUIRE(combat);
+    REQUIRE(lib.items());
+    const CombatantId body = chunk.spawns[0].stable_id;
+    const CombatantId ghost = chunk.spawns[1].stable_id;
+    auto& st = const_cast<rules5e::EncounterState&>(combat->state());
+    rules5e::Combatant* host = nullptr;
+    for (auto& c : st.combatants) if (c.id == body) host = &c;
+    REQUIRE(host);
+    REQUIRE(host->possession_class_base);
+    const int printed = host->ac;
+    const int delta = host->possession_class_base->ac_delta;
+    REQUIRE(delta > 0);
+    REQUIRE(printed > delta);
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(st, ghost, body, 1, 24, 1, ev).empty());
+    CHECK(host->ac == printed - delta);
+    host->form = rules5e::FormKind::WildShape;
+    host->ac = 11;
+    auto recompute = [&] {
+        recompute_derived(st, body, *lib.items());
+    };
+    for (int i = 0; i < 8 && rules5e::current_actor(combat->state()) != ghost; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(combat->state()), ActionKind::EndTurn};
+        REQUIRE(combat->submit(e).ok);
+    }
+    REQUIRE(rules5e::current_actor(combat->state()) == ghost);
+    const rules5e::Loadout* lo = combat->loadout(body);
+    REQUIRE(lo);
+    const uint32_t weapon = lo->view.main.instance;
+    REQUIRE(weapon != 0);
+    auto equip = [&](rules5e::EquipOp op) {
+        Command c;
+        c.request = {body, ActionKind::UseObject};
+        c.request.equip_op = uint8_t(op);
+        c.request.equip_item = weapon;
+        auto r = combat->submit(c);
+        REQUIRE_MESSAGE(r.ok, r.error);
+    };
+    equip(rules5e::EquipOp::Stow);
+    CHECK(host->ac == 11);
+    equip(rules5e::EquipOp::Draw);
+    CHECK(host->ac == 11);
+    recompute();
+    recompute();
+    CHECK(host->ac == 11);
+    host->form = rules5e::FormKind::None;
+    recompute();
+    CHECK(host->ac == printed - delta);
+    recompute();
+    recompute();
+    CHECK(host->ac == printed - delta);
+    rules5e::end_possession(st, ghost, 2, ev, false);
+    CHECK(host->ac == printed);
+    recompute();
+    recompute();
+    CHECK(host->ac == printed);
 }

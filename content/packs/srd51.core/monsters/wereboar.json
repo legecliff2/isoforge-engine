@@ -73,12 +73,47 @@
     {
       "id": "shapechanger",
       "name": "Shapechanger",
-      "description": "The wereboar can use its action to polymorph into a boar-humanoid hybrid or into a boar, or back into its true form, which is humanoid. Its statistics, other than its AC, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (Descriptive only: no shapechanger forms. The humanoid form is the authored stat block. Hybrid and boar, including the boar form speed 40 and hybrid/boar AC 11, are not separate statistics. shapechanger: true is the Moonbeam fact. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "description": "The wereboar can use its action to polymorph into a boar-humanoid hybrid or into a boar, or back into its true form, which is humanoid. Its statistics, other than its AC, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (CONTENT_CONVENTIONS §58. True form: AC 10, walk 30, maul. Hybrid: AC 11, walk 30, maul and tusks. Boar: AC 11, walk 40, tusks. Can't speak in boar form is not a speech rule.)",
+      "effect": {
+        "kind": "shapechanger",
+        "cost": "action",
+        "true_form": {
+          "actions": [
+            "maul",
+            "maul_x2"
+          ]
+        },
+        "forms": [
+          {
+            "id": "hybrid",
+            "name": "Hybrid",
+            "armor_class": 11,
+            "actions": [
+              "maul",
+              "tusks",
+              "maul_x2",
+              "maul_tusks",
+              "tusks_maul"
+            ]
+          },
+          {
+            "id": "boar",
+            "name": "Boar",
+            "armor_class": 11,
+            "speed": {
+              "walk": 40
+            },
+            "actions": [
+              "tusks"
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "charge",
       "name": "Charge (Boar or Hybrid Form Only)",
-      "description": "If the wereboar moves at least 15 feet straight toward a target and then hits it with its tusks on the same turn, the target takes an extra 7 (2d6) slashing damage. If the target is a creature, it must succeed on a DC 13 Strength saving throw or be knocked prone. (Descriptive only: tusks are not a weapon attack on the authored humanoid form, so Charge is not an on_event. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "description": "If the wereboar moves at least 15 feet straight toward a target and then hits it with its tusks on the same turn, the target takes an extra 7 (2d6) slashing damage. If the target is a creature, it must succeed on a DC 13 Strength saving throw or be knocked prone. (The extra damage and the Strength save are the tusks on_hit, so a maul does not charge. The tusks attack, and that rider, exist only in the boar and hybrid forms. \"Straight toward\" is not checked.)"
     },
     {
       "id": "relentless",
@@ -109,7 +144,7 @@
     {
       "id": "multiattack",
       "name": "Multiattack",
-      "description": "The wereboar makes two attacks, only one of which can be with its tusks. (Humanoid form, authored: two maul attacks. Tusks are boar or hybrid form. See docs/SRD_MONSTERS_DEFERRED.md.)",
+      "description": "The wereboar makes two attacks, only one of which can be with its tusks. (Humanoid or Hybrid Form Only. Humanoid: two mauls. Hybrid: two mauls, or one maul and one tusks in either order.)",
       "effect": {
         "kind": "multiattack",
         "options": [
@@ -117,6 +152,20 @@
             "id": "maul_x2",
             "attacks": [
               "maul",
+              "maul"
+            ]
+          },
+          {
+            "id": "maul_tusks",
+            "attacks": [
+              "maul",
+              "tusks"
+            ]
+          },
+          {
+            "id": "tusks_maul",
+            "attacks": [
+              "tusks",
               "maul"
             ]
           }
@@ -145,8 +194,57 @@
     {
       "id": "tusks",
       "name": "Tusks",
-      "kind": "special",
-      "description": "Tusks (Boar or Hybrid Form Only). Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 10 (2d6 + 3) slashing damage. If the target is a humanoid, it must succeed on a DC 12 Constitution saving throw or be cursed with wereboar lycanthropy. (Descriptive only: not a weapon attack on the authored humanoid form. The lycanthropy curse is not encoded. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+3",
+          "type": "slashing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "extra_damage",
+          "damage": [
+            {
+              "dice": "2d6",
+              "type": "slashing"
+            }
+          ],
+          "when": [
+            {
+              "kind": "moved_at_least_ft",
+              "ft": 15
+            }
+          ]
+        },
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "str",
+            "dc": 13
+          },
+          "apply": [
+            {
+              "condition": "prone"
+            }
+          ],
+          "when": [
+            {
+              "kind": "moved_at_least_ft",
+              "ft": 15
+            }
+          ]
+        }
+      ],
+      "description": "Tusks (Boar or Hybrid Form Only). Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 10 (2d6 + 3) slashing damage. If the target is a humanoid, it must succeed on a DC 12 Constitution saving throw or be cursed with wereboar lycanthropy. (The lycanthropy curse stays description-only. HOLD. No save is rolled. Charge is the on_hit: after moving at least 15 feet, extra 2d6 slashing and a Strength DC 13 prone save.)"
     }
   ]
 }

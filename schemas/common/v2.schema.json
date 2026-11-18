@@ -4347,7 +4347,10 @@
           "$ref": "../common/v1.schema.json#/$defs/size"
         },
         "armor_class": {
-          "$ref": "../common/v1.schema.json#/$defs/armor_class"
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 40,
+          "description": "Absolute AC for this form, the printed number (loader: integer 0..40). Not the stat-block {value, note} object."
         },
         "speed": {
           "$ref": "../common/v1.schema.json#/$defs/speed",

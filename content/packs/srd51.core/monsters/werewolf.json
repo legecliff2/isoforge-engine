@@ -73,7 +73,41 @@
     {
       "id": "shapechanger",
       "name": "Shapechanger",
-      "description": "The werewolf can use its action to polymorph into a wolf-humanoid hybrid or into a wolf, or back into its true form, which is humanoid. Its statistics, other than its AC, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (Descriptive only: no shapechanger forms. The humanoid form is the authored stat block. Hybrid and wolf, including the wolf form speed 40 and hybrid/wolf AC 12, are not separate statistics. shapechanger: true is the Moonbeam fact. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "description": "The werewolf can use its action to polymorph into a wolf-humanoid hybrid or into a wolf, or back into its true form, which is humanoid. Its statistics, other than its AC, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (CONTENT_CONVENTIONS §58. True form: AC 11, walk 30, one spear attack. Hybrid: AC 12, bite and claws. Wolf: AC 12, walk 40, bite. Keen Hearing and Smell stays description-only. Can't speak in wolf form is not a speech rule.)",
+      "effect": {
+        "kind": "shapechanger",
+        "cost": "action",
+        "true_form": {
+          "actions": [
+            "spear",
+            "spear_two_handed",
+            "spear_thrown"
+          ]
+        },
+        "forms": [
+          {
+            "id": "hybrid",
+            "name": "Hybrid",
+            "armor_class": 12,
+            "actions": [
+              "bite",
+              "claws",
+              "bite_claws"
+            ]
+          },
+          {
+            "id": "wolf",
+            "name": "Wolf",
+            "armor_class": 12,
+            "speed": {
+              "walk": 40
+            },
+            "actions": [
+              "bite"
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "keen_hearing_and_smell",
@@ -82,30 +116,16 @@
     },
     {
       "id": "multiattack",
-      "name": "Multiattack",
-      "description": "The werewolf makes two attacks: two with its spear (humanoid form) or one with its bite and one with its claws (hybrid form). (Humanoid form, authored: two spear attacks. Bite + claws are hybrid form. See docs/SRD_MONSTERS_DEFERRED.md.)",
+      "name": "Multiattack (Humanoid or Hybrid Form Only)",
+      "description": "The werewolf makes two attacks: one with its bite and one with its claws or spear.",
       "effect": {
         "kind": "multiattack",
         "options": [
           {
-            "id": "spear_x2",
+            "id": "bite_claws",
             "attacks": [
-              "spear",
-              "spear"
-            ]
-          },
-          {
-            "id": "spear_two_handed_x2",
-            "attacks": [
-              "spear_two_handed",
-              "spear_two_handed"
-            ]
-          },
-          {
-            "id": "spear_thrown_x2",
-            "attacks": [
-              "spear_thrown",
-              "spear_thrown"
+              "bite",
+              "claws"
             ]
           }
         ]
@@ -116,14 +136,42 @@
     {
       "id": "bite",
       "name": "Bite",
-      "kind": "special",
-      "description": "Bite (Hybrid or Wolf Form Only). Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 6 (1d8 + 2) piercing damage. If the target is a humanoid, it must succeed on a DC 12 Constitution saving throw or be cursed with werewolf lycanthropy. (Descriptive only: not a weapon attack on the authored humanoid form. The lycanthropy curse is not encoded. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d8",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Bite (Wolf or Hybrid Form Only). Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 6 (1d8 + 2) piercing damage. If the target is a humanoid, it must succeed on a DC 12 Constitution saving throw or be cursed with werewolf lycanthropy. (The lycanthropy curse stays description-only. HOLD. No save is rolled.)"
     },
     {
       "id": "claws",
       "name": "Claws",
-      "kind": "special",
-      "description": "Claws (Hybrid Form Only). Melee Weapon Attack: +4 to hit, reach 5 ft., one creature. Hit: 7 (2d4 + 2) slashing damage. (Descriptive only: hybrid form only, not a weapon attack on the authored humanoid form. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d4",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d4+2",
+          "type": "slashing"
+        }
+      ],
+      "description": "Claws (Hybrid Form Only). Melee Weapon Attack: +4 to hit, reach 5 ft., one creature. Hit: 7 (2d4 + 2) slashing damage."
     },
     {
       "id": "spear",
