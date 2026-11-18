@@ -103,7 +103,7 @@ struct Archetype {
     // two-weapon bonus option.
     std::vector<std::string> two_handed_grip;
     bool two_handed_grip_for(std::string_view attack_id) const {
-        for (const std::string& id : two_handed_grip) if (id == attack_id) return true;
+        for (const std::string& grip_id : two_handed_grip) if (grip_id == attack_id) return true;
         return false;
     }
     std::vector<uint32_t> trigger_spell_ids;

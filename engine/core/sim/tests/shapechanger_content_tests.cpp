@@ -959,6 +959,9 @@ TEST_CASE("versatile grip is the spear's attack id, so the true-form subset stil
     // The pack werewolf's 1d6 spear is the one-hand row, so it does not carry properties versatile.
     // This fixture is the attack-id regression: bite and claws precede the versatile spear, and true_form keeps only the spear.
     ContentLibrary lib = pack_lib();
+    const Archetype* wolf = lib.find("srd51.monster.werewolf");
+    REQUIRE(wolf);
+    CHECK(wolf->two_handed_grip.empty());
     Json m = lycan();
     m["id"] = "test.monster.grip";
     m["actions"] = Json::array({

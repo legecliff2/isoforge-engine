@@ -2122,7 +2122,7 @@ The werewolf humanoid form takes that Multiattack as two spear attacks. The auth
 
 `recompute_derived` writes `Combatant::ac` only while `form == None`. A Shapechanger form's `armor_class`, a Wild Shape beast's AC, and a Polymorph beast's AC all stand. Worn armor is not written over them. Revert puts the saved true-form AC back. A recompute after that, once `form` is None, applies the worn armor again. The same guard is the shapechanger n9 case. It is not a new mechanic and it claims no hash byte.
 
-Gear staying worn through Wild Shape is the engine's current model. There is no player choice yet. SRD 5.1 lets the druid choose whether equipment falls to the ground, merges into the new form, or is worn by it.
+Wild Shape gear is merged: worn armor does not apply to the beast's AC. That is the engine's model. SRD 5.1 lets the druid choose whether equipment falls to the ground, merges into the new form, or is worn by it. That choice is not modeled yet.
 
 A gear AC change made while the form is up is not applied on revert. `base.ac` is still the AC from the transform, and revert does not recompute when `DeriveInputs` did not change. No pack shapechanger carries a shield. That recompute is not this section.
 
