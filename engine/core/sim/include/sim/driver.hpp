@@ -57,7 +57,8 @@ Command next_command(const Combat& c, std::optional<CombatantId> target);
 // instead of dealing damage? Only when (a) a Bite-style attack gated on grappled_by_self is still left in this turn's
 // multiattack and reaches the target, and (b) the target isn't already grappled by the attacker, incapacitated or restrained;
 // and not when the attack's average damage would drop the target (Lich's ack: "take damage in all other cases, including
-// when claw damage would drop the target"). Pure on state (no RNG). Exposed for tests.
+// when claw damage would drop the target"). A possessed actor counts as incapacitated, and the rules refuse
+// grapple_instead for that actor, so this returns false. Shove is not chosen here. Pure on state (no RNG). Exposed for tests.
 bool choose_grapple_instead(const Combat& c, const rules5e::ActionRequest& q);
 
 // ---- Spell follow-ups (AI side of Rules #222 / #228). Deterministic: integer scoring, ties to the lowest id. ----
@@ -88,7 +89,8 @@ bool spell_needs_mark_ability(const rules5e::SpellDef& def);
 uint8_t choose_mark_ability(const Combat& c, CombatantId target);
 // 7.2zc: the bonus-action move_mark (CastSpell, move_mark = true) for `self` when its concentration spell has a movable mark
 // whose creature has dropped to 0 hit points and the bonus action is free. New mark: `preferred` when it is a conscious
-// hostile other than the old mark, else the built-in target scoring. nullopt = nothing to offer.
+// hostile other than the old mark, else the built-in target scoring. nullopt = nothing to offer. A possessed body is
+// nullopt: that CastSpell is refused.
 std::optional<Command> move_mark_command(const Combat& c, CombatantId self, std::optional<CombatantId> preferred = std::nullopt);
 // Fills the AI-chosen inputs of a request the AI (or a caller) built: mark_ability for a chosen-ability cast and
 // ward_alternate for an Attack / CastSpell that meets a ward. Fields already set are left alone.

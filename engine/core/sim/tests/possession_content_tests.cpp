@@ -664,6 +664,45 @@ TEST_CASE("a possessed sorcerer's spell slots stay unspent") {
     CHECK_FALSE(f.who(1).reaction_used);
 }
 
+TEST_CASE("an unpossessed sorcerer's Shield spends a spell slot") {
+    ContentLibrary lib = pack_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kSorcerer, {5, 4}}, {kFighter, {6, 4}}}, 8);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    const uint32_t shield = rules5e::spell_id_of("srd51.spell.shield");
+    bool known = false;
+    for (uint32_t id : f.who(1).spells_known) known = known || id == shield;
+    REQUIRE(known);
+    f.mut(1).ac = 10;
+    for (auto& at : f.mut(2).attacks) at.to_hit = 19;
+    const auto slots = f.who(1).spell_slots;
+    REQUIRE(slots[1] > 0);
+    CHECK_FALSE(f.who(1).reaction_used);
+    int hits = 0;
+    bool spent_reaction = false;
+    for (int n = 0; n < 25 && hits == 0; ++n) {
+        f.advance_to(f.id(2));
+        const auto cmd = next_command(*f.c, f.id(1));
+        REQUIRE(cmd.request.kind == ActionKind::Attack);
+        REQUIRE(cmd.request.target == f.id(1));
+        const int mark = int(f.c->events().size());
+        auto r = take_reactions(f, f.c->submit(cmd));
+        INFO(r.error);
+        REQUIRE(r.ok);
+        for (int i = mark; i < int(f.c->events().size()); ++i) {
+            const auto& e = f.c->events()[std::size_t(i)];
+            if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::AttackResolved && e.rules.target == f.id(1) &&
+                (e.rules.c & 1) != 0)
+                ++hits;
+        }
+        if (hits > 0) spent_reaction = f.who(1).reaction_used;
+        if (rules5e::current_actor(f.c->state()) == f.id(2)) f.end_turn();
+    }
+    REQUIRE(hits > 0);
+    CHECK(spent_reaction);
+    CHECK(f.who(1).spell_slots[1] + 1 == slots[1]);
+    CHECK(rules_since(f, 0, EventKind::AcBonus) >= 1);
+}
+
 TEST_CASE("a possessed fighter at 3 hp is not offered second wind") {
     ContentLibrary lib = pack_lib();
     Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}, {kFighter, {6, 4}}}, 8);

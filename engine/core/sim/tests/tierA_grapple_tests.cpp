@@ -5,6 +5,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "sample_set.hpp"
 #include "sim/driver.hpp"
@@ -168,6 +169,68 @@ TEST_CASE("Tier-A §27 AI fixture 3: Bite already used this turn: damage") {
     rules5e::remove_condition(x.mut(x.f), Condition::Restrained);
     REQUIRE(x.c->state().budget.sequence == 2);
     CHECK_FALSE(choose_grapple_instead(*x.c, x.req(0, 2)));
+}
+
+TEST_CASE("a possessed actor does not choose grapple_instead, and a shove is still chosen") {
+    // special_action refuses Grapple (special 1) and grapple_instead when the actor counts as incapacitated.
+    // Shove prone (special 2) and shove 5 ft (special 3) are not refused. The AI keeps those.
+    ContentLibrary lib = lib_with({vspawn("t.vspawn")});
+    auto ghost_err = lib.add(load_json("content/packs/srd51.core/monsters/ghost.json"), "monster");
+    REQUIRE_MESSAGE(!ghost_err, ghost_err.value_or(""));
+    world::Chunk ch = arena();
+    ch.spawns.push_back({"srd51.monster.ghost", Vec2i{8, 5}, world::spawn_stable_id(ch.coord, 2), ""});
+    ch.content_hash = world::compute_content_hash(ch);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId body = ch.spawns[0].stable_id;
+    const CombatantId foe = ch.spawns[1].stable_id;
+    const CombatantId ghost = ch.spawns[2].stable_id;
+    auto& st = const_cast<rules5e::EncounterState&>(c->state());
+    auto host = [&]() -> rules5e::Combatant& {
+        for (auto& k : st.combatants)
+            if (k.id == body) return k;
+        FAIL("no body");
+        return st.combatants.front();
+    };
+    rules5e::ActionRequest claw{body, ActionKind::Attack, foe, 0};
+    claw.multiattack = 1;
+    claw.target_within_5ft = true;
+    CHECK(choose_grapple_instead(*c, claw));
+    std::vector<rules5e::Event> ev;
+    const auto linked = rules5e::begin_possession(st, ghost, body, rules5e::spell_id_of("srd51.monster.ghost#possession"), 24, 1, ev);
+    REQUIRE_MESSAGE(linked.empty(), linked);
+    REQUIRE_FALSE(host().attacks.empty());
+    CHECK(host().attacks[0].grapple_instead_ok);
+    for (auto& at : host().attacks) at.pb_in_to_hit = 2;
+    CHECK_FALSE(choose_grapple_instead(*c, claw));
+    host().possessed_by = 0;
+    CHECK(choose_grapple_instead(*c, claw));
+    host().possessed_by = ghost;
+    for (int i = 0; i < 12 && rules5e::current_actor(c->state()) != ghost; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn};
+        auto r = c->submit(e);
+        REQUIRE_MESSAGE(r.ok, r.error);
+    }
+    REQUIRE(rules5e::current_actor(c->state()) == ghost);
+    REQUIRE(rules5e::turn_body(c->state()) == body);
+    const Command atk = next_command(*c, foe);
+    REQUIRE(atk.request.kind == ActionKind::Attack);
+    REQUIRE(atk.request.special == 0);
+    CHECK(atk.request.actor == body);
+    CHECK_FALSE(atk.request.grapple_instead);
+    std::vector<rules5e::Event> gev;
+    REQUIRE(rules5e::apply_sourced_condition(st, body, foe, Condition::Grappled, 13, gev));
+    const Command shove = next_command(*c, foe);
+    CHECK(shove.request.kind == ActionKind::Attack);
+    CHECK(shove.request.special == 2);
+    CHECK(shove.request.actor == body);
+    CHECK_FALSE(shove.request.grapple_instead);
+    auto shoved = c->submit(shove);
+    if (shoved.needs) shoved = c->settle(nullptr);
+    INFO(shoved.error);
+    REQUIRE(shoved.ok);
 }
 
 TEST_CASE("Tier-A §27 AI fixture 4: the claw would drop the target: damage") {
