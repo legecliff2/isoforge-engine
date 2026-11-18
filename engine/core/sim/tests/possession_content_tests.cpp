@@ -25,6 +25,7 @@ const std::string kRoot = ENGINE_SOURCE_ROOT;
 const char* kGhost = "srd51.monster.ghost";
 const char* kFighter = "srd51.character.fighter_level_1";
 const char* kCleric = "srd51.character.cleric_level_2";
+const char* kSorcerer = "srd51.character.sorcerer_level_1";
 const char* kWerebear = "srd51.monster.werebear";
 const char* kWolf = "srd51.monster.wolf";
 
@@ -36,7 +37,7 @@ Json load_json(const std::string& rel) {
 
 ContentLibrary pack_lib() {
     ContentLibrary lib;
-    for (const char* item : {"greataxe", "chain_mail", "shield", "longsword", "crossbow_light", "crossbow_bolt", "mace"}) {
+    for (const char* item : {"greataxe", "chain_mail", "shield", "longsword", "crossbow_light", "crossbow_bolt", "mace", "dagger"}) {
         auto e = lib.add_item(load_json(std::string("content/packs/srd51.core/items/") + item + ".json"));
         INFO(item);
         INFO(e.value_or(""));
@@ -56,6 +57,12 @@ ContentLibrary pack_lib() {
     auto cleric = lib.add(load_json("content/packs/srd51.core/characters/cleric_level_2.json"), "character");
     INFO(cleric.value_or(""));
     REQUIRE_FALSE(cleric);
+    auto sorcerer = lib.add(load_json("content/packs/srd51.core/characters/sorcerer_level_1.json"), "character");
+    INFO(sorcerer.value_or(""));
+    REQUIRE_FALSE(sorcerer);
+    auto shield = lib.add_spell(load_json("content/packs/srd51.core/spells/shield.json"));
+    INFO(shield.value_or(""));
+    REQUIRE_FALSE(shield);
     return lib;
 }
 
@@ -540,6 +547,65 @@ uint32_t self_heal_id(const Combat& c, CombatantId who) {
     return 0;
 }
 
+uint32_t save_action_id(const Combat& c, CombatantId who, const char* action) {
+    const Archetype* ar = c.archetype(who);
+    REQUIRE(ar);
+    for (const auto& sa : ar->save_actions)
+        if (sa.id == action) return sa.spell_id;
+    return 0;
+}
+
+SubmitResult take_reactions(Fight& f, SubmitResult r) {
+    NearestEnemyPolicy pol;
+    while (r.ok && r.needs) r = f.c->decide(pol.decide_reaction(*f.c, *r.needs));
+    return r;
+}
+
+TEST_CASE("a possessed cleric does not cast turn undead") {
+    ContentLibrary lib = pack_lib();
+    const std::vector<std::pair<std::string, Vec2i>> spawns{{kGhost, {4, 4}}, {kCleric, {5, 4}}, {kFighter, {5, 6}}};
+    {
+        Fight f(lib, spawns, 8);
+        f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+        std::vector<rules5e::Event> ev;
+        REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+        f.advance_to(f.id(0));
+        REQUIRE(f.who(0).possessing == f.id(1));
+        const uint32_t turn = save_action_id(*f.c, f.id(1), "turn_undead");
+        REQUIRE(turn != 0);
+        const auto* pool = rules5e::find_pool(f.c->state(), f.id(1), rules5e::spell_id_of("channel_divinity"));
+        REQUIRE(pool);
+        CHECK(pool->cur > 0);
+        NearestEnemyPolicy pol;
+        const auto foe = pol.choose_target(*f.c, rules5e::turn_body(f.c->state()));
+        REQUIRE(foe);
+        CHECK(*foe == f.id(2));
+        const auto cmd = next_command(*f.c, foe);
+        CHECK(cmd.request.kind != ActionKind::CastSpell);
+        CHECK(cmd.request.spell_id != turn);
+        auto submitted = f.settle(f.c->submit(cmd));
+        INFO(submitted.error);
+        CHECK(submitted.ok);
+    }
+    {
+        Fight f(lib, spawns, 8);
+        f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+        f.advance_to(f.id(1));
+        const uint32_t turn = save_action_id(*f.c, f.id(1), "turn_undead");
+        REQUIRE(turn != 0);
+        NearestEnemyPolicy pol;
+        const auto foe = pol.choose_target(*f.c, f.id(1));
+        REQUIRE(foe);
+        CHECK(*foe == f.id(0));
+        const auto cmd = next_command(*f.c, foe);
+        CHECK(cmd.request.kind == ActionKind::CastSpell);
+        CHECK(cmd.request.spell_id == turn);
+        auto submitted = f.settle(f.c->submit(cmd));
+        INFO(submitted.error);
+        CHECK(submitted.ok);
+    }
+}
+
 TEST_CASE("a possessed cleric's turn undead does not stall the built-in fight") {
     ContentLibrary lib = pack_lib();
     // The fighter keeps the party conscious. Once the possessed cleric closes inside 30 ft,
@@ -563,6 +629,39 @@ TEST_CASE("a possessed cleric's turn undead does not stall the built-in fight") 
     };
     constexpr uint64_t kSeed = 11;
     CHECK(play(kSeed) == play(kSeed));
+}
+
+TEST_CASE("a possessed sorcerer's spell slots stay unspent") {
+    ContentLibrary lib = pack_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kSorcerer, {5, 4}}, {kFighter, {6, 4}}}, 8);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+    f.mut(1).ac = 10;
+    f.mut(2).attacks[0].to_hit = 19;
+    const auto slots = f.who(1).spell_slots;
+    int hits = 0;
+    for (int n = 0; n < 25 && hits == 0; ++n) {
+        f.advance_to(f.id(2));
+        NearestEnemyPolicy pol;
+        const auto foe = pol.choose_target(*f.c, f.id(2));
+        REQUIRE(foe);
+        const auto cmd = next_command(*f.c, foe);
+        const int mark = int(f.c->events().size());
+        auto r = take_reactions(f, f.c->submit(cmd));
+        INFO(r.error);
+        REQUIRE(r.ok);
+        for (int i = mark; i < int(f.c->events().size()); ++i) {
+            const auto& e = f.c->events()[std::size_t(i)];
+            if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::AttackResolved && e.rules.target == f.id(1) &&
+                (e.rules.c & 1) != 0)
+                ++hits;
+        }
+        if (rules5e::current_actor(f.c->state()) == f.id(2)) f.end_turn();
+    }
+    REQUIRE(hits > 0);
+    CHECK(f.who(1).spell_slots == slots);
+    CHECK_FALSE(f.who(1).reaction_used);
 }
 
 TEST_CASE("a possessed fighter at 3 hp is not offered second wind") {

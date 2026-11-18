@@ -1108,6 +1108,7 @@ std::vector<ReactionOption> spell_reaction_options(const EncounterState& s, cons
     const bool targeted_only = trig == ReactionTrigger::BeingHit && w.spell_id != 0 && w.attack_natural == 0;
     const Combatant* trigger_actor = find(s, w.trigger_actor);
     std::vector<ReactionOption> out;
+    if (r.possessed_by != 0) return out;   // a possessed body's spells are not available
     if (!s.hooks.spells) return out;
     for (uint32_t id : r.spells_known) {
         const SpellDef* d = s.hooks.spells->find(id);
@@ -2058,7 +2059,7 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
         }
         out.push_back(o);
     }
-    if (w.trigger == ReactionTrigger::Damaged && has_damager && w.target == r.id && s.hooks.spells) {   // 7.2zg Hellish Rebuke
+    if (w.trigger == ReactionTrigger::Damaged && has_damager && w.target == r.id && r.possessed_by == 0 && s.hooks.spells) {   // 7.2zg Hellish Rebuke
         for (uint32_t id : r.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
             if (!d || d->kind == SpellEffectKind::Descriptive || d->casting_time != CastingTime::Reaction ||
