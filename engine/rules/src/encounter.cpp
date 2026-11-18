@@ -20,6 +20,13 @@
 
 namespace rules5e {
 
+// True when `id` is a class, background, or proficiency-race feature, or the synthetic spell id of a
+// save action whose content id is one of those features (Turn Undead, Turn the Unholy).
+bool possession_feature_blocked(const Combatant& a, uint32_t id) {
+    return std::find(a.possession_blocked_features.begin(), a.possession_blocked_features.end(), id) !=
+           a.possession_blocked_features.end();
+}
+
 namespace {
 
 // Set for the duration of a step to the pre-step state (sight reads that). Declared here so repeat saves can see it.
@@ -5029,8 +5036,13 @@ std::string_view spell_cast_resource_refusal(const EncounterState& s, const Comb
     if (def.casting_time == CastingTime::Minute || def.casting_time == CastingTime::Hour)
         return "casting time too long for an encounter";
     if (is_incapacitated(a)) return "incapacitated";
-    if (nonproficient_armor(a)) return "can't cast spells in armor you aren't proficient with";
-    if (a.possessed_by != 0) return "possessed: the body's spells are not available";
+    // SRD p.62: non-proficient armor stops spells. A non-spell action is not a spell.
+    if (def.is_spell && nonproficient_armor(a)) return "can't cast spells in armor you aren't proficient with";
+    // SRD 5.1 Possession: the ghost uses the body's statistics and does not gain its knowledge.
+    // A spell is knowledge. A non-spell save action is a statistic and is not refused here.
+    if (a.possessed_by != 0 && def.is_spell) return "possessed: the body's spells are not available";
+    if (a.possessed_by != 0 && possession_feature_blocked(a, def.id))
+        return "possessed: class features are not available";
     if (def.level == 0 && level != 0) return "cantrips use no slot";
     if (def.level > 0 && (level < def.level || level > 9)) return "bad slot level";
     if (!inn && !has_slot(a, level)) return "no spell slot of that level";
@@ -6866,10 +6878,16 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     }
     case ActionKind::CastSpell: {
         if (req.spell_id == 0) return fail("spell_id required");
-        if (nonproficient_armor(a)) return fail("can't cast spells in armor you aren't proficient with");
-        if (a.possessed_by != 0) return fail("possessed: the body's spells are not available");
-        if (a.form == FormKind::Polymorph || a.form == FormKind::WildShape) return fail("cannot cast spells in this form");   // R-G12
         const SpellDef* def = spell_def(s, req.spell_id);
+        // An id with no definition is an opaque spell (the SpellCast window). Armor and the
+        // possession spell refusal apply to spells only. A non-spell save action proceeds.
+        if ((!def || def->is_spell) && nonproficient_armor(a))
+            return fail("can't cast spells in armor you aren't proficient with");
+        if (a.possessed_by != 0 && (!def || def->is_spell))
+            return fail("possessed: the body's spells are not available");
+        if (a.possessed_by != 0 && def && possession_feature_blocked(a, def->id))
+            return fail("possessed: class features are not available");
+        if (a.form == FormKind::Polymorph || a.form == FormKind::WildShape) return fail("cannot cast spells in this form");   // R-G12
         if ((!def || def->is_spell) && std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) {
                 return !m.possession_held && m.target == a.id && (m.spec.blocks & 1); }))
             return fail("cannot cast spells while this effect lasts (blocks casting)");   // 7.2z Rage
