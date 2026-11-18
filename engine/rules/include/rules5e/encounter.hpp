@@ -1467,6 +1467,10 @@ bool                       nonproficient_armor(const Combatant&);
 std::string_view           possession_attack_refusal(const Combatant&, const Attack&);
 // Empty, or "can't target a possessing ghost". Turn Undead (control Turned, undead in target_types) is the exception.
 std::string_view           possession_target_refusal(const Combatant& target, const SpellDef* def);
+// 24 h Possession immunity. source 0 matches every user of the action; otherwise this possessor.
+bool                       possession_immune(const EncounterState&, CombatantId creature, CombatantId source, uint32_t spell);
+// Protection from Evil and Good. possessor_types is a creature-type bit. A ward with no types matches any possessor.
+bool                       possession_warded(const EncounterState&, CombatantId target, uint32_t possessor_types);
 // Link the ghost to the body. Emits Possessed. Empty on success, a refusal otherwise (nothing spent here).
 std::string_view           begin_possession(EncounterState&, CombatantId ghost, CombatantId body, uint32_t spell_id,
                                             uint16_t immunity_hours, uint8_t immunity_scope, std::vector<Event>&);

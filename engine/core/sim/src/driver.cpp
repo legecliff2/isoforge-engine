@@ -811,21 +811,17 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             // taken instead of Withering Touch. An illegal one is not chosen (a refused cast
             // would stall, and an immune or warded target would spend the recharge).
             if (const auto* sd = c.spell_def(sa.spell_id); sd && sd->possess) {
-                if (me->possessing != 0 || t->possessed_by != 0 || t->possessing != 0 || t->dead) continue;
+                if (me->possessing != 0 || t->possessed_by != 0 || t->possessing != 0) continue;
+                // begin_possession refuses these after the save. The action and the Recharge
+                // are already spent by then, so the AI must not pick the host.
+                if (t->possession_unsupported || !t->possession_refuse.empty()) continue;
+                // can_act(*t). The rules still allow the cast. The AI does not: it would end
+                // the link the same turn, spend the Recharge, and grant the 24 h immunity.
+                if (t->dead || t->hp <= 0 || rules5e::is_incapacitated(*t)) continue;
                 if (sd->target_types != 0 && (sd->target_types & rules5e::bit(t->creature_type)) == 0) continue;
                 if (!rules5e::plane_affect_refusal(*me, *t).empty()) continue;
-                bool immune = false;
-                for (const auto& im : s.action_immunities)
-                    if (im.creature == t->id && im.spell_id == sd->id && (im.source == 0 || im.source == self) &&
-                        uint32_t(s.round) < im.until_round)
-                        immune = true;
-                if (immune) continue;
-                bool warded = false;
-                for (const auto& e : s.effects)
-                    if (e.target == t->id && e.blocks_possession &&
-                        (e.immune_from_types == 0 || (e.immune_from_types & rules5e::bit(me->creature_type)) != 0))
-                        warded = true;
-                if (warded) continue;
+                if (rules5e::possession_immune(s, t->id, self, sd->id)) continue;
+                if (rules5e::possession_warded(s, t->id, rules5e::bit(me->creature_type))) continue;
             }
             Command cast;
             cast.request = {self, ActionKind::CastSpell, t->id};

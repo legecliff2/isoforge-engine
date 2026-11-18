@@ -1975,7 +1975,7 @@
                 "type": "string"
               }
             },
-            "description": "VERSION_BUMP_BATCH 7.2zd (Protection from Evil and Good): while the spell lasts each target can't be charmed or frightened (conditions) by creatures of these types. The 'advantage on a new save if already charmed / frightened' clause and possession are not modelled. Needs concentration or a rounds / minutes / hours duration."
+            "description": "VERSION_BUMP_BATCH 7.2zd (Protection from Evil and Good): while the spell lasts each target can't be charmed or frightened (conditions) by creatures of these types. possession: true is modelled: a new possession by those types spends the action and the Recharge and makes no save, and an existing possession is not ended. The 'advantage on a new save if already charmed / frightened' clause is not modelled. Needs concentration or a rounds / minutes / hours duration."
           }
         },
         {

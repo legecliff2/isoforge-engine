@@ -38,14 +38,6 @@ void emit(std::vector<Event>& ev, EventKind k, CombatantId actor, CombatantId ta
     ev.push_back(Event{k, actor, target, a, b, c});
 }
 
-// 24 h Possession immunity (SRD p.311). scope 1 matches this ghost; source 0 matches every user of the action.
-bool possession_immune(const EncounterState& s, CombatantId creature, CombatantId source, uint32_t spell) {
-    return std::any_of(s.action_immunities.begin(), s.action_immunities.end(), [&](const ActionImmunity& im) {
-        return im.creature == creature && im.spell_id == spell && (im.source == 0 || im.source == source) &&
-               uint32_t(s.round) < im.until_round;
-    });
-}
-
 // R-G12: a transform ends (Reverted{actor, a = source, b = reason, c = overflow}); no-op when not transformed.
 void form_reverted(Combatant& c, int reason, int overflow, std::vector<Event>& ev) {
     const uint32_t src = c.form_source;
@@ -5588,11 +5580,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (t->possessed_by != 0) return fail("target is already possessed");
         if (t->possessing != 0) return fail("can't possess a possessing ghost");
         if (def.target_types != 0 && (def.target_types & bit(t->creature_type)) == 0) return fail("invalid creature type");
-        bool warded = false;
-        for (const auto& e : s.effects)
-            if (e.target == t->id && e.blocks_possession &&
-                (e.immune_from_types == 0 || (e.immune_from_types & bit(a.creature_type)) != 0))
-                warded = true;
+        const bool warded = possession_warded(s, t->id, bit(a.creature_type));
         const bool immune = possession_immune(s, t->id, a.id, def.id);
         if (warded || immune) {
             if (def.casting_time == CastingTime::BonusAction) {
@@ -8763,6 +8751,20 @@ void resume_class_modifiers(EncounterState& s, CombatantId body) {
     for (auto& m : s.modifiers)
         if (m.target == body) m.possession_held = false;
     refresh_mod_cache(s);
+}
+
+bool possession_immune(const EncounterState& s, CombatantId creature, CombatantId source, uint32_t spell) {
+    return std::any_of(s.action_immunities.begin(), s.action_immunities.end(), [&](const ActionImmunity& im) {
+        return im.creature == creature && im.spell_id == spell && (im.source == 0 || im.source == source) &&
+               uint32_t(s.round) < im.until_round;
+    });
+}
+
+bool possession_warded(const EncounterState& s, CombatantId target, uint32_t possessor_types) {
+    return std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& e) {
+        return e.target == target && e.blocks_possession &&
+               (e.immune_from_types == 0 || (e.immune_from_types & possessor_types) != 0);
+    });
 }
 
 std::string_view begin_possession(EncounterState& s, CombatantId ghost_id, CombatantId body_id, uint32_t spell_id,

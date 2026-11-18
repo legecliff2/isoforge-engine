@@ -469,19 +469,59 @@ TEST_CASE("the built-in AI does not possess an illegal target") {
     }
 }
 
-TEST_CASE("the built-in AI possession choice is the same for the same seed") {
+TEST_CASE("the built-in AI uses withering touch against a refused host") {
     ContentLibrary lib = pack_lib();
-    const std::vector<std::pair<std::string, Vec2i>> spawns{{kGhost, {4, 4}}, {kFighter, {5, 4}}};
-    Fight a(lib, spawns, 11);
-    Fight b(lib, spawns, 11);
-    const auto ca = ai_now(a, a.id(0));
-    const auto cb = ai_now(b, b.id(0));
-    CHECK(ca.request.kind == cb.request.kind);
-    CHECK(ca.request.spell_id == cb.request.spell_id);
-    CHECK(ca.request.target == cb.request.target);
-    CHECK(ca.request.attack_index == cb.request.attack_index);
-    CHECK(casts_possession(ca, a.id(1)));
-    CHECK(casts_possession(cb, b.id(1)));
+    {
+        Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 3);
+        f.mut(1).possession_unsupported = true;
+        const auto cmd = ai_now(f, f.id(0));
+        CHECK_FALSE(casts_possession(cmd, f.id(1)));
+        CHECK(withering(f, f.id(0), cmd));
+    }
+    {
+        Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 3);
+        f.mut(1).possession_refuse = "possessed: unsupported host: improved_critical";
+        const auto cmd = ai_now(f, f.id(0));
+        CHECK_FALSE(casts_possession(cmd, f.id(1)));
+        CHECK(withering(f, f.id(0), cmd));
+    }
+}
+
+TEST_CASE("the built-in AI uses withering touch against an incapacitated target") {
+    ContentLibrary lib = pack_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 3);
+    rules5e::add_condition(f.mut(1), rules5e::Condition::Stunned);
+    const auto cmd = ai_now(f, f.id(0));
+    CHECK_FALSE(casts_possession(cmd, f.id(1)));
+    CHECK(withering(f, f.id(0), cmd));
+}
+
+TEST_CASE("the same seed runs the same multi-round ghost fight") {
+    ContentLibrary lib = pack_lib();
+    // Goblins, not the fighter: a possessed fighter's class feature is refused and the
+    // built-in policy stops. Two party goblins keep the fight open after a link.
+    REQUIRE_FALSE(lib.add(load_json("content/packs/srd51.core/monsters/goblin.json"), "monster"));
+    world::Chunk chunk = arena({{kGhost, {4, 4}}, {"srd51.monster.goblin", {5, 4}}, {"srd51.monster.goblin", {6, 4}}});
+    chunk.spawns[1].overrides_json = R"({"team":"party"})";
+    chunk.spawns[2].overrides_json = R"({"team":"party"})";
+    chunk.content_hash = world::compute_content_hash(chunk);
+    auto play = [&](uint64_t seed) {
+        ecs::Registry reg;
+        std::string err;
+        auto c = Combat::create(reg, chunk, lib, seed, {}, &err);
+        INFO(err);
+        REQUIRE(c);
+        NearestEnemyPolicy pol;
+        const RunResult rr = run_to_end(*c, [&](CombatantId) -> IActorPolicy* { return &pol; }, 80);
+        REQUIRE_MESSAGE(rr.error.empty(), rr.error);
+        REQUIRE(c->state().round >= 2);
+        return std::pair{c->hash(), c->log_hash()};
+    };
+    const auto a = play(11);
+    const auto b = play(11);
+    CHECK(a.first == b.first);
+    CHECK(a.second == b.second);
+    CHECK(a.first != 0);
 }
 
 TEST_CASE("a possessed body acts for the ghost's side under AI control") {
