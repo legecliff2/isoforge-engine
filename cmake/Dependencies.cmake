@@ -46,15 +46,29 @@ set(LUAU_ANALYZE_EXECUTABLE "$<TARGET_FILE:Luau.Analyze.CLI>" CACHE INTERNAL
 
 if(ENGINE_BUILD_TESTS)
     # doctest: unit test framework. Pinned to a release tag.
+    # SYSTEM marks doctest's include dir as a system include for every consumer
+    # (the test executables, via doctest::doctest_with_main). That does not silence
+    # the <ciso646> diagnostic below: libstdc++ forces it with a diagnostic pragma.
     FetchContent_Declare(doctest
         GIT_REPOSITORY https://github.com/doctest/doctest.git
         GIT_TAG        v2.4.11
-        GIT_SHALLOW    TRUE)
+        GIT_SHALLOW    TRUE
+        SYSTEM)
     set(DOCTEST_NO_INSTALL ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(doctest)
     # Include real <tuple>/<string> etc. instead of doctest's std forward declarations:
     # newer MSVC flags those as C5285 (forbidden std specialization), fatal under /WX.
     target_compile_definitions(doctest INTERFACE DOCTEST_CONFIG_USE_STD_HEADERS)
+    # doctest.h (~line 499) includes <ciso646> only when DOCTEST_CLANG. GCC 15
+    # libstdc++ emits #warning that <ciso646> is not a standard header in C++20.
+    # Clang reports that as -W#warnings, and -Werror fails the test TUs
+    # (ubuntu-26.04, #439). A SYSTEM include does not suppress it. -Wno-#warnings
+    # is Clang's flag for that diagnostic; it lives on this INTERFACE target, so
+    # only TUs that use doctest inherit it. GCC does not include <ciso646> here,
+    # and engine libraries keep -Werror with no extra suppression.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        target_compile_options(doctest INTERFACE "-Wno-#warnings")
+    endif()
 endif()
 
 if(ENGINE_WITH_SDL)
