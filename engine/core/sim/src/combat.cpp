@@ -3624,6 +3624,16 @@ rules5e::FormStats stats_of(const rules5e::Combatant& c) {
     f.bonus_attacks = c.bonus_attacks;
     f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.burrow_ft = c.burrow_ft; f.hover = c.hover;   // feat/move-modes
     f.keen_senses = c.keen_senses;   // Keen Senses (§30): the beast's mask, restored from own_stats on revert
+    // The live mental scores are the ghost's. A form's "statistics are the same" are the body's
+    // own, which own_stats also writes into the true-form snapshot. reapply then puts the ghost back.
+    if (c.possession_overlay) {
+        f.abilities.score[std::size_t(rules5e::Ability::Int)] = c.possession_overlay->body_int;
+        f.abilities.score[std::size_t(rules5e::Ability::Wis)] = c.possession_overlay->body_wis;
+        f.abilities.score[std::size_t(rules5e::Ability::Cha)] = c.possession_overlay->body_cha;
+        f.save_proficiencies = c.possession_overlay->save_proficiencies;
+        f.skill_proficiencies = c.possession_overlay->skill_proficiencies;
+        f.condition_immunities = c.possession_overlay->condition_immunities;
+    }
     return f;
 }
 }  // namespace

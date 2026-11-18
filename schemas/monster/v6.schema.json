@@ -1542,6 +1542,11 @@
                 "required": [
                   "drop_to_zero"
                 ]
+              },
+              {
+                "required": [
+                  "possess"
+                ]
               }
             ],
             "not": {
