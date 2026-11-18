@@ -1,7 +1,9 @@
 name: CI
 
 # Linux jobs run on ubuntu-24.04 for every event, including push to main, schedule,
-# and workflow_dispatch. Nothing in this workflow requests a self-hosted runner.
+# and workflow_dispatch. Pinned off ubuntu-latest (#439): ubuntu-latest moved to
+# 26.04, and GCC 15 libstdc++'s <ciso646> #warning breaks doctest 2.4.11 under -Werror.
+# Nothing in this workflow requests a self-hosted runner.
 # Retiring the old box: docs/CI_SELF_HOSTED.md.
 #
 # Cost policy (macOS minutes bill at 10x Linux):
@@ -160,6 +162,9 @@ jobs:
     name: ${{ matrix.name }}
     needs: [changes, linux-runner]
     if: (github.event_name == 'push' || github.event_name == 'pull_request') && needs.changes.outputs.code == 'true'
+    # Pinned to ubuntu-24.04, not ubuntu-latest (#439): ubuntu-latest is 26.04,
+    # whose GCC 15 libstdc++ warns on doctest 2.4.11's <ciso646> include, and
+    # -Werror fails Linux Clang Release.
     # Linux is hard-coded to ubuntu-24.04 for every event and ref. The Windows
     # row is windows-latest. This expression does not read a job output or a label list.
     runs-on: ${{ matrix.name == 'Windows MSVC Debug' && 'windows-latest' || 'ubuntu-24.04' }}
