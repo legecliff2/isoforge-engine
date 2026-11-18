@@ -567,6 +567,15 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         return look;
     }
     const auto* me = rules5e::find(s, self);
+    // Possession (§59). The body cannot act, so the ghost's bonus action ends the link (reason 2).
+    // No roll. While the body can act, the link stays and the body spends the turn.
+    if (const auto* slot_c = rules5e::find(s, slot);
+        slot_c && slot_c->possessing == self && me && (me->dead || me->hp <= 0 || rules5e::is_incapacitated(*me))) {
+        Command rev;
+        rev.request = {slot, ActionKind::Revert};
+        rev.request.as_bonus_action = true;
+        return rev;
+    }
     if (!me || !rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return end;
     if (me->surprised) return end;   // R-G16: a surprised creature's first turn accepts only EndTurn
     // Stand up (Director-approved AI policy): a prone creature, at the start of its turn (nothing spent or moved yet), stands with
@@ -798,6 +807,26 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 sd && ((sd->has_target_condition && !t->has(sd->target_condition)) ||
                        (sd->caster_sees_target && !rules5e::sight(s, self, t->id).can_see)))
                 continue;   // B15 Death Glare: a refused cast would stall the turn
+            // Possession (§59). Same target as this walk, no extra draw. A legal humanoid is
+            // taken instead of Withering Touch. An illegal one is not chosen (a refused cast
+            // would stall, and an immune or warded target would spend the recharge).
+            if (const auto* sd = c.spell_def(sa.spell_id); sd && sd->possess) {
+                if (me->possessing != 0 || t->possessed_by != 0 || t->possessing != 0 || t->dead) continue;
+                if (sd->target_types != 0 && (sd->target_types & rules5e::bit(t->creature_type)) == 0) continue;
+                if (!rules5e::plane_affect_refusal(*me, *t).empty()) continue;
+                bool immune = false;
+                for (const auto& im : s.action_immunities)
+                    if (im.creature == t->id && im.spell_id == sd->id && (im.source == 0 || im.source == self) &&
+                        uint32_t(s.round) < im.until_round)
+                        immune = true;
+                if (immune) continue;
+                bool warded = false;
+                for (const auto& e : s.effects)
+                    if (e.target == t->id && e.blocks_possession &&
+                        (e.immune_from_types == 0 || (e.immune_from_types & rules5e::bit(me->creature_type)) != 0))
+                        warded = true;
+                if (warded) continue;
+            }
             Command cast;
             cast.request = {self, ActionKind::CastSpell, t->id};
             cast.request.spell_id = sa.spell_id;
