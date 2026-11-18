@@ -73,7 +73,7 @@
     {
       "id": "shapechanger",
       "name": "Shapechanger",
-      "description": "The werewolf can use its action to polymorph into a wolf-humanoid hybrid or into a wolf, or back into its true form, which is humanoid. Its statistics, other than its AC, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (CONTENT_CONVENTIONS §58. True form: AC 11, walk 30, one spear attack. Hybrid: AC 12, bite and claws. Wolf: AC 12, walk 40, bite. Keen Hearing and Smell stays description-only. Can't speak in wolf form is not a speech rule.)",
+      "description": "The werewolf can use its action to polymorph into a wolf-humanoid hybrid or into a wolf, or back into its true form, which is humanoid. Its statistics, other than its AC, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (CONTENT_CONVENTIONS §58. True form: AC 11, walk 30, two spear attacks. Hybrid: AC 12, one bite and one claws. Wolf: AC 12, walk 40, bite. Keen Hearing and Smell stays description-only. Can't speak in wolf form is not a speech rule.)",
       "effect": {
         "kind": "shapechanger",
         "cost": "action",
@@ -81,7 +81,10 @@
           "actions": [
             "spear",
             "spear_two_handed",
-            "spear_thrown"
+            "spear_thrown",
+            "spear_x2",
+            "spear_two_handed_x2",
+            "spear_thrown_x2"
           ]
         },
         "forms": [
@@ -92,7 +95,8 @@
             "actions": [
               "bite",
               "claws",
-              "bite_claws"
+              "bite_claws",
+              "claws_bite"
             ]
           },
           {
@@ -117,15 +121,43 @@
     {
       "id": "multiattack",
       "name": "Multiattack (Humanoid or Hybrid Form Only)",
-      "description": "The werewolf makes two attacks: one with its bite and one with its claws or spear.",
+      "description": "The werewolf makes two attacks: two with its spear (humanoid form) or one with its bite and one with its claws (hybrid form).",
       "effect": {
         "kind": "multiattack",
         "options": [
+          {
+            "id": "spear_x2",
+            "attacks": [
+              "spear",
+              "spear"
+            ]
+          },
+          {
+            "id": "spear_two_handed_x2",
+            "attacks": [
+              "spear_two_handed",
+              "spear_two_handed"
+            ]
+          },
+          {
+            "id": "spear_thrown_x2",
+            "attacks": [
+              "spear_thrown",
+              "spear_thrown"
+            ]
+          },
           {
             "id": "bite_claws",
             "attacks": [
               "bite",
               "claws"
+            ]
+          },
+          {
+            "id": "claws_bite",
+            "attacks": [
+              "claws",
+              "bite"
             ]
           }
         ]
@@ -188,7 +220,7 @@
           "type": "piercing"
         }
       ],
-      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
+      "description": "Spear (Humanoid Form Only). Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
     },
     {
       "id": "spear_two_handed",
@@ -209,7 +241,7 @@
           "type": "piercing"
         }
       ],
-      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
+      "description": "Spear (Humanoid Form Only). Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
     },
     {
       "id": "spear_thrown",
@@ -233,7 +265,7 @@
           "type": "piercing"
         }
       ],
-      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
+      "description": "Spear (Humanoid Form Only). Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
     }
   ]
 }

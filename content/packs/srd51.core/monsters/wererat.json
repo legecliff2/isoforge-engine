@@ -87,7 +87,8 @@
             "hand_crossbow",
             "shortsword_x2",
             "hand_crossbow_x2",
-            "shortsword_hand_crossbow"
+            "shortsword_hand_crossbow",
+            "hand_crossbow_shortsword"
           ]
         },
         "forms": [
@@ -102,6 +103,7 @@
               "shortsword_x2",
               "hand_crossbow_x2",
               "shortsword_hand_crossbow",
+              "hand_crossbow_shortsword",
               "shortsword_bite",
               "bite_shortsword",
               "hand_crossbow_bite",
@@ -130,7 +132,7 @@
     {
       "id": "multiattack",
       "name": "Multiattack",
-      "description": "The wererat makes two attacks, only one of which can be a bite. (Humanoid or Hybrid Form Only. Humanoid: two shortswords, two hand crossbows, or one of each. Hybrid adds a shortsword or hand crossbow with one bite, either order.)",
+      "description": "The wererat makes two attacks, only one of which can be a bite. (Humanoid or Hybrid Form Only. Humanoid: two shortswords, two hand crossbows, or one of each, either order. Hybrid adds a shortsword or hand crossbow with one bite, either order.)",
       "effect": {
         "kind": "multiattack",
         "options": [
@@ -153,6 +155,13 @@
             "attacks": [
               "shortsword",
               "hand_crossbow"
+            ]
+          },
+          {
+            "id": "hand_crossbow_shortsword",
+            "attacks": [
+              "hand_crossbow",
+              "shortsword"
             ]
           },
           {

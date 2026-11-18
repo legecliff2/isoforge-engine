@@ -1170,9 +1170,9 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
 //    ActionRequest::reckless on its turn's first melee attack (the first attack of the Attack action: nothing attacked yet, no
 //    sequence, the action unspent; rules refuse it later). A ranged attack never declares it, so a turn that opens with a ranged
 //    attack stays un-reckless.
-//  * R-G7's grip fact: a versatile melee weapon held in two hands (Archetype::two_handed_grip, the v0 wield model; never with a
-//    two-weapon bonus option) is attacked with ActionRequest::two_handed_grip so Great Weapon Fighting applies. Only rules5e's
-//    Great Weapon Fighting reads the flag.
+//  * R-G7's grip fact: a versatile melee weapon held in two hands (Archetype::two_handed_grip, the attack id, the v0 wield
+//    model; never with a two-weapon bonus option) is attacked with ActionRequest::two_handed_grip so Great Weapon Fighting
+//    applies. Only rules5e's Great Weapon Fighting reads the flag.
 bool choose_grapple_instead(const Combat& c, const rules5e::ActionRequest& q) {
     if (q.kind != ActionKind::Attack || q.special != 0) return false;
     const auto& s = c.state();
@@ -1223,8 +1223,7 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
         b.attacks_used_mask == 0 && b.sequence == 0)
         q.reckless = true;
     const Archetype* arch = c.attack_archetype(q.actor);   // R-G12: a form's natural weapons are its archetype's
-    if (!arch || q.attack_index >= 32) return cmd;
-    if (!(arch->two_handed_grip >> q.attack_index & 1u)) return cmd;
+    if (!arch || !arch->two_handed_grip_for(me->attacks[q.attack_index].id)) return cmd;
     for (const auto& bo : me->bonus_attacks)
         if (bo.different_weapon) return cmd;
     q.two_handed_grip = true;

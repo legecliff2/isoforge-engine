@@ -3722,10 +3722,11 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
     }
     // R-G7 v0 wield model (sim has no equipment state): a versatile melee weapon of a stat block that carries no shield is
-    // held in two hands (the AI also requires no two-weapon bonus option, see driver.cpp).
+    // held in two hands (the AI also requires no two-weapon bonus option, see driver.cpp). The id is the attack's own id.
+    // A later subset (true form, another form) still names that attack; an index into the subset would not.
     if (!carries_shield(doc))
-        for (std::size_t i = 0; i < c.attacks.size() && i < 32; ++i)
-            if (!c.attacks[i].ranged && rules5e::has_property(c.attacks[i], rules5e::kWeaponVersatile)) a.two_handed_grip |= 1u << i;
+        for (const auto& at : c.attacks)
+            if (!at.ranged && rules5e::has_property(at, rules5e::kWeaponVersatile)) a.two_handed_grip.emplace_back(at.id);
     // Priced materials (CONTENT_CONVENTIONS §7): equipment[] entries with their value_gp (integer >= 0, default 0).
     if (auto eq = doc.find("equipment"); eq != doc.end() && eq->is_array())
         for (const auto& e : *eq) {

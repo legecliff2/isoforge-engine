@@ -271,7 +271,7 @@ Raw derive_raw(const rules5e::Combatant& c, const rules5e::Loadout& l, const Ite
 } // namespace
 
 bool build_loadout(rules5e::EncounterState& st, rules5e::CombatantId owner, const std::vector<LoadoutSeed>& seeds,
-                   const ItemDefTable& items, uint32_t two_handed_grip, std::string_view content_id,
+                   const ItemDefTable& items, const std::vector<std::string>& two_handed_grip, std::string_view content_id,
                    std::vector<std::string>* errors) {
     int held_slots = 0;   // hand slots the equipped holdables take (#249 _held_slots)
     const rules5e::Combatant* c = combatant_of(st, owner);
@@ -317,7 +317,9 @@ bool build_loadout(rules5e::EncounterState& st, rules5e::CombatantId owner, cons
             rules5e::WeaponUse use = rules5e::WeaponUse::OneHand;
             if (at.ranged && (p & rules5e::kWeaponThrown) && d->weapon.reach_ft > 0) use = rules5e::WeaponUse::Thrown;
             else if (p & rules5e::kWeaponTwoHanded) use = rules5e::WeaponUse::TwoHands;
-            else if ((p & rules5e::kWeaponVersatile) && i < 32 && (two_handed_grip & (1u << i))) use = rules5e::WeaponUse::TwoHands;
+            else if ((p & rules5e::kWeaponVersatile) &&
+                     std::find(two_handed_grip.begin(), two_handed_grip.end(), at.id) != two_handed_grip.end())
+                use = rules5e::WeaponUse::TwoHands;
             links[i] = {h->def, use};
             linked = true;
             break;
