@@ -1703,7 +1703,7 @@ Product calls, not decided here:
 * **The built-in AI.** It uses the existing area-save policy: it will not catch an ally, and it wants two hostiles, or one when no attack is legal. The sentence does affect allies. Whether the AI should, and whether it should ignore undead when it counts hostiles, is not decided here.
 * **`aged_years` is not hashed.** A fight that differs only in the year counter hashes the same. The d4 still consumes the encounter RNG, which is already hashed.
 
-`srd51.monster.ghost` authors this action with those keys. Greater restoration does not reverse the years. No ability-score aging. `aged_years` is not hashed. Not magical. The built-in AI uses the existing area-save policy. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Etherealness is §51. Not full Ghost support. No new hash tag. Counts are 205 authored and 5 deferred.
+`srd51.monster.ghost` authors this action with those keys. Greater restoration does not reverse the years. No ability-score aging. `aged_years` is not hashed. Not magical. The built-in AI uses the existing area-save policy. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Etherealness is §51. Not full Ghost support. No new hash tag. Counts are 206 authored and 4 deferred.
 
 Deferred, not this action:
 
@@ -1797,7 +1797,7 @@ Product calls, not decided here:
 * **Incorporeal Movement** is not this action. The creature does not move through creatures or objects.
 * **The built-in AI** does not use the action. Whether it should is not decided here.
 
-`srd51.monster.ghost` authors this action (`kind: etherealness`). Deep Ethereal is not a value. The built-in AI does not use it. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Not full Ghost support. Hash 0xE6 only while some combatant is not Material. No new hash tag. Counts are 205 authored and 5 deferred.
+`srd51.monster.ghost` authors this action (`kind: etherealness`). Deep Ethereal is not a value. The built-in AI does not use it. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Not full Ghost support. Hash 0xE6 only while some combatant is not Material. No new hash tag. Counts are 206 authored and 4 deferred.
 
 Deferred, not this action:
 
@@ -2142,7 +2142,7 @@ Turn-owner state (reaction, Dodge, Disengage, Shield, Help, Reckless, gaze avers
 
 `passive_perception_override` is not recomputed from the ghost's Wisdom or from the dropped proficiency. Only the blink dog uses `srd_printed`, and it is not a humanoid, so a possession never reads that override.
 
-Deferred, not this section: D9 legendary host or possessor beyond the B10 guard (a linked creature is never `legendary_ready` and is not refilled); D10 player possessor and Magic Jar; Dispel Evil and Good, Hallow, and Magic Circle (reason 4 is reserved and never emitted); Polymorph on a possessed body and a shapechanged possessor; the AI choosing Possession; languages as knowledge; Incorporeal Movement and Ethereal Sight. A host is refused, not deferred, when a class feature's baked number does not match the printed statistic (`possessed: unsupported host: <feature>`).
+Unlink while the body is in a form keeps that form. The class numbers FormStats does not carry are restored once from the link snapshot. Draconic Resilience is credited to the saved true-form maximum (and, when the link began in a form, it was taken from that saved maximum). Deferred, not this section: D9 legendary host or possessor beyond the B10 guard (a linked creature is never `legendary_ready` and is not refilled); D10 player possessor and Magic Jar; Dispel Evil and Good, Hallow, and Magic Circle (reason 4 is reserved and never emitted); casting Polymorph on a possessed body; the AI choosing Possession; languages as knowledge; Incorporeal Movement and Ethereal Sight. A host is refused, not deferred, when a class feature's baked number does not match the printed statistic (`possessed: unsupported host: <feature>`).
 
 D3: `counts_as_incapacitated` is `is_incapacitated` or a possessed body. `can_act` stays on the real condition, so the possessor's Attack, Dash, and the other actions through the body still run. Dodge gives no benefit (the attack-roll disadvantage and the Dexterity-save advantage). Dodge, Grapple (`special` 1), and `grapple_instead` are refused with `incapacitated` and are not offered. An on-hit grapple a body attack starts is dropped at the next prune, because the grappler counts as incapacitated. An opportunity attack is not offered against the possessing ghost.
 

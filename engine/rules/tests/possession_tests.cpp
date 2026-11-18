@@ -1172,6 +1172,12 @@ TEST_CASE("a class host unlinked in a form reverts to the true AC, attacks, and 
     host.attacks[0].damage.bonus = 5;
     host.hp = host.hp_max = 20;
     host.possession_hp_bonus = 3;
+    host.evasion = true;
+    host.half_proficiency = 1;
+    host.crit_min = 19;
+    host.great_weapon_fighting = true;
+    host.attack_bonus_melee = 2;
+    host.save_advantages = {SaveAdvantage{Ability::Dex, true, 0}};
     Combatant::PossessionClassBase stripped;
     stripped.attacks = host.attacks;
     stripped.ac = 13;
@@ -1188,6 +1194,12 @@ TEST_CASE("a class host unlinked in a form reverts to the true AC, attacks, and 
     CHECK(mut(s, 1).attacks[0].damage.bonus == 4);
     CHECK(mut(s, 1).hp_max == 17);
     CHECK(mut(s, 1).hp == 17);
+    CHECK_FALSE(mut(s, 1).evasion);
+    CHECK(mut(s, 1).half_proficiency == 0);
+    CHECK(mut(s, 1).crit_min == 20);
+    CHECK_FALSE(mut(s, 1).great_weapon_fighting);
+    CHECK(mut(s, 1).attack_bonus_melee == 0);
+    CHECK(mut(s, 1).save_advantages.empty());
 
     FormStats beast;
     beast.ac = 11;
@@ -1209,6 +1221,13 @@ TEST_CASE("a class host unlinked in a form reverts to the true AC, attacks, and 
     CHECK(mut(s, 1).hp_max == 30);
     REQUIRE(mut(s, 1).base);
     CHECK(mut(s, 1).base->hp_max == 20);
+    CHECK(mut(s, 1).evasion);
+    CHECK(mut(s, 1).half_proficiency == 1);
+    CHECK(mut(s, 1).crit_min == 19);
+    CHECK(mut(s, 1).great_weapon_fighting);
+    CHECK(mut(s, 1).attack_bonus_melee == 2);
+    REQUIRE(mut(s, 1).save_advantages.size() == 1);
+    CHECK(mut(s, 1).save_advantages[0].ability == Ability::Dex);
 
     REQUIRE(revert_form(mut(s, 1)));
     CHECK(mut(s, 1).form == FormKind::None);
@@ -1217,6 +1236,54 @@ TEST_CASE("a class host unlinked in a form reverts to the true AC, attacks, and 
     CHECK(mut(s, 1).attacks[0].id == "longsword");
     CHECK(mut(s, 1).attacks[0].to_hit == 7);
     CHECK(mut(s, 1).attacks[0].damage.bonus == 5);
+    CHECK(mut(s, 1).hp_max == 20);
+    CHECK(mut(s, 1).hp == 17);
+    CHECK(mut(s, 1).evasion);
+    CHECK(mut(s, 1).half_proficiency == 1);
+    CHECK(mut(s, 1).crit_min == 19);
+    CHECK(mut(s, 1).great_weapon_fighting);
+    CHECK(mut(s, 1).attack_bonus_melee == 2);
+    REQUIRE(mut(s, 1).save_advantages.size() == 1);
+    CHECK(mut(s, 1).save_advantages[0].ability == Ability::Dex);
+}
+
+TEST_CASE("draconic resilience linked in a form comes off the true-form maximum") {
+    // Link while Polymorphed, revert, then unlink. The bonus is taken from the saved
+    // true form, not the beast's maximum, and the unlink after the revert does not inflate it.
+    auto host = host_of(1);
+    host.hp = host.hp_max = 20;
+    host.possession_hp_bonus = 3;
+    auto s = begin_encounter({host, ghost_of(2), ally_of(3)}, 52, nullptr, spell_hooks());
+    FormStats beast;
+    beast.ac = 11;
+    beast.hp_max = 30;
+    beast.speed_ft = 40;
+    beast.attacks_per_action = 1;
+    beast.attacks = {Attack{"beast-bite", 4, {1, 8, 2}, DamageType::Piercing, 5, false, false}};
+    REQUIRE(apply_form(mut(s, 1), FormKind::Polymorph, beast));
+    CHECK(mut(s, 1).hp_max == 30);
+    REQUIRE(mut(s, 1).base);
+    CHECK(mut(s, 1).base->hp_max == 20);
+    CHECK(mut(s, 1).base->hp == 20);
+
+    link(s, 2, 1);
+    CHECK(mut(s, 1).form == FormKind::Polymorph);
+    CHECK(mut(s, 1).hp_max == 30);
+    REQUIRE(mut(s, 1).base);
+    CHECK(mut(s, 1).base->hp_max == 17);
+    CHECK(mut(s, 1).base->hp == 17);
+    REQUIRE(mut(s, 1).possession_overlay);
+    CHECK(mut(s, 1).possession_overlay->hp_max_removed == 3);
+
+    REQUIRE(revert_form(mut(s, 1)));
+    CHECK(mut(s, 1).form == FormKind::None);
+    CHECK(mut(s, 1).possessed_by == 2);
+    CHECK(mut(s, 1).hp_max == 17);
+    CHECK(mut(s, 1).hp == 17);
+
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    CHECK(mut(s, 1).possessed_by == 0);
     CHECK(mut(s, 1).hp_max == 20);
     CHECK(mut(s, 1).hp == 17);
 }
