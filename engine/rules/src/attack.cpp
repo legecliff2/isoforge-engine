@@ -16,7 +16,7 @@ RollMode attack_roll_mode(const Combatant& a, const Combatant& t, const AttackCo
     if (a.has(C::Blinded) || a.has(C::Poisoned) || a.has(C::Prone) || a.has(C::Restrained) ||
         a.has(C::Frightened) || a.exhaustion_level >= 3) dis = true;
     if (a.has(C::Invisible) && !ctx.attacker_outlined) adv = true;
-    if (t.dodging && !is_incapacitated(t) && effective_speed(t) > 0) dis = true;  // Dodge
+    if (t.dodging && !counts_as_incapacitated(t) && effective_speed(t) > 0) dis = true;  // Dodge
     if (t.has(C::Blinded) || t.has(C::Paralyzed) || t.has(C::Petrified) || t.has(C::Restrained) ||
         t.has(C::Stunned) || t.has(C::Unconscious)) adv = true;
     if (t.has(C::Invisible) && !ctx.target_outlined) dis = true;

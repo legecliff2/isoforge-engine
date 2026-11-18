@@ -59,7 +59,7 @@ CombatantId ward_target_of(const Combat& c, const rules5e::ActionRequest& q) {
     const std::vector<CombatantId> ids = q.targets.empty() ? std::vector<CombatantId>{q.target} : q.targets;
     for (CombatantId id : ids) {
         const auto* t = rules5e::find(s, id);
-        if (t && t->id != a->id && t->team != a->team && warded_against(s, *t, q.actor)) return t->id;
+        if (t && t->id != a->id && rules5e::side_of(s, *t) != rules5e::side_of(s, *a) && warded_against(s, *t, q.actor)) return t->id;
     }
     return 0;
 }
@@ -447,7 +447,8 @@ std::optional<Command> light_command(const Combat& c, CombatantId self, std::opt
             const int radius = (int(r.bright_ft) + int(r.dim_ft)) / kFeetPerTile;
             bool needed = false;
             for (const auto& k : s.combatants)
-                needed = needed || (k.id != self && !k.dead && !k.gone && k.team == me->team && k.darkvision_ft == 0 &&
+                needed = needed || (k.id != self && !k.dead && !k.gone && k.possessing == 0 &&
+                                    rules5e::side_of(s, k) == rules5e::side_of(s, *me) && k.darkvision_ft == 0 &&
                                     c.distance_tiles(self, k.id) <= radius);
             if (!needed) {
                 want = equip_req(self, rules5e::EquipOp::SetLightState, h->instance, 0);
@@ -550,9 +551,11 @@ std::optional<Command> retarget_bonus_grant(const Combat& c, CombatantId self, c
 
 Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     const auto& s = c.state();
-    const CombatantId self = rules5e::current_actor(s);
+    const CombatantId slot = rules5e::current_actor(s);
+    const CombatantId self = rules5e::turn_body(s);
     Command end;
-    end.request = {self, ActionKind::EndTurn};
+    end.request = {slot, ActionKind::EndTurn};
+    if (const auto* slot_c = rules5e::find(s, slot); slot_c && slot_c->possessed_by != 0) return end;
     if (s.budget.gaze_pending) {   // Petrifying Gaze (7.2p): answer first, even surprised or incapacitated; AI default: look
         Command look;
         look.request = {self, ActionKind::GazeResponse};   // avert_gaze false; submit fills gaze_seen
@@ -603,7 +606,8 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 constexpr int kWildShapeMeleeTiles = 2;
                 bool near_melee = false;
                 for (const auto& o : s.combatants)
-                    if (o.id != self && o.team != me->team && !o.dead && !o.gone && !o.has(rules5e::Condition::Invisible) &&
+                    if (o.id != self && rules5e::side_of(s, o) != rules5e::side_of(s, *me) && !o.dead && !o.gone &&
+                        o.possessing == 0 && !o.has(rules5e::Condition::Invisible) &&
                         c.distance_tiles(self, o.id) <= kWildShapeMeleeTiles && c.line_of_sight(self, o.id))
                         near_melee = true;
                 bool slots_left = me->pact_slots > 0;
@@ -1133,7 +1137,7 @@ bool choose_grapple_instead(const Combat& c, const rules5e::ActionRequest& q) {
     if (!me || !t || t->dead || q.attack_index >= me->attacks.size() || !me->attacks[q.attack_index].grapple_instead_ok) return false;
     // (b) already held by me, incapacitated or restrained: the Bite is legal already, so take the damage
     if (t->has(rules5e::Condition::Grappled) && rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) == me->id) return false;
-    if (rules5e::is_incapacitated(*t) || t->has(rules5e::Condition::Restrained)) return false;
+    if (rules5e::counts_as_incapacitated(*t) || t->has(rules5e::Condition::Restrained)) return false;
     // the claw's average damage would drop the target: take the damage
     const rules5e::DiceExpr& d = me->attacks[q.attack_index].damage;
     if ((int(d.count) * (int(d.sides) + 1)) / 2 + int(d.bonus) >= int(t->hp) + int(t->temp_hp)) return false;
@@ -1198,7 +1202,7 @@ std::optional<Command> summon_turn_command(const Combat& c, CombatantId self) {
         x.request = {self, s.budget.action ? ActionKind::Dodge : ActionKind::EndTurn};
         return x;
     }
-    if (rules5e::is_incapacitated(*me)) return std::nullopt;
+    if (rules5e::counts_as_incapacitated(*me)) return std::nullopt;
     std::vector<CombatantId> verbal, bonus;
     for (const auto& k : s.combatants) {
         if (k.summoner != self || k.gone || k.dead || k.commanded == 1) continue;
@@ -1223,7 +1227,7 @@ RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_comman
     std::optional<CombatantId> target;
     // Sync adapter: answer each NeedsDecision with the reactor's policy.
     const ReactionDeciderFn decider = [&](const Combat& cc, const NeedsDecision& n) {
-        IActorPolicy* p = policy_for(n.reactor);
+        IActorPolicy* p = policy_for(rules5e::controller_of(cc.state(), n.reactor));
         return p ? p->decide_reaction(cc, n) : ReactionDecision{n.window_seq, false, 0};
     };
     while (!c.ended() && rr.commands < max_commands) {
@@ -1239,8 +1243,9 @@ RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_comman
         const CombatantId self = rules5e::current_actor(c.state());
         if (!turn || !(*turn == c.turn_key())) {
             turn = c.turn_key();
-            IActorPolicy* p = policy_for(self);
-            target = p ? p->choose_target(c, self) : std::nullopt;   // sticky for this turn; a dead or downed one is retargeted only to spend a bonus_attack grant
+            const CombatantId who = rules5e::controller_of(c.state(), self);
+            IActorPolicy* p = policy_for(who);
+            target = p ? p->choose_target(c, rules5e::turn_body(c.state())) : std::nullopt;   // sticky for this turn; a dead or downed one is retargeted only to spend a bonus_attack grant
         }
         const auto sc = summon_turn_command(c, self);
         const Command cmd = sc ? *sc : next_command(c, target);

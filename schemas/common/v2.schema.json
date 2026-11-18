@@ -4347,7 +4347,10 @@
           "$ref": "../common/v1.schema.json#/$defs/size"
         },
         "armor_class": {
-          "$ref": "../common/v1.schema.json#/$defs/armor_class"
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 40,
+          "description": "Absolute AC for this form, the printed number (loader: integer 0..40). Not the stat-block {value, note} object."
         },
         "speed": {
           "$ref": "../common/v1.schema.json#/$defs/speed",
@@ -4600,6 +4603,10 @@
         "requires_humanoid_form": {
           "type": "boolean",
           "description": "R-G12 (7.2q), default false: the feature is not usable while in a Wild Shape form (rules UseFeature refuses: 'feature not usable in this form'). Error on the wild_shape feature itself; warning without a wild_shape feature in the document."
+        },
+        "origin": {
+          "enum": ["class", "race", "background"],
+          "description": "Possession, character@5 features only. Absent on a character means class. The validator rejects this key on a monster trait and on a character file before @5. Class and background features, and proficiency-granting race traits, are unavailable while the character is possessed."
         }
       }
     },

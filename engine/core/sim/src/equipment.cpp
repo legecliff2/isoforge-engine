@@ -412,13 +412,30 @@ void recompute_derived(rules5e::EncounterState& st, rules5e::CombatantId id, con
     for (auto& x : st.combatants) if (x.id == id) c = &x;
     if (!l || !c) return;
     const Raw r = derive_raw(*c, *l, items);
-    c->ac = clamp8(r.ac + l->ac_adjust);
+    const rules5e::Combatant::PossessionClassBase* stripped =
+        (c->possessed_by != 0 && c->possession_class_base) ? &*c->possession_class_base : nullptr;
+    // n9: a form's armor class is the form's own number (Shapechanger armor_class, Wild Shape, Polymorph).
+    // Equipment derivation must not overwrite it, and the possession class delta is not stripped from it:
+    // the form already replaced the class-derived AC. Revert restores the saved true-form AC; a later
+    // recompute, once form is None, applies the worn armor and, while possessed, the normal-form class delta.
+    if (c->form == rules5e::FormKind::None) {
+        c->ac = clamp8(r.ac + l->ac_adjust);
+        if (stripped) c->ac = clamp8(int(c->ac) - int(stripped->ac_delta));
+    }
     for (std::size_t i = 0; i < r.attacks.size() && i < c->attacks.size(); ++i) {
         if (!r.attacks[i].ok) continue;
         const int adj_hit = i < l->hit_adjust.size() ? l->hit_adjust[i] : 0;
         const int adj_dmg = i < l->dmg_adjust.size() ? l->dmg_adjust[i] : 0;
         c->attacks[i].to_hit = clamp8(r.attacks[i].to_hit + adj_hit);
         c->attacks[i].damage.bonus = int16_t(r.attacks[i].dmg + adj_dmg);
+        // Only a row this call recomputed. An unarmed or natural row keeps the value the link already stripped.
+        if (stripped) {
+            if (i < stripped->attack_hit_delta.size())
+                c->attacks[i].to_hit = clamp8(int(c->attacks[i].to_hit) - int(stripped->attack_hit_delta[i]));
+            if (i < stripped->attack_dmg_delta.size())
+                c->attacks[i].damage.bonus = int16_t(std::clamp(
+                    int(c->attacks[i].damage.bonus) - int(stripped->attack_dmg_delta[i]), -32768, 32767));
+        }
     }
 }
 

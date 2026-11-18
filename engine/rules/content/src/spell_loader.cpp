@@ -1135,6 +1135,10 @@ SpellLoad spell_from_json(const Json& j) {
                 if (s.immune_from_types & bit(ct2)) return ("effect types items must be unique");
                 s.immune_from_types |= bit(ct2);
             }
+            if (e.contains("possession")) {
+                if (!e["possession"].is_boolean() || !e["possession"].get<bool>()) return ("effect possession must be true");
+                s.blocks_possession = true;
+            }
         } else if (kind == "max_hp_bonus") {   // 7.2zd Aid
             s.kind = SpellEffectKind::MaxHpBonus;
             int f = 0, p = 0;
@@ -1500,6 +1504,7 @@ SpellLoad spell_from_json(const Json& j) {
         fx.ends_on = x.ends_on;   // 7.2zc
         fx.has_ward = x.has_ward; fx.ward_save = x.ward_save; fx.ward_on_fail = x.ward_on_fail;   // 7.2zd
         fx.immune_conditions = x.immune_conditions; fx.immune_from_types = x.immune_from_types;
+        fx.blocks_possession = x.blocks_possession;
         fx.hp_bonus_flat = x.hp_bonus_flat; fx.hp_bonus_per_slot = x.hp_bonus_per_slot;
         fx.affected_only = j["effects"][i].value("applies_to", "all") == "affected";
         s.extra_effects.push_back(fx);

@@ -128,7 +128,7 @@ TEST_CASE("v10 summon / transform kinds 48-52 are known (not counted as unknown,
     CHECK(st.skipped_unknown == 0);
     CHECK(st.log.empty());
     CHECK(sim::kLastRulesEventKindV12 == EventKind::Commanded);
-    CHECK(sim::kLastRulesEventKind == EventKind::LegendaryActionsRegained);
+    CHECK(sim::kLastRulesEventKind == EventKind::PossessionEnded);
 }
 
 TEST_CASE("v13 legendary kinds 53-54 are known (not counted as unknown, not shown)") {
@@ -140,9 +140,22 @@ TEST_CASE("v13 legendary kinds 53-54 are known (not counted as unknown, not show
     CHECK(st.log.empty());
 }
 
+TEST_CASE("v14 possession kinds 55-56 are known (not counted as unknown, not shown)") {
+    std::vector<SimEvent> evs;
+    for (int k = 55; k <= 56; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));
+    FeedState st;
+    slice::apply_events(evs, st, nm);
+    CHECK(st.skipped_unknown == 0);
+    CHECK(st.log.empty());
+    CHECK(slice::known_rules_kind(EventKind(55)));
+    CHECK(slice::known_rules_kind(EventKind(56)));
+}
+
 TEST_CASE("unknown event kinds are skipped (above kLastRulesEventKind, future sim kinds)") {
     std::vector<SimEvent> evs;
-    for (int k = 55; k <= 56; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));   // past v13's last kind (54)
+    const int future_kind = int(sim::kLastRulesEventKind) + 1;
+    for (int k = future_kind; k <= future_kind + 1; ++k)
+        evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));   // past the last rules kind this schema surfaces
     evs.push_back(rules(EventKind(250), 1));
     SimEvent future;
     future.kind = SimEvent::Kind(7);
@@ -153,7 +166,7 @@ TEST_CASE("unknown event kinds are skipped (above kLastRulesEventKind, future si
     FeedState st;
     st.tiles[2] = {20, 15};
     slice::apply_events(evs, st, nm);
-    CHECK(st.skipped_unknown == 4);   // 55, 56, 250, and the non-Rules sim kind
+    CHECK(st.skipped_unknown == 4);   // two future rules kinds, 250, and the non-Rules sim kind
     CHECK(st.tiles[2] == Vec2i{20, 15});   // the unknown kind did not move anyone
     REQUIRE(st.log.size() == 1);
     CHECK(st.log[0] == "GOBLIN DIES!");

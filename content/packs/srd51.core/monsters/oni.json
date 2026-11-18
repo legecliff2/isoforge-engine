@@ -86,6 +86,55 @@
       "description": "The oni regains 10 hit points at the start of its turn if it has at least 1 hit point. (Descriptive only: no regeneration effect. No acid or fire suppress and no special death, so this is not the troll park. See docs/SRD_MONSTERS_DEFERRED.md.)"
     },
     {
+      "id": "change_shape",
+      "name": "Change Shape",
+      "description": "The oni magically polymorphs into a Small or Medium humanoid, into a Large giant, or back into its true form. Other than its size, its statistics are the same in each form. The only equipment that is transformed is its glaive, which shrinks so that it can be wielded in humanoid form. If the oni dies, it reverts to its true form, and its glaive reverts to its normal size. (CONTENT_CONVENTIONS §58. trait: false, so shapechanger is not set. Small and Medium: weapon_dice_multiplier 1, glaive 1d10 + 4, no claw. Large giant: size Large, glaive 2d10 + 4, no claw. True form: claw and glaive 2d10 + 4.)",
+      "effect": {
+        "kind": "shapechanger",
+        "cost": "action",
+        "trait": false,
+        "true_form": {
+          "actions": [
+            "claw",
+            "glaive",
+            "claw_x2",
+            "glaive_x2"
+          ]
+        },
+        "forms": [
+          {
+            "id": "small_humanoid",
+            "name": "Small humanoid",
+            "size": "small",
+            "weapon_dice_multiplier": 1,
+            "actions": [
+              "glaive",
+              "glaive_x2"
+            ]
+          },
+          {
+            "id": "medium_humanoid",
+            "name": "Medium humanoid",
+            "size": "medium",
+            "weapon_dice_multiplier": 1,
+            "actions": [
+              "glaive",
+              "glaive_x2"
+            ]
+          },
+          {
+            "id": "large_giant",
+            "name": "Large giant",
+            "size": "large",
+            "actions": [
+              "glaive",
+              "glaive_x2"
+            ]
+          }
+        ]
+      }
+    },
+    {
       "id": "multiattack",
       "name": "Multiattack",
       "description": "The oni makes two attacks, either with its claws or its glaive. (Exactly two options: claw x2 or glaive x2. a6212be action_options also lists a mixed glaive and claw; the SRD line is either/or, so that mix is not an option. See docs/SRD_MONSTERS_DEFERRED.md.)",
@@ -129,7 +178,7 @@
           "type": "slashing"
         }
       ],
-      "description": "Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 8 (1d8 + 4) slashing damage. (Oni Form Only is descriptive: Change Shape is not live, so this is the authored true form's claw. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "description": "Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 8 (1d8 + 4) slashing damage. (Oni Form Only: the true form lists this claw. Small, Medium, and Large giant forms do not.)"
     },
     {
       "id": "glaive",
@@ -147,13 +196,7 @@
           "type": "slashing"
         }
       ],
-      "description": "Melee Weapon Attack: +7 to hit, reach 10 ft., one target. Hit: 15 (2d10 + 4) slashing damage, or 9 (1d10 + 4) slashing damage in Small or Medium form. (The Small or Medium form line is descriptive only: Change Shape is not live, and the a6212be damage array is 2d10+4 only. See docs/SRD_MONSTERS_DEFERRED.md.)"
-    },
-    {
-      "id": "change_shape",
-      "name": "Change Shape",
-      "kind": "special",
-      "description": "The oni magically polymorphs into a Small or Medium humanoid, into a Large giant, or back into its true form. Other than its size, its statistics are the same in each form. The only equipment that is transformed is its glaive, which shrinks so that it can be wielded in humanoid form. If the oni dies, it reverts to its true form, and its glaive reverts to its normal size. (Descriptive only: no shapechanger forms, and shapechanger is not set. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "description": "Melee Weapon Attack: +7 to hit, reach 10 ft., one target. Hit: 15 (2d10 + 4) slashing damage, or 9 (1d10 + 4) slashing damage in Small or Medium form. (Small and Medium forms set weapon_dice_multiplier 1, so this glaive is 1d10 + 4. The true form and the Large giant form keep 2d10 + 4. The printed average is 9.)"
     }
   ]
 }

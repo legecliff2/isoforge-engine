@@ -77,7 +77,50 @@
     {
       "id": "shapechanger",
       "name": "Shapechanger",
-      "description": "The wererat can use its action to polymorph into a rat-humanoid hybrid or into a giant rat, or back into its true form, which is humanoid. Its statistics, other than its size, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (Descriptive only: no shapechanger forms. The humanoid form is the authored stat block. Hybrid and rat, including the rat form's darkvision 60 ft., are not separate statistics. shapechanger: true is the Moonbeam fact. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "description": "The wererat can use its action to polymorph into a rat-humanoid hybrid or into a giant rat, or back into its true form, which is humanoid. Its statistics, other than its size, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (CONTENT_CONVENTIONS §58. AC 12 and walk 30 in every form. True form: Medium, shortsword and hand crossbow. Hybrid: Medium, those weapons and bite. Rat: Small, darkvision 60, bite only. Keen Smell stays description-only. Can't speak in rat form is not a speech rule.)",
+      "effect": {
+        "kind": "shapechanger",
+        "cost": "action",
+        "true_form": {
+          "actions": [
+            "shortsword",
+            "hand_crossbow",
+            "shortsword_x2",
+            "hand_crossbow_x2",
+            "shortsword_hand_crossbow"
+          ]
+        },
+        "forms": [
+          {
+            "id": "hybrid",
+            "name": "Hybrid",
+            "size": "medium",
+            "actions": [
+              "shortsword",
+              "hand_crossbow",
+              "bite",
+              "shortsword_x2",
+              "hand_crossbow_x2",
+              "shortsword_hand_crossbow",
+              "shortsword_bite",
+              "bite_shortsword",
+              "hand_crossbow_bite",
+              "bite_hand_crossbow"
+            ]
+          },
+          {
+            "id": "rat",
+            "name": "Rat",
+            "size": "small",
+            "senses": {
+              "darkvision": 60
+            },
+            "actions": [
+              "bite"
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "keen_smell",
@@ -87,7 +130,7 @@
     {
       "id": "multiattack",
       "name": "Multiattack",
-      "description": "The wererat makes two attacks, only one of which can be a bite. (Humanoid form, authored: two shortswords, two hand crossbows, or one shortsword and one hand crossbow. The bite is not one of those attacks. See docs/SRD_MONSTERS_DEFERRED.md.)",
+      "description": "The wererat makes two attacks, only one of which can be a bite. (Humanoid or Hybrid Form Only. Humanoid: two shortswords, two hand crossbows, or one of each. Hybrid adds a shortsword or hand crossbow with one bite, either order.)",
       "effect": {
         "kind": "multiattack",
         "options": [
@@ -111,6 +154,34 @@
               "shortsword",
               "hand_crossbow"
             ]
+          },
+          {
+            "id": "shortsword_bite",
+            "attacks": [
+              "shortsword",
+              "bite"
+            ]
+          },
+          {
+            "id": "bite_shortsword",
+            "attacks": [
+              "bite",
+              "shortsword"
+            ]
+          },
+          {
+            "id": "hand_crossbow_bite",
+            "attacks": [
+              "hand_crossbow",
+              "bite"
+            ]
+          },
+          {
+            "id": "bite_hand_crossbow",
+            "attacks": [
+              "bite",
+              "hand_crossbow"
+            ]
           }
         ]
       }
@@ -120,8 +191,22 @@
     {
       "id": "bite",
       "name": "Bite",
-      "kind": "special",
-      "description": "Bite (Rat or Hybrid Form Only). Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 4 (1d4 + 2) piercing damage. If the target is a humanoid, it must succeed on a DC 11 Constitution saving throw or be cursed with wererat lycanthropy. (Descriptive only: not a weapon attack on the authored humanoid form. The lycanthropy curse is not encoded. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "dex"
+      },
+      "ability": "dex",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Bite (Rat or Hybrid Form Only). Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 4 (1d4 + 2) piercing damage. If the target is a humanoid, it must succeed on a DC 11 Constitution saving throw or be cursed with wererat lycanthropy. (The lycanthropy curse stays description-only. HOLD. No save is rolled. +4 and +2 are Dex, not Str.)"
     },
     {
       "id": "shortsword",

@@ -339,7 +339,7 @@ std::optional<uint8_t> Combat::multiattack_option(CombatantId id, std::string_vi
 bool Combat::hostile(CombatantId a, CombatantId b) const {
     const auto* ca = rules5e::find(state_, a);
     const auto* cb = rules5e::find(state_, b);
-    return ca && cb && ca->team != cb->team;
+    return ca && cb && rules5e::side_of(state_, *ca) != rules5e::side_of(state_, *cb);
 }
 const rules5e::SpellDef* Combat::spell_def(uint32_t id) const { return spells_ ? spells_->find(id) : nullptr; }
 
@@ -495,7 +495,7 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
     std::vector<CombatantId> out;
     for (const auto& sl : slots_) {
         const auto* c = rules5e::find(state_, sl.id);
-        if (sl.id == caster || !c || c->dead) continue;
+        if (sl.id == caster || !c || c->dead || c->possessing != 0) continue;
         const Spot s = spot(sl.id);
         bool hit = false;
         for (int y = 0; y < s.n && !hit; ++y)
@@ -703,6 +703,7 @@ rules5e::Cover Combat::cover_between(Vec2i origin, int origin_n, int origin_ft, 
     std::vector<std::pair<std::pair<int, int>, std::pair<int, int>>> crowd;
     for (const auto& sl : slots_) {
         if (sl.gone || sl.id == except_a || sl.id == except_b) continue;
+        if (const auto* ac = rules5e::find(state_, sl.id); ac && ac->possessing != 0) continue;
         const auto* c = rules5e::find(state_, sl.id);
         if (!c || c->dead) continue;
         const Spot s = spot(sl.id);
@@ -769,8 +770,11 @@ rules5e::Cover Combat::cover_between(Vec2i origin, int origin_n, int origin_ft, 
 
 rules5e::SightFacts Combat::sight_facts_of(CombatantId viewer, CombatantId subject) const {
     rules5e::SightFacts f;
-    if (!rules5e::find(state_, viewer) || !rules5e::find(state_, subject)) {
+    const auto* viewer_c = rules5e::find(state_, viewer);
+    const auto* subject_c = rules5e::find(state_, subject);
+    if (!viewer_c || !subject_c || viewer_c->possessing != 0 || subject_c->possessing != 0) {
         f.line_of_sight = false;
+        f.audible = false;
         return f;
     }
     const Vec2i vp = pos(viewer), sp = pos(subject);
@@ -889,8 +893,8 @@ bool Combat::ally_near(CombatantId attacker, Spot target) const {
     if (!me) return false;
     for (const auto& sl : slots_) {
         const auto* c = rules5e::find(state_, sl.id);
-        if (sl.id == attacker || !c || c->dead || c->team != me->team || !rules5e::is_conscious(*c) ||
-            rules5e::is_incapacitated(*c))
+        if (sl.id == attacker || !c || c->dead || rules5e::side_of(state_, *c) != rules5e::side_of(state_, *me) ||
+            !rules5e::is_conscious(*c) || rules5e::counts_as_incapacitated(*c) || c->possessing != 0)
             continue;
         const Spot as = spot(sl.id);
         if (rect_distance(as.p, as.n, target.p, target.n) <= 1) return true;
@@ -926,7 +930,7 @@ std::vector<Vec2i> Combat::occupied_except(CombatantId id) const {
     for (const auto& s : slots_) if (s.id == id) mover_swarm = s.archetype->swarm;
     for (const auto& s : slots_) {
         const auto* c = rules5e::find(state_, s.id);
-        if (s.id == id || !c || c->dead) continue;
+        if (s.id == id || !c || c->dead || c->possessing != 0) continue;
         // EC swarm (SRD Swarm): a swarm can occupy another creature's space and vice versa, so a swarm mover sees no other
         // creature's tiles and a swarm's tiles block no one. Without swarms this is the old list.
         if (s.archetype->swarm || mover_swarm) continue;
@@ -1267,7 +1271,8 @@ rules5e::HealSplitCheck Combat::heal_split_check(CombatantId user, const rules5e
 }
 bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
     const ActiveFeature* f = find_active(archetype(id), fid);
-    if (!f || state_.ended || state_.pending || rules5e::current_actor(state_) != id) return false;
+    if (!f || state_.ended || state_.pending || rules5e::turn_body(state_) != id) return false;
+    if (const auto* k0 = rules5e::find(state_, id); k0 && k0->possessed_by != 0 && rules5e::current_actor(state_) == id) return false;
     if (feature_uses_left(id, fid) == 0) return false;
     if (const Archetype* ar = archetype(id)) {   // R-G12 wild_shape: its uses are a resources[] pool (form features only)
         const auto sp = ar->feature_specs.find(fid);
@@ -1339,9 +1344,9 @@ void Combat::bind_legendary_walk() {
 
 std::optional<Vec2i> Combat::moving_to(CombatantId id) const {
     if (legendary_to_ && id == legendary_mover_) return legendary_to_;
-    if (step_to_ && id == rules5e::current_actor(state_)) return step_to_;
+    if (step_to_ && id == rules5e::turn_body(state_)) return step_to_;
     // A readied Move resolving inside another creature's request.
-    if (id != rules5e::current_actor(state_)) return readied_destination(id);
+    if (id != rules5e::turn_body(state_)) return readied_destination(id);
     return std::nullopt;
 }
 
@@ -1402,6 +1407,67 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     // TokenSpawned right after it; a SummonEnded marks the slot gone (TokenRemoved after the step's sim events, see below).
     for (std::size_t i = 0; i < split; ++i) push_rules_event(evs[i], &ls);
     sync_ecs();
+    // Possession ended this step: put the ghost back, nearest unoccupied space within 5 ft of the
+    // body, then the nearest space at any distance. Row-major ties. The body's altitude and plane.
+    if (!state_.possession_exits.empty()) {
+        for (const auto& ex : state_.possession_exits) {
+            if (!ex.place) continue;
+            Slot* sl = nullptr;
+            for (auto& s : slots_) if (s.id == ex.ghost) sl = &s;
+            if (!sl || sl->gone || !reg_->alive(sl->entity)) continue;
+            const Spot anchor = spot(ex.body);
+            const int fp = std::max(1, footprint_size(ex.ghost));
+            const auto occ = occupied_except(ex.ghost);
+            auto free_at = [&](Vec2i p) {
+                if (!grid_.footprint_walkable(p, fp)) return false;
+                for (int dy = 0; dy < fp; ++dy)
+                    for (int dx = 0; dx < fp; ++dx)
+                        if (std::find(occ.begin(), occ.end(), Vec2i{p.x + dx, p.y + dy}) != occ.end()) return false;
+                return true;
+            };
+            int x0 = 0, y0 = 0, x1 = -1, y1 = -1;
+            grid_.world_bounds(x0, y0, x1, y1);
+            Vec2i chosen{};
+            bool got = false;
+            int best_near = 0;
+            // Within 5 ft of the body's whole footprint, nearest the anchor, ties in row-major order.
+            for (int y = y0; y <= y1; ++y)
+                for (int x = x0; x <= x1; ++x) {
+                    const Vec2i p{x, y};
+                    if (rect_distance(p, fp, anchor.p, anchor.n) > 1 || !free_at(p)) continue;
+                    const int dx = p.x > anchor.p.x ? p.x - anchor.p.x : anchor.p.x - p.x;
+                    const int dy = p.y > anchor.p.y ? p.y - anchor.p.y : anchor.p.y - p.y;
+                    const int near = dx > dy ? dx : dy;
+                    if (!got || near < best_near) { best_near = near; chosen = p; got = true; }
+                }
+            if (!got) {
+                int best = 0;
+                for (int y = y0; y <= y1; ++y)
+                    for (int x = x0; x <= x1; ++x) {
+                        const Vec2i p{x, y};
+                        if (!free_at(p)) continue;
+                        const int d = rect_distance(p, fp, anchor.p, anchor.n);
+                        if (!got || d < best) { best = d; chosen = p; got = true; }
+                    }
+            }
+            if (!got) continue;
+            if (auto* ghost = rules5e::find(state_, ex.ghost)) {
+                // altitude matches the body. Plane was copied at link and stays.
+                if (const auto* body = rules5e::find(state_, ex.body)) {
+                    for (auto& g : state_.combatants)
+                        if (g.id == ex.ghost) g.alt_ft = body->alt_ft;
+                }
+                (void)ghost;
+            }
+            if (TilePos* tp = reg_->get<TilePos>(sl->entity)) { tp->x = chosen.x; tp->y = chosen.y; }
+            else reg_->emplace(sl->entity, TilePos{chosen.x, chosen.y});
+            SimEvent se;
+            se.kind = SimEvent::Kind::TileMoved;
+            se.actor = ex.ghost;
+            se.tile = chosen;
+            events_.push_back(se);
+        }
+    }
     // R-G8 helpers: put a creature on a tile (forced movement / drag), and end grapples whose holder and held creature are
     // farther apart than the grapple's reach after an effect moved one of them (Grappled is removed from the target; the
     // next step prunes the entry). A plain grapple (via_attack 0xFF, the Grapple action) is 5 ft. An extended rider uses
@@ -1751,7 +1817,7 @@ bool Combat::ranged_attack_facts(CombatantId actor, uint8_t ai, Spot from, Spot 
     for (const auto& sl : slots_) {
         const auto* c = rules5e::find(state_, sl.id);
         if (sl.id == actor || !c || c->dead || !hostile(sl.id, actor) || !rules5e::is_conscious(*c) ||
-            rules5e::is_incapacitated(*c))
+            rules5e::counts_as_incapacitated(*c) || c->possessing != 0)
             continue;
         if (spot_distance(from, za, spot(sl.id), abs_height_ft(sl.id)) <= 1) req.ranged_hostile_within_5ft = true;
     }
@@ -1855,7 +1921,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     SubmitResult r;
     derived_area_ = false;
     clear_legendary_move();
-    const CombatantId actor = rules5e::current_actor(state_);
+    CombatantId actor = rules5e::current_actor(state_);
     // Legendary window: the offered creature, not the creature whose turn just ended. The destination
     // tile is logged for every LegendaryAction (MUST-1). A move is one request. The path is path_for
     // to `to`, and each tile is checked for opportunity attacks and zones. An interrupt stops on the
@@ -1943,6 +2009,15 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
         step_to_.reset();
         return finish(rules5e::step(state_, req));
     }
+    // On the possessor's turn the body's requests are the turn. EndTurn and Revert stay the ghost's.
+    if (const auto* slot_c = rules5e::find(state_, actor); slot_c && slot_c->possessing != 0 &&
+        req.kind != ActionKind::EndTurn && req.kind != ActionKind::Revert)
+        actor = slot_c->possessing;
+    if (const auto* slot_c = rules5e::find(state_, rules5e::current_actor(state_));
+        slot_c && slot_c->possessed_by != 0 && req.kind != ActionKind::EndTurn) {
+        r.error = "possessed: no control of its body";
+        return r;
+    }
     if (req.actor != actor) { r.error = "not this combatant's turn"; return r; }
     if (req.kind == ActionKind::Move) { r.error = "use Step commands for movement (sim paths the grid)"; return r; }
     // SRD (feat/size-space): a creature can't willingly end its move in another creature's space. The turn may not end
@@ -2027,7 +2102,8 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             req.ranged_hostile_within_5ft = false;
             for (const auto& sl : slots_) {
                 const auto* c = rules5e::find(state_, sl.id);
-                if (sl.id == actor || !c || c->dead || !hostile(sl.id, actor) || !rules5e::is_conscious(*c) || rules5e::is_incapacitated(*c)) continue;
+                if (sl.id == actor || !c || c->dead || !hostile(sl.id, actor) || !rules5e::is_conscious(*c) ||
+                    rules5e::counts_as_incapacitated(*c) || c->possessing != 0) continue;
                 if (spot_distance(from, abs_height_ft(actor), spot(sl.id), abs_height_ft(sl.id)) <= 1) req.ranged_hostile_within_5ft = true;
             }
         }
@@ -2204,7 +2280,12 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
 
 SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to, uint16_t jump_ft) {
     SubmitResult r;
-    const CombatantId mover = rules5e::current_actor(state_);
+    const CombatantId mover = rules5e::turn_body(state_);
+    if (const auto* slot_c = rules5e::find(state_, rules5e::current_actor(state_));
+        slot_c && slot_c->possessed_by != 0) {
+        r.error = "possessed: no control of its body";
+        return r;
+    }
     if (state_.budget.gaze_pending) { r.error = "gaze pending: answer with GazeResponse first"; return r; }
     if (state_.budget.appearance_pending) { r.error = "appearance pending: answer with AppearanceResponse first"; return r; }
     const Vec2i from = pos(mover);
@@ -2679,7 +2760,7 @@ uint64_t Combat::hash() const {
         }
     }
     // 0xEA (Shapechange B7): Moonbeam's form lock. Folded only while some form_lock_zones is non-empty,
-    // so a fight that never fails that save hashes as before. Next free tag is 0xEB.
+    // so a fight that never fails that save hashes as before. Next free tag is 0xEC.
     // u32 count of locked combatants, then per such combatant in combatants order: id, zone count, zone ids ascending.
     {
         uint32_t locked = 0;
@@ -2692,6 +2773,32 @@ uint64_t Combat::hash() const {
                 h.u32(c.id);
                 h.u32(uint32_t(c.form_lock_zones.size()));
                 for (const uint32_t zone_id : c.form_lock_zones) h.u32(zone_id);
+            }
+        }
+    }
+    // 0xEB (Possession): the link and the overlay's saved mental block. Folded only while some
+    // possessing id is non-zero, so a fight with no possession hashes as before. Combat::hash never
+    // folds AC, attacks, or speed. class_live is captured deterministically at the link (kind 55 is
+    // in the hashed stream), and replay re-derives it. Next free tag is 0xEC.
+    {
+        uint32_t links = 0;
+        for (const auto& c : state_.combatants) if (c.possessing != 0) ++links;
+        if (links != 0) {
+            h.byte(0xEB);
+            h.u32(links);
+            for (const auto& c : state_.combatants) {
+                if (c.possessing == 0) continue;
+                h.u32(c.id);
+                h.u32(c.possessing);
+                const auto* body = rules5e::find(state_, c.possessing);
+                const auto* o = body ? (body->possession_overlay ? &*body->possession_overlay : nullptr) : nullptr;
+                h.byte(o ? 1 : 0);
+                if (!o) continue;
+                h.byte(uint8_t(o->body_int)); h.byte(uint8_t(o->body_wis)); h.byte(uint8_t(o->body_cha));
+                h.byte(uint8_t(o->ghost_int)); h.byte(uint8_t(o->ghost_wis)); h.byte(uint8_t(o->ghost_cha));
+                h.u32(o->save_proficiencies); h.u32(o->skill_proficiencies); h.u32(o->condition_immunities);
+                h.u32(o->suspended_conditions); h.u32(o->spell_id);
+                h.u32(o->immunity_hours); h.byte(o->immunity_scope);
             }
         }
     }
@@ -3013,7 +3120,7 @@ int Combat::abs_height_at(CombatantId id, Vec2i anchor, int alt_delta_ft) const 
     return g + (c ? int(c->alt_ft) : 0) + alt_delta_ft;
 }
 int Combat::moving_abs_height(CombatantId id, Vec2i anchor) const {
-    const bool resolving = step_to_ && id == rules5e::current_actor(state_);
+    const bool resolving = step_to_ && id == rules5e::turn_body(state_);
     return abs_height_at(id, anchor, resolving ? int(step_alt_) : 0);
 }
 bool Combat::airborne(CombatantId id) const {
@@ -3041,7 +3148,7 @@ std::vector<Vec2i> Combat::occupied_except(CombatantId id, int abs_ft) const {
     const int n = footprint_size(id);
     for (const auto& s : slots_) {
         const auto* c = rules5e::find(state_, s.id);
-        if (s.id == id || !c || c->dead || s.archetype->swarm || mover_swarm) continue;
+        if (s.id == id || !c || c->dead || c->possessing != 0 || s.archetype->swarm || mover_swarm) continue;
         if (!spans_overlap(abs_ft, n, abs_height_ft(s.id), footprint_size(s.id))) continue;
         for (Vec2i t : footprint_tiles(s.id)) out.push_back(t);
     }

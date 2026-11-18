@@ -32,6 +32,8 @@ uint32_t event_stream_version(std::span<const SimEvent> events) {
                 if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKindV9)) v = std::max<uint32_t>(v, 10);
                 // v13: legendary actions (LegendaryActionUsed / LegendaryActionsRegained, 53-54). Kinds 48-52 stay v10.
                 if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKindV12)) v = std::max<uint32_t>(v, 13);
+                // v14: Possessed / PossessionEnded (55-56). A stream without them stays at most 13.
+                if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKindV13)) v = std::max<uint32_t>(v, 14);
                 break;
             default: break;
         }

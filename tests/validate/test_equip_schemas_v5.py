@@ -190,6 +190,7 @@ class AppendOnly(unittest.TestCase):
                           "also_on_fail_by", "immune_on_success", "target_must_see_source",   # Tier-A §26
                           "drop_to_zero", "target_has_condition", "caster_sees_target",   # B15 Death Glare
                           "charm_command", "drain_max_hp",   # B16 Charm and Draining Kiss
+                          "possess",   # Possession, CONTENT_CONVENTIONS §59
                           "exclude_creature_types", "immune_on_end", "age_on_fail_by",   # B17 Horrifying Visage
                           "rider_only",   # B3b chuul Tentacles free rider
                           "escalates", "escalate_to", "escalate_margin",   # B4 area save petrify

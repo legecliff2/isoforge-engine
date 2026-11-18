@@ -253,7 +253,8 @@ EquipCost equip_legal(const EncounterState& s, const ActionRequest& r) {
     if (!v) return no("equip: equipment play is off");
     const auto op = EquipOp(r.equip_op);
     if (op == EquipOp::None || r.equip_op > uint8_t(EquipOp::SetLightState)) return no("equip: unknown equip op");
-    if (s.ended || s.order.empty() || current_actor(s) != r.actor) return no("equip: not your turn");
+    if (s.ended || s.order.empty() || turn_body(s) != r.actor) return no("equip: not your turn");
+    if (const Combatant* slot = find(s, current_actor(s)); slot && slot->possessed_by != 0) return no("possessed: no control of its body");
     const Combatant* a = combatant(s, r.actor);
     if (!a || a->dead || a->hp <= 0 || is_incapacitated(*a)) return no("equip: the creature cannot act");
     if (op == EquipOp::DonArmor || op == EquipOp::DoffArmor) return no("equip: armor cannot be changed in combat");
@@ -352,7 +353,8 @@ EquipCost equip_legal(const EncounterState& s, const ActionRequest& r) {
 std::vector<ActionRequest> equip_legal_actions(const EncounterState& s) {
     std::vector<ActionRequest> out;
     if (s.ended || s.order.empty()) return out;
-    const CombatantId id = current_actor(s);
+    const CombatantId id = turn_body(s);
+    if (const Combatant* slot = find(s, current_actor(s)); slot && slot->possessed_by != 0) return out;
     const LoadoutView* v = loadout_view(s, id);
     if (!v) return out;
     auto push = [&](EquipOp op, uint32_t instance, uint8_t hand) {

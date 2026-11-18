@@ -87,17 +87,20 @@
     {
       "id": "darkvision",
       "name": "Darkvision",
-      "description": "You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can't discern color in darkness, only shades of gray. (Modelled: senses.darkvision 60.)"
+      "description": "You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can't discern color in darkness, only shades of gray. (Modelled: senses.darkvision 60.)",
+      "origin": "race"
     },
     {
       "id": "hellish_resistance",
       "name": "Hellish Resistance",
-      "description": "You have resistance to fire damage. (Modelled: damage_resistances.)"
+      "description": "You have resistance to fire damage. (Modelled: damage_resistances.)",
+      "origin": "race"
     },
     {
       "id": "infernal_legacy",
       "name": "Infernal Legacy",
-      "description": "You know the thaumaturgy cantrip. Once you reach 3rd level, you can cast the hellish rebuke spell as a 2nd-level spell; you must finish a long rest in order to cast the spell again with this trait. Once you reach 5th level, you can also cast the darkness spell; you must finish a long rest in order to cast the spell again with this trait. Charisma is your spellcasting ability for these spells. (Description only: thaumaturgy is not shipped, out of combat scope.)"
+      "description": "You know the thaumaturgy cantrip. Once you reach 3rd level, you can cast the hellish rebuke spell as a 2nd-level spell; you must finish a long rest in order to cast the spell again with this trait. Once you reach 5th level, you can also cast the darkness spell; you must finish a long rest in order to cast the spell again with this trait. Charisma is your spellcasting ability for these spells. (Description only: thaumaturgy is not shipped, out of combat scope.)",
+      "origin": "race"
     }
   ],
   "equipment": [

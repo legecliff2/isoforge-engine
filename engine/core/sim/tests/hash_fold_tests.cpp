@@ -3,6 +3,7 @@
 // no public API can); it is not part of the sim contract.
 #include <doctest/doctest.h>
 
+#include <fstream>
 #include "sample_set.hpp"
 #include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
@@ -387,4 +388,157 @@ TEST_CASE("Combat::log_hash: the chosen condition (0xCF), 7.2ze Blindness/Deafne
     CHECK(c0->log_hash() != h1);
     q.condition_choice = 1;
     CHECK(c0->log_hash() == h1);
+}
+
+TEST_CASE("Combat::hash 0xEB folds only while a possession link exists") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    const auto ch = arena();
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 9);
+    REQUIRE(c);
+    const uint64_t h0 = c->hash();
+    auto& st = CombatTestAccess::state(*c);
+    const rules5e::CombatantId body = ch.spawns[0].stable_id;
+    const rules5e::CombatantId ghost = ch.spawns[1].stable_id;
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(st, ghost, body, 1, 24, 1, ev).empty());
+    CHECK(c->hash() != h0);
+    rules5e::end_possession(st, ghost, 2, ev, false);
+    st.action_immunities.clear();
+    st.possession_exits.clear();
+    CHECK(c->hash() == h0);
+}
+
+TEST_CASE("a possessing ghost is outside areas and sight, and a replay keeps a live link") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    world::Chunk ch = arena();
+    ch.spawns[1].tile = {6, 5};
+    ch.spawns.push_back({"srd51.character.fighter_1", {7, 5}, world::spawn_stable_id(ch.coord, 2), ""});
+    ch.content_hash = world::compute_content_hash(ch);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 9);
+    REQUIRE(c);
+    const CombatantId body = ch.spawns[0].stable_id;
+    const CombatantId ghost = ch.spawns[1].stable_id;
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(CombatTestAccess::state(*c), ghost, body, 1, 24, 1, ev).empty());
+    rules5e::SpellDef area;
+    area.area = rules5e::AreaShape::Sphere;
+    area.area_size_ft = 30;
+    area.range_ft = 30;
+    std::string err;
+    const auto ids = c->area_targets(body, area, c->pos(body), &err);
+    CHECK(std::find(ids.begin(), ids.end(), ghost) == ids.end());
+    CHECK_FALSE(c->sight_facts_of(body, ghost).line_of_sight);
+    for (int i = 0; i < 8 && rules5e::current_actor(c->state()) != ghost; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(c->state()), rules5e::ActionKind::EndTurn};
+        REQUIRE(c->submit(e).ok);
+    }
+    const CombatantId ally = ch.spawns[2].stable_id;
+    for (int i = 0; i < 8 && rules5e::current_actor(c->state()) != ally; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(c->state()), rules5e::ActionKind::EndTurn};
+        REQUIRE(c->submit(e).ok);
+    }
+    Command atk;
+    atk.request = {ally, rules5e::ActionKind::Attack, ghost};
+    auto denied = c->submit(atk);
+    CHECK_FALSE(denied.ok);
+    CHECK(denied.error == "can't target a possessing ghost");
+
+    std::ifstream goblin_file(std::string(ENGINE_SOURCE_ROOT) + "/content/packs/srd51.core/monsters/goblin.json");
+    REQUIRE(goblin_file.good());
+    assets::Json possessor = assets::Json::parse(goblin_file);
+    possessor["$schema"] = "monster@5";
+    possessor["id"] = "t.possessor";
+    possessor["actions"].push_back({{"id", "possession"}, {"name", "Possession"}, {"kind", "save_effect"},
+                                    {"possess", true}, {"caster_sees_target", true}, {"range_ft", 5},
+                                    {"target_creature_types", assets::Json::array({"humanoid"})},
+                                    {"save", {{"ability", "cha"}, {"dc", 30}}},
+                                    {"immune_on_success", {{"hours", 24}, {"scope", "same_source"}}}});
+    REQUIRE_FALSE(l.add(possessor, "monster", "", 5));
+    world::Chunk near{};
+    near.coord = {5, 5, 0};
+    near.origin = world::Chunk::Origin::Handcrafted;
+    near.palette = {"", "floor"};
+    for (auto& cell : near.layers[0]) cell.tile = 1;
+    near.spawns.push_back({"srd51.character.fighter_1", {5, 5}, world::spawn_stable_id(near.coord, 0), ""});
+    near.spawns.push_back({"t.possessor", {6, 5}, world::spawn_stable_id(near.coord, 1), ""});
+    near.content_hash = world::compute_content_hash(near);
+    ecs::Registry reg2;
+    auto fight = Combat::create(reg2, near, l, 11);
+    REQUIRE(fight);
+    const CombatantId host = near.spawns[0].stable_id;
+    const CombatantId caster = near.spawns[1].stable_id;
+    const auto* arch = l.find("t.possessor");
+    REQUIRE(arch);
+    REQUIRE_FALSE(arch->save_actions.empty());
+    const uint32_t poss_id = arch->save_actions.back().spell_id;
+    for (int i = 0; i < 8 && rules5e::current_actor(fight->state()) != caster; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(fight->state()), rules5e::ActionKind::EndTurn};
+        REQUIRE(fight->submit(e).ok);
+    }
+    Command cast;
+    cast.request = {caster, rules5e::ActionKind::CastSpell, host};
+    cast.request.spell_id = poss_id;
+    auto linked = fight->submit(cast);
+    REQUIRE_MESSAGE(linked.ok, linked.error);
+    CHECK(rules5e::find(fight->state(), caster)->possessing == host);
+    ecs::Registry again_reg;
+    std::string replay_err;
+    auto again = replay(again_reg, near, l, fight->seed(), fight->log(), &replay_err);
+    INFO(replay_err);
+    REQUIRE(again);
+    CHECK(again->hash() == fight->hash());
+    CHECK(rules5e::find(again->state(), caster)->possessing == host);
+}
+
+TEST_CASE("a large body's exit places the ghost within 5 feet of the whole footprint") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    world::Chunk ch{};
+    ch.coord = {5, 5, 0};
+    ch.origin = world::Chunk::Origin::Handcrafted;
+    ch.palette = {"", "floor", "wall"};
+    for (auto& cell : ch.layers[0]) cell.tile = 1;
+    ch.spawns.push_back({"srd51.character.fighter_1", {5, 5}, world::spawn_stable_id(ch.coord, 0), ""});
+    ch.spawns.push_back({"srd51.monster.goblin", {7, 5}, world::spawn_stable_id(ch.coord, 1), ""});
+    ch.spawns.push_back({"srd51.character.fighter_1", {4, 4}, world::spawn_stable_id(ch.coord, 2), ""});
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) {
+            const bool body = (x == 5 || x == 6) && (y == 5 || y == 6);
+            const bool far = x == 7 && y == 5;
+            const bool ally = x == 4 && y == 4;
+            if (!body && !far && !ally)
+                ch.layers[2][std::size_t(y * 32 + x)].flags = world::tile_flags::kBlocksMove;
+        }
+    ch.content_hash = world::compute_content_hash(ch);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 3);
+    REQUIRE(c);
+    const CombatantId body = ch.spawns[0].stable_id;
+    const CombatantId ghost = ch.spawns[1].stable_id;
+    for (auto& who : CombatTestAccess::state(*c).combatants)
+        if (who.id == body) who.size = rules5e::Size::Large;
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(CombatTestAccess::state(*c), ghost, body, 1, 24, 1, ev).empty());
+    for (int i = 0; i < 8 && rules5e::current_actor(c->state()) != ghost; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(c->state()), rules5e::ActionKind::EndTurn};
+        auto r = c->submit(e);
+        REQUIRE_MESSAGE(r.ok, r.error);
+    }
+    Command rev;
+    rev.request = {ghost, rules5e::ActionKind::Revert};
+    rev.request.as_bonus_action = true;
+    auto ended = c->submit(rev);
+    REQUIRE_MESSAGE(ended.ok, ended.error);
+    const Vec2i at = c->pos(ghost);
+    CHECK(rect_distance(at, 1, {5, 5}, 2) <= 1);
+    CHECK(at.x == 7);
+    CHECK(at.y == 5);
 }
