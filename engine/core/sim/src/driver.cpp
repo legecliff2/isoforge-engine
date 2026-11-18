@@ -750,12 +750,20 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // Save actions (monster@4 / character@4, VERSION_BUMP_BATCH row 6): a single-target one (no area template) that
     // is available and in reach goes before a multiattack or a plain attack. Availability is read from the rules
     // state (recharge row expended, uses left); the AI never rolls or keeps its own flag. Area actions are the
-    // area-template row's business. A possessed body's save action is CastSpell, and the rules refuse every
-    // such cast ("possessed: the body's spells are not available"), whoever is driving.
-    if (const Archetype* arch = c.archetype(self); arch && me->possessed_by == 0 && !beast_form && s.budget.action &&
+    // area-template row's business. A possessed body may use a non-spell save action (SRD 5.1: the ghost uses the
+    // body's statistics). The rules still refuse a spell ("possessed: the body's spells are not available") and a
+    // class-feature save action whose spell id is on possession_blocked_features. Skip exactly those, whoever is driving.
+    if (const Archetype* arch = c.archetype(self); arch && !beast_form && s.budget.action &&
                                                    s.budget.sequence == 0 && s.budget.attacks_remaining == 0 &&
                                                    rules5e::is_conscious(*t))
         for (const auto& sa : arch->save_actions) {
+            if (me->possessed_by != 0) {
+                const auto* owned = c.spell_def(sa.spell_id);
+                if (!owned || owned->is_spell) continue;
+                if (std::find(me->possession_blocked_features.begin(), me->possession_blocked_features.end(),
+                              sa.spell_id) != me->possession_blocked_features.end())
+                    continue;
+            }
             if (sa.teleport || sa.rider_only || sa.leap || sa.whirl || sa.whelm || sa.ethereal || sa.illusory || sa.passage || sa.healing_touch) continue;   // blink dog: destination not guessed. B3b: a free rider is not this action. B8: the AI does not jump or land. B10: the AI does not pick a random fling. B11: the AI does not use Whelm. B19: the AI does not use Etherealness. The visible-figure action is not this AI's choice. Invisible Passage is not this AI's choice. Healing Touch would heal the current foe.
             if (sa.usage_kind == 1) {
                 const auto* u = rules5e::find_action_use(s, self, sa.spell_id);

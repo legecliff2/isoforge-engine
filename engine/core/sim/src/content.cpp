@@ -3501,6 +3501,23 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             a.save_actions.push_back(sa);
             synth.push_back(std::move(d));
         }
+    // A character save action whose content id is a blocked class, background, or proficiency-race
+    // feature is that feature (Turn Undead, Turn the Unholy). CastSpell names the synthetic spell id,
+    // not the UseFeature index, so the spell id is recorded on the same list. Monsters stay empty.
+    if (schema_type == "character") {
+        for (const auto& sa : a.save_actions) {
+            for (std::size_t i = 0; i < a.features.size(); ++i) {
+                if (a.features[i].id != sa.id) continue;
+                const uint32_t fid = uint32_t(i + 1);
+                if (std::find(c.possession_blocked_features.begin(), c.possession_blocked_features.end(), fid) ==
+                    c.possession_blocked_features.end())
+                    continue;
+                if (std::find(c.possession_blocked_features.begin(), c.possession_blocked_features.end(), sa.spell_id) ==
+                    c.possession_blocked_features.end())
+                    c.possession_blocked_features.push_back(sa.spell_id);
+            }
+        }
+    }
     // B3b: a multiattack option's free_rider names a rider_only save_effect of this creature. Sequences for the decls were
     // pushed before this loop, in the same order; teleport follow-ups are appended during it and are not decls.
     {

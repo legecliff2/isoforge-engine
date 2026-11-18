@@ -972,7 +972,9 @@ struct Combatant {
     uint8_t worn_armor = 0;
     bool worn_shield = false;
     // 1-based feature indexes (the UseFeature id) blocked while this creature is possessed:
-    // class and background features, and proficiency-granting race traits. Empty for monsters.
+    // class and background features, and proficiency-granting race traits. A character save
+    // action whose content id is one of those features also stores its synthetic spell id here
+    // (Turn Undead, Turn the Unholy), so CastSpell refuses it on the same list. Empty for monsters.
     // Content-derived. Not hashed.
     std::vector<uint32_t> possession_blocked_features{};
 };

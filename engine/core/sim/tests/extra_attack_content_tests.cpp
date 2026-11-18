@@ -669,6 +669,115 @@ TEST_CASE("a possessed form keeps its AC, and the normal-form class delta return
     CHECK(host->ac == printed);
 }
 
+TEST_CASE("equipping and unequipping in a form keeps the form stats, and possession restore stays correct") {
+    ContentLibrary lib;
+    for (const char* rel : {"content/packs/srd51.core/items/greataxe.json",
+                            "content/packs/srd51.core/items/handaxe.json",
+                            "content/packs/srd51.core/items/shield.json",
+                            "content/packs/srd51.core/items/chain_mail.json",
+                            "content/packs/srd51.core/items/longsword.json"})
+        REQUIRE_FALSE(lib.add_item(load_json(rel)));
+    Json barb = load_json("content/packs/srd51.core/characters/barbarian_level_5.json");
+    REQUIRE_FALSE(lib.add(barb, "character"));
+    Json gob = load_json("content/packs/srd51.core/monsters/goblin.json");
+    gob["id"] = "t.ghost.formequip";
+    REQUIRE_FALSE(lib.add(gob, "monster"));
+    world::Chunk chunk{};
+    chunk.coord = {5, 5, 0};
+    chunk.origin = world::Chunk::Origin::Handcrafted;
+    chunk.palette = {"", "floor"};
+    for (auto& cell : chunk.layers[0]) cell.tile = 1;
+    chunk.spawns.push_back({barb["id"].get<std::string>(), {4, 4}, world::spawn_stable_id(chunk.coord, 0), ""});
+    chunk.spawns.push_back({"t.ghost.formequip", {5, 4}, world::spawn_stable_id(chunk.coord, 1), ""});
+    chunk.spawns.push_back({barb["id"].get<std::string>(), {6, 6}, world::spawn_stable_id(chunk.coord, 2), ""});
+    chunk.content_hash = world::compute_content_hash(chunk);
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, lib, 8, CombatOptions{true});
+    REQUIRE(combat);
+    const CombatantId body = chunk.spawns[0].stable_id;
+    const CombatantId ghost = chunk.spawns[1].stable_id;
+    auto& st = const_cast<rules5e::EncounterState&>(combat->state());
+    rules5e::Combatant* host = nullptr;
+    for (auto& c : st.combatants)
+        if (c.id == body) host = &c;
+    REQUIRE(host);
+    REQUIRE_FALSE(host->attacks.empty());
+    const int printed_ac = host->ac;
+    const int printed_hit = host->attacks[0].to_hit;
+    const int printed_bonus = host->attacks[0].damage.bonus;
+    auto advance = [&](CombatantId who) {
+        for (int i = 0; i < 8 && rules5e::current_actor(combat->state()) != who; ++i) {
+            Command e;
+            e.request = {rules5e::current_actor(combat->state()), ActionKind::EndTurn};
+            REQUIRE(combat->submit(e).ok);
+        }
+        REQUIRE(rules5e::current_actor(combat->state()) == who);
+    };
+    const rules5e::Loadout* lo = combat->loadout(body);
+    REQUIRE(lo);
+    const uint32_t weapon = lo->view.main.instance;
+    REQUIRE(weapon != 0);
+    auto equip = [&](rules5e::EquipOp op) {
+        Command c;
+        c.request = {body, ActionKind::UseObject};
+        c.request.equip_op = uint8_t(op);
+        c.request.equip_item = weapon;
+        auto r = combat->submit(c);
+        REQUIRE_MESSAGE(r.ok, r.error);
+    };
+    auto hold_form = [&] {
+        host->form = rules5e::FormKind::WildShape;
+        host->ac = 13;
+        host->attacks[0].to_hit = 19;
+        host->attacks[0].damage.bonus = 17;
+    };
+    auto expect_form = [&] {
+        CHECK(host->form == rules5e::FormKind::WildShape);
+        CHECK(host->ac == 13);
+        CHECK(host->attacks[0].to_hit == 19);
+        CHECK(host->attacks[0].damage.bonus == 17);
+    };
+    advance(body);
+    hold_form();
+    equip(rules5e::EquipOp::Stow);
+    expect_form();
+    equip(rules5e::EquipOp::Draw);
+    expect_form();
+    host->form = rules5e::FormKind::None;
+    recompute_derived(st, body, *lib.items());
+    CHECK(host->ac == printed_ac);
+    CHECK(host->attacks[0].to_hit == printed_hit);
+    CHECK(host->attacks[0].damage.bonus == printed_bonus);
+
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(st, ghost, body, 1, 24, 1, ev).empty());
+    REQUIRE(host->possession_class_base);
+    const int stripped_ac = host->ac;
+    const int stripped_hit = host->attacks[0].to_hit;
+    const int stripped_bonus = host->attacks[0].damage.bonus;
+    REQUIRE(stripped_ac != printed_ac);
+    advance(ghost);
+    hold_form();
+    equip(rules5e::EquipOp::Stow);
+    expect_form();
+    equip(rules5e::EquipOp::Draw);
+    expect_form();
+    host->form = rules5e::FormKind::None;
+    recompute_derived(st, body, *lib.items());
+    CHECK(host->ac == stripped_ac);
+    CHECK(host->attacks[0].to_hit == stripped_hit);
+    CHECK(host->attacks[0].damage.bonus == stripped_bonus);
+    rules5e::end_possession(st, ghost, 2, ev, false);
+    CHECK(host->possessed_by == 0);
+    CHECK(host->ac == printed_ac);
+    CHECK(host->attacks[0].to_hit == printed_hit);
+    CHECK(host->attacks[0].damage.bonus == printed_bonus);
+    recompute_derived(st, body, *lib.items());
+    CHECK(host->ac == printed_ac);
+    CHECK(host->attacks[0].to_hit == printed_hit);
+    CHECK(host->attacks[0].damage.bonus == printed_bonus);
+}
+
 TEST_CASE("an equip during the link survives a form cycle") {
     ContentLibrary lib;
     for (const char* rel : {"content/packs/srd51.core/items/greataxe.json",
