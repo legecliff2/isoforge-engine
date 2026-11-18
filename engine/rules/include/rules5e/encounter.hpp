@@ -1473,6 +1473,10 @@ std::string_view           begin_possession(EncounterState&, CombatantId ghost, 
 // The only way the link ends. reason: 1 body at 0 HP, 2 bonus action, 3 turned, 5 possessor died.
 // place: sim puts the ghost back on a tile. False when the ghost is leaving play (end_summon).
 void                       end_possession(EncounterState&, CombatantId ghost, int reason, std::vector<Event>&, bool place = true);
+// Fold an equip (or any other live AC / speed / attack-bonus change) into the link snapshot.
+// No-op unless the body is possessed and not in a form. Never reads a stripped class field
+// (evasion, half proficiency, crit range, and the rest) back into the snapshot.
+void                       note_possession_gear(Combatant&);
 // Ends a link whose body is at 0 HP or whose possessor is dead. Called from check_end.
 void                       sweep_possession(EncounterState&, std::vector<Event>&);
 const Combatant*           find(const EncounterState&, CombatantId);

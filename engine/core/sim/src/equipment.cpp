@@ -437,6 +437,9 @@ void recompute_derived(rules5e::EncounterState& st, rules5e::CombatantId id, con
                     int(c->attacks[i].damage.bonus) - int(stripped->attack_dmg_delta[i]), -32768, 32767));
         }
     }
+    // Equip, unequip, and every other recompute. The link snapshot keeps the new AC and
+    // attack bonuses. It does not recapture class fields from the stripped body.
+    if (c->possessed_by != 0 && c->form == rules5e::FormKind::None) rules5e::note_possession_gear(*c);
 }
 
 DeriveInputs derive_inputs(const rules5e::EncounterState& st, rules5e::CombatantId id) {
