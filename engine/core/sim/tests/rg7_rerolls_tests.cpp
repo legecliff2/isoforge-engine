@@ -166,22 +166,22 @@ TEST_CASE("R-G7 loader: weapon grip bits and the v0 wield model") {
     REQUIRE(f->base.attacks.size() == 2);
     CHECK(f->base.attacks[0].properties == rules5e::kWeaponVersatile);   // longsword
     CHECK(f->base.attacks[1].properties == rules5e::kWeaponTwoHanded);   // light crossbow: ammunition / loading stay off
-    CHECK(f->two_handed_grip == 0);                                      // carries a shield
+    CHECK(f->two_handed_grip.empty());                                   // carries a shield
     REQUIRE_FALSE(lib.add(no_shield(fighter("t.twohands", {})), "character"));
-    CHECK(lib.find("t.twohands")->two_handed_grip == 1u);                // the longsword only (melee, versatile)
+    CHECK(lib.find("t.twohands")->two_handed_grip == std::vector<std::string>{"longsword"});   // melee, versatile
     Json note_only = no_shield(fighter("t.note", {}));
     note_only["armor_class"]["note"] = "Chain Mail, Shield";
     REQUIRE_FALSE(lib.add(note_only, "character"));
-    CHECK(lib.find("t.note")->two_handed_grip == 0);
+    CHECK(lib.find("t.note")->two_handed_grip.empty());
     // character@4 equipment entries: {"item": "<namespaced item id>"}
     Json v4 = no_shield(fighter("t.v4shield", {}));
     v4["equipment"] = Json::array({{{"item", "srd51.item.chain_mail"}}, {{"item", "srd51.item.shield"}}, {{"item", "srd51.item.longsword"}}});
     REQUIRE_FALSE(lib.add(v4, "character"));
-    CHECK(lib.find("t.v4shield")->two_handed_grip == 0);
+    CHECK(lib.find("t.v4shield")->two_handed_grip.empty());
     Json v4bare = no_shield(fighter("t.v4bare", {}));
     v4bare["equipment"] = Json::array({{{"item", "srd51.item.chain_mail"}}, {{"item", "srd51.item.longsword"}}});
     REQUIRE_FALSE(lib.add(v4bare, "character"));
-    CHECK(lib.find("t.v4bare")->two_handed_grip == 1u);
+    CHECK(lib.find("t.v4bare")->two_handed_grip == std::vector<std::string>{"longsword"});
 }
 
 TEST_CASE("R-G7 loader: Cutting Words compiles to Reaction{AttackRolled, SubtractRoll, dice, pool}") {
@@ -275,7 +275,7 @@ TEST_CASE("R-G7 AI: two_handed_grip for a versatile weapon held in two hands; Gr
                                   {"damage", Json::array({{{"dice", "1d4+3"}, {"type", "piercing"}}})}});
     auto lib = lib_with({plain_goblin("t.tgt")}, {no_shield(fighter("t.gwf", {{{"kind", "great_weapon_fighting"}}})), twf});
     REQUIRE_FALSE(lib.find("t.twf")->base.bonus_attacks.empty());
-    CHECK(lib.find("t.twf")->two_handed_grip == 1u);   // the loader bit; the AI drops it for a two-weapon fighter
+    CHECK(lib.find("t.twf")->two_handed_grip == std::vector<std::string>{"longsword"});   // the loader id; the AI drops it for a two-weapon fighter
     Json v4s = no_shield(fighter("t.v4s", {{{"kind", "great_weapon_fighting"}}}));
     v4s["equipment"] = Json::array({{{"item", "srd51.item.chain_mail"}}, {{"item", "srd51.item.shield"}}, {{"item", "srd51.item.longsword"}}});
     REQUIRE_FALSE(lib.add(v4s, "character"));

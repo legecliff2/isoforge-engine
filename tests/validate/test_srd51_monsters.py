@@ -1280,6 +1280,7 @@ class MonsterTable(unittest.TestCase):
             "shortsword_x2": ["shortsword", "shortsword"],
             "hand_crossbow_x2": ["hand_crossbow", "hand_crossbow"],
             "shortsword_hand_crossbow": ["shortsword", "hand_crossbow"],
+            "hand_crossbow_shortsword": ["hand_crossbow", "shortsword"],
             "shortsword_bite": ["shortsword", "bite"],
             "bite_shortsword": ["bite", "shortsword"],
             "hand_crossbow_bite": ["hand_crossbow", "bite"],
@@ -1622,7 +1623,13 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(trait("werewolf", "multiattack")["name"], "Multiattack (Humanoid or Hybrid Form Only)")
         self.assertEqual(trait("werewolf", "multiattack")["description"],
                          "The werewolf makes two attacks: one with its bite and one with its claws or spear.")
-        self.assertEqual(opts("werewolf"), {"bite_claws": ["bite", "claws"]})
+        self.assertEqual(opts("werewolf"), {
+            "bite_claws": ["bite", "claws"],
+            "claws_bite": ["claws", "bite"],
+        })
+        for sid in ("spear", "spear_two_handed", "spear_thrown"):
+            self.assertTrue(act("werewolf", sid)["description"].startswith("Spear (Humanoid Form Only). "))
+        self.assertEqual(act("werewolf", "spear")["properties"], ["versatile"])
         bite = act("werewolf", "bite")
         self.assertEqual(bite["natural"], {"dice": "1d8", "ability": "str"})
         self.assertEqual((bite["to_hit"], bite["damage"]), (4, [{"dice": "1d8+2", "type": "piercing"}]))
@@ -3592,7 +3599,7 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(wolf["true_form"]["actions"], [
             "spear", "spear_two_handed", "spear_thrown"])
         self.assertEqual([(f["id"], f["armor_class"], f.get("speed"), f["actions"]) for f in wolf["forms"]], [
-            ("hybrid", 12, None, ["bite", "claws", "bite_claws"]),
+            ("hybrid", 12, None, ["bite", "claws", "bite_claws", "claws_bite"]),
             ("wolf", 12, {"walk": 40}, ["bite"]),
         ])
         self.assertEqual((load("werewolf")["armor_class"]["value"], load("werewolf")["speed"]), (11, {"walk": 30}))

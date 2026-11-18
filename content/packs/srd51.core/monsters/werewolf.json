@@ -92,7 +92,8 @@
             "actions": [
               "bite",
               "claws",
-              "bite_claws"
+              "bite_claws",
+              "claws_bite"
             ]
           },
           {
@@ -126,6 +127,13 @@
             "attacks": [
               "bite",
               "claws"
+            ]
+          },
+          {
+            "id": "claws_bite",
+            "attacks": [
+              "claws",
+              "bite"
             ]
           }
         ]
@@ -182,13 +190,16 @@
       "ability": "str",
       "reach": 5,
       "targets": 1,
+      "properties": [
+        "versatile"
+      ],
       "damage": [
         {
           "dice": "1d6+2",
           "type": "piercing"
         }
       ],
-      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
+      "description": "Spear (Humanoid Form Only). Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
     },
     {
       "id": "spear_two_handed",
@@ -209,7 +220,7 @@
           "type": "piercing"
         }
       ],
-      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
+      "description": "Spear (Humanoid Form Only). Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
     },
     {
       "id": "spear_thrown",
@@ -233,7 +244,7 @@
           "type": "piercing"
         }
       ],
-      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
+      "description": "Spear (Humanoid Form Only). Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 5 (1d6 + 2) piercing damage, or 6 (1d8 + 2) piercing damage if used with two hands to make a melee attack."
     }
   ]
 }

@@ -8,6 +8,7 @@
 #include "rules5e/encounter.hpp"
 #include "rules5e/equipment.hpp"
 #include "sim/combat.hpp"
+#include "sim/driver.hpp"
 #include "sim/equipment.hpp"
 #include "sim/events.hpp"
 #include "world/chunk_codec.hpp"
@@ -17,7 +18,6 @@ using namespace eng::sim;
 using rules5e::ActionKind;
 using rules5e::EventKind;
 using rules5e::FormKind;
-using rules5e::Light;
 using rules5e::spell_id_of;
 using Json = assets::Json;
 
@@ -382,17 +382,17 @@ TEST_CASE("shapechanger forms: statistics, true-form attacks, speed, senses, tra
     CHECK(f.who(0).darkvision_ft == 60);
     rules5e::SightFacts facts;
     facts.distance_ft = 60;
-    facts.subject.light = Light::Dark;
+    facts.subject.light = rules5e::Light::Dark;
     auto seen = rules5e::derive_sight(f.who(0), facts);
     CHECK(seen.can_see);
-    CHECK(seen.light_at_subject == Light::Dim);
+    CHECK(seen.light_at_subject == rules5e::Light::Dim);
     f.end_turn();
     f.advance_to(f.id(0));
     REQUIRE(f.revert(f.id(0)).ok);
     CHECK(f.who(0).darkvision_ft == 0);
     facts.distance_ft = 60;
     auto blind = rules5e::derive_sight(f.who(0), facts);
-    CHECK(blind.light_at_subject == Light::Dark);
+    CHECK(blind.light_at_subject == rules5e::Light::Dark);
 
     f.end_turn();
     f.advance_to(f.id(0));
@@ -680,7 +680,7 @@ TEST_CASE("shapechanger: a form keeps each loadout attack link on its attack id"
 
 ContentLibrary pack_lib() {
     ContentLibrary lib;
-    for (const char* m : {"werewolf", "wereboar", "weretiger", "werebear", "succubus", "oni"}) {
+    for (const char* m : {"werewolf", "wererat", "wereboar", "weretiger", "werebear", "succubus", "oni"}) {
         auto e = lib.add(load_json(std::string("content/packs/srd51.core/monsters/") + m + ".json"), "monster");
         INFO(m);
         INFO(e.value_or(""));
@@ -822,7 +822,7 @@ TEST_CASE("shapechanger pack: werewolf, werebear, succubus, and oni forms") {
     CHECK(has_attack(wolf.who(0), "claws"));
     CHECK_FALSE(has_attack(wolf.who(0), "spear"));
     CHECK(wolf.who(0).ac == 12);
-    CHECK(wolf.who(0).multiattacks.size() == 1);
+    CHECK(wolf.who(0).multiattacks.size() == 2);   // bite then claws, and claws then bite
     wolf.end_turn();
     wolf.advance_to(wolf.id(0));
     CHECK(legal_attack(wolf, wolf.id(0), "bite"));
@@ -946,4 +946,115 @@ TEST_CASE("shapechanger pack: wereboar Charge and weretiger Pounce fire only in 
     CHECK_FALSE(has_attack(tiger.who(0), "scimitar"));
     CHECK(tiger.who(0).speed_ft == 40);
     CHECK(tiger.who(0).size == rules5e::Size::Large);
+}
+
+std::vector<std::string> option_attacks(const rules5e::Combatant& c, const char* id) {
+    std::vector<std::string> out;
+    for (const auto& m : c.multiattacks) if (m.id == id)
+        for (uint8_t i : m.attacks) out.emplace_back(c.attacks[i].id);
+    return out;
+}
+rules5e::WeaponUse link_use(const rules5e::Combatant& c, const rules5e::Loadout& lo, const char* id) {
+    for (std::size_t i = 0; i < c.attacks.size() && i < lo.view.attacks.size(); ++i)
+        if (c.attacks[i].id == id) return lo.view.attacks[i].use;
+    return rules5e::WeaponUse::OffHand;
+}
+
+TEST_CASE("versatile grip is the spear's attack id, so the true-form subset still links two hands") {
+    ContentLibrary lib = pack_lib();
+    const Archetype* wolf = lib.find("srd51.monster.werewolf");
+    REQUIRE(wolf);
+    // Bite and claws sit ahead of the spear in the full list. The grip names the spear, not that earlier index.
+    CHECK(wolf->two_handed_grip == std::vector<std::string>{"spear"});
+    CHECK_FALSE(wolf->two_handed_grip_for("bite"));
+    CHECK_FALSE(wolf->two_handed_grip_for("claws"));
+    CHECK_FALSE(wolf->two_handed_grip_for("spear_two_handed"));
+    CHECK_FALSE(wolf->two_handed_grip_for("spear_thrown"));
+    Json m = lycan();
+    m["id"] = "test.monster.grip";
+    m["actions"] = Json::array({
+        melee("bite", "1d4+1", 3),
+        melee("claws", "1d4+1", 3),
+        melee("spear", "1d8+3", 5, {{"weapon", "srd51.item.spear"}, {"properties", Json::array({"versatile"})}})});
+    m.erase("equipment");
+    if (m.contains("armor_class") && m["armor_class"].is_object()) m["armor_class"].erase("note");
+    m["equipment"] = Json::array({{{"item", "srd51.item.spear"}, {"equipped", true}}});
+    auto added = lib.add(m, "monster");
+    INFO(added.value_or(""));
+    REQUIRE_FALSE(added);
+    const Archetype* grip = lib.find("test.monster.grip");
+    REQUIRE(grip);
+    CHECK(grip->two_handed_grip == std::vector<std::string>{"spear"});
+    world::Chunk chunk = arena({{"srd51.monster.werewolf", {4, 4}}, {"srd51.character.fighter_1", {5, 4}}});
+    ecs::Registry reg;
+    std::string err;
+    auto c = Combat::create(reg, chunk, lib, 1, CombatOptions{true}, &err);
+    INFO(err);
+    REQUIRE(c);
+    const CombatantId me = chunk.spawns[0].stable_id;
+    const auto& born = *rules5e::find(c->state(), me);
+    const rules5e::Loadout* lo = c->loadout(me);
+    REQUIRE(lo);
+    CHECK(born.attacks[0].id == "spear");   // true form dropped bite and claws; index 0 is not the full-list index
+    CHECK(link_use(born, *lo, "spear") == rules5e::WeaponUse::TwoHands);
+    Command cmd = next_command(*c, chunk.spawns[1].stable_id);
+    // The one-hand spear is not the AI's best row (the two-handed row rolls 1d8). The flag follows the id when that row is chosen.
+    if (cmd.request.kind == ActionKind::Attack && born.attacks[cmd.request.attack_index].id == "spear")
+        CHECK(cmd.request.two_handed_grip);
+
+    world::Chunk gchunk = arena({{"test.monster.grip", {4, 4}}, {"srd51.character.fighter_1", {5, 4}}});
+    ecs::Registry greg;
+    auto g = Combat::create(greg, gchunk, lib, 1, CombatOptions{true}, &err);
+    INFO(err);
+    REQUIRE(g);
+    const CombatantId gid = gchunk.spawns[0].stable_id;
+    const auto& gborn = *rules5e::find(g->state(), gid);
+    const rules5e::Loadout* glo = g->loadout(gid);
+    REQUIRE(glo);
+    REQUIRE(gborn.attacks.size() == 1);
+    CHECK(gborn.attacks[0].id == "spear");
+    CHECK(glo->view.attacks[0].use == rules5e::WeaponUse::TwoHands);
+    Command gcmd = next_command(*g, gchunk.spawns[1].stable_id);
+    CHECK(gcmd.request.kind == ActionKind::Attack);
+    CHECK(gborn.attacks[gcmd.request.attack_index].id == "spear");
+    CHECK(gcmd.request.two_handed_grip);
+}
+
+TEST_CASE("shapechanger pack: wererat darkvision is the rat form only, and both one-of-each orders are legal") {
+    ContentLibrary lib = pack_lib();
+    const uint32_t fid = shape_feature(*lib.find("srd51.monster.wererat"));
+    REQUIRE(fid != 0);
+    Fight rat(lib, {{"srd51.monster.wererat", {4, 4}}, {"srd51.character.fighter_1", {8, 8}}});
+    CHECK(rat.who(0).darkvision_ft == 0);
+    CHECK(option_attacks(rat.who(0), "shortsword_hand_crossbow") == std::vector<std::string>{"shortsword", "hand_crossbow"});
+    CHECK(option_attacks(rat.who(0), "hand_crossbow_shortsword") == std::vector<std::string>{"hand_crossbow", "shortsword"});
+    CHECK(option_attacks(rat.who(0), "bite_shortsword").empty());
+    rat.advance_to(rat.id(0));
+    REQUIRE(rat.use(rat.id(0), fid, 1).ok);   // hybrid: still no darkvision
+    CHECK(rat.who(0).darkvision_ft == 0);
+    CHECK(rat.who(0).size == rules5e::Size::Medium);
+    CHECK(option_attacks(rat.who(0), "hand_crossbow_shortsword") == std::vector<std::string>{"hand_crossbow", "shortsword"});
+    CHECK(option_attacks(rat.who(0), "bite_shortsword") == std::vector<std::string>{"bite", "shortsword"});
+    rat.end_turn();
+    rat.advance_to(rat.id(0));
+    REQUIRE(rat.use(rat.id(0), fid, 2).ok);   // rat
+    CHECK(rat.who(0).darkvision_ft == 60);
+    CHECK(rat.who(0).size == rules5e::Size::Small);
+    CHECK(rat.who(0).multiattacks.empty());
+    rat.end_turn();
+    rat.advance_to(rat.id(0));
+    REQUIRE(rat.revert(rat.id(0)).ok);
+    CHECK(rat.who(0).darkvision_ft == 0);
+}
+
+TEST_CASE("shapechanger pack: werewolf hybrid multiattack is bite and claws, either order") {
+    ContentLibrary lib = pack_lib();
+    Fight wolf(lib, {{"srd51.monster.werewolf", {4, 4}}, {"srd51.character.fighter_1", {8, 8}}});
+    CHECK(wolf.who(0).multiattacks.empty());
+    const uint32_t fid = shape_feature(*lib.find("srd51.monster.werewolf"));
+    wolf.advance_to(wolf.id(0));
+    REQUIRE(wolf.use(wolf.id(0), fid, 1).ok);
+    CHECK(option_attacks(wolf.who(0), "bite_claws") == std::vector<std::string>{"bite", "claws"});
+    CHECK(option_attacks(wolf.who(0), "claws_bite") == std::vector<std::string>{"claws", "bite"});
+    for (const auto& a : wolf.who(0).attacks) CHECK(std::string(a.id).rfind("spear", 0) != 0);
 }

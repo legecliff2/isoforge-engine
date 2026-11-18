@@ -10,6 +10,7 @@
 #include "rules5e_content/spell_loader.hpp"
 #include "sim/combat.hpp"
 #include "sim/driver.hpp"
+#include "sim/equipment.hpp"
 #include "sim/rest.hpp"
 #include "world/chunk_codec.hpp"
 
@@ -867,4 +868,101 @@ TEST_CASE("version gate: wild_shape / shapechanger in pre-@4 files are inert (li
         for (const auto& s : a.inert_features) listed = listed || s.find("shape") == 0;
         CHECK(listed);
     }
+}
+
+TEST_CASE("Wild Shape and Polymorph keep the form AC when worn armor is recomputed") {
+    // The n9 guard is form != None, so a Wild Shape or Polymorph beast AC stands the same way a shape's AC does.
+    // Chain mail would otherwise write the calibrated true-form AC back over the beast.
+    ContentLibrary lib;
+    Json d = druid(2);
+    d["armor_class"] = {{"value", 18}, {"note", "chain mail"}};
+    d["equipment"] = Json::array({{{"item", "srd51.item.chain_mail"}, {"equipped", true}}});
+    REQUIRE_FALSE(build(lib, d));
+    auto mail = lib.add_item(load_json("content/packs/srd51.core/items/chain_mail.json"));
+    INFO(mail.value_or(""));
+    REQUIRE_FALSE(mail);
+    CHECK(lib.find("test.monster.wolf")->base.ac == 13);
+    Json poly = {{"$schema", "spell@1"}, {"id", "test.spell.poly"}, {"name", "Polymorph"}, {"level", 4},
+                 {"school", "transmutation"}, {"casting_time", {{"kind", "action"}}},
+                 {"range", {{"kind", "ranged"}, {"feet", 60}}}, {"components", {{"v", true}, {"s", true}}},
+                 {"duration", {{"kind", "hours"}, {"amount", 1}, {"concentration", true}}},
+                 {"effects", Json::array({{{"kind", "polymorph"}, {"forms", Json::array({"test.monster.wolf"})}}})}};
+    REQUIRE_FALSE(lib.add_spell(poly));
+    Json mage = caster();
+    mage["id"] = "test.character.poly_mage";
+    mage["classes"] = Json::array({{{"class", "wizard"}, {"level", 7}, {"hit_die", "d6"}}});
+    mage["spellcasting"]["caster_level"] = 7;
+    mage["spellcasting"]["slots"] = {{"1", 4}, {"4", 1}};
+    mage["spellcasting"]["spells"] = Json::array({"test.spell.poly"});
+    auto added = lib.add(mage, "character");
+    INFO(added.value_or(""));
+    REQUIRE_FALSE(added);
+
+    world::Chunk chunk = arena({{kDruid, {2, 2}}, {"test.character.poly_mage", {8, 2}}, {"test.monster.gob", {20, 20}}});
+    ecs::Registry reg;
+    std::string err;
+    auto c = Combat::create(reg, chunk, lib, 1, CombatOptions{true}, &err);
+    INFO(err);
+    REQUIRE(c);
+    const CombatantId druid_id = chunk.spawns[0].stable_id;
+    const CombatantId mage_id = chunk.spawns[1].stable_id;
+    REQUIRE(c->loadout(druid_id));
+    CHECK(rules5e::find(c->state(), druid_id)->ac == 18);
+    auto settle = [&](SubmitResult r) {
+        while (r.ok && r.needs) r = c->decide({r.needs->window_seq, false, 0});
+        return r;
+    };
+    auto advance = [&](CombatantId w) {
+        for (int i = 0; i < 8 && rules5e::current_actor(c->state()) != w; ++i) {
+            Command e;
+            e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn};
+            REQUIRE(settle(c->submit(e)).ok);
+        }
+        REQUIRE(rules5e::current_actor(c->state()) == w);
+    };
+    REQUIRE(c->item_defs());
+    auto recompute = [&] {
+        auto& st = const_cast<rules5e::EncounterState&>(c->state());
+        recompute_derived(st, druid_id, *c->item_defs());
+    };
+    advance(druid_id);
+    Command ws;
+    ws.request = {druid_id, ActionKind::UseFeature};
+    ws.request.feature_id = kWildShape;
+    ws.request.form_archetype = 1;   // wolf, printed AC 13
+    auto shaped = settle(c->submit(ws));
+    INFO(shaped.error);
+    REQUIRE(shaped.ok);
+    CHECK(rules5e::find(c->state(), druid_id)->form == FormKind::WildShape);
+    CHECK(rules5e::find(c->state(), druid_id)->ac == 13);
+    recompute();
+    CHECK(rules5e::find(c->state(), druid_id)->ac == 13);
+    Command back;
+    back.request = {druid_id, ActionKind::Revert};
+    back.request.as_bonus_action = true;
+    REQUIRE(settle(c->submit(back)).ok);
+    CHECK(rules5e::find(c->state(), druid_id)->form == FormKind::None);
+    CHECK(rules5e::find(c->state(), druid_id)->ac == 18);
+    recompute();
+    CHECK(rules5e::find(c->state(), druid_id)->ac == 18);
+
+    advance(mage_id);
+    uint8_t wolf_form = 0;
+    const auto& beasts = c->polymorph_forms();
+    for (std::size_t i = 0; i < beasts.size(); ++i)
+        if (beasts[i]->id == "test.monster.wolf") wolf_form = uint8_t(i + 1);
+    REQUIRE(wolf_form != 0);
+    Command cast;
+    cast.request = {mage_id, ActionKind::CastSpell, druid_id};
+    cast.request.spell_id = spell_id_of("test.spell.poly");
+    cast.request.spell_level = 4;
+    cast.request.targets = {druid_id};
+    cast.request.form_archetype = wolf_form;
+    auto polymorphed = settle(c->submit(cast));
+    INFO(polymorphed.error);
+    REQUIRE(polymorphed.ok);
+    CHECK(rules5e::find(c->state(), druid_id)->form == FormKind::Polymorph);
+    CHECK(rules5e::find(c->state(), druid_id)->ac == 13);
+    recompute();
+    CHECK(rules5e::find(c->state(), druid_id)->ac == 13);
 }

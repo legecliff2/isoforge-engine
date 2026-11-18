@@ -65,12 +65,12 @@ struct LoadoutSeed {
 // Builds `owner`'s loadout (item ids from st.next_item_id, in entry order) and its attack links, then calibrates the setup
 // adjustments so recompute_derived reproduces the printed AC / to-hit / damage. Placement: worn armor; equipped shield ->
 // off hand (else main); other equipped holdables -> main, then off (a two-handed item needs both); the rest is carried.
-// `two_handed_grip`: Archetype bit mask of versatile attacks held in two hands (R-G7). Returns false when no seed resolves.
+// `two_handed_grip`: attack ids held in two hands (Archetype::two_handed_grip, R-G7). Returns false when no seed resolves.
 // Equipped holdables that do not fit the hands go to carried, and `errors` (if given) gets rules5e::hands_overfull_error
 // (`<id>: holds N items but has H hands`, the validator's string) with `content_id`.
 bool build_loadout(rules5e::EncounterState& st, rules5e::CombatantId owner, const std::vector<LoadoutSeed>& seeds,
-                   const ItemDefTable& items, uint32_t two_handed_grip, std::string_view content_id = {},
-                   std::vector<std::string>* errors = nullptr);
+                   const ItemDefTable& items, const std::vector<std::string>& two_handed_grip,
+                   std::string_view content_id = {}, std::vector<std::string>* errors = nullptr);
 
 
 rules5e::Loadout* find_loadout(rules5e::EncounterState& st, rules5e::CombatantId id);
