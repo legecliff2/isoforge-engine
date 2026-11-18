@@ -139,8 +139,10 @@ void Combat::apply_equip(rules5e::EncounterState& st, const rules5e::ActionReque
         v.interaction_used = true;
         l->interaction_turn = turns_started_;
     }
-    recompute_derived(st, req.actor, *items_);
-    if (other) recompute_derived(st, other, *items_);
+    // Combat::recompute returns while a form is up, so a form's AC and attacks stay. recompute_derived
+    // still nests the possession ac_delta inside form == None when the form is down.
+    recompute(st, req.actor);
+    if (other) recompute(st, other);
 }
 
 void Combat::item_moved(CombatantId actor, Vec2i tile, uint32_t instance, uint8_t reason, CombatantId holder) {
@@ -250,7 +252,7 @@ void Combat::equipment_after_step(const rules5e::LoggedStep& ls, const std::vect
             }
         }
     }
-    for (const CombatantId id : touched) recompute_derived(state_, id, *items_);
+    for (const CombatantId id : touched) recompute(state_, id);
     // ItemMoved events (v11): after the step's rules and sim events, before EncounterEnded when the step ended the encounter.
     if (!item_events_.empty()) {
         auto at = events_.end();

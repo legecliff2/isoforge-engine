@@ -784,3 +784,193 @@ TEST_CASE("the built-in AI ends possession when the body cannot act") {
     CHECK(f.who(1).possessed_by == 0);
     CHECK(rules_since(f, mark, EventKind::PossessionEnded) == 1);
 }
+
+namespace {
+
+bool blocks_feature(const rules5e::Combatant& c, uint32_t id) {
+    for (uint32_t fid : c.possession_blocked_features)
+        if (fid == id) return true;
+    return false;
+}
+
+Json host_monster() {
+    Json host = load_json("content/packs/srd51.core/monsters/goblin.json");
+    host["$schema"] = "monster@5";
+    host["id"] = "t.possessed.host";
+    host["hit_points"]["average"] = 40;
+    host["actions"].push_back({{"id", "frightful"},
+                               {"name", "Frightful"},
+                               {"kind", "save_effect"},
+                               {"save", {{"ability", "wis"}, {"dc", 12}}},
+                               {"range_ft", 30},
+                               {"damage", Json::array({{{"dice", "1d6"}, {"type", "psychic"}}})}});
+    host["reactions"] = Json::array({{{"id", "shrug"},
+                                      {"name", "Shrug"},
+                                      {"window", {{"kind", "damaged"}}},
+                                      {"effect", {{"kind", "reduce_damage"}, {"fraction", "half"}}}}});
+    return host;
+}
+
+ContentLibrary host_lib() {
+    ContentLibrary lib = pack_lib();
+    auto added = lib.add(host_monster(), "monster");
+    INFO(added.value_or(""));
+    REQUIRE_FALSE(added);
+    auto flame = lib.add_spell(load_json("content/packs/srd51.core/spells/sacred_flame.json"));
+    INFO(flame.value_or(""));
+    REQUIRE_FALSE(flame);
+    auto javelin = lib.add_item(load_json("content/packs/srd51.core/items/javelin.json"));
+    INFO(javelin.value_or(""));
+    REQUIRE_FALSE(javelin);
+    auto paladin = lib.add(load_json("content/packs/srd51.core/characters/paladin_level_3.json"), "character");
+    INFO(paladin.value_or(""));
+    REQUIRE_FALSE(paladin);
+    return lib;
+}
+
+const char* kHost = "t.possessed.host";
+const char* kPaladin = "srd51.character.paladin_level_3";
+
+}  // namespace
+
+TEST_CASE("turn undead and turn the unholy are on the possession block list") {
+    ContentLibrary lib = host_lib();
+    auto listed = [](const Archetype* arch, const char* action) {
+        REQUIRE(arch);
+        uint32_t spell = 0;
+        for (const auto& sa : arch->save_actions)
+            if (sa.id == action) spell = sa.spell_id;
+        REQUIRE(spell != 0);
+        bool found = false;
+        for (uint32_t id : arch->base.possession_blocked_features) found = found || id == spell;
+        CHECK(found);
+        return spell;
+    };
+    const uint32_t turn = listed(lib.find(kCleric), "turn_undead");
+    const uint32_t unholy = listed(lib.find(kPaladin), "turn_the_unholy");
+    CHECK(turn != unholy);
+    const auto* host = lib.find(kHost);
+    REQUIRE(host);
+    uint32_t frightful = 0;
+    for (const auto& sa : host->save_actions)
+        if (sa.id == "frightful") frightful = sa.spell_id;
+    REQUIRE(frightful != 0);
+    CHECK(host->base.possession_blocked_features.empty());
+    CHECK_FALSE(host->base.reactions.empty());
+}
+
+TEST_CASE("a possessed monster host's non-spell save action resolves") {
+    ContentLibrary lib = host_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kHost, {5, 4}}, {kFighter, {6, 4}}}, 8);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+    f.advance_to(f.id(0));
+    REQUIRE(f.who(0).possessing == f.id(1));
+    const uint32_t frightful = save_action_id(*f.c, f.id(1), "frightful");
+    REQUIRE(frightful != 0);
+    const auto* def = f.c->spell_def(frightful);
+    REQUIRE(def);
+    CHECK_FALSE(def->is_spell);
+    CHECK(f.who(1).worn_armor != 0);   // the note is leather and a shield; armor does not refuse this action
+    Command cast;
+    cast.request = {f.id(1), ActionKind::CastSpell, f.id(2)};
+    cast.request.spell_id = frightful;
+    cast.request.spell_level = 0;
+    cast.request.targets = {f.id(2)};
+    const int mark = int(f.c->events().size());
+    auto submitted = f.settle(f.c->submit(cast));
+    INFO(submitted.error);
+    REQUIRE(submitted.ok);
+    CHECK(rules_since(f, mark, EventKind::SavingThrowRolled) >= 1);
+    CHECK(rules_since(f, mark, EventKind::ActionUsed) >= 1);
+}
+
+TEST_CASE("a possessed cleric's spell and turn undead are both refused") {
+    ContentLibrary lib = host_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kCleric, {5, 4}}, {kFighter, {6, 4}}}, 8);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+    f.advance_to(f.id(0));
+    const uint32_t turn = save_action_id(*f.c, f.id(1), "turn_undead");
+    REQUIRE(turn != 0);
+    CHECK(blocks_feature(f.who(1), turn));
+    f.mut(1).worn_armor = 0;
+    f.mut(1).worn_shield = false;
+    Command spell;
+    spell.request = {f.id(1), ActionKind::CastSpell, f.id(2)};
+    spell.request.spell_id = rules5e::spell_id_of("srd51.spell.sacred_flame");
+    spell.request.spell_level = 0;
+    spell.request.targets = {f.id(2)};
+    auto spell_refused = f.c->submit(spell);
+    CHECK_FALSE(spell_refused.ok);
+    CHECK(spell_refused.error == "possessed: the body's spells are not available");
+    f.mut(1).worn_armor = 4;
+    f.mut(1).worn_shield = true;
+    Command feature;
+    feature.request = {f.id(1), ActionKind::CastSpell, f.id(0)};
+    feature.request.spell_id = turn;
+    feature.request.spell_level = 0;
+    feature.request.targets = {f.id(0)};
+    auto feature_refused = f.c->submit(feature);
+    CHECK_FALSE(feature_refused.ok);
+    CHECK(feature_refused.error == "possessed: class features are not available");
+}
+
+TEST_CASE("a possessed monster host and a possessed cleric finish with an empty error") {
+    ContentLibrary lib = host_lib();
+    auto play = [&](const std::vector<std::pair<std::string, Vec2i>>& spawns, bool force_link) {
+        Fight f(lib, spawns, 11);
+        if (force_link) {
+            std::vector<rules5e::Event> ev;
+            REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+            REQUIRE(f.who(0).possessing == f.id(1));
+        }
+        NearestEnemyPolicy pol;
+        const RunResult rr = run_to_end(*f.c, [&](CombatantId) -> IActorPolicy* { return &pol; }, 400);
+        INFO(spawns[1].first);
+        REQUIRE_MESSAGE(rr.error.empty(), rr.error);
+        REQUIRE(rr.ended);
+        if (!force_link) {
+            int possessed = 0;
+            for (const auto& e : f.c->events())
+                if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::Possessed) ++possessed;
+            CHECK(possessed >= 1);
+        }
+    };
+    // The host is a monster, so it shares the ghost's team and the built-in AI does not target it.
+    // The link is started here. The run then drives that possessed body, including its save action.
+    play({{kGhost, {4, 4}}, {kHost, {5, 4}}, {kFighter, {4, 23}}}, true);
+    play({{kGhost, {4, 4}}, {kCleric, {5, 4}}, {kFighter, {4, 23}}}, false);
+}
+
+TEST_CASE("a possessed monster host's printed reaction is still offered") {
+    ContentLibrary lib = host_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kHost, {5, 4}}, {kFighter, {6, 4}}}, 5);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+    REQUIRE_FALSE(f.who(1).reactions.empty());
+    CHECK(f.who(1).reactions[0].kind == rules5e::ReactionEffectKind::ReduceDamage);
+    bool offered = false;
+    for (int n = 0; n < 12 && !offered; ++n) {
+        f.advance_to(f.id(2));
+        Command attack;
+        attack.request = {f.id(2), ActionKind::Attack, f.id(1)};
+        attack.request.attack_index = 0;
+        auto r = f.c->submit(attack);
+        INFO(r.error);
+        REQUIRE(r.ok);
+        if (r.needs) {
+            CHECK(r.needs->trigger == rules5e::ReactionTrigger::Damaged);
+            CHECK(r.needs->reactor == f.id(1));
+            REQUIRE_FALSE(r.needs->options.empty());
+            CHECK(r.needs->options[0].kind == rules5e::ReactionOptionKind::ReduceDamage);
+            offered = true;
+            REQUIRE(f.c->decide({r.needs->window_seq, false, 0}).ok);
+        }
+        if (rules5e::current_actor(f.c->state()) == f.id(2)) f.end_turn();
+    }
+    CHECK(offered);
+}
