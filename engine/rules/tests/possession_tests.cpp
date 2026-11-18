@@ -1287,3 +1287,74 @@ TEST_CASE("draconic resilience linked in a form comes off the true-form maximum"
     CHECK(mut(s, 1).hp_max == 20);
     CHECK(mut(s, 1).hp == 17);
 }
+
+TEST_CASE("a class host reverted while linked gets evasion, crit, half proficiency, and great weapon fighting back") {
+    auto host = host_of(1);
+    host.evasion = true;
+    host.half_proficiency = 1;
+    host.crit_min = 19;
+    host.great_weapon_fighting = true;
+    host.attack_bonus_melee = 2;
+    Combatant::PossessionClassBase stripped;
+    stripped.attacks = host.attacks;
+    stripped.ac = host.ac;
+    stripped.speed_ft = host.speed_ft;
+    host.possession_class_base = stripped;
+
+    auto s = begin_encounter({host, ghost_of(2), ally_of(3)}, 53, nullptr, spell_hooks());
+    link(s, 2, 1);
+    CHECK_FALSE(mut(s, 1).evasion);
+    CHECK(mut(s, 1).half_proficiency == 0);
+    CHECK(mut(s, 1).crit_min == 20);
+    CHECK_FALSE(mut(s, 1).great_weapon_fighting);
+    CHECK(mut(s, 1).attack_bonus_melee == 0);
+
+    FormStats beast;
+    beast.ac = 11;
+    beast.hp_max = 30;
+    beast.speed_ft = 40;
+    beast.attacks_per_action = 1;
+    beast.attacks = {Attack{"beast-bite", 4, {1, 8, 2}, DamageType::Piercing, 5, false, false}};
+    REQUIRE(apply_form(mut(s, 1), FormKind::Polymorph, beast));
+    REQUIRE(revert_form(mut(s, 1)));
+    CHECK(mut(s, 1).form == FormKind::None);
+    CHECK(mut(s, 1).possessed_by == 2);
+    CHECK_FALSE(mut(s, 1).evasion);
+    CHECK(mut(s, 1).crit_min == 20);
+
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    CHECK(mut(s, 1).possessed_by == 0);
+    CHECK(mut(s, 1).evasion);
+    CHECK(mut(s, 1).half_proficiency == 1);
+    CHECK(mut(s, 1).crit_min == 19);
+    CHECK(mut(s, 1).great_weapon_fighting);
+    CHECK(mut(s, 1).attack_bonus_melee == 2);
+}
+
+TEST_CASE("a host linked in a form keeps half proficiency through revert and unlink") {
+    auto host = host_of(1);
+    host.half_proficiency = 1;
+    Combatant::PossessionClassBase stripped;
+    stripped.attacks = host.attacks;
+    stripped.ac = host.ac;
+    stripped.speed_ft = host.speed_ft;
+    host.possession_class_base = stripped;
+    auto s = begin_encounter({host, ghost_of(2), ally_of(3)}, 54, nullptr, spell_hooks());
+    FormStats beast;
+    beast.ac = 11;
+    beast.hp_max = 30;
+    beast.speed_ft = 40;
+    beast.attacks_per_action = 1;
+    beast.attacks = {Attack{"beast-bite", 4, {1, 8, 2}, DamageType::Piercing, 5, false, false}};
+    REQUIRE(apply_form(mut(s, 1), FormKind::Polymorph, beast));
+    link(s, 2, 1);
+    CHECK(mut(s, 1).half_proficiency == 0);
+    REQUIRE(revert_form(mut(s, 1)));
+    CHECK(mut(s, 1).form == FormKind::None);
+    CHECK(mut(s, 1).possessed_by == 2);
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    CHECK(mut(s, 1).possessed_by == 0);
+    CHECK(mut(s, 1).half_proficiency == 1);
+}

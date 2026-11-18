@@ -8680,9 +8680,23 @@ void reapply_possession_overlay(Combatant& body) {
     o.save_proficiencies = body.save_proficiencies;
     o.skill_proficiencies = body.skill_proficiencies;
     o.condition_immunities = body.condition_immunities;
-    // A true-form revert restores the body's own attacks and AC. Save those before the strip,
-    // so the link's end does not write the form the body was in at the link back onto it.
-    if (body.form == FormKind::None) o.class_live = capture_class_live(body);
+    // A true-form revert has just put the true form's attacks, AC, and speed back.
+    // Refresh only those FormStats fields on the link snapshot. The other class numbers
+    // (evasion, crit range, half proficiency, and the rest) were captured at the link,
+    // before the strip, and the live body is still stripped. Re-capturing them would
+    // freeze the stripped values.
+    if (body.form == FormKind::None && o.class_live) {
+        Combatant::PossessionClassBase kept = *o.class_live;
+        kept.attacks_per_action = body.attacks_per_action;
+        kept.triggers = body.triggers;
+        kept.bonus_attacks = body.bonus_attacks;
+        kept.reactions = body.reactions;
+        kept.climb_ft = body.climb_ft;
+        kept.attacks = body.attacks;
+        kept.ac = body.ac;
+        kept.speed_ft = body.speed_ft;
+        o.class_live = std::move(kept);
+    }
     body.possession_overlay = o;
     apply_ghost_mind(body);
     if (body.form == FormKind::None) apply_class_strip(body);
