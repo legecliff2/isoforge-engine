@@ -8566,6 +8566,18 @@ void restore_overlay_stats(Combatant& body) {
     body.save_proficiencies = o.save_proficiencies;
     body.skill_proficiencies = o.skill_proficiencies;
     body.condition_immunities = o.condition_immunities;
+    // Design H1. Unlink while a Shapechanger, Wild Shape, or Polymorph form is up.
+    // own_stats already stored the true form, including the class statistics captured at the
+    // link, on Combatant::base. put_class_base here would write that true form onto the live
+    // form (climb, triggers, reactions, bonus attacks, and, when the class was stripped, the
+    // true form's attacks and AC). Draconic Resilience's removed maximum was taken from the
+    // true form before the snapshot, so it goes back onto that saved maximum. The form's own
+    // hit-point maximum is left as it is.
+    if (body.form != FormKind::None) {
+        if (o.hp_max_removed != 0 && body.base)
+            body.base->hp_max = int16_t(std::min(32767, int(body.base->hp_max) + int(o.hp_max_removed)));
+        return;
+    }
     if (o.class_live) {
         const int ac = body.ac;
         const int speed = body.speed_ft;

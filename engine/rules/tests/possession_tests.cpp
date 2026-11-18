@@ -1082,3 +1082,141 @@ TEST_CASE("a possessed body is incapacitated for Dodge and Grapple, and the poss
         return r.kind == ActionKind::Dodge || r.grapple_instead;
     }));
 }
+
+TEST_CASE("werebear linked in human form keeps the bear's climb, triggers, reactions, and bonus attacks") {
+    // The authored werebear's bear form has climb 30 and no triggers, reactions, or bonus attacks.
+    // Those three lists are put_class_base's other writes, so this fixture gives the bear its own
+    // and the human form a different set. Unlink must not copy the human set onto the bear.
+    auto host = host_of(1);
+    host.creature_type = CreatureType::Humanoid;
+    host.ac = 10;
+    host.speed_ft = 30;
+    host.climb_ft = 0;
+    host.size = Size::Medium;
+    host.hp = host.hp_max = 135;
+    host.attacks = {Attack{"greataxe", 7, {1, 12, 4}, DamageType::Slashing, 5, false, false}};
+    Trigger human_tr; human_tr.id = 11;
+    Reaction human_rx; human_rx.id = 21;
+    BonusAttack human_ba; human_ba.id = 31;
+    host.triggers = {human_tr};
+    host.reactions = {human_rx};
+    host.bonus_attacks = {human_ba};
+    const int int0 = host.abilities[Ability::Int];
+    const int wis0 = host.abilities[Ability::Wis];
+    const int cha0 = host.abilities[Ability::Cha];
+
+    auto s = begin_encounter({host, ghost_of(2), ally_of(3)}, 50, nullptr, spell_hooks());
+    link(s, 2, 1);
+
+    FormStats bear;
+    bear.ac = 11;
+    bear.speed_ft = 40;
+    bear.climb_ft = 30;
+    bear.size = Size::Large;
+    bear.hp_max = 135;
+    bear.attacks = {Attack{"bite", 7, {2, 10, 4}, DamageType::Piercing, 5, false, false},
+                    Attack{"claw", 7, {2, 8, 4}, DamageType::Slashing, 5, false, false}};
+    Trigger bear_tr; bear_tr.id = 12;
+    Reaction bear_rx; bear_rx.id = 22;
+    BonusAttack bear_ba; bear_ba.id = 32;
+    bear.triggers = {bear_tr};
+    bear.reactions = {bear_rx};
+    bear.bonus_attacks = {bear_ba};
+    REQUIRE(apply_form(mut(s, 1), FormKind::Shapechanger, bear));
+
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    CHECK(mut(s, 1).form == FormKind::Shapechanger);
+    CHECK(mut(s, 1).climb_ft == 30);
+    CHECK(mut(s, 1).speed_ft == 40);
+    CHECK(mut(s, 1).ac == 11);
+    CHECK(mut(s, 1).size == Size::Large);
+    REQUIRE(mut(s, 1).attacks.size() == 2);
+    CHECK(mut(s, 1).attacks[0].id == "bite");
+    CHECK(mut(s, 1).attacks[1].id == "claw");
+    REQUIRE(mut(s, 1).triggers.size() == 1);
+    CHECK(mut(s, 1).triggers[0].id == 12);
+    REQUIRE(mut(s, 1).reactions.size() == 1);
+    CHECK(mut(s, 1).reactions[0].id == 22);
+    REQUIRE(mut(s, 1).bonus_attacks.size() == 1);
+    CHECK(mut(s, 1).bonus_attacks[0].id == 32);
+
+    REQUIRE(revert_form(mut(s, 1)));
+    CHECK(mut(s, 1).form == FormKind::None);
+    CHECK(mut(s, 1).climb_ft == 0);
+    CHECK(mut(s, 1).speed_ft == 30);
+    CHECK(mut(s, 1).ac == 10);
+    CHECK(mut(s, 1).size == Size::Medium);
+    CHECK(mut(s, 1).hp_max == 135);
+    REQUIRE(mut(s, 1).attacks.size() == 1);
+    CHECK(mut(s, 1).attacks[0].id == "greataxe");
+    CHECK(mut(s, 1).attacks[0].to_hit == 7);
+    REQUIRE(mut(s, 1).triggers.size() == 1);
+    CHECK(mut(s, 1).triggers[0].id == 11);
+    REQUIRE(mut(s, 1).reactions.size() == 1);
+    CHECK(mut(s, 1).reactions[0].id == 21);
+    REQUIRE(mut(s, 1).bonus_attacks.size() == 1);
+    CHECK(mut(s, 1).bonus_attacks[0].id == 31);
+    CHECK(mut(s, 1).abilities[Ability::Int] == int0);
+    CHECK(mut(s, 1).abilities[Ability::Wis] == wis0);
+    CHECK(mut(s, 1).abilities[Ability::Cha] == cha0);
+}
+
+TEST_CASE("a class host unlinked in a form reverts to the true AC, attacks, and hit point maximum") {
+    // Unit level. No pack character is driven through a form and an unlink; the printed sorcerer
+    // is only checked at load. Draconic Resilience is the hit-point maximum (3), and the AC and
+    // the longsword are the class deltas. Polymorph is the form.
+    auto host = host_of(1);
+    host.ac = 16;
+    host.attacks[0].to_hit = 7;
+    host.attacks[0].damage.bonus = 5;
+    host.hp = host.hp_max = 20;
+    host.possession_hp_bonus = 3;
+    Combatant::PossessionClassBase stripped;
+    stripped.attacks = host.attacks;
+    stripped.ac = 13;
+    stripped.ac_delta = 3;
+    stripped.speed_ft = host.speed_ft;
+    stripped.attack_hit_delta = {2};
+    stripped.attack_dmg_delta = {1};
+    host.possession_class_base = stripped;
+
+    auto s = begin_encounter({host, ghost_of(2), ally_of(3)}, 51, nullptr, spell_hooks());
+    link(s, 2, 1);
+    CHECK(mut(s, 1).ac == 13);
+    CHECK(mut(s, 1).attacks[0].to_hit == 5);
+    CHECK(mut(s, 1).attacks[0].damage.bonus == 4);
+    CHECK(mut(s, 1).hp_max == 17);
+    CHECK(mut(s, 1).hp == 17);
+
+    FormStats beast;
+    beast.ac = 11;
+    beast.hp_max = 30;
+    beast.speed_ft = 40;
+    beast.attacks_per_action = 1;
+    beast.attacks = {Attack{"beast-bite", 4, {1, 8, 2}, DamageType::Piercing, 5, false, false}};
+    REQUIRE(apply_form(mut(s, 1), FormKind::Polymorph, beast));
+    CHECK(mut(s, 1).ac == 11);
+    CHECK(mut(s, 1).attacks[0].id == "beast-bite");
+    CHECK(mut(s, 1).hp_max == 30);
+
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    CHECK(mut(s, 1).form == FormKind::Polymorph);
+    CHECK(mut(s, 1).ac == 11);
+    CHECK(mut(s, 1).attacks[0].id == "beast-bite");
+    CHECK(mut(s, 1).attacks[0].to_hit == 4);
+    CHECK(mut(s, 1).hp_max == 30);
+    REQUIRE(mut(s, 1).base);
+    CHECK(mut(s, 1).base->hp_max == 20);
+
+    REQUIRE(revert_form(mut(s, 1)));
+    CHECK(mut(s, 1).form == FormKind::None);
+    CHECK(mut(s, 1).ac == 16);
+    REQUIRE(mut(s, 1).attacks.size() == 1);
+    CHECK(mut(s, 1).attacks[0].id == "longsword");
+    CHECK(mut(s, 1).attacks[0].to_hit == 7);
+    CHECK(mut(s, 1).attacks[0].damage.bonus == 5);
+    CHECK(mut(s, 1).hp_max == 20);
+    CHECK(mut(s, 1).hp == 17);
+}

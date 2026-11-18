@@ -948,7 +948,8 @@ struct Combatant {
         // class deltas back only then. Not hashed.
         bool class_stripped = false;
         // Hit-point maximum actually removed at the link (the bonus, or less when the floor of 1
-        // bites). Added back at the end. Not hashed.
+        // bites). Added back at the end onto the live maximum, or onto the saved true-form
+        // maximum when the body is still in a form. Not hashed.
         int16_t hp_max_removed = 0;
     };
     CombatantId possessing = 0;

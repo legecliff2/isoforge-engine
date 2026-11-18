@@ -1703,11 +1703,11 @@ Product calls, not decided here:
 * **The built-in AI.** It uses the existing area-save policy: it will not catch an ally, and it wants two hostiles, or one when no attack is legal. The sentence does affect allies. Whether the AI should, and whether it should ignore undead when it counts hostiles, is not decided here.
 * **`aged_years` is not hashed.** A fight that differs only in the year counter hashes the same. The d4 still consumes the encounter RNG, which is already hashed.
 
-`srd51.monster.ghost` authors this action with those keys. Greater restoration does not reverse the years. No ability-score aging. `aged_years` is not hashed. Not magical. The built-in AI uses the existing area-save policy. Possession stays description only (HOLD). Ethereal Sight and Incorporeal Movement stay description only. Etherealness is §51. Not full Ghost support. No new hash tag. Counts are 205 authored and 5 deferred.
+`srd51.monster.ghost` authors this action with those keys. Greater restoration does not reverse the years. No ability-score aging. `aged_years` is not hashed. Not magical. The built-in AI uses the existing area-save policy. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Etherealness is §51. Not full Ghost support. No new hash tag. Counts are 205 authored and 5 deferred.
 
 Deferred, not this action:
 
-* Possession. `srd51.monster.ghost` carries the SRD sentences as a description-only action. No save, no recharge, and no control. It is not succubus `charm_command`.
+* Possession is §59. `srd51.monster.ghost` authors it as a live `save_effect`. It is not succubus `charm_command`.
 * Etherealness is §51, not this action.
 * Ethereal Sight and Incorporeal Movement stay description only on that row.
 * Shapechange. Monster forms are §58. The 9th-level spell and Change Shape catalogs stay deferred.
@@ -1797,11 +1797,11 @@ Product calls, not decided here:
 * **Incorporeal Movement** is not this action. The creature does not move through creatures or objects.
 * **The built-in AI** does not use the action. Whether it should is not decided here.
 
-`srd51.monster.ghost` authors this action (`kind: etherealness`). Deep Ethereal is not a value. The built-in AI does not use it. Possession stays description only (HOLD). Ethereal Sight and Incorporeal Movement stay description only. Not full Ghost support. Hash 0xE6 only while some combatant is not Material. No new hash tag. Counts are 205 authored and 5 deferred.
+`srd51.monster.ghost` authors this action (`kind: etherealness`). Deep Ethereal is not a value. The built-in AI does not use it. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Not full Ghost support. Hash 0xE6 only while some combatant is not Material. No new hash tag. Counts are 205 authored and 5 deferred.
 
 Deferred, not this action:
 
-* Possession. `srd51.monster.ghost` carries the SRD sentences as a description-only action. No save, no recharge, and no control. It is not succubus `charm_command`.
+* Possession is §59. `srd51.monster.ghost` authors it as a live `save_effect`. It is not succubus `charm_command`.
 * Ethereal Sight. `srd51.monster.ghost` carries that sentence as a description-only trait. Sight range does not change.
 * Incorporeal Movement. `srd51.monster.ghost` carries that sentence as a description-only trait. No pass-through and no end-of-turn force damage.
 * Shapechange. Monster forms are §58. The 9th-level spell and Change Shape catalogs stay deferred.
@@ -2106,7 +2106,7 @@ Deferred, not this section:
 
 ## 59. Possession (engine)
 
-SRD 5.1 Ghost, Possession. This section is the engine. `ghost.json` stays description-only. No monster file is flipped here.
+SRD 5.1 Ghost, Possession. `srd51.monster.ghost` authors this action (`possess: true`, Recharge 6, one humanoid the ghost can see within 5 feet, DC 13 Charisma, `immune_on_success` 24 hours `same_source`). This section is the engine that action uses.
 
 The link is `Combatant::possessing` (the body) and `Combatant::possessed_by` (the ghost). The body's Int, Wis, Cha, save proficiencies, skill proficiencies, and condition immunities are saved on `possession_overlay` and replaced: the ghost's Int, Wis and Cha, no proficiencies, and immunity to charmed and frightened. The overlay is not `FormStats`. `apply_form` and `revert_form` re-apply it. `end_summon` ends a link on that summon first, then clears `form_lock_zones` as it does today.
 
