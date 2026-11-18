@@ -8506,15 +8506,13 @@ Combatant::PossessionClassBase capture_class_live(const Combatant& body) {
     return live;
 }
 
-void put_class_base(Combatant& body, const Combatant::PossessionClassBase& b) {
-    body.attacks_per_action = b.attacks_per_action;
+// Class numbers FormStats does not carry. A form's snapshot and put_stats never write these,
+// so an unlink while a form is up still has to put them back or they stay stripped.
+void put_class_body(Combatant& body, const Combatant::PossessionClassBase& b) {
     body.half_proficiency = b.half_proficiency;
     body.bonus_action_grants = b.bonus_action_grants;
     body.save_advantages = b.save_advantages;
-    body.triggers = b.triggers;
-    body.bonus_attacks = b.bonus_attacks;
     body.bonus_action_costs = b.bonus_action_costs;
-    body.reactions = b.reactions;
     body.spell_mods = b.spell_mods;
     body.thieves_tools = b.thieves_tools;
     body.evasion = b.evasion;
@@ -8527,8 +8525,16 @@ void put_class_base(Combatant& body, const Combatant::PossessionClassBase& b) {
     body.attack_bonus_ranged = b.attack_bonus_ranged;
     body.crit_min = b.crit_min;
     body.heal_bonus_flat = b.heal_bonus_flat;
-    body.climb_ft = b.climb_ft;
     body.metamagic_known = b.metamagic_known;
+}
+
+void put_class_base(Combatant& body, const Combatant::PossessionClassBase& b) {
+    put_class_body(body, b);
+    body.attacks_per_action = b.attacks_per_action;
+    body.triggers = b.triggers;
+    body.bonus_attacks = b.bonus_attacks;
+    body.reactions = b.reactions;
+    body.climb_ft = b.climb_ft;
 }
 
 // AC, speed and attack to-hit / damage move by the load-time class deltas (`deltas`), applied to
@@ -8566,6 +8572,19 @@ void restore_overlay_stats(Combatant& body) {
     body.save_proficiencies = o.save_proficiencies;
     body.skill_proficiencies = o.skill_proficiencies;
     body.condition_immunities = o.condition_immunities;
+    // Design H1. Unlink while a Shapechanger, Wild Shape, or Polymorph form is up.
+    // FormStats already holds AC, speed, attacks, attacks per action, triggers, reactions,
+    // bonus attacks, and climb, on the live form and on the saved true form. Writing those
+    // from class_live would replace the form. The class numbers FormStats does not carry
+    // were stripped at the link and nothing else puts them back, so they are restored here.
+    // Draconic Resilience's removed maximum goes back onto the saved true-form maximum.
+    // The form's own hit-point maximum is left as it is.
+    if (body.form != FormKind::None) {
+        if (o.class_live) put_class_body(body, *o.class_live);
+        if (o.hp_max_removed != 0 && body.base)
+            body.base->hp_max = int16_t(std::min(32767, int(body.base->hp_max) + int(o.hp_max_removed)));
+        return;
+    }
     if (o.class_live) {
         const int ac = body.ac;
         const int speed = body.speed_ft;
@@ -8661,9 +8680,23 @@ void reapply_possession_overlay(Combatant& body) {
     o.save_proficiencies = body.save_proficiencies;
     o.skill_proficiencies = body.skill_proficiencies;
     o.condition_immunities = body.condition_immunities;
-    // A true-form revert restores the body's own attacks and AC. Save those before the strip,
-    // so the link's end does not write the form the body was in at the link back onto it.
-    if (body.form == FormKind::None) o.class_live = capture_class_live(body);
+    // A true-form revert has just put the true form's attacks, AC, and speed back.
+    // Refresh only those FormStats fields on the link snapshot. The other class numbers
+    // (evasion, crit range, half proficiency, and the rest) were captured at the link,
+    // before the strip, and the live body is still stripped. Re-capturing them would
+    // freeze the stripped values.
+    if (body.form == FormKind::None && o.class_live) {
+        Combatant::PossessionClassBase kept = *o.class_live;
+        kept.attacks_per_action = body.attacks_per_action;
+        kept.triggers = body.triggers;
+        kept.bonus_attacks = body.bonus_attacks;
+        kept.reactions = body.reactions;
+        kept.climb_ft = body.climb_ft;
+        kept.attacks = body.attacks;
+        kept.ac = body.ac;
+        kept.speed_ft = body.speed_ft;
+        o.class_live = std::move(kept);
+    }
     body.possession_overlay = o;
     apply_ghost_mind(body);
     if (body.form == FormKind::None) apply_class_strip(body);
@@ -8720,10 +8753,20 @@ std::string_view begin_possession(EncounterState& s, CombatantId ghost_id, Comba
     apply_ghost_mind(*body);
     apply_class_strip(*body);
     if (body->possession_hp_bonus != 0) {
-        const int before = body->hp_max;
+        // A link that starts in a form takes Draconic Resilience from the saved true form.
+        // The form's own maximum is a different pool (Polymorph, Wild Shape) or the shared
+        // live number (Shapechanger). Crediting the form's maximum, then a revert, would
+        // add the bonus onto a true-form maximum that was never reduced.
+        const bool in_form = body->form != FormKind::None && body->base;
+        const int before = in_form ? body->base->hp_max : body->hp_max;
         const int max = std::max(1, before - int(body->possession_hp_bonus));
-        body->hp_max = int16_t(max);
-        if (body->hp > body->hp_max) body->hp = body->hp_max;
+        if (in_form) {
+            body->base->hp_max = int16_t(max);
+            if (body->base->hp > body->base->hp_max) body->base->hp = body->base->hp_max;
+        } else {
+            body->hp_max = int16_t(max);
+            if (body->hp > body->hp_max) body->hp = body->hp_max;
+        }
         body->possession_overlay->hp_max_removed = int16_t(before - max);
     }
     if (body->has_readied) {
