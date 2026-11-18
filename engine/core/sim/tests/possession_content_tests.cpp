@@ -1,6 +1,7 @@
 // Ghost Possession content (SRD 5.1, CONTENT_CONVENTIONS §59) and the werebear unlink-in-form case.
 #include <doctest/doctest.h>
 
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <tuple>
@@ -923,6 +924,104 @@ TEST_CASE("a possessed monster host's non-spell save action resolves") {
     REQUIRE(submitted.ok);
     CHECK(rules_since(f, mark, EventKind::SavingThrowRolled) >= 1);
     CHECK(rules_since(f, mark, EventKind::ActionUsed) >= 1);
+}
+
+TEST_CASE("a possessed monster host within 30 ft chooses frightful") {
+    ContentLibrary lib = host_lib();
+    // Five tiles is 25 ft: inside Frightful's 30 ft, outside a melee attack.
+    Fight f(lib, {{kGhost, {4, 4}}, {kHost, {5, 4}}, {kFighter, {5, 9}}}, 8);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+    f.advance_to(f.id(0));
+    REQUIRE(f.who(0).possessing == f.id(1));
+    const uint32_t frightful = save_action_id(*f.c, f.id(1), "frightful");
+    REQUIRE(frightful != 0);
+    const auto* def = f.c->spell_def(frightful);
+    REQUIRE(def);
+    CHECK_FALSE(def->is_spell);
+    CHECK(f.c->distance_tiles(f.id(1), f.id(2)) * kFeetPerTile <= 30);
+    const auto cmd = next_command(*f.c, f.id(2));
+    CHECK(cmd.request.kind == ActionKind::CastSpell);
+    CHECK(cmd.request.spell_id == frightful);
+    CHECK(cmd.request.actor == f.id(1));
+    CHECK(cmd.request.target == f.id(2));
+}
+
+TEST_CASE("a possessed armored caster is refused for the armor before the body's spells") {
+    ContentLibrary lib = host_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kCleric, {5, 4}}, {kFighter, {6, 4}}}, 8);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+    f.advance_to(f.id(0));
+    REQUIRE(f.who(1).worn_armor != 0);
+    Command spell;
+    spell.request = {f.id(1), ActionKind::CastSpell, f.id(2)};
+    spell.request.spell_id = rules5e::spell_id_of("srd51.spell.sacred_flame");
+    spell.request.spell_level = 0;
+    spell.request.targets = {f.id(2)};
+    auto refused = f.c->submit(spell);
+    CHECK_FALSE(refused.ok);
+    CHECK(refused.error == "can't cast spells in armor you aren't proficient with");
+}
+
+TEST_CASE("a class-feature save action whose id differs from the feature fails to load") {
+    ContentLibrary lib = pack_lib();
+    Json doc = load_json("content/packs/srd51.core/characters/cleric_level_2.json");
+    doc["id"] = "t.cleric.renamed_turn";
+    bool renamed = false;
+    for (auto& act : doc["actions"]) {
+        if (act.value("id", "") != "turn_undead") continue;
+        act["id"] = "turn_undead_other";
+        renamed = true;
+    }
+    REQUIRE(renamed);
+    const auto err = lib.add(doc, "character");
+    REQUIRE(err);
+    CHECK(err->find("turn_undead_other") != std::string::npos);
+    CHECK(err->find("does not match a feature id") != std::string::npos);
+}
+
+TEST_CASE("every class-feature save action id maps onto the possession block list") {
+    ContentLibrary lib = host_lib();
+    int mapped = 0;
+    for (const auto& ent : std::filesystem::directory_iterator(kRoot + "/content/packs/srd51.core/characters")) {
+        if (ent.path().extension() != ".json") continue;
+        Json doc = Json::parse(std::ifstream(ent.path()));
+        bool has_save = false;
+        if (doc.contains("actions"))
+            for (const auto& act : doc["actions"])
+                has_save = has_save || act.value("kind", "") == "save_effect";
+        if (!has_save) continue;
+        const std::string id = doc.value("id", "");
+        if (!lib.find(id)) {
+            const auto err = lib.add(doc, "character");
+            const std::string why = ent.path().filename().string() + (err ? ": " + *err : "");
+            REQUIRE_MESSAGE(!err, why);
+        }
+        const Archetype* arch = lib.find(id);
+        REQUIRE(arch);
+        for (const auto& sa : arch->save_actions) {
+            std::size_t feature = arch->features.size();
+            for (std::size_t i = 0; i < arch->features.size(); ++i)
+                if (arch->features[i].id == sa.id) feature = i;
+            INFO(id);
+            INFO(sa.id);
+            REQUIRE(feature < arch->features.size());
+            const uint32_t fid = uint32_t(feature + 1);
+            bool feature_blocked = false;
+            bool spell_blocked = false;
+            for (uint32_t blocked : arch->base.possession_blocked_features) {
+                feature_blocked = feature_blocked || blocked == fid;
+                spell_blocked = spell_blocked || blocked == sa.spell_id;
+            }
+            if (!feature_blocked) continue;
+            CHECK(spell_blocked);
+            ++mapped;
+        }
+    }
+    CHECK(mapped >= 7);
 }
 
 TEST_CASE("a possessed cleric's spell and turn undead are both refused") {
