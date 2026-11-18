@@ -10,6 +10,7 @@
   "size": "medium",
   "type": "fiend",
   "alignment": "neutral evil",
+  "shapechanger": true,
   "armor_class": {
     "value": 15,
     "note": "natural armor"
@@ -87,7 +88,49 @@
     {
       "id": "shapechanger",
       "name": "Shapechanger",
-      "description": "The fiend can use its action to polymorph into a Small or Medium humanoid, or back into its true form. Without wings, the fiend loses its flying speed. Other than its size and speed, its statistics are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (Descriptive only: no shape, no forms, no shapechanger effect. shapechanger is not set. The a6212be subtype is shapechanger. Not a shapechanger trait.)"
+      "description": "The fiend can use its action to polymorph into a Small or Medium humanoid, or back into its true form. Without wings, the fiend loses its flying speed. Other than its size and speed, its statistics are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (CONTENT_CONVENTIONS §58. shapechanger: true is the (shapechanger) tag. True form: Medium fiend, fly 60, claw. Small and Medium humanoid: fly 0, no claw. Charm, Draining Kiss, and the description-only Etherealness stay.)",
+      "effect": {
+        "kind": "shapechanger",
+        "cost": "action",
+        "true_form": {
+          "actions": [
+            "claw",
+            "charm",
+            "draining_kiss",
+            "etherealness"
+          ]
+        },
+        "forms": [
+          {
+            "id": "small_humanoid",
+            "name": "Small humanoid",
+            "size": "small",
+            "speed": {
+              "walk": 30,
+              "fly": 0
+            },
+            "actions": [
+              "charm",
+              "draining_kiss",
+              "etherealness"
+            ]
+          },
+          {
+            "id": "medium_humanoid",
+            "name": "Medium humanoid",
+            "size": "medium",
+            "speed": {
+              "walk": 30,
+              "fly": 0
+            },
+            "actions": [
+              "charm",
+              "draining_kiss",
+              "etherealness"
+            ]
+          }
+        ]
+      }
     }
   ],
   "actions": [
@@ -109,7 +152,7 @@
           "type": "slashing"
         }
       ],
-      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 6 (1d6 + 3) slashing damage. (Fiend Form Only is descriptive: Shapechanger is not live, so this is the authored true form's claw. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 6 (1d6 + 3) slashing damage. (Fiend Form Only: the true form lists this claw. A Small or Medium humanoid form does not.)"
     },
     {
       "id": "charm",

@@ -73,7 +73,51 @@
     {
       "id": "shapechanger",
       "name": "Shapechanger",
-      "description": "The werebear can use its action to polymorph into a Large bear-humanoid hybrid or into a Large bear, or back into its true form, which is humanoid. Its statistics, other than its size and AC, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (Descriptive only: no shapechanger forms. The humanoid form is the authored stat block. Hybrid and bear, including the bear form speed 40, climb 30 and hybrid/bear AC 11, are not separate statistics. shapechanger: true is the Moonbeam fact. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "description": "The werebear can use its action to polymorph into a Large bear-humanoid hybrid or into a Large bear, or back into its true form, which is humanoid. Its statistics, other than its size and AC, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (CONTENT_CONVENTIONS §58. True form: Medium, AC 10, walk 30, greataxe. Hybrid and bear: Large, AC 11, walk 40, climb 30. Hybrid: greataxe or two claws, plus bite. Bear: two claws, plus bite. Keen Smell stays description-only. Can't speak in bear form is not a speech rule.)",
+      "effect": {
+        "kind": "shapechanger",
+        "cost": "action",
+        "true_form": {
+          "actions": [
+            "greataxe",
+            "greataxe_x2"
+          ]
+        },
+        "forms": [
+          {
+            "id": "hybrid",
+            "name": "Hybrid",
+            "size": "large",
+            "armor_class": 11,
+            "speed": {
+              "walk": 40,
+              "climb": 30
+            },
+            "actions": [
+              "greataxe",
+              "bite",
+              "claw",
+              "greataxe_x2",
+              "claw_x2"
+            ]
+          },
+          {
+            "id": "bear",
+            "name": "Bear",
+            "size": "large",
+            "armor_class": 11,
+            "speed": {
+              "walk": 40,
+              "climb": 30
+            },
+            "actions": [
+              "bite",
+              "claw",
+              "claw_x2"
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "keen_smell",
@@ -83,7 +127,7 @@
     {
       "id": "multiattack",
       "name": "Multiattack",
-      "description": "In bear form, the werebear makes two claw attacks. In humanoid form, it makes two greataxe attacks. In hybrid form, it can attack like a bear or a humanoid. (Humanoid form, authored: two greataxe attacks. Bite and claw are bear or hybrid form. See docs/SRD_MONSTERS_DEFERRED.md.)",
+      "description": "In bear form, the werebear makes two claw attacks. In humanoid form, it makes two greataxe attacks. In hybrid form, it can attack like a bear or a humanoid.",
       "effect": {
         "kind": "multiattack",
         "options": [
@@ -92,6 +136,13 @@
             "attacks": [
               "greataxe",
               "greataxe"
+            ]
+          },
+          {
+            "id": "claw_x2",
+            "attacks": [
+              "claw",
+              "claw"
             ]
           }
         ]
@@ -102,14 +153,42 @@
     {
       "id": "bite",
       "name": "Bite",
-      "kind": "special",
-      "description": "Bite (Bear or Hybrid Form Only). Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 15 (2d10 + 4) piercing damage. If the target is a humanoid, it must succeed on a DC 14 Constitution saving throw or be cursed with werebear lycanthropy. (Descriptive only: not a weapon attack on the authored humanoid form. The lycanthropy curse is not encoded. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d10",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d10+4",
+          "type": "piercing"
+        }
+      ],
+      "description": "Bite (Bear or Hybrid Form Only). Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 15 (2d10 + 4) piercing damage. If the target is a humanoid, it must succeed on a DC 14 Constitution saving throw or be cursed with werebear lycanthropy. (The lycanthropy curse stays description-only. HOLD. No save is rolled.)"
     },
     {
       "id": "claw",
       "name": "Claw",
-      "kind": "special",
-      "description": "Claw (Bear or Hybrid Form Only). Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 13 (2d8 + 4) slashing damage. (Descriptive only: not a weapon attack on the authored humanoid form. See docs/SRD_MONSTERS_DEFERRED.md.)"
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d8",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+4",
+          "type": "slashing"
+        }
+      ],
+      "description": "Claw (Bear or Hybrid Form Only). Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 13 (2d8 + 4) slashing damage."
     },
     {
       "id": "greataxe",
