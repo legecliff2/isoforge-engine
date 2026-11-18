@@ -2112,15 +2112,17 @@ Deferred, not this section:
 
 The SRD prints a form restriction once, as a parenthetical on the heading. Write that tag once.
 
-* When `name` is the full heading, the tag stays in `name` and `description` is the sentence after it. Werewolf Multiattack is this case: `name` is `Multiattack (Humanoid or Hybrid Form Only)` and `description` is `The werewolf makes two attacks: one with its bite and one with its claws or spear.` Both are the SRD 5.1 text. Do not copy the tag into `description`.
+* When `name` is the full heading, the tag stays in `name` and `description` is the sentence after it. Werewolf Multiattack is this case. `name` is `Multiattack (Humanoid or Hybrid Form Only)`. `description` is `The werewolf makes two attacks: two with its spear (humanoid form) or one with its bite and one with its claws (hybrid form).` That is the WotC SRD text on Open5e (`document__slug` `wotc-srd`). Do not copy the tag into `description`.
 * When `name` is the bare attack (`Bite`, `Claws`, `Spear`, `Spear (two hands)`, `Spear (thrown)`), `description` starts with the heading, tag included. Werewolf `spear`, `spear_two_handed`, and `spear_thrown` each start `Spear (Humanoid Form Only).` Bite and claws already start with theirs. No other lycanthrope or shapechanger in that set has a spear.
 * A Multiattack whose `name` stays `Multiattack` keeps the form note in `description` (wererat, wereboar, weretiger, werebear). That note is not repeated in `name`.
 
-The werewolf hybrid offers bite then claws and claws then bite. The SRD gives no order. The humanoid form still has no Multiattack: bite is wolf or hybrid only, and claws are hybrid only. The Multiattack sentence stays the SRD sentence.
+The werewolf humanoid form takes that Multiattack as two spear attacks. The authored options are `spear_x2`, `spear_two_handed_x2`, and `spear_thrown_x2`, one option per existing spear row. A single option does not mix those grips. The hybrid is one bite and one claws, `bite_claws` or `claws_bite`. The SRD gives no order. The wolf form is not in the Multiattack heading, so it has none.
 
 ### Form AC and worn armor
 
 `recompute_derived` writes `Combatant::ac` only while `form == None`. A Shapechanger form's `armor_class`, a Wild Shape beast's AC, and a Polymorph beast's AC all stand. Worn armor is not written over them. Revert puts the saved true-form AC back. A recompute after that, once `form` is None, applies the worn armor again. The same guard is the shapechanger n9 case. It is not a new mechanic and it claims no hash byte.
+
+Gear staying worn through Wild Shape is the engine's current model. There is no player choice yet. SRD 5.1 lets the druid choose whether equipment falls to the ground, merges into the new form, or is worn by it.
 
 A gear AC change made while the form is up is not applied on revert. `base.ac` is still the AC from the transform, and revert does not recompute when `DeriveInputs` did not change. No pack shapechanger carries a shield. That recompute is not this section.
 

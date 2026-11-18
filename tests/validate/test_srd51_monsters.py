@@ -1622,14 +1622,17 @@ class MonsterTable(unittest.TestCase):
         self.assertNotIn("effect", trait("werewolf", "keen_hearing_and_smell"))
         self.assertEqual(trait("werewolf", "multiattack")["name"], "Multiattack (Humanoid or Hybrid Form Only)")
         self.assertEqual(trait("werewolf", "multiattack")["description"],
-                         "The werewolf makes two attacks: one with its bite and one with its claws or spear.")
+                         "The werewolf makes two attacks: two with its spear (humanoid form) or one with its bite and one with its claws (hybrid form).")
         self.assertEqual(opts("werewolf"), {
+            "spear_x2": ["spear", "spear"],
+            "spear_two_handed_x2": ["spear_two_handed", "spear_two_handed"],
+            "spear_thrown_x2": ["spear_thrown", "spear_thrown"],
             "bite_claws": ["bite", "claws"],
             "claws_bite": ["claws", "bite"],
         })
         for sid in ("spear", "spear_two_handed", "spear_thrown"):
             self.assertTrue(act("werewolf", sid)["description"].startswith("Spear (Humanoid Form Only). "))
-        self.assertEqual(act("werewolf", "spear")["properties"], ["versatile"])
+        self.assertNotIn("properties", act("werewolf", "spear"))
         bite = act("werewolf", "bite")
         self.assertEqual(bite["natural"], {"dice": "1d8", "ability": "str"})
         self.assertEqual((bite["to_hit"], bite["damage"]), (4, [{"dice": "1d8+2", "type": "piercing"}]))
@@ -3597,7 +3600,8 @@ class MonsterTable(unittest.TestCase):
 
         wolf = forms("werewolf")
         self.assertEqual(wolf["true_form"]["actions"], [
-            "spear", "spear_two_handed", "spear_thrown"])
+            "spear", "spear_two_handed", "spear_thrown",
+            "spear_x2", "spear_two_handed_x2", "spear_thrown_x2"])
         self.assertEqual([(f["id"], f["armor_class"], f.get("speed"), f["actions"]) for f in wolf["forms"]], [
             ("hybrid", 12, None, ["bite", "claws", "bite_claws", "claws_bite"]),
             ("wolf", 12, {"walk": 40}, ["bite"]),

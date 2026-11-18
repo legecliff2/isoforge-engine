@@ -872,13 +872,14 @@ TEST_CASE("version gate: wild_shape / shapechanger in pre-@4 files are inert (li
 
 TEST_CASE("Wild Shape and Polymorph keep the form AC when worn armor is recomputed") {
     // The n9 guard is form != None, so a Wild Shape or Polymorph beast AC stands the same way a shape's AC does.
-    // Chain mail would otherwise write the calibrated true-form AC back over the beast.
+    // Hide is 12 + Dex (max 2). This druid's Dex is 14 (+2), so the printed 14 is the derived AC and the calibration
+    // adjust is 0. The wolf is AC 13, so a recompute that ignored the form would write 14.
     ContentLibrary lib;
     Json d = druid(2);
-    d["armor_class"] = {{"value", 18}, {"note", "chain mail"}};
-    d["equipment"] = Json::array({{{"item", "srd51.item.chain_mail"}, {"equipped", true}}});
+    d["armor_class"] = {{"value", 14}, {"note", "hide armor"}};
+    d["equipment"] = Json::array({{{"item", "srd51.item.hide_armor"}, {"equipped", true}}});
     REQUIRE_FALSE(build(lib, d));
-    auto mail = lib.add_item(load_json("content/packs/srd51.core/items/chain_mail.json"));
+    auto mail = lib.add_item(load_json("content/packs/srd51.core/items/hide_armor.json"));
     INFO(mail.value_or(""));
     REQUIRE_FALSE(mail);
     CHECK(lib.find("test.monster.wolf")->base.ac == 13);
@@ -907,7 +908,7 @@ TEST_CASE("Wild Shape and Polymorph keep the form AC when worn armor is recomput
     const CombatantId druid_id = chunk.spawns[0].stable_id;
     const CombatantId mage_id = chunk.spawns[1].stable_id;
     REQUIRE(c->loadout(druid_id));
-    CHECK(rules5e::find(c->state(), druid_id)->ac == 18);
+    CHECK(rules5e::find(c->state(), druid_id)->ac == 14);
     auto settle = [&](SubmitResult r) {
         while (r.ok && r.needs) r = c->decide({r.needs->window_seq, false, 0});
         return r;
@@ -942,9 +943,9 @@ TEST_CASE("Wild Shape and Polymorph keep the form AC when worn armor is recomput
     back.request.as_bonus_action = true;
     REQUIRE(settle(c->submit(back)).ok);
     CHECK(rules5e::find(c->state(), druid_id)->form == FormKind::None);
-    CHECK(rules5e::find(c->state(), druid_id)->ac == 18);
+    CHECK(rules5e::find(c->state(), druid_id)->ac == 14);
     recompute();
-    CHECK(rules5e::find(c->state(), druid_id)->ac == 18);
+    CHECK(rules5e::find(c->state(), druid_id)->ac == 14);
 
     advance(mage_id);
     uint8_t wolf_form = 0;
