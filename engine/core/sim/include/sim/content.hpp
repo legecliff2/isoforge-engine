@@ -97,9 +97,15 @@ struct Archetype {
     // on_hit[] kind "grapple" (R-G8): attack index -> the rider (escape DC; Druid gap G appends restrains / exclusive /
     // max_grapples); a hit by that attack grapples the target (sim calls rules5e::grapple).
     std::map<uint8_t, rules5e::GrappleRider> grapple_on_hit;
-    // R-G7 v0 wield model: bit i set = base.attacks[i] is a versatile melee weapon held in two hands (the stat block carries no
-    // shield). The AI sets ActionRequest::two_handed_grip for such attacks unless the creature has a two-weapon bonus option.
-    uint32_t two_handed_grip = 0;
+    // R-G7 v0 wield model: attack ids of versatile melee weapons held in two hands (the stat block carries no shield).
+    // Keyed by attack id, not by index in base.attacks. A true form or a later form is a subset of that list, so an index
+    // there is a different attack. The AI sets ActionRequest::two_handed_grip for such an attack unless the creature has a
+    // two-weapon bonus option.
+    std::vector<std::string> two_handed_grip;
+    bool two_handed_grip_for(std::string_view attack_id) const {
+        for (const std::string& grip_id : two_handed_grip) if (grip_id == attack_id) return true;
+        return false;
+    }
     std::vector<uint32_t> trigger_spell_ids;
     // batch 3 ghast Stench: monster@5 "aura" traits -> synthetic Zone SpellDefs (built by the hook, registered by
     // ContentLibrary::add); Combat::create attaches one feature aura per id to each spawn of this archetype.
