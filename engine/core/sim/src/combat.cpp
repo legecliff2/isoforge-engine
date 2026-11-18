@@ -1272,7 +1272,12 @@ rules5e::HealSplitCheck Combat::heal_split_check(CombatantId user, const rules5e
 bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
     const ActiveFeature* f = find_active(archetype(id), fid);
     if (!f || state_.ended || state_.pending || rules5e::turn_body(state_) != id) return false;
-    if (const auto* k0 = rules5e::find(state_, id); k0 && k0->possessed_by != 0 && rules5e::current_actor(state_) == id) return false;
+    // The ghost's turn drives the body (current_actor stays the ghost). A blocked class
+    // feature is refused whoever the actor is, or the built-in AI offers it and the rules reject it.
+    if (const auto* k0 = rules5e::find(state_, id); k0 && k0->possessed_by != 0 &&
+        std::find(k0->possession_blocked_features.begin(), k0->possession_blocked_features.end(), fid) !=
+            k0->possession_blocked_features.end())
+        return false;
     if (feature_uses_left(id, fid) == 0) return false;
     if (const Archetype* ar = archetype(id)) {   // R-G12 wild_shape: its uses are a resources[] pool (form features only)
         const auto sp = ar->feature_specs.find(fid);

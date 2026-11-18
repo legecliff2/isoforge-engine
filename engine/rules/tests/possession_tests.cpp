@@ -1358,3 +1358,208 @@ TEST_CASE("a host linked in a form keeps half proficiency through revert and unl
     CHECK(mut(s, 1).possessed_by == 0);
     CHECK(mut(s, 1).half_proficiency == 1);
 }
+
+namespace {
+
+Combatant class_host() {
+    auto host = host_of(1);
+    host.ac = 16;
+    host.attacks[0].to_hit = 7;
+    host.attacks[0].damage.bonus = 5;
+    host.hp = host.hp_max = 20;
+    host.possession_hp_bonus = 3;
+    host.evasion = true;
+    host.half_proficiency = 1;
+    host.crit_min = 19;
+    host.great_weapon_fighting = true;
+    host.attack_bonus_melee = 2;
+    host.save_advantages = {SaveAdvantage{Ability::Dex, true, 0}};
+    Combatant::PossessionClassBase stripped;
+    stripped.attacks = host.attacks;
+    stripped.attacks[0].to_hit = 5;
+    stripped.attacks[0].damage.bonus = 4;
+    stripped.ac = 13;
+    stripped.ac_delta = 3;
+    stripped.speed_ft = host.speed_ft;
+    stripped.attack_hit_delta = {2};
+    stripped.attack_dmg_delta = {1};
+    stripped.crit_min = 20;
+    host.possession_class_base = stripped;
+    return host;
+}
+
+FormStats beast_form(const char* bite, int ac) {
+    FormStats beast;
+    beast.ac = int8_t(ac);
+    beast.hp_max = 30;
+    beast.speed_ft = 40;
+    beast.attacks_per_action = 1;
+    beast.attacks = {Attack{bite, 4, {1, 8, 2}, DamageType::Piercing, 5, false, false}};
+    return beast;
+}
+
+void check_stripped(const Combatant& b) {
+    CHECK(b.possessed_by != 0);
+    CHECK_FALSE(b.evasion);
+    CHECK(b.half_proficiency == 0);
+    CHECK(b.crit_min == 20);
+    CHECK_FALSE(b.great_weapon_fighting);
+    CHECK(b.attack_bonus_melee == 0);
+    CHECK(b.save_advantages.empty());
+    CHECK(b.ac == 13);
+    CHECK(b.hp_max == 17);
+    REQUIRE(b.possession_overlay);
+    REQUIRE(b.possession_overlay->class_live);
+    const auto& live = *b.possession_overlay->class_live;
+    CHECK(live.evasion);
+    CHECK(live.half_proficiency == 1);
+    CHECK(live.crit_min == 19);
+    CHECK(live.great_weapon_fighting);
+    CHECK(live.attack_bonus_melee == 2);
+    REQUIRE(live.save_advantages.size() == 1);
+    CHECK(live.save_advantages[0].ability == Ability::Dex);
+    CHECK(live.ac == 16);
+    REQUIRE(live.attacks.size() == 1);
+    CHECK(live.attacks[0].to_hit == 7);
+    CHECK(live.attacks[0].damage.bonus == 5);
+}
+
+void check_restored(const Combatant& b) {
+    CHECK(b.possessed_by == 0);
+    CHECK(b.form == FormKind::None);
+    CHECK(b.evasion);
+    CHECK(b.half_proficiency == 1);
+    CHECK(b.crit_min == 19);
+    CHECK(b.great_weapon_fighting);
+    CHECK(b.attack_bonus_melee == 2);
+    REQUIRE(b.save_advantages.size() == 1);
+    CHECK(b.save_advantages[0].ability == Ability::Dex);
+    CHECK(b.ac == 16);
+    CHECK(b.hp_max == 20);
+    CHECK(b.hp == 17);
+    REQUIRE(b.attacks.size() == 1);
+    CHECK(b.attacks[0].id == "longsword");
+    CHECK(b.attacks[0].to_hit == 7);
+    CHECK(b.attacks[0].damage.bonus == 5);
+}
+
+}  // namespace
+
+TEST_CASE("repeated form cycles while linked keep the true class fields") {
+    auto s = begin_encounter({class_host(), ghost_of(2), ally_of(3)}, 55, nullptr, spell_hooks());
+    link(s, 2, 1);
+    check_stripped(mut(s, 1));
+    for (int i = 0; i < 3; ++i) {
+        REQUIRE(apply_form(mut(s, 1), FormKind::Polymorph, beast_form("beast-bite", 11)));
+        CHECK(mut(s, 1).form == FormKind::Polymorph);
+        CHECK(mut(s, 1).ac == 11);
+        CHECK_FALSE(mut(s, 1).evasion);
+        REQUIRE(mut(s, 1).possession_overlay);
+        REQUIRE(mut(s, 1).possession_overlay->class_live);
+        CHECK(mut(s, 1).possession_overlay->class_live->evasion);
+        CHECK(mut(s, 1).possession_overlay->class_live->crit_min == 19);
+        REQUIRE(revert_form(mut(s, 1)));
+        check_stripped(mut(s, 1));
+    }
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    check_restored(mut(s, 1));
+}
+
+TEST_CASE("revert, a new form, and unlink restore the true class fields") {
+    auto s = begin_encounter({class_host(), ghost_of(2), ally_of(3)}, 56, nullptr, spell_hooks());
+    link(s, 2, 1);
+    REQUIRE(apply_form(mut(s, 1), FormKind::Polymorph, beast_form("beast-a", 11)));
+    REQUIRE(revert_form(mut(s, 1)));
+    check_stripped(mut(s, 1));
+    REQUIRE(apply_form(mut(s, 1), FormKind::Polymorph, beast_form("beast-b", 12)));
+    CHECK(mut(s, 1).ac == 12);
+    CHECK(mut(s, 1).attacks[0].id == "beast-b");
+    CHECK_FALSE(mut(s, 1).evasion);
+    std::vector<Event> ev;
+    end_possession(s, 2, 2, ev, false);
+    CHECK(mut(s, 1).form == FormKind::Polymorph);
+    CHECK(mut(s, 1).evasion);
+    CHECK(mut(s, 1).half_proficiency == 1);
+    CHECK(mut(s, 1).crit_min == 19);
+    CHECK(mut(s, 1).great_weapon_fighting);
+    CHECK(mut(s, 1).attack_bonus_melee == 2);
+    REQUIRE(mut(s, 1).save_advantages.size() == 1);
+    CHECK(mut(s, 1).save_advantages[0].ability == Ability::Dex);
+    CHECK(mut(s, 1).ac == 12);
+    REQUIRE(mut(s, 1).base);
+    CHECK(mut(s, 1).base->ac == 16);
+    CHECK(mut(s, 1).base->hp_max == 20);
+    REQUIRE(revert_form(mut(s, 1)));
+    check_restored(mut(s, 1));
+}
+
+namespace {
+const uint32_t kRebuke = spell_id_of("test.possession.hellish_rebuke");
+EncounterHooks reaction_spell_hooks() {
+    auto h = spell_hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    SpellDef d;
+    d.id = kRebuke;
+    d.content_id = "test.possession.hellish_rebuke";
+    d.level = 1;
+    d.range_ft = 60;
+    d.casting_time = CastingTime::Reaction;
+    d.reaction_trigger = ReactionTrigger::Damaged;
+    d.requires_sight = true;
+    d.kind = SpellEffectKind::Save;
+    d.save_ability = Ability::Dex;
+    d.dice = DiceExpr{2, 10, 0};
+    d.damage_type = DamageType::Fire;
+    d.on_save = OnSave::Half;
+    d.fixed_dc = 13;
+    book->add(d);
+    h.spells = book;
+    return h;
+}
+Combatant reaction_sorcerer(CombatantId id, uint8_t team) {
+    auto c = wizard(id, team);
+    c.spells_known.push_back(kRebuke);
+    c.hp = c.hp_max = 80;
+    return c;
+}
+bool offers(const NeedsDecision& n, ReactionTrigger trigger, uint32_t spell) {
+    if (n.trigger != trigger) return false;
+    for (const auto& o : n.options)
+        if (o.option_id == spell) return true;
+    return false;
+}
+}  // namespace
+
+TEST_CASE("a possessed sorcerer is not offered Shield, Counterspell, or Hellish Rebuke") {
+    auto hooks = reaction_spell_hooks();
+    auto caster = wizard(1, 0);
+    never_react(caster);
+    auto open = reaction_sorcerer(2, 1);
+    auto shut = open;
+    auto ghost = ghost_of(3);
+    auto possessed = begin_encounter({caster, shut, ghost}, 4, nullptr, hooks);
+    link(possessed, 3, 2);
+    const auto slots = mut(possessed, 2).spell_slots;
+    end_turns_until(possessed, 1);
+    auto blocked = step(possessed, cast(1, kMagicMissile, 2, 1));
+    REQUIRE(blocked.status == StepStatus::Done);
+    CHECK(count(blocked.events, EventKind::ReactionWindowOpened) == 0);
+    CHECK_FALSE(mut(possessed, 2).reaction_used);
+    CHECK(mut(possessed, 2).spell_slots == slots);
+
+    auto offered = begin_encounter({caster, open, ghost_of(3)}, 4, nullptr, hooks);
+    end_turns_until(offered, 1);
+    auto counter = step(offered, cast(1, kMagicMissile, 2, 1));
+    REQUIRE(counter.status == StepStatus::NeedsDecision);
+    REQUIRE(counter.needs);
+    CHECK(offers(*counter.needs, ReactionTrigger::SpellCast, kCounterspell));
+    auto shield = step(offered, decision_request(*counter.needs, false));
+    REQUIRE(shield.status == StepStatus::NeedsDecision);
+    REQUIRE(shield.needs);
+    CHECK(offers(*shield.needs, ReactionTrigger::BeingHit, kShield));
+    auto rebuke = step(offered, decision_request(*shield.needs, false));
+    REQUIRE(rebuke.status == StepStatus::NeedsDecision);
+    REQUIRE(rebuke.needs);
+    CHECK(offers(*rebuke.needs, ReactionTrigger::Damaged, kRebuke));
+}

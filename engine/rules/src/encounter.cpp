@@ -38,14 +38,6 @@ void emit(std::vector<Event>& ev, EventKind k, CombatantId actor, CombatantId ta
     ev.push_back(Event{k, actor, target, a, b, c});
 }
 
-// 24 h Possession immunity (SRD p.311). scope 1 matches this ghost; source 0 matches every user of the action.
-bool possession_immune(const EncounterState& s, CombatantId creature, CombatantId source, uint32_t spell) {
-    return std::any_of(s.action_immunities.begin(), s.action_immunities.end(), [&](const ActionImmunity& im) {
-        return im.creature == creature && im.spell_id == spell && (im.source == 0 || im.source == source) &&
-               uint32_t(s.round) < im.until_round;
-    });
-}
-
 // R-G12: a transform ends (Reverted{actor, a = source, b = reason, c = overflow}); no-op when not transformed.
 void form_reverted(Combatant& c, int reason, int overflow, std::vector<Event>& ev) {
     const uint32_t src = c.form_source;
@@ -1116,6 +1108,7 @@ std::vector<ReactionOption> spell_reaction_options(const EncounterState& s, cons
     const bool targeted_only = trig == ReactionTrigger::BeingHit && w.spell_id != 0 && w.attack_natural == 0;
     const Combatant* trigger_actor = find(s, w.trigger_actor);
     std::vector<ReactionOption> out;
+    if (r.possessed_by != 0) return out;   // a possessed body's spells are not available
     if (!s.hooks.spells) return out;
     for (uint32_t id : r.spells_known) {
         const SpellDef* d = s.hooks.spells->find(id);
@@ -2066,7 +2059,7 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
         }
         out.push_back(o);
     }
-    if (w.trigger == ReactionTrigger::Damaged && has_damager && w.target == r.id && s.hooks.spells) {   // 7.2zg Hellish Rebuke
+    if (w.trigger == ReactionTrigger::Damaged && has_damager && w.target == r.id && r.possessed_by == 0 && s.hooks.spells) {   // 7.2zg Hellish Rebuke
         for (uint32_t id : r.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
             if (!d || d->kind == SpellEffectKind::Descriptive || d->casting_time != CastingTime::Reaction ||
@@ -5588,11 +5581,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (t->possessed_by != 0) return fail("target is already possessed");
         if (t->possessing != 0) return fail("can't possess a possessing ghost");
         if (def.target_types != 0 && (def.target_types & bit(t->creature_type)) == 0) return fail("invalid creature type");
-        bool warded = false;
-        for (const auto& e : s.effects)
-            if (e.target == t->id && e.blocks_possession &&
-                (e.immune_from_types == 0 || (e.immune_from_types & bit(a.creature_type)) != 0))
-                warded = true;
+        const bool warded = possession_warded(s, t->id, bit(a.creature_type));
         const bool immune = possession_immune(s, t->id, a.id, def.id);
         if (warded || immune) {
             if (def.casting_time == CastingTime::BonusAction) {
@@ -8616,6 +8605,57 @@ void suspend_charm_fear(EncounterState& s, Combatant& body, std::vector<Event>& 
     body.possession_overlay->suspended_conditions = bits;
 }
 
+// The eight FormStats fields a true-form snapshot carries. The other class numbers on
+// PossessionClassBase were captured at the link, before the strip. A re-apply must not
+// read those off a stripped body.
+//
+// true_form: the live body currently holds the true form (revert just restored it, and the
+// strip has not run again). Copy the eight fields as they stand.
+// Otherwise, if the link already stripped the body, copy only AC, speed, and per-attack
+// to-hit and damage, each plus the load-time class delta. Attack identity, dice,
+// attacks per action, triggers, bonus attacks, reactions, and climb stay on the snapshot.
+// If the link never stripped (no class base), the live eight fields are already the true
+// ones, including an equip, and are copied whole.
+//
+// Audited re-apply / re-snapshot paths:
+//   begin_possession          initial capture, before the strip. Not a re-apply.
+//   revert_form               reapply with true_form (this function). Then the strip runs.
+//   apply_form                this function (not true_form) before own_stats, then reapply
+//                             while the form is up, which does not touch the snapshot.
+//   recompute_derived         note_possession_gear. Equip, unequip, draw, stow, drop,
+//                             pick up, hand over, a death drop, and a derive-input refresh.
+//   restore_overlay_stats     writes the snapshot onto the body. Does not recapture.
+//   own_stats                 reads the snapshot's eight fields. Does not write them.
+//   stats_of / build_form     reads the live body for a shapechanger form. Does not write
+//                             the snapshot.
+void refresh_class_live_form_stats(Combatant::PossessionOverlay& o, const Combatant& body, bool true_form) {
+    if (!o.class_live) return;
+    Combatant::PossessionClassBase& snap = *o.class_live;
+    const bool stripped = o.class_stripped && !true_form;
+    if (!stripped) {
+        snap.attacks_per_action = body.attacks_per_action;
+        snap.triggers = body.triggers;
+        snap.bonus_attacks = body.bonus_attacks;
+        snap.reactions = body.reactions;
+        snap.climb_ft = body.climb_ft;
+        snap.attacks = body.attacks;
+        snap.ac = body.ac;
+        snap.speed_ft = body.speed_ft;
+        return;
+    }
+    if (!body.possession_class_base) return;
+    const Combatant::PossessionClassBase& d = *body.possession_class_base;
+    snap.ac = int8_t(std::clamp(int(body.ac) + int(d.ac_delta), -128, 127));
+    snap.speed_ft = uint8_t(std::clamp(int(body.speed_ft) + int(d.speed_delta), 0, 255));
+    const auto n = std::min(snap.attacks.size(), body.attacks.size());
+    for (std::size_t i = 0; i < n; ++i) {
+        const int hd = i < d.attack_hit_delta.size() ? int(d.attack_hit_delta[i]) : 0;
+        const int dd = i < d.attack_dmg_delta.size() ? int(d.attack_dmg_delta[i]) : 0;
+        snap.attacks[i].to_hit = int8_t(std::clamp(int(body.attacks[i].to_hit) + hd, -128, 127));
+        snap.attacks[i].damage.bonus = int16_t(std::clamp(int(body.attacks[i].damage.bonus) + dd, -32768, 32767));
+    }
+}
+
 void resume_charm_fear(EncounterState& s, Combatant& body, std::vector<Event>& ev) {
     const uint32_t bits = body.possession_overlay ? body.possession_overlay->suspended_conditions : 0;
     for (auto& sc : s.sourced) {
@@ -8680,26 +8720,19 @@ void reapply_possession_overlay(Combatant& body) {
     o.save_proficiencies = body.save_proficiencies;
     o.skill_proficiencies = body.skill_proficiencies;
     o.condition_immunities = body.condition_immunities;
-    // A true-form revert has just put the true form's attacks, AC, and speed back.
-    // Refresh only those FormStats fields on the link snapshot. The other class numbers
-    // (evasion, crit range, half proficiency, and the rest) were captured at the link,
-    // before the strip, and the live body is still stripped. Re-capturing them would
-    // freeze the stripped values.
-    if (body.form == FormKind::None && o.class_live) {
-        Combatant::PossessionClassBase kept = *o.class_live;
-        kept.attacks_per_action = body.attacks_per_action;
-        kept.triggers = body.triggers;
-        kept.bonus_attacks = body.bonus_attacks;
-        kept.reactions = body.reactions;
-        kept.climb_ft = body.climb_ft;
-        kept.attacks = body.attacks;
-        kept.ac = body.ac;
-        kept.speed_ft = body.speed_ft;
-        o.class_live = std::move(kept);
-    }
+    // A true-form revert has just put the true form back, and the strip has not run again.
+    // Refresh only the eight FormStats fields. The other class numbers stay as captured
+    // at the link. A form enter does not refresh: the live body is the form, and writing
+    // it would replace the true form. apply_form refreshed the snapshot before own_stats.
+    if (body.form == FormKind::None) refresh_class_live_form_stats(o, body, true);
     body.possession_overlay = o;
     apply_ghost_mind(body);
     if (body.form == FormKind::None) apply_class_strip(body);
+}
+
+void note_possession_gear(Combatant& body) {
+    if (body.possessed_by == 0 || body.form != FormKind::None || !body.possession_overlay) return;
+    refresh_class_live_form_stats(*body.possession_overlay, body, false);
 }
 
 void suspend_class_modifiers(EncounterState& s, const Combatant& body) {
@@ -8719,6 +8752,20 @@ void resume_class_modifiers(EncounterState& s, CombatantId body) {
     for (auto& m : s.modifiers)
         if (m.target == body) m.possession_held = false;
     refresh_mod_cache(s);
+}
+
+bool possession_immune(const EncounterState& s, CombatantId creature, CombatantId source, uint32_t spell) {
+    return std::any_of(s.action_immunities.begin(), s.action_immunities.end(), [&](const ActionImmunity& im) {
+        return im.creature == creature && im.spell_id == spell && (im.source == 0 || im.source == source) &&
+               uint32_t(s.round) < im.until_round;
+    });
+}
+
+bool possession_warded(const EncounterState& s, CombatantId target, uint32_t possessor_types) {
+    return std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& e) {
+        return e.target == target && e.blocks_possession &&
+               (e.immune_from_types == 0 || (e.immune_from_types & possessor_types) != 0);
+    });
 }
 
 std::string_view begin_possession(EncounterState& s, CombatantId ghost_id, CombatantId body_id, uint32_t spell_id,
@@ -9051,6 +9098,10 @@ template <class T> void append_all(std::vector<T>& to, const std::vector<T>& fro
 bool apply_form(Combatant& c, FormKind kind, const FormStats& f) {
     if (kind == FormKind::None || c.form != FormKind::None) return false;
     if (kind != FormKind::Shapechanger && f.hp_max <= 0) return false;
+    // The true-form snapshot is about to be taken from class_live. Fold the live gear in
+    // first. A stripped body contributes only AC, speed, and attack bonuses (plus the
+    // class deltas). It does not contribute evasion or the other class fields.
+    if (c.possessed_by != 0 && c.possession_overlay) refresh_class_live_form_stats(*c.possession_overlay, c, false);
     const FormStats own = own_stats(c);
     FormStats n = f;
     if (kind == FormKind::WildShape) {   // keeps Int / Wis / Cha, its proficiencies (and the beast's) and its features (D7)

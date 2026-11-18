@@ -1467,12 +1467,20 @@ bool                       nonproficient_armor(const Combatant&);
 std::string_view           possession_attack_refusal(const Combatant&, const Attack&);
 // Empty, or "can't target a possessing ghost". Turn Undead (control Turned, undead in target_types) is the exception.
 std::string_view           possession_target_refusal(const Combatant& target, const SpellDef* def);
+// 24 h Possession immunity. source 0 matches every user of the action; otherwise this possessor.
+bool                       possession_immune(const EncounterState&, CombatantId creature, CombatantId source, uint32_t spell);
+// Protection from Evil and Good. possessor_types is a creature-type bit. A ward with no types matches any possessor.
+bool                       possession_warded(const EncounterState&, CombatantId target, uint32_t possessor_types);
 // Link the ghost to the body. Emits Possessed. Empty on success, a refusal otherwise (nothing spent here).
 std::string_view           begin_possession(EncounterState&, CombatantId ghost, CombatantId body, uint32_t spell_id,
                                             uint16_t immunity_hours, uint8_t immunity_scope, std::vector<Event>&);
 // The only way the link ends. reason: 1 body at 0 HP, 2 bonus action, 3 turned, 5 possessor died.
 // place: sim puts the ghost back on a tile. False when the ghost is leaving play (end_summon).
 void                       end_possession(EncounterState&, CombatantId ghost, int reason, std::vector<Event>&, bool place = true);
+// Fold an equip (or any other live AC / speed / attack-bonus change) into the link snapshot.
+// No-op unless the body is possessed and not in a form. Never reads a stripped class field
+// (evasion, half proficiency, crit range, and the rest) back into the snapshot.
+void                       note_possession_gear(Combatant&);
 // Ends a link whose body is at 0 HP or whose possessor is dead. Called from check_end.
 void                       sweep_possession(EncounterState&, std::vector<Event>&);
 const Combatant*           find(const EncounterState&, CombatantId);

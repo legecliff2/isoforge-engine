@@ -475,7 +475,8 @@ namespace {
 std::optional<Command> spell_kind_command(const Combat& c, const rules5e::Combatant& me) {
     const auto& s = c.state();
     const CombatantId charmer = rules5e::condition_source(s, me.id, rules5e::Condition::Charmed);
-    if (s.budget.bonus_action && s.budget.sequence == 0) {
+    // Sustain is CastSpell. A possessed body is refused ("possessed: the body's spells are not available").
+    if (me.possessed_by == 0 && s.budget.bonus_action && s.budget.sequence == 0) {
         const uint32_t now = (uint32_t(s.round) << 16) | s.turn_index;
         for (const auto& e : s.effects) {
             if (e.caster != me.id || e.damage_when != 2 || e.cast_stamp == now || e.target == charmer) continue;
@@ -504,6 +505,11 @@ std::optional<Command> spell_kind_command(const Combat& c, const rules5e::Combat
     return std::nullopt;
 }
 
+// A possessed body's printed attack (pb_in_to_hit < 0) is refused and does not roll.
+bool possession_attack_ok(const rules5e::Combatant& me, uint8_t i) {
+    return i < me.attacks.size() && rules5e::possession_attack_refusal(me, me.attacks[i]).empty();
+}
+
 // Rampage / bonus_attack_grant. The granted attack index is grant - 1. `who` must be living and in reach
 // (melee) or legal to shoot. `hostile_only` is the retarget scan: another foe, never the charmer. The sticky
 // target itself is not re-checked for hostility (a caller already chose it).
@@ -512,7 +518,7 @@ std::optional<Command> granted_bonus_attack(const Combat& c, CombatantId self, c
     const auto& s = c.state();
     if (s.budget.bonus_attack_grant == 0 || !s.budget.bonus_action) return std::nullopt;
     const uint8_t gi = uint8_t(s.budget.bonus_attack_grant - 1);
-    if (gi >= me.attacks.size()) return std::nullopt;
+    if (!possession_attack_ok(me, gi)) return std::nullopt;
     if (equipment_ai_active(c, self) && !attack_usable(s, self, gi)) return std::nullopt;
     const auto* k = rules5e::find(s, who);
     if (!k || k->id == self || k->dead || k->gone || !rules5e::is_conscious(*k)) return std::nullopt;
@@ -567,6 +573,15 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         return look;
     }
     const auto* me = rules5e::find(s, self);
+    // Possession (§59). The body cannot act, so the ghost's bonus action ends the link (reason 2).
+    // No roll. While the body can act, the link stays and the body spends the turn.
+    if (const auto* slot_c = rules5e::find(s, slot);
+        slot_c && slot_c->possessing == self && me && (me->dead || me->hp <= 0 || rules5e::is_incapacitated(*me))) {
+        Command rev;
+        rev.request = {slot, ActionKind::Revert};
+        rev.request.as_bonus_action = true;
+        return rev;
+    }
     if (!me || !rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return end;
     if (me->surprised) return end;   // R-G16: a surprised creature's first turn accepts only EndTurn
     // Stand up (Director-approved AI policy): a prone creature, at the start of its turn (nothing spent or moved yet), stands with
@@ -733,9 +748,11 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // Save actions (monster@4 / character@4, VERSION_BUMP_BATCH row 6): a single-target one (no area template) that
     // is available and in reach goes before a multiattack or a plain attack. Availability is read from the rules
     // state (recharge row expended, uses left); the AI never rolls or keeps its own flag. Area actions are the
-    // area-template row's business.
-    if (const Archetype* arch = c.archetype(self); arch && !beast_form && s.budget.action && s.budget.sequence == 0 &&
-                                                   s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t))
+    // area-template row's business. A possessed body's save action is CastSpell, and the rules refuse every
+    // such cast ("possessed: the body's spells are not available"), whoever is driving.
+    if (const Archetype* arch = c.archetype(self); arch && me->possessed_by == 0 && !beast_form && s.budget.action &&
+                                                   s.budget.sequence == 0 && s.budget.attacks_remaining == 0 &&
+                                                   rules5e::is_conscious(*t))
         for (const auto& sa : arch->save_actions) {
             if (sa.teleport || sa.rider_only || sa.leap || sa.whirl || sa.whelm || sa.ethereal || sa.illusory || sa.passage || sa.healing_touch) continue;   // blink dog: destination not guessed. B3b: a free rider is not this action. B8: the AI does not jump or land. B10: the AI does not pick a random fling. B11: the AI does not use Whelm. B19: the AI does not use Etherealness. The visible-figure action is not this AI's choice. Invisible Passage is not this AI's choice. Healing Touch would heal the current foe.
             if (sa.usage_kind == 1) {
@@ -798,6 +815,22 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 sd && ((sd->has_target_condition && !t->has(sd->target_condition)) ||
                        (sd->caster_sees_target && !rules5e::sight(s, self, t->id).can_see)))
                 continue;   // B15 Death Glare: a refused cast would stall the turn
+            // Possession (§59). Same target as this walk, no extra draw. A legal humanoid is
+            // taken instead of Withering Touch. An illegal one is not chosen (a refused cast
+            // would stall, and an immune or warded target would spend the recharge).
+            if (const auto* sd = c.spell_def(sa.spell_id); sd && sd->possess) {
+                if (me->possessing != 0 || t->possessed_by != 0 || t->possessing != 0) continue;
+                // begin_possession refuses these after the save. The action and the Recharge
+                // are already spent by then, so the AI must not pick the host.
+                if (t->possession_unsupported || !t->possession_refuse.empty()) continue;
+                // can_act(*t). The rules still allow the cast. The AI does not: it would end
+                // the link the same turn, spend the Recharge, and grant the 24 h immunity.
+                if (t->dead || t->hp <= 0 || rules5e::is_incapacitated(*t)) continue;
+                if (sd->target_types != 0 && (sd->target_types & rules5e::bit(t->creature_type)) == 0) continue;
+                if (!rules5e::plane_affect_refusal(*me, *t).empty()) continue;
+                if (rules5e::possession_immune(s, t->id, self, sd->id)) continue;
+                if (rules5e::possession_warded(s, t->id, rules5e::bit(me->creature_type))) continue;
+            }
             Command cast;
             cast.request = {self, ActionKind::CastSpell, t->id};
             cast.request.spell_id = sa.spell_id;
@@ -896,7 +929,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 bi = -1;
                 for (std::size_t i = 0; i < me->attacks.size() && bi < 0; ++i) if (!me->attacks[i].ranged) bi = int(i);
             }
-            if (bi < 0 || std::size_t(bi) >= me->attacks.size() || !usable(std::size_t(bi))) return std::nullopt;
+            if (bi < 0 || !possession_attack_ok(*me, uint8_t(bi)) || !usable(std::size_t(bi))) return std::nullopt;
             const bool ok = me->attacks[std::size_t(bi)].ranged
                                 ? c.can_shoot(self, uint8_t(bi), t->id)
                                 : c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[std::size_t(bi)].reach_or_range_ft);
@@ -927,19 +960,25 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     uint8_t ai = 0;
     bool no_weapon = false;   // equipment: no attack the loadout allows (move / end instead of a refused attack)
     if (!eq) {
+        bool found = false;
         for (uint8_t i = 0; i < me->attacks.size(); ++i)
-            if (!me->attacks[i].ranged) { ai = i; break; }
+            if (!me->attacks[i].ranged && possession_attack_ok(*me, i)) { ai = i; found = true; break; }
+        if (!found) {
+            for (uint8_t i = 0; i < me->attacks.size(); ++i)
+                if (possession_attack_ok(*me, i)) { ai = i; found = true; break; }
+            if (!found) no_weapon = true;
+        }
     } else {   // the usable melee attack with the best attack_score (earliest on ties), else the first usable attack
         int best_score = -1;
         for (std::size_t i = 0; i < me->attacks.size() && i < 255; ++i) {
-            if (me->attacks[i].ranged || !usable(i)) continue;
+            if (me->attacks[i].ranged || !usable(i) || !possession_attack_ok(*me, uint8_t(i))) continue;
             const int sc = attack_score(*me, uint8_t(i), *t, false);
             if (sc > best_score) { best_score = sc; ai = uint8_t(i); }
         }
         if (best_score < 0) {
             no_weapon = true;
             for (std::size_t i = 0; i < me->attacks.size() && i < 255 && no_weapon; ++i)
-                if (usable(i)) { ai = uint8_t(i); no_weapon = false; }
+                if (usable(i) && possession_attack_ok(*me, uint8_t(i))) { ai = uint8_t(i); no_weapon = false; }
         }
     }
     if (me->attacks.empty()) return end;
@@ -949,13 +988,16 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // Mixed melee+ranged options are never started. after_action sequences are never started.
     uint8_t multi = 0;   // ActionRequest::multiattack to send (0 = continue / plain attack)
     if (s.budget.sequence != 0 && s.budget.sequence <= me->multiattacks.size()) {
-        if (const int next = rules5e::multiattack_next(me->multiattacks, s.budget.sequence, s.budget.sequence_pos); next >= 0)
+        if (const int next = rules5e::multiattack_next(me->multiattacks, s.budget.sequence, s.budget.sequence_pos); next >= 0) {
+            if (!possession_attack_ok(*me, uint8_t(next))) return end;
             ai = uint8_t(next);
+        }
     } else {
         auto pure = [&](const rules5e::AttackSequence& seq, bool ranged) {
             if (seq.after_action != 0 || seq.attacks.empty()) return false;
             for (uint8_t k : seq.attacks)
-                if (k >= me->attacks.size() || me->attacks[k].ranged != ranged || !usable(k)) return false;
+                if (k >= me->attacks.size() || me->attacks[k].ranged != ranged || !usable(k) || !possession_attack_ok(*me, k))
+                    return false;
             return true;
         };
         int melee_i = -1, ranged_i = -1;
@@ -1023,7 +1065,8 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         const int need = melee_path_cost();
         if (need > ai_move_left(s, *me) && need < (1 << 20)) {
             bool shoot = false;
-            for (uint8_t i = 0; i < me->attacks.size() && !shoot; ++i) shoot = me->attacks[i].ranged && c.can_shoot(self, i, t->id);
+            for (uint8_t i = 0; i < me->attacks.size() && !shoot; ++i)
+                shoot = me->attacks[i].ranged && possession_attack_ok(*me, i) && c.can_shoot(self, i, t->id);
             if (!can_attack || !shoot || need <= ai_move_left(s, *me) + (me->swim_ft > 0 ? std::max(rules5e::modified_speed(s, *me), rules5e::mode_speed(s, *me, 2)) : rules5e::modified_speed(s, *me))) {   // 7.2u: what the Dash adds
                 Command d;
                 d.request = {self, ActionKind::Dash};
@@ -1041,7 +1084,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         bool best_dis = false;
         for (std::size_t i = 0; i < me->attacks.size() && i < 255; ++i) {
             const uint8_t ii = uint8_t(i);
-            if (!me->attacks[i].ranged || !usable(i) || !c.can_shoot(self, ii, t->id)) continue;
+            if (!me->attacks[i].ranged || !usable(i) || !possession_attack_ok(*me, ii) || !c.can_shoot(self, ii, t->id)) continue;
             const bool dis = c.ranged_disadvantage(self, ii, t->id);
             const int sc = attack_score(*me, ii, *t, dis);
             if (!best || sc > best_score) { best = ii; best_score = sc; best_dis = dis; }
@@ -1057,7 +1100,8 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 std::optional<uint8_t> mi;
                 int msc = 0;
                 for (std::size_t i = 0; i < me->attacks.size() && i < 255; ++i) {
-                    if (me->attacks[i].ranged || !usable(i) || reach_tiles(me->attacks[i].reach_or_range_ft) < 1) continue;
+                    if (me->attacks[i].ranged || !usable(i) || !possession_attack_ok(*me, uint8_t(i)) ||
+                        reach_tiles(me->attacks[i].reach_or_range_ft) < 1) continue;
                     const int sc = attack_score(*me, uint8_t(i), *nk, false);
                     if (!mi || sc > msc) { mi = uint8_t(i); msc = sc; }
                 }
@@ -1079,7 +1123,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         std::optional<uint8_t> best;
         bool best_clean = false;
         for (uint8_t i = 0; i < me->attacks.size(); ++i) {
-            if (!me->attacks[i].ranged || !c.can_shoot(self, i, t->id)) continue;
+            if (!me->attacks[i].ranged || !possession_attack_ok(*me, i) || !c.can_shoot(self, i, t->id)) continue;
             const bool clean = !c.ranged_disadvantage(self, i, t->id);
             if (!best || (clean && !best_clean)) { best = i; best_clean = clean; }
         }

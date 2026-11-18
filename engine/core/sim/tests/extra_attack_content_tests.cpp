@@ -668,3 +668,104 @@ TEST_CASE("a possessed form keeps its AC, and the normal-form class delta return
     recompute();
     CHECK(host->ac == printed);
 }
+
+TEST_CASE("an equip during the link survives a form cycle") {
+    ContentLibrary lib;
+    for (const char* rel : {"content/packs/srd51.core/items/greataxe.json",
+                            "content/packs/srd51.core/items/handaxe.json",
+                            "content/packs/srd51.core/items/shield.json",
+                            "content/packs/srd51.core/items/chain_mail.json",
+                            "content/packs/srd51.core/items/longsword.json"})
+        REQUIRE_FALSE(lib.add_item(load_json(rel)));
+    Json barb = load_json("content/packs/srd51.core/characters/barbarian_level_5.json");
+    barb["equipment"].push_back({{"item", "srd51.item.shield"}});
+    REQUIRE_FALSE(lib.add(barb, "character"));
+    Json gob = load_json("content/packs/srd51.core/monsters/goblin.json");
+    gob["id"] = "t.ghost.equipform";
+    REQUIRE_FALSE(lib.add(gob, "monster"));
+    world::Chunk chunk{};
+    chunk.coord = {5, 5, 0};
+    chunk.origin = world::Chunk::Origin::Handcrafted;
+    chunk.palette = {"", "floor"};
+    for (auto& cell : chunk.layers[0]) cell.tile = 1;
+    chunk.spawns.push_back({barb["id"].get<std::string>(), {4, 4}, world::spawn_stable_id(chunk.coord, 0), ""});
+    chunk.spawns.push_back({"t.ghost.equipform", {5, 4}, world::spawn_stable_id(chunk.coord, 1), ""});
+    chunk.spawns.push_back({barb["id"].get<std::string>(), {6, 6}, world::spawn_stable_id(chunk.coord, 2), ""});
+    chunk.content_hash = world::compute_content_hash(chunk);
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, lib, 9, CombatOptions{true});
+    REQUIRE(combat);
+    const CombatantId body = chunk.spawns[0].stable_id;
+    const CombatantId ghost = chunk.spawns[1].stable_id;
+    const int printed = rules5e::find(combat->state(), body)->ac;
+    std::vector<rules5e::Event> ev;
+    auto& st = const_cast<rules5e::EncounterState&>(combat->state());
+    REQUIRE(rules5e::begin_possession(st, ghost, body, 1, 24, 1, ev).empty());
+    const int stripped = rules5e::find(combat->state(), body)->ac;
+    const int delta = printed - stripped;
+    REQUIRE(delta > 0);
+    for (int i = 0; i < 8 && rules5e::current_actor(combat->state()) != ghost; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(combat->state()), ActionKind::EndTurn};
+        REQUIRE(combat->submit(e).ok);
+    }
+    REQUIRE(rules5e::current_actor(combat->state()) == ghost);
+    const rules5e::Loadout* lo = combat->loadout(body);
+    REQUIRE(lo);
+    const uint32_t shield_def = lib.items()->find("srd51.item.shield")->id;
+    uint32_t shield = 0;
+    const uint32_t axe = lo->view.main.instance;
+    for (const auto& h : lo->view.carried)
+        if (h.def == shield_def) shield = h.instance;
+    REQUIRE(shield != 0);
+    REQUIRE(axe != 0);
+    auto equip = [&](rules5e::EquipOp op, uint32_t item) {
+        Command c;
+        c.request = {body, ActionKind::UseObject};
+        c.request.equip_op = uint8_t(op);
+        c.request.equip_item = item;
+        auto r = combat->submit(c);
+        REQUIRE_MESSAGE(r.ok, r.error);
+    };
+    equip(rules5e::EquipOp::Stow, axe);
+    equip(rules5e::EquipOp::DonShield, shield);
+    const auto* geared = rules5e::find(combat->state(), body);
+    REQUIRE(geared);
+    const int shielded = geared->ac;
+    REQUIRE(shielded != stripped);
+    REQUIRE_FALSE(geared->attacks.empty());
+    const int hit = geared->attacks[0].to_hit;
+    const int bonus = geared->attacks[0].damage.bonus;
+    REQUIRE(geared->possession_class_base);
+    const int hit_delta = geared->possession_class_base->attack_hit_delta.empty()
+                              ? 0
+                              : int(geared->possession_class_base->attack_hit_delta[0]);
+    const int dmg_delta = geared->possession_class_base->attack_dmg_delta.empty()
+                              ? 0
+                              : int(geared->possession_class_base->attack_dmg_delta[0]);
+    rules5e::FormStats beast;
+    beast.ac = 11;
+    beast.hp_max = 30;
+    beast.speed_ft = 40;
+    beast.attacks_per_action = 1;
+    beast.attacks = {rules5e::Attack{"beast-bite", 4, {1, 8, 2}, rules5e::DamageType::Piercing, 5, false, false}};
+    rules5e::Combatant* host = nullptr;
+    for (auto& c : st.combatants)
+        if (c.id == body) host = &c;
+    REQUIRE(host);
+    REQUIRE(rules5e::apply_form(*host, rules5e::FormKind::Polymorph, beast));
+    CHECK(host->ac == 11);
+    REQUIRE(rules5e::revert_form(*host));
+    CHECK(host->form == rules5e::FormKind::None);
+    CHECK(host->possessed_by == ghost);
+    CHECK(host->ac == shielded);
+    REQUIRE_FALSE(host->attacks.empty());
+    CHECK(host->attacks[0].to_hit == hit);
+    CHECK(host->attacks[0].damage.bonus == bonus);
+    rules5e::end_possession(st, ghost, 2, ev, false);
+    CHECK(host->possessed_by == 0);
+    CHECK(host->ac == shielded + delta);
+    REQUIRE_FALSE(host->attacks.empty());
+    CHECK(host->attacks[0].to_hit == hit + hit_delta);
+    CHECK(host->attacks[0].damage.bonus == bonus + dmg_delta);
+}

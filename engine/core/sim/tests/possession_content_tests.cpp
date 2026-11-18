@@ -3,11 +3,14 @@
 
 #include <fstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
+#include "rules5e/conditions.hpp"
 #include "sim/combat.hpp"
 #include "sim/components.hpp"
 #include "sim/content.hpp"
+#include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
 
 using namespace eng;
@@ -21,6 +24,8 @@ namespace {
 const std::string kRoot = ENGINE_SOURCE_ROOT;
 const char* kGhost = "srd51.monster.ghost";
 const char* kFighter = "srd51.character.fighter_level_1";
+const char* kCleric = "srd51.character.cleric_level_2";
+const char* kSorcerer = "srd51.character.sorcerer_level_1";
 const char* kWerebear = "srd51.monster.werebear";
 const char* kWolf = "srd51.monster.wolf";
 
@@ -32,7 +37,7 @@ Json load_json(const std::string& rel) {
 
 ContentLibrary pack_lib() {
     ContentLibrary lib;
-    for (const char* item : {"greataxe", "chain_mail", "shield", "longsword", "crossbow_light", "crossbow_bolt"}) {
+    for (const char* item : {"greataxe", "chain_mail", "shield", "longsword", "crossbow_light", "crossbow_bolt", "mace", "dagger"}) {
         auto e = lib.add_item(load_json(std::string("content/packs/srd51.core/items/") + item + ".json"));
         INFO(item);
         INFO(e.value_or(""));
@@ -49,6 +54,15 @@ ContentLibrary pack_lib() {
     auto fighter = lib.add(load_json("content/packs/srd51.core/characters/fighter_level_1.json"), "character");
     INFO(fighter.value_or(""));
     REQUIRE_FALSE(fighter);
+    auto cleric = lib.add(load_json("content/packs/srd51.core/characters/cleric_level_2.json"), "character");
+    INFO(cleric.value_or(""));
+    REQUIRE_FALSE(cleric);
+    auto sorcerer = lib.add(load_json("content/packs/srd51.core/characters/sorcerer_level_1.json"), "character");
+    INFO(sorcerer.value_or(""));
+    REQUIRE_FALSE(sorcerer);
+    auto shield = lib.add_spell(load_json("content/packs/srd51.core/spells/shield.json"));
+    INFO(shield.value_or(""));
+    REQUIRE_FALSE(shield);
     return lib;
 }
 
@@ -347,4 +361,426 @@ TEST_CASE("werebear linked in human form, unlinked in bear form, keeps climb 30 
     CHECK(f.who(0).abilities[rules5e::Ability::Int] == 11);
     CHECK(f.who(0).abilities[rules5e::Ability::Wis] == 12);
     CHECK(f.who(0).abilities[rules5e::Ability::Cha] == 12);
+}
+
+namespace {
+
+Command ai_now(Fight& f, CombatantId actor, std::optional<CombatantId> force = std::nullopt) {
+    f.advance_to(actor);
+    NearestEnemyPolicy pol;
+    const auto target = force ? force : pol.choose_target(*f.c, rules5e::turn_body(f.c->state()));
+    return next_command(*f.c, target);
+}
+
+bool casts_possession(const Command& cmd, CombatantId target) {
+    return cmd.request.kind == ActionKind::CastSpell && cmd.request.spell_id == possession_id() && cmd.request.target == target;
+}
+
+bool withering(const Fight& f, CombatantId ghost, const Command& cmd) {
+    if (cmd.request.kind != ActionKind::Attack || cmd.request.actor != ghost) return false;
+    const auto* g = rules5e::find(f.c->state(), ghost);
+    return g && cmd.request.attack_index < g->attacks.size() && g->attacks[cmd.request.attack_index].id == "withering_touch";
+}
+
+rules5e::EncounterState& mut_state(Fight& f) { return const_cast<rules5e::EncounterState&>(f.c->state()); }
+
+}  // namespace
+
+TEST_CASE("the built-in AI possesses a legal target instead of withering touch") {
+    ContentLibrary lib = pack_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 11);
+    const auto cmd = ai_now(f, f.id(0));
+    CHECK(casts_possession(cmd, f.id(1)));
+}
+
+TEST_CASE("the built-in AI does not possess an illegal target") {
+    ContentLibrary lib = pack_lib();
+    {
+        Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 3);
+        f.advance_to(f.id(0));
+        for (auto& u : mut_state(f).action_uses)
+            if (u.actor == f.id(0) && u.spell_id == possession_id()) u.expended = true;
+        NearestEnemyPolicy pol;
+        const auto cmd = next_command(*f.c, pol.choose_target(*f.c, f.id(0)));
+        CHECK_FALSE(casts_possession(cmd, f.id(1)));
+        CHECK(withering(f, f.id(0), cmd));
+    }
+    {
+        Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 3);
+        mut_state(f).action_immunities.push_back(
+            {f.id(1), f.id(0), possession_id(), uint32_t(mut_state(f).round) + 600u});
+        const auto cmd = ai_now(f, f.id(0));
+        CHECK_FALSE(casts_possession(cmd, f.id(1)));
+        CHECK(withering(f, f.id(0), cmd));
+    }
+    {
+        world::Chunk chunk = arena({{kGhost, {4, 4}}, {kWolf, {5, 4}}});
+        chunk.spawns[1].overrides_json = R"({"team":"party"})";
+        chunk.content_hash = world::compute_content_hash(chunk);
+        ecs::Registry reg;
+        std::string err;
+        auto c = Combat::create(reg, chunk, lib, 3, {}, &err);
+        INFO(err);
+        REQUIRE(c);
+        const CombatantId ghost = chunk.spawns[0].stable_id;
+        const CombatantId wolf = chunk.spawns[1].stable_id;
+        for (int i = 0; i < 16 && rules5e::current_actor(c->state()) != ghost; ++i) {
+            Command e;
+            e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn};
+            REQUIRE(c->submit(e).ok);
+        }
+        REQUIRE(rules5e::current_actor(c->state()) == ghost);
+        NearestEnemyPolicy pol;
+        const auto cmd = next_command(*c, pol.choose_target(*c, ghost));
+        CHECK(cmd.request.kind == ActionKind::Attack);
+        CHECK(cmd.request.spell_id == 0);
+        const auto* g = rules5e::find(c->state(), ghost);
+        REQUIRE(g);
+        CHECK(g->attacks[cmd.request.attack_index].id == "withering_touch");
+        CHECK(cmd.request.target == wolf);
+    }
+    {
+        Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {4, 6}}}, 3);
+        const auto cmd = ai_now(f, f.id(0));
+        CHECK_FALSE(casts_possession(cmd, f.id(1)));
+    }
+    {
+        Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 3);
+        rules5e::add_condition(f.mut(1), rules5e::Condition::Invisible);
+        f.advance_to(f.id(0));
+        f.c->legal_actions();   // binds the sight hook; before the first submit it is empty
+        REQUIRE(f.who(1).has(rules5e::Condition::Invisible));
+        REQUIRE_FALSE(rules5e::sight(f.c->state(), f.id(0), f.id(1)).can_see);
+        NearestEnemyPolicy pol;
+        const auto cmd = next_command(*f.c, pol.choose_target(*f.c, f.id(0)));
+        CHECK_FALSE(casts_possession(cmd, f.id(1)));
+    }
+    {
+        Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 3);
+        f.mut(1).plane = rules5e::Plane::BorderEthereal;
+        const auto cmd = ai_now(f, f.id(0));
+        CHECK_FALSE(casts_possession(cmd, f.id(1)));
+    }
+    {
+        Fight f(lib, {{kGhost, {4, 4}}, {kGhost, {8, 8}}, {kFighter, {5, 4}}}, 3);
+        std::vector<rules5e::Event> ev;
+        REQUIRE(rules5e::begin_possession(mut_state(f), f.id(1), f.id(2), possession_id(), 24, 1, ev).empty());
+        const auto cmd = ai_now(f, f.id(0), f.id(2));
+        CHECK_FALSE(casts_possession(cmd, f.id(2)));
+    }
+    {
+        Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 3);
+        rules5e::ActiveSpellEffect ward;
+        ward.target = f.id(1);
+        ward.blocks_possession = true;
+        ward.immune_from_types = rules5e::bit(rules5e::CreatureType::Undead);
+        mut_state(f).effects.push_back(ward);
+        const auto cmd = ai_now(f, f.id(0));
+        CHECK_FALSE(casts_possession(cmd, f.id(1)));
+        CHECK(withering(f, f.id(0), cmd));
+    }
+}
+
+TEST_CASE("the built-in AI uses withering touch against a refused host") {
+    ContentLibrary lib = pack_lib();
+    {
+        Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 3);
+        f.mut(1).possession_unsupported = true;
+        const auto cmd = ai_now(f, f.id(0));
+        CHECK_FALSE(casts_possession(cmd, f.id(1)));
+        CHECK(withering(f, f.id(0), cmd));
+    }
+    {
+        Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 3);
+        f.mut(1).possession_refuse = "possessed: unsupported host: improved_critical";
+        const auto cmd = ai_now(f, f.id(0));
+        CHECK_FALSE(casts_possession(cmd, f.id(1)));
+        CHECK(withering(f, f.id(0), cmd));
+    }
+}
+
+TEST_CASE("the built-in AI uses withering touch against an incapacitated target") {
+    ContentLibrary lib = pack_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 3);
+    rules5e::add_condition(f.mut(1), rules5e::Condition::Stunned);
+    const auto cmd = ai_now(f, f.id(0));
+    CHECK_FALSE(casts_possession(cmd, f.id(1)));
+    CHECK(withering(f, f.id(0), cmd));
+}
+
+TEST_CASE("the same seed runs the same multi-round ghost fight") {
+    ContentLibrary lib = pack_lib();
+    // The second fighter keeps the party conscious after the link, so the ghost keeps
+    // driving the possessed fighter_level_1 for later rounds.
+    const std::vector<std::pair<std::string, Vec2i>> spawns{{kGhost, {4, 4}}, {kFighter, {5, 4}}, {kFighter, {4, 23}}};
+    auto play = [&](uint64_t seed) {
+        Fight f(lib, spawns, seed);
+        NearestEnemyPolicy pol;
+        const RunResult rr = run_to_end(*f.c, [&](CombatantId) -> IActorPolicy* { return &pol; }, 400);
+        REQUIRE_MESSAGE(rr.error.empty(), rr.error);
+        REQUIRE(rr.ended);
+        REQUIRE(f.c->state().round >= 2);
+        int open_round = 1;
+        int possessed_round = 0;
+        for (const auto& e : f.c->events()) {
+            if (e.kind != SimEvent::Kind::Rules) continue;
+            if (e.rules.kind == EventKind::TurnStarted) open_round = e.rules.a;
+            if (e.rules.kind == EventKind::Possessed && possessed_round == 0) possessed_round = open_round;
+        }
+        REQUIRE(possessed_round >= 1);
+        return std::tuple{f.c->hash(), f.c->log_hash(), possessed_round};
+    };
+    constexpr uint64_t kSeed = 11;
+    const auto a = play(kSeed);
+    const auto b = play(kSeed);
+    CHECK(std::get<0>(a) == std::get<0>(b));
+    CHECK(std::get<1>(a) == std::get<1>(b));
+    CHECK(std::get<2>(a) == std::get<2>(b));
+    CHECK(std::get<0>(a) != 0);
+}
+
+uint32_t self_heal_id(const Combat& c, CombatantId who) {
+    const Archetype* ar = c.archetype(who);
+    REQUIRE(ar);
+    for (const auto& f : ar->active)
+        if (f.kind == "self_heal") return f.feature_id;
+    return 0;
+}
+
+uint32_t save_action_id(const Combat& c, CombatantId who, const char* action) {
+    const Archetype* ar = c.archetype(who);
+    REQUIRE(ar);
+    for (const auto& sa : ar->save_actions)
+        if (sa.id == action) return sa.spell_id;
+    return 0;
+}
+
+SubmitResult take_reactions(Fight& f, SubmitResult r) {
+    NearestEnemyPolicy pol;
+    while (r.ok && r.needs) r = f.c->decide(pol.decide_reaction(*f.c, *r.needs));
+    return r;
+}
+
+TEST_CASE("a possessed cleric does not cast turn undead") {
+    ContentLibrary lib = pack_lib();
+    const std::vector<std::pair<std::string, Vec2i>> spawns{{kGhost, {4, 4}}, {kCleric, {5, 4}}, {kFighter, {5, 6}}};
+    {
+        Fight f(lib, spawns, 8);
+        f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+        std::vector<rules5e::Event> ev;
+        REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+        f.advance_to(f.id(0));
+        REQUIRE(f.who(0).possessing == f.id(1));
+        const uint32_t turn = save_action_id(*f.c, f.id(1), "turn_undead");
+        REQUIRE(turn != 0);
+        const auto* pool = rules5e::find_pool(f.c->state(), f.id(1), rules5e::spell_id_of("channel_divinity"));
+        REQUIRE(pool);
+        CHECK(pool->cur > 0);
+        NearestEnemyPolicy pol;
+        const auto foe = pol.choose_target(*f.c, rules5e::turn_body(f.c->state()));
+        REQUIRE(foe);
+        CHECK(*foe == f.id(2));
+        const auto cmd = next_command(*f.c, foe);
+        CHECK(cmd.request.kind != ActionKind::CastSpell);
+        CHECK(cmd.request.spell_id != turn);
+        auto submitted = f.settle(f.c->submit(cmd));
+        INFO(submitted.error);
+        CHECK(submitted.ok);
+    }
+    {
+        Fight f(lib, spawns, 8);
+        f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+        f.advance_to(f.id(1));
+        const uint32_t turn = save_action_id(*f.c, f.id(1), "turn_undead");
+        REQUIRE(turn != 0);
+        NearestEnemyPolicy pol;
+        const auto foe = pol.choose_target(*f.c, f.id(1));
+        REQUIRE(foe);
+        CHECK(*foe == f.id(0));
+        const auto cmd = next_command(*f.c, foe);
+        CHECK(cmd.request.kind == ActionKind::CastSpell);
+        CHECK(cmd.request.spell_id == turn);
+        auto submitted = f.settle(f.c->submit(cmd));
+        INFO(submitted.error);
+        CHECK(submitted.ok);
+    }
+}
+
+TEST_CASE("a possessed cleric's turn undead does not stall the built-in fight") {
+    ContentLibrary lib = pack_lib();
+    // The fighter keeps the party conscious. Once the possessed cleric closes inside 30 ft,
+    // Turn Undead would be a CastSpell the rules refuse.
+    const std::vector<std::pair<std::string, Vec2i>> spawns{{kGhost, {4, 4}}, {kCleric, {5, 4}}, {kFighter, {4, 23}}};
+    auto play = [&](uint64_t seed) {
+        Fight f(lib, spawns, seed);
+        NearestEnemyPolicy pol;
+        const RunResult rr = run_to_end(*f.c, [&](CombatantId) -> IActorPolicy* { return &pol; }, 400);
+        REQUIRE_MESSAGE(rr.error.empty(), rr.error);
+        REQUIRE(rr.ended);
+        int open_round = 1;
+        int possessed_round = 0;
+        for (const auto& e : f.c->events()) {
+            if (e.kind != SimEvent::Kind::Rules) continue;
+            if (e.rules.kind == EventKind::TurnStarted) open_round = e.rules.a;
+            if (e.rules.kind == EventKind::Possessed && possessed_round == 0) possessed_round = open_round;
+        }
+        REQUIRE(possessed_round >= 1);
+        return possessed_round;
+    };
+    constexpr uint64_t kSeed = 11;
+    CHECK(play(kSeed) == play(kSeed));
+}
+
+TEST_CASE("a possessed sorcerer's spell slots stay unspent") {
+    ContentLibrary lib = pack_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kSorcerer, {5, 4}}, {kFighter, {6, 4}}}, 8);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+    f.mut(1).ac = 10;
+    f.mut(2).attacks[0].to_hit = 19;
+    const auto slots = f.who(1).spell_slots;
+    int hits = 0;
+    for (int n = 0; n < 25 && hits == 0; ++n) {
+        f.advance_to(f.id(2));
+        NearestEnemyPolicy pol;
+        const auto foe = pol.choose_target(*f.c, f.id(2));
+        REQUIRE(foe);
+        const auto cmd = next_command(*f.c, foe);
+        const int mark = int(f.c->events().size());
+        auto r = take_reactions(f, f.c->submit(cmd));
+        INFO(r.error);
+        REQUIRE(r.ok);
+        for (int i = mark; i < int(f.c->events().size()); ++i) {
+            const auto& e = f.c->events()[std::size_t(i)];
+            if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::AttackResolved && e.rules.target == f.id(1) &&
+                (e.rules.c & 1) != 0)
+                ++hits;
+        }
+        if (rules5e::current_actor(f.c->state()) == f.id(2)) f.end_turn();
+    }
+    REQUIRE(hits > 0);
+    CHECK(f.who(1).spell_slots == slots);
+    CHECK_FALSE(f.who(1).reaction_used);
+}
+
+TEST_CASE("a possessed fighter at 3 hp is not offered second wind") {
+    ContentLibrary lib = pack_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}, {kFighter, {6, 4}}}, 8);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+    f.advance_to(f.id(0));
+    REQUIRE(f.who(0).possessing == f.id(1));
+    f.mut(1).hp = 3;
+    const uint32_t sw = self_heal_id(*f.c, f.id(1));
+    REQUIRE(sw != 0);
+    CHECK_FALSE(f.c->can_use_feature(f.id(1), sw));
+    NearestEnemyPolicy pol;
+    const auto foe = pol.choose_target(*f.c, rules5e::turn_body(f.c->state()));
+    REQUIRE(foe);
+    const auto cmd = next_command(*f.c, foe);
+    CHECK(cmd.request.kind != ActionKind::UseFeature);
+}
+
+TEST_CASE("a possessed body's printed attack is not submitted") {
+    ContentLibrary lib = pack_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}, {kFighter, {6, 4}}}, 8);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+    f.advance_to(f.id(0));
+    REQUIRE(f.who(0).possessing == f.id(1));
+    for (auto& at : f.mut(1).attacks) at.pb_in_to_hit = -1;
+    NearestEnemyPolicy pol;
+    const auto foe = pol.choose_target(*f.c, rules5e::turn_body(f.c->state()));
+    REQUIRE(foe);
+    CHECK(*foe == f.id(2));
+    const auto cmd = next_command(*f.c, foe);
+    CHECK(cmd.request.kind != ActionKind::Attack);
+    auto submitted = f.settle(f.c->submit(cmd));
+    INFO(submitted.error);
+    CHECK(submitted.ok);
+}
+
+TEST_CASE("a possessed body does not sustain a spell") {
+    ContentLibrary lib = pack_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}, {kFighter, {6, 4}}}, 8);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+    f.advance_to(f.id(0));
+    const auto* sd = f.c->spell_def(possession_id());
+    REQUIRE(sd);
+    CHECK(sd->kind != rules5e::SpellEffectKind::Descriptive);
+    rules5e::ActiveSpellEffect held;
+    held.caster = f.id(1);
+    held.target = f.id(2);
+    held.spell_id = possession_id();
+    held.damage_when = 2;
+    held.cast_stamp = 0xFFFFFFFEu;
+    mut_state(f).effects.push_back(held);
+    NearestEnemyPolicy pol;
+    const auto foe = pol.choose_target(*f.c, rules5e::turn_body(f.c->state()));
+    REQUIRE(foe);
+    const auto cmd = next_command(*f.c, foe);
+    const bool sustain = cmd.request.kind == ActionKind::CastSpell && cmd.request.sustain;
+    CHECK_FALSE(sustain);
+}
+
+TEST_CASE("a possessed body acts for the ghost's side under AI control") {
+    ContentLibrary lib = pack_lib();
+    bool linked = false;
+    for (uint64_t seed = 1; seed <= 40 && !linked; ++seed) {
+        Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}, {kFighter, {4, 23}}}, seed);
+        const CombatantId ghost = f.id(0);
+        const CombatantId body = f.id(1);
+        const CombatantId far = f.id(2);
+        const auto opening = ai_now(f, ghost);
+        if (!casts_possession(opening, body)) continue;
+        const int mark = int(f.c->events().size());
+        auto cast = f.settle(f.c->submit(opening));
+        if (!cast.ok || f.who(0).possessing != body) continue;
+        CHECK_FALSE(save_succeeded(f, mark));
+        CHECK(rules5e::side_of(f.c->state(), f.who(1)) == rules5e::side_of(f.c->state(), f.who(0)));
+        CHECK(f.who(1).team != f.who(0).team);
+        Command done;
+        done.request = {ghost, ActionKind::EndTurn};
+        REQUIRE(f.settle(f.c->submit(done)).ok);
+        f.advance_to(ghost);
+        REQUIRE(f.who(0).possessing == body);
+        NearestEnemyPolicy pol;
+        const auto foe = pol.choose_target(*f.c, rules5e::turn_body(f.c->state()));
+        REQUIRE(foe);
+        CHECK(*foe == far);
+        CHECK(*foe != ghost);
+        const auto step = next_command(*f.c, foe);
+        const bool shot = step.request.kind == ActionKind::Attack && step.request.actor == body && step.request.target == far;
+        const bool closing = step.kind == CommandKind::Step;
+        INFO(int(step.request.kind));
+        INFO(int(step.kind));
+        CHECK((shot || closing));
+        linked = true;
+    }
+    CHECK(linked);
+}
+
+TEST_CASE("the built-in AI ends possession when the body cannot act") {
+    ContentLibrary lib = pack_lib();
+    Fight f(lib, {{kGhost, {4, 4}}, {kFighter, {5, 4}}}, 8);
+    f.c->set_end_condition([](const rules5e::EncounterState&) { return std::optional<rules5e::EncounterOutcome>{}; });
+    std::vector<rules5e::Event> ev;
+    REQUIRE(rules5e::begin_possession(mut_state(f), f.id(0), f.id(1), possession_id(), 24, 1, ev).empty());
+    rules5e::add_condition(f.mut(1), rules5e::Condition::Stunned);
+    const auto cmd = ai_now(f, f.id(0));
+    CHECK(cmd.request.kind == ActionKind::Revert);
+    CHECK(cmd.request.actor == f.id(0));
+    CHECK(cmd.request.as_bonus_action);
+    const int mark = int(f.c->events().size());
+    auto ended = f.settle(f.c->submit(cmd));
+    INFO(ended.error);
+    REQUIRE(ended.ok);
+    CHECK(f.who(0).possessing == 0);
+    CHECK(f.who(1).possessed_by == 0);
+    CHECK(rules_since(f, mark, EventKind::PossessionEnded) == 1);
 }
