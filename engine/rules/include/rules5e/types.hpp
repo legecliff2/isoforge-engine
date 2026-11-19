@@ -595,7 +595,10 @@ struct FormStats {
     std::array<uint8_t, 6> ability_reduction{};
     // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
     // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
+    // Change Shape MERGE also fills this (own save-action spell ids and own feature ids except Change Shape itself)
+    // and sets own_actions_gate so apply_form copies the list. Not hashed.
     std::vector<uint32_t> blocked_features{};
+    bool own_actions_gate = false;
     // appended (Keen Senses, CONTENT_CONVENTIONS §30): the form's keen_senses. Wild Shape / Polymorph take the beast's;
     // revert restores the creature's own. 0 = none. Static, not hashed.
     uint8_t keen_senses = 0;

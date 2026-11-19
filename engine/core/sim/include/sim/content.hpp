@@ -122,6 +122,21 @@ struct Archetype {
     // EC swarm: a monster tagged "swarm" (SRD "Swarm" trait): shares spaces both ways (Combat::occupied_except) and cannot regain
     // HP or gain temp HP (Combatant::no_regain_hp). Squeezing through Tiny openings needs no grid change (no sub-tile openings).
     bool swarm = false;
+    // Change Shape pool facts (D4, D4(e), D4(f), D7b). Content-only: not copied onto the combatant and not hashed.
+    // pool_spellcasting: a spellcasting object, or a trait id spellcasting / innate_spellcasting (descriptive innate counts).
+    // pool_nonattack: an action that is not a melee or ranged weapon attack or multiattack, or any reactions[] / bonus_actions[] entry
+    // (the Parry exclusion: offering the form would drop a printed capability).
+    // pool_bite: an attack whose id or name contains "bite" (D4(e), until the bite rule is built).
+    // pool_shapechanger: a live shapechanger or Change Shape form feature (a nested form).
+    // pool_uncarried (D4(f)): a compiled trait of kind bonus_action_grant, aggressive, or reckless_attack, or any
+    // trait that carries a per-rest / per-day usage pool. Same reason as Parry: the bonus action or trait is lost
+    // (those fields are not in FormStats), or Relentless becomes unlimited (no pool is registered for the form).
+    bool magic_weapons = false;
+    bool pool_spellcasting = false;
+    bool pool_nonattack = false;
+    bool pool_bite = false;
+    bool pool_shapechanger = false;
+    bool pool_uncarried = false;
     std::vector<std::string> spell_ids;   // spellcasting.spells content ids (monster@3 / character@3)
     std::vector<std::string> innate_spell_ids;   // spellcasting.innate.* content ids (monster@4 / character@4); base.innate holds the rows
     // `multiattack` effect options as authored: option id + indices into base.attacks. ContentLibrary::add
@@ -147,10 +162,22 @@ struct Archetype {
     int16_t cr_x8 = -1;
     uint16_t fly_ft = 0, swim_ft = 0;
     uint8_t char_level = 0;
-    // Transform features (effect kinds wild_shape / shapechanger), by feature_id. Form choice i (ActionRequest::form_archetype
-    // = i + 1) is forms[i] (Wild Shape: a beast archetype id) or shapes[i] (shapechanger: a form of the creature's own block).
+    // Change Shape (contract v0.1.2 P1) reuses FormKind::Shapechanger. The sub-kind is sim-side only:
+    // no new FormKind, ActionKind, EventKind, or hash byte. Shapechanger is the existing fixed-form trait.
+    // ChangeShapeMerge is the couatl sentence (AC, movement, Str, Dex, and attacks from the form; size and
+    // creature type stay the creature's own).
+    enum class FormSubKind : uint8_t { Shapechanger = 0, ChangeShapeMerge = 1 };
+
+    // Transform features (effect kinds wild_shape / shapechanger / change_shape), by feature_id. Form choice i
+    // (ActionRequest::form_archetype = i + 1) is forms[i] (Wild Shape beast id, or a Change Shape pool entry) or
+    // shapes[i] (shapechanger: a form of the creature's own block).
     struct FormFeature {
-        uint8_t kind = 0;                       // rules5e::FormKind: 2 Wild Shape, 3 shapechanger
+        uint8_t kind = 0;                       // rules5e::FormKind: 2 Wild Shape, 3 shapechanger (Change Shape too)
+        FormSubKind sub_kind = FormSubKind::Shapechanger;
+        // Change Shape selector (D3). forms is filled at load, in id byte order. An authored forms list
+        // leaves select_pool false and overrides the selector. select_types is "humanoid" / "beast".
+        bool select_pool = false;
+        std::vector<std::string> select_types;
         std::vector<std::string> forms;         // Wild Shape: beast archetype ids, in content order
         int16_t max_cr_x8 = 0;                  // Wild Shape: the druid level's max CR (x 8)
         uint8_t level = 0;                      // Wild Shape: druid level
@@ -231,6 +258,11 @@ public:
     std::optional<std::string> add_item(const assets::Json& doc) { return items_->add(doc, &warnings_); }
 
     const Archetype* find(const std::string& id) const;
+    // Change Shape selector (D3, D17). Called from add() before the archetype is inserted (the candidate
+    // counts) and again after a successful insert to write forms[] / form_choices. More than 255 forms is
+    // a load error naming the creature. Explicit forms lists are left alone.
+    std::optional<std::string> change_shape_pool_error(const Archetype& candidate) const;
+    void commit_change_shape_pools();
     // Kit loaded from <pack>/art/clips.json. nullptr when this library has no kit with that id.
     const assets::ClipRegistry* clip_kit(std::string_view id) const;
     const std::map<std::string, Archetype>& all() const noexcept { return by_id_; }

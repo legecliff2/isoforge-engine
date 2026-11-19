@@ -2666,7 +2666,112 @@ void note_possession_class_base(rules5e::Combatant& c, const std::vector<Feature
     }
     if (any) c.possession_class_base = std::move(base);
 }
+
+void note_change_shape_pool_facts(Archetype& a, const Json& doc) {
+    if (!a.spell_ids.empty() || !a.innate_spell_ids.empty()) a.pool_spellcasting = true;
+    for (const auto& f : a.features) {
+        if (f.id == "spellcasting" || f.id == "innate_spellcasting") a.pool_spellcasting = true;
+        // D4(f), the same reason as the Parry exclusion: a printed capability MERGE would drop or over-grant.
+        // bonus_action_grant, aggressive, and reckless_attack live outside FormStats, so the form loses them.
+        // A per-rest or per-day usage is a pool registered only for the slot's own archetype; with no pool,
+        // the use is unlimited (Relentless). A category, not a list of ids.
+        if (f.kind == "bonus_action_grant" || f.kind == "aggressive" || f.kind == "reckless_attack")
+            a.pool_uncarried = true;
+        if (auto u = f.effect.find("usage"); u != f.effect.end() && u->is_object()) {
+            const std::string uk = u->value("kind", "");
+            if (uk == "per_rest" || uk == "per_day") a.pool_uncarried = true;
+        }
+    }
+    auto bite_text = [](std::string s) {
+        for (char& ch : s) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+        return s.find("bite") != std::string::npos;
+    };
+    auto nonempty = [&](const char* key) {
+        auto it = doc.find(key);
+        return it != doc.end() && it->is_array() && !it->empty();
+    };
+    if (nonempty("reactions") || nonempty("bonus_actions")) a.pool_nonattack = true;
+    if (auto acts = doc.find("actions"); acts != doc.end() && acts->is_array())
+        for (const Json& act : *acts) {
+            if (!act.is_object()) { a.pool_nonattack = true; continue; }
+            const std::string k = act.value("kind", "");
+            if (k != "melee_weapon_attack" && k != "ranged_weapon_attack" && k != "multiattack") a.pool_nonattack = true;
+            if (bite_text(act.value("id", "")) || bite_text(act.value("name", ""))) a.pool_bite = true;
+        }
+}
+
+bool change_shape_type_ok(rules5e::CreatureType t, const std::vector<std::string>& types) {
+    const char* name = t == rules5e::CreatureType::Humanoid ? "humanoid" : t == rules5e::CreatureType::Beast ? "beast" : nullptr;
+    return name && std::find(types.begin(), types.end(), name) != types.end();
+}
+
+bool change_shape_excluded(const Archetype& o) {
+    return o.pool_spellcasting || o.pool_shapechanger || o.swarm || o.pool_nonattack || o.pool_bite || o.pool_uncarried;
+}
+
+// `all` is id byte order (std::map order, the Polymorph precedent).
+std::vector<std::string> change_shape_pool_ids(const Archetype& owner, const std::vector<const Archetype*>& all,
+                                              const Archetype::FormFeature& ff) {
+    std::vector<std::string> ids;
+    for (const Archetype* o : all) {
+        if (o->schema_type != "monster" || o->cr_x8 < 0 || o->cr_x8 > owner.cr_x8) continue;
+        if (!change_shape_type_ok(o->base.creature_type, ff.select_types)) continue;
+        if (change_shape_excluded(*o)) continue;
+        ids.push_back(o->id);
+    }
+    return ids;
+}
+
+std::vector<const Archetype*> library_plus(const std::map<std::string, Archetype>& by_id, const Archetype* extra) {
+    std::vector<const Archetype*> all;
+    bool replaced = false;
+    for (const auto& [id, arch] : by_id) {
+        if (extra && id == extra->id) { all.push_back(extra); replaced = true; }
+        else all.push_back(&arch);
+    }
+    if (extra && !replaced) {
+        auto it = std::lower_bound(all.begin(), all.end(), extra,
+                                   [](const Archetype* x, const Archetype* y) { return x->id < y->id; });
+        all.insert(it, extra);
+    }
+    return all;
+}
 }  // namespace
+
+std::optional<std::string> ContentLibrary::change_shape_pool_error(const Archetype& candidate) const {
+    const auto all = library_plus(by_id_, &candidate);
+    auto over = [&](const Archetype& owner) -> std::optional<std::string> {
+        for (const auto& [fid, ff] : owner.form_features) {
+            (void)fid;
+            if (!ff.select_pool || ff.sub_kind != Archetype::FormSubKind::ChangeShapeMerge) continue;
+            if (change_shape_pool_ids(owner, all, ff).size() > 255) {
+                // The document this add() is refusing: the owner, or the form that would be the 256th.
+                const std::string& refused = (&owner == &candidate) ? owner.id : candidate.id;
+                return refused + ": change_shape: more than 255 forms";
+            }
+        }
+        return std::nullopt;
+    };
+    if (auto e = over(candidate)) return e;
+    for (const Archetype* o : all)
+        if (o != &candidate)
+            if (auto e = over(*o)) return e;
+    return std::nullopt;
+}
+
+void ContentLibrary::commit_change_shape_pools() {
+    std::vector<const Archetype*> all;
+    for (const auto& [id, arch] : by_id_) { (void)id; all.push_back(&arch); }
+    for (auto& [id, owner] : by_id_) {
+        (void)id;
+        for (auto& [fid, ff] : owner.form_features) {
+            if (!ff.select_pool || ff.sub_kind != Archetype::FormSubKind::ChangeShapeMerge) continue;
+            ff.forms = change_shape_pool_ids(owner, all, ff);
+            if (auto spec = owner.feature_specs.find(fid); spec != owner.feature_specs.end())
+                spec->second.form_choices = static_cast<uint8_t>(ff.forms.size());
+        }
+    }
+}
 
 std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type, const std::string& pack_id,
                                                  uint32_t declared_version, std::string_view pack_dir) {
@@ -3716,6 +3821,10 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             return a.id + ": legendary_actions_per_round needs legendary_actions";
         }
     }
+    note_change_shape_pool_facts(a, doc);
+    // D17: the candidate counts even though it is not inserted yet. A failure here is before the
+    // SpellBook swap, so a refused Change Shape creature leaves the library as it was.
+    if (auto e = change_shape_pool_error(a)) return e;
     // Register in the shared SpellBook, replacing an overridden archetype's entries; all-or-nothing.
     if (!synth.empty() || by_id_.count(a.id)) {
         std::vector<rules5e::SpellDef> old;
@@ -3771,6 +3880,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
     note_possession_class_base(c, a.features, doc, schema_type, declared, *features_, attack_actions);
     by_id_[a.id] = std::move(a);
+    commit_change_shape_pools();
     return std::nullopt;
 }
 
@@ -3837,6 +3947,16 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
             errors.push_back(pack_id + ":" + d.path + ": " + ex.what());
         }
     }
+    // Explicit Change Shape forms[] are checked after every monster is loaded, so a form that sorts
+    // later in the same pack is visible. Wild Shape still resolves at use time. The error names the form.
+    for (const auto& [id, a] : by_id_)
+        for (const auto& [fid, ff] : a.form_features) {
+            (void)fid;
+            if (ff.sub_kind != Archetype::FormSubKind::ChangeShapeMerge || ff.select_pool) continue;
+            for (const std::string& form : ff.forms)
+                if (by_id_.find(form) == by_id_.end())
+                    errors.push_back(a.pack_id + ":" + id + ": change_shape: unknown form '" + form + "'");
+        }
     // Spellcasting references must resolve to a loaded spell@1 (same rule as the validator).
     for (const auto& [id, a] : by_id_)
         {

@@ -764,6 +764,10 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                               sa.spell_id) != me->possession_blocked_features.end())
                     continue;
             }
+            // Change Shape own-actions gate: the same list legal_actions and can_use_feature read.
+            if (std::find(me->form_blocked_features.begin(), me->form_blocked_features.end(), sa.spell_id) !=
+                me->form_blocked_features.end())
+                continue;
             if (sa.teleport || sa.rider_only || sa.leap || sa.whirl || sa.whelm || sa.ethereal || sa.illusory || sa.passage || sa.healing_touch) continue;   // blink dog: destination not guessed. B3b: a free rider is not this action. B8: the AI does not jump or land. B10: the AI does not pick a random fling. B11: the AI does not use Whelm. B19: the AI does not use Etherealness. The visible-figure action is not this AI's choice. Invisible Passage is not this AI's choice. Healing Touch would heal the current foe.
             if (sa.usage_kind == 1) {
                 const auto* u = rules5e::find_action_use(s, self, sa.spell_id);

@@ -317,6 +317,7 @@ std::optional<std::string> apply_damage_mitigation(Archetype& a, const FeatureDe
 // Magic Weapons: every attack counts as magical (bypasses "nonmagical" resistance / immunity).
 std::optional<std::string> apply_magic_weapons(Archetype& a, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
     for (auto& at : a.base.attacks) at.qualifiers |= rules5e::kAttackMagical;
+    a.magic_weapons = true;   // D7b: build_form re-applies the flag to a Change Shape form's attack rows
     return std::nullopt;
 }
 
@@ -1269,6 +1270,82 @@ std::optional<std::string> apply_shapechanger(Archetype& a, const FeatureDecl& f
     spec.form_rounds = 0;
     spec.form_choices = uint8_t(ff.shapes.size());
     if (ff.implies_shapechanger) a.base.shapechanger = true;   // B6: trait false does not imply the fact
+    a.pool_shapechanger = true;   // D4: a live shapechanger form feature leaves the Change Shape pool
+    a.feature_specs[fid] = spec;
+    a.form_features[fid] = std::move(ff);
+    a.active.push_back(std::move(af));
+    return std::nullopt;
+}
+
+// change_shape {profile: "merge", cost, forms? | select: {types, max_cr: "own"}} (contract v0.1.2 P1).
+// Reuses FormKind::Shapechanger. The MERGE sub-kind is FormFeature::sub_kind. No new kind and no hash byte.
+// An explicit forms list overrides the selector (tests). The selector is resolved by ContentLibrary after the
+// archetype is in the library (D3, D4, D4(e), D17). equipment[] on this creature is a load error (D8).
+// Does not set the shapechanger creature fact (Moonbeam reads that fact; the couatl is not a lycanthrope).
+std::optional<std::string> apply_change_shape(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 4) {
+        a.inert_features.push_back(f.id + " (change_shape)");
+        return std::nullopt;
+    }
+    std::string bad;
+    if (!only_keys(f.effect, {"kind", "profile", "cost", "forms", "select"}, bad))
+        return f.id + ": change_shape effect: unknown key '" + bad + "'";
+    if (a.schema_type != "monster") return f.id + ": change_shape: monsters only";
+    for (const auto& have : a.form_features)
+        if (have.second.sub_kind == Archetype::FormSubKind::ChangeShapeMerge)
+            return f.id + ": change_shape: one declaration per document";
+    if (f.effect.value("profile", "") != "merge") return f.id + ": change_shape: profile must be merge";
+    if (auto eq = ctx.doc.find("equipment"); eq != ctx.doc.end() && eq->is_array() && !eq->empty())
+        return f.id + ": change_shape: equipment[] is not allowed";   // D8; add() prefixes the creature id
+    const bool has_forms = f.effect.contains("forms");
+    const bool has_select = f.effect.contains("select");
+    if (!has_forms && !has_select) return f.id + ": change_shape: needs forms or select";
+    Archetype::FormFeature ff;
+    ff.kind = uint8_t(rules5e::FormKind::Shapechanger);
+    ff.sub_kind = Archetype::FormSubKind::ChangeShapeMerge;
+    ff.implies_shapechanger = false;
+    if (has_forms) {
+        const auto fl = f.effect.find("forms");
+        if (!fl->is_array() || fl->empty() || fl->size() > 255) return f.id + ": change_shape needs forms[] (1..255 ids)";
+        for (const Json& x : *fl) {
+            if (!x.is_string() || x.get<std::string>().empty()) return f.id + ": change_shape forms[] must be content ids";
+            const std::string id = x.get<std::string>();
+            if (std::find(ff.forms.begin(), ff.forms.end(), id) != ff.forms.end())
+                return f.id + ": change_shape: duplicate form '" + id + "'";
+            ff.forms.push_back(id);
+        }
+        ff.select_pool = false;   // an explicit list overrides select (D3)
+    } else {
+        const auto sel = f.effect.find("select");
+        if (!sel->is_object() || !only_keys(*sel, {"types", "max_cr"}, bad))
+            return f.id + ": change_shape select: unknown key '" + (sel->is_object() ? bad : std::string("select")) + "'";
+        if (sel->value("max_cr", "") != "own") return f.id + ": change_shape: max_cr must be \"own\"";
+        const auto types = sel->find("types");
+        if (types == sel->end() || !types->is_array() || types->empty() || types->size() > 2)
+            return f.id + ": change_shape: select.types must be humanoid and/or beast";
+        for (const Json& t : *types) {
+            const std::string name = t.is_string() ? t.get<std::string>() : std::string();
+            if (name != "humanoid" && name != "beast")
+                return f.id + ": change_shape: select type '" + name + "' is not humanoid or beast";
+            if (std::find(ff.select_types.begin(), ff.select_types.end(), name) != ff.select_types.end())
+                return f.id + ": change_shape: duplicate select type '" + name + "'";
+            ff.select_types.push_back(name);
+        }
+        ff.select_pool = true;
+    }
+    ActiveFeature af;
+    af.feature_id = fid;
+    af.id = f.id;
+    af.kind = f.kind;
+    rules5e::FeatureSpec spec;
+    const std::string cost = f.effect.value("cost", "action");
+    if (cost == "action") { af.cost = FeatureCost::Action; spec.cost = 1; }
+    else if (cost == "bonus_action") { af.cost = FeatureCost::BonusAction; spec.cost = 2; }
+    else return f.id + ": change_shape cost must be action or bonus_action";
+    spec.form = uint8_t(rules5e::FormKind::Shapechanger);
+    spec.form_rounds = 0;
+    spec.form_choices = ff.select_pool ? uint8_t(0) : uint8_t(ff.forms.size());
+    a.pool_shapechanger = true;   // D4: a Change Shape creature is itself a form feature, so it leaves other pools
     a.feature_specs[fid] = spec;
     a.form_features[fid] = std::move(ff);
     a.active.push_back(std::move(af));
@@ -1685,6 +1762,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("slot_recovery", {apply_slot_recovery});
     r.add_hook("wild_shape", {apply_wild_shape});     // R-G12 (7.2q)
     r.add_hook("shapechanger", {apply_shapechanger}); // R-G12 (7.2q)
+    r.add_hook("change_shape", {apply_change_shape}); // Change Shape MERGE (contract v0.1.2 P1); FormKind::Shapechanger
     r.add_hook("extra_attack", {apply_extra_attack});   // character@4: gated in the hook (the 3 -> 4 kind list is frozen)
     r.add_hook("transparent", {apply_transparent});
     r.add_hook("save_advantage", {apply_save_advantage});   // monster@5 (batch 3): gated in the hook, like transparent

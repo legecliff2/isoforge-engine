@@ -855,6 +855,21 @@ RG12_CASES = [
     # requires_humanoid_form
     ("warn_rhf_without_wild_shape", D, [(["traits", 0, "requires_humanoid_form"], True)], [], "requires_humanoid_form has no effect without wild_shape"),
     ("rhf_not_boolean", B, [(["features", 0, "requires_humanoid_form"], 1)], [], "is not of type 'boolean'"),
+    # change_shape MERGE (contract v0.1.2 P1). Appended so the dragon's other traits stay.
+    ("cs_unknown_form", D, [(["traits", 6], _feat("change_shape", {"kind": "change_shape", "profile": "merge", "forms": ["srd51.monster.unicorn"]}))], [],
+     "change_shape: unknown form 'srd51.monster.unicorn'"),
+    ("cs_duplicate_form", D, [(["traits", 6], _feat("change_shape", {"kind": "change_shape", "profile": "merge", "forms": [WOLF, WOLF]}))], [],
+     f"change_shape: duplicate form '{WOLF}'"),
+    ("cs_two", D, [(["traits", 6], _feat("change_shape", {"kind": "change_shape", "profile": "merge", "select": {"types": ["beast"], "max_cr": "own"}})),
+                   (["traits", 7], _feat("change_shape_2", {"kind": "change_shape", "profile": "merge", "forms": [WOLF]}))], [],
+     "change_shape: one declaration per document"),
+    ("warn_cs_forms_override", D, [(["traits", 6], _feat("change_shape", {"kind": "change_shape", "profile": "merge", "forms": [WOLF],
+                                                                        "select": {"types": ["beast"], "max_cr": "own"}}))], [],
+     "change_shape: forms overrides select"),
+    ("cs_bad_profile", D, [(["traits", 6], _feat("change_shape", {"kind": "change_shape", "profile": "replace", "forms": [WOLF]}))], [],
+     "'merge' was expected"),
+    ("cs_cost_reaction", D, [(["traits", 6], _feat("change_shape", {"kind": "change_shape", "profile": "merge", "cost": "reaction", "forms": [WOLF]}))], [],
+     "change_shape cost must be action or bonus_action"),
 ]
 
 
@@ -915,6 +930,18 @@ class RG12Transforms(unittest.TestCase):
             self.assertTrue(any(expect in w for w in warns), (expect, warns))
         else:
             self.assertTrue(any(expect in e for e in errs), (expect, errs))
+
+    def test_equipment_names_the_creature(self):
+        # monster@4 has no equipment[] key, so the schema refuses it before this check runs.
+        # The loader test covers the live error. This calls the check directly (D8).
+        doc = {"id": "test.change.geared", "equipment": [{"item": "srd51.item.spear"}],
+               "traits": [{"id": "change_shape", "name": "Change Shape",
+                           "effect": {"kind": "change_shape", "profile": "merge",
+                                      "select": {"types": ["beast"], "max_cr": "own"}}}]}
+        errs, warns = [], []
+        checks_v4.check_change_shape(doc, "monster", {"monsters": {}}, errs, warns)
+        self.assertTrue(any("test.change.geared" in e and "equipment[]" in e for e in errs), errs)
+        self.assertEqual(warns, [])
 
     def test_cases(self):
         for name, base, sets, dels, expect in RG12_CASES:

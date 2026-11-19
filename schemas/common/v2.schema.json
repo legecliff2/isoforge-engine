@@ -3790,6 +3790,16 @@
               }
             }
           }
+        },
+        {
+          "description": "Change Shape MERGE (contract v0.1.2 P1): checked only by change_shape_effect. Reuses FormKind::Shapechanger; no new kind.",
+          "properties": {
+            "kind": {
+              "not": {
+                "const": "change_shape"
+              }
+            }
+          }
         }
       ]
     },
@@ -4457,6 +4467,86 @@
         }
       }
     },
+    "change_shape_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "profile"
+      ],
+      "propertyNames": {
+        "enum": [
+          "kind",
+          "profile",
+          "cost",
+          "forms",
+          "select"
+        ]
+      },
+      "anyOf": [
+        {
+          "required": [
+            "forms"
+          ]
+        },
+        {
+          "required": [
+            "select"
+          ]
+        }
+      ],
+      "description": "Change Shape MERGE (contract v0.1.2 P1). Reuses FormKind::Shapechanger with a sim-side sub-kind on FormFeature. profile is merge only; REPLACE is not built. An explicit forms list overrides select. select compiles a pool at load: rated monsters of the named types whose CR is at most the creature's own, in id byte order, minus spellcasting or innate spellcasting, a live shapechanger or Change Shape form feature, the swarm tag, a non-attack action or any reactions[] or bonus_actions[] entry, a bite attack (D4, D4(e)), and a form whose compiled traits include bonus_action_grant, aggressive, or reckless_attack, or a per-rest / per-day usage pool (D4(f), the same reason as Parry: the bonus action or trait is lost, or Relentless becomes unlimited). More than 255 forms is a load error (D17). equipment[] on the creature is a load error (D8). The AI never uses it (D12).",
+      "properties": {
+        "kind": {
+          "const": "change_shape"
+        },
+        "profile": {
+          "const": "merge",
+          "description": "MERGE keeps the creature's size and creature type (D5) and one hit point pool."
+        },
+        "cost": {
+          "$ref": "../common/v1.schema.json#/$defs/effect_cost",
+          "description": "Default action. Revert is an action; a switch to another form is one action (D9)."
+        },
+        "forms": {
+          "$ref": "#/$defs/transform_forms",
+          "description": "Explicit archetype ids. Overrides select. form_archetype = 1 + index into this list."
+        },
+        "select": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "types",
+            "max_cr"
+          ],
+          "propertyNames": {
+            "enum": [
+              "types",
+              "max_cr"
+            ]
+          },
+          "properties": {
+            "types": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "beast",
+                  "humanoid"
+                ]
+              },
+              "description": "Creature types the pool is drawn from."
+            },
+            "max_cr": {
+              "const": "own",
+              "description": "CR at most the creature's own challenge rating. Characters (no CR) are out."
+            }
+          }
+        }
+      }
+    },
     "extra_attack_effect": {
       "type": "object",
       "additionalProperties": false,
@@ -4503,6 +4593,9 @@
             },
             {
               "$ref": "#/$defs/shapechanger_effect"
+            },
+            {
+              "$ref": "#/$defs/change_shape_effect"
             },
             {
               "$ref": "#/$defs/extra_attack_effect"
