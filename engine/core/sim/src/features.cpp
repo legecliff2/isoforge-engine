@@ -1345,6 +1345,7 @@ std::optional<std::string> apply_change_shape(Archetype& a, const FeatureDecl& f
     spec.form = uint8_t(rules5e::FormKind::Shapechanger);
     spec.form_rounds = 0;
     spec.form_choices = ff.select_pool ? uint8_t(0) : uint8_t(ff.forms.size());
+    a.pool_shapechanger = true;   // D4: a Change Shape creature is itself a form feature, so it leaves other pools
     a.feature_specs[fid] = spec;
     a.form_features[fid] = std::move(ff);
     a.active.push_back(std::move(af));

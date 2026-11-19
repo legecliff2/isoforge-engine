@@ -4495,7 +4495,7 @@
           ]
         }
       ],
-      "description": "Change Shape MERGE (contract v0.1.2 P1). Reuses FormKind::Shapechanger with a sim-side sub-kind on FormFeature. profile is merge only; REPLACE is not built. An explicit forms list overrides select. select compiles a pool at load: rated monsters of the named types whose CR is at most the creature's own, in id byte order, minus spellcasting or innate spellcasting, a live shapechanger form feature, the swarm tag, a non-attack action or any reactions[] or bonus_actions[] entry, and a bite attack (D4, D4(e)). More than 255 forms is a load error (D17). equipment[] on the creature is a load error (D8). The AI never uses it (D12).",
+      "description": "Change Shape MERGE (contract v0.1.2 P1). Reuses FormKind::Shapechanger with a sim-side sub-kind on FormFeature. profile is merge only; REPLACE is not built. An explicit forms list overrides select. select compiles a pool at load: rated monsters of the named types whose CR is at most the creature's own, in id byte order, minus spellcasting or innate spellcasting, a live shapechanger or Change Shape form feature, the swarm tag, a non-attack action or any reactions[] or bonus_actions[] entry, a bite attack (D4, D4(e)), and a form whose compiled traits include bonus_action_grant, aggressive, or reckless_attack, or a per-rest / per-day usage pool (D4(f), the same reason as Parry: the bonus action or trait is lost, or Relentless becomes unlimited). More than 255 forms is a load error (D17). equipment[] on the creature is a load error (D8). The AI never uses it (D12).",
       "properties": {
         "kind": {
           "const": "change_shape"

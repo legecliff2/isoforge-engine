@@ -2669,8 +2669,19 @@ void note_possession_class_base(rules5e::Combatant& c, const std::vector<Feature
 
 void note_change_shape_pool_facts(Archetype& a, const Json& doc) {
     if (!a.spell_ids.empty() || !a.innate_spell_ids.empty()) a.pool_spellcasting = true;
-    for (const auto& f : a.features)
+    for (const auto& f : a.features) {
         if (f.id == "spellcasting" || f.id == "innate_spellcasting") a.pool_spellcasting = true;
+        // D4(f), the same reason as the Parry exclusion: a printed capability MERGE would drop or over-grant.
+        // bonus_action_grant, aggressive, and reckless_attack live outside FormStats, so the form loses them.
+        // A per-rest or per-day usage is a pool registered only for the slot's own archetype; with no pool,
+        // the use is unlimited (Relentless). A category, not a list of ids.
+        if (f.kind == "bonus_action_grant" || f.kind == "aggressive" || f.kind == "reckless_attack")
+            a.pool_uncarried = true;
+        if (auto u = f.effect.find("usage"); u != f.effect.end() && u->is_object()) {
+            const std::string uk = u->value("kind", "");
+            if (uk == "per_rest" || uk == "per_day") a.pool_uncarried = true;
+        }
+    }
     auto bite_text = [](std::string s) {
         for (char& ch : s) ch = char(std::tolower(static_cast<unsigned char>(ch)));
         return s.find("bite") != std::string::npos;
@@ -2695,7 +2706,7 @@ bool change_shape_type_ok(rules5e::CreatureType t, const std::vector<std::string
 }
 
 bool change_shape_excluded(const Archetype& o) {
-    return o.pool_spellcasting || o.pool_shapechanger || o.swarm || o.pool_nonattack || o.pool_bite;
+    return o.pool_spellcasting || o.pool_shapechanger || o.swarm || o.pool_nonattack || o.pool_bite || o.pool_uncarried;
 }
 
 // `all` is id byte order (std::map order, the Polymorph precedent).
@@ -2728,13 +2739,24 @@ std::vector<const Archetype*> library_plus(const std::map<std::string, Archetype
 }  // namespace
 
 std::optional<std::string> ContentLibrary::change_shape_pool_error(const Archetype& candidate) const {
+    // Explicit forms[] must already be loaded. Change Shape only: Wild Shape still resolves at use time.
+    for (const auto& [fid, ff] : candidate.form_features) {
+        (void)fid;
+        if (ff.sub_kind != Archetype::FormSubKind::ChangeShapeMerge || ff.select_pool) continue;
+        for (const std::string& id : ff.forms)
+            if (id != candidate.id && by_id_.find(id) == by_id_.end())
+                return candidate.id + ": change_shape: unknown form '" + id + "'";
+    }
     const auto all = library_plus(by_id_, &candidate);
     auto over = [&](const Archetype& owner) -> std::optional<std::string> {
         for (const auto& [fid, ff] : owner.form_features) {
             (void)fid;
             if (!ff.select_pool || ff.sub_kind != Archetype::FormSubKind::ChangeShapeMerge) continue;
-            if (change_shape_pool_ids(owner, all, ff).size() > 255)
-                return owner.id + ": change_shape: more than 255 forms";
+            if (change_shape_pool_ids(owner, all, ff).size() > 255) {
+                // The document this add() is refusing: the owner, or the form that would be the 256th.
+                const std::string& refused = (&owner == &candidate) ? owner.id : candidate.id;
+                return refused + ": change_shape: more than 255 forms";
+            }
         }
         return std::nullopt;
     };

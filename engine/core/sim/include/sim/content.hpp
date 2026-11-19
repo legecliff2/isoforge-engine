@@ -122,16 +122,21 @@ struct Archetype {
     // EC swarm: a monster tagged "swarm" (SRD "Swarm" trait): shares spaces both ways (Combat::occupied_except) and cannot regain
     // HP or gain temp HP (Combatant::no_regain_hp). Squeezing through Tiny openings needs no grid change (no sub-tile openings).
     bool swarm = false;
-    // Change Shape pool facts (D4, D4(e), D7b). Content-only: not copied onto the combatant and not hashed.
+    // Change Shape pool facts (D4, D4(e), D4(f), D7b). Content-only: not copied onto the combatant and not hashed.
     // pool_spellcasting: a spellcasting object, or a trait id spellcasting / innate_spellcasting (descriptive innate counts).
-    // pool_nonattack: an action that is not a melee or ranged weapon attack or multiattack, or any reactions[] / bonus_actions[] entry.
+    // pool_nonattack: an action that is not a melee or ranged weapon attack or multiattack, or any reactions[] / bonus_actions[] entry
+    // (the Parry exclusion: offering the form would drop a printed capability).
     // pool_bite: an attack whose id or name contains "bite" (D4(e), until the bite rule is built).
-    // pool_shapechanger: a live shapechanger form feature (not Change Shape itself).
+    // pool_shapechanger: a live shapechanger or Change Shape form feature (a nested form).
+    // pool_uncarried (D4(f)): a compiled trait of kind bonus_action_grant, aggressive, or reckless_attack, or any
+    // trait that carries a per-rest / per-day usage pool. Same reason as Parry: the bonus action or trait is lost
+    // (those fields are not in FormStats), or Relentless becomes unlimited (no pool is registered for the form).
     bool magic_weapons = false;
     bool pool_spellcasting = false;
     bool pool_nonattack = false;
     bool pool_bite = false;
     bool pool_shapechanger = false;
+    bool pool_uncarried = false;
     std::vector<std::string> spell_ids;   // spellcasting.spells content ids (monster@3 / character@3)
     std::vector<std::string> innate_spell_ids;   // spellcasting.innate.* content ids (monster@4 / character@4); base.innate holds the rows
     // `multiattack` effect options as authored: option id + indices into base.attacks. ContentLibrary::add
@@ -158,14 +163,14 @@ struct Archetype {
     uint16_t fly_ft = 0, swim_ft = 0;
     uint8_t char_level = 0;
     // Change Shape (contract v0.1.2 P1) reuses FormKind::Shapechanger. The sub-kind is sim-side only:
-// no new FormKind, ActionKind, EventKind, or hash byte. Shapechanger is the existing fixed-form trait.
-// ChangeShapeMerge is the couatl sentence (AC, movement, Str, Dex, and attacks from the form; size and
-// creature type stay the creature's own).
-enum class FormSubKind : uint8_t { Shapechanger = 0, ChangeShapeMerge = 1 };
+    // no new FormKind, ActionKind, EventKind, or hash byte. Shapechanger is the existing fixed-form trait.
+    // ChangeShapeMerge is the couatl sentence (AC, movement, Str, Dex, and attacks from the form; size and
+    // creature type stay the creature's own).
+    enum class FormSubKind : uint8_t { Shapechanger = 0, ChangeShapeMerge = 1 };
 
-// Transform features (effect kinds wild_shape / shapechanger / change_shape), by feature_id. Form choice i
-// (ActionRequest::form_archetype = i + 1) is forms[i] (Wild Shape beast id, or a Change Shape pool entry) or
-// shapes[i] (shapechanger: a form of the creature's own block).
+    // Transform features (effect kinds wild_shape / shapechanger / change_shape), by feature_id. Form choice i
+    // (ActionRequest::form_archetype = i + 1) is forms[i] (Wild Shape beast id, or a Change Shape pool entry) or
+    // shapes[i] (shapechanger: a form of the creature's own block).
     struct FormFeature {
         uint8_t kind = 0;                       // rules5e::FormKind: 2 Wild Shape, 3 shapechanger (Change Shape too)
         FormSubKind sub_kind = FormSubKind::Shapechanger;

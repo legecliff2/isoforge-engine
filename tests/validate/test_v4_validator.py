@@ -868,6 +868,8 @@ RG12_CASES = [
      "change_shape: forms overrides select"),
     ("cs_bad_profile", D, [(["traits", 6], _feat("change_shape", {"kind": "change_shape", "profile": "replace", "forms": [WOLF]}))], [],
      "'merge' was expected"),
+    ("cs_cost_reaction", D, [(["traits", 6], _feat("change_shape", {"kind": "change_shape", "profile": "merge", "cost": "reaction", "forms": [WOLF]}))], [],
+     "change_shape cost must be action or bonus_action"),
 ]
 
 

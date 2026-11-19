@@ -3716,6 +3716,15 @@ std::optional<rules5e::FormStats> Combat::build_form(const rules5e::Combatant& w
             f.tremorsense_ft = std::max(f.tremorsense_ft, fb.tremorsense_ft);
             f.truesight_ft = std::max(f.truesight_ft, fb.truesight_ft);
             f.keen_senses = uint8_t(f.keen_senses | fb.keen_senses);
+            // M1: own on_hit riders are AttackIs predicates keyed by position in the own attack list.
+            // The form replaced those rows, so the rider would fire on the form's attack at the same
+            // index. Drop them before the form's riders are appended. The true-form snapshot still
+            // has them, so revert puts them back.
+            std::erase_if(f.triggers, [](const rules5e::Trigger& t) {
+                return std::any_of(t.when.begin(), t.when.end(), [](const rules5e::Predicate& p) {
+                    return p.kind == rules5e::PredicateKind::AttackIs;
+                });
+            });
             auto same_roll = [](const rules5e::RollTrait& x, const rules5e::RollTrait& y) {
                 return x.roll == y.roll && x.mode == y.mode && x.when == y.when && x.target_conditions == y.target_conditions &&
                        x.target_types == y.target_types && x.save_abilities == y.save_abilities &&
@@ -3730,6 +3739,10 @@ std::optional<rules5e::FormStats> Combat::build_form(const rules5e::Combatant& w
             for (const auto& t : fb.reactions)
                 if (t.id == 0 || std::none_of(f.reactions.begin(), f.reactions.end(), [&](const rules5e::Reaction& h) { return h.id == t.id; }))
                     f.reactions.push_back(t);
+            // DEFERRED 15: an own Reaction whose use is an attack still carries attack_index into the
+            // creature's own rows (the same family as an AttackIs rider). Whether own reactions count as
+            // "other actions" is unsettled. No pool form has reactions[], and the couatl has none, so
+            // MERGE still unions the rows. No behaviour change here.
             // Own-actions gate (R-a): only this creature's feature ids and its synthetic save-action spell ids.
             // Change Shape's own feature id is never on the list, so revert and switch still work. Real spells are not listed.
             f.own_actions_gate = true;
@@ -3740,8 +3753,7 @@ std::optional<rules5e::FormStats> Combat::build_form(const rules5e::Combatant& w
                 f.blocked_features.push_back(id);
             }
             for (const auto& sa : own->save_actions)
-                if (sa.spell_id != source &&
-                    std::find(f.blocked_features.begin(), f.blocked_features.end(), sa.spell_id) == f.blocked_features.end())
+                if (std::find(f.blocked_features.begin(), f.blocked_features.end(), sa.spell_id) == f.blocked_features.end())
                     f.blocked_features.push_back(sa.spell_id);
         } else {
         if (index >= ff->second.shapes.size()) return no("unknown shapechanger form");

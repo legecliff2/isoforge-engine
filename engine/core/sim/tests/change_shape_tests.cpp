@@ -64,8 +64,10 @@ Json changer_doc(std::vector<std::string> forms) {
     m["senses"] = {{"passive_perception", 12}};
     m["spellcasting"] = {{"ability", "wis"}, {"caster_level", 4}, {"slots", {{"1", 3}}}, {"spells", Json::array({"test.spell.zap"})}};
     m["actions"] = Json::array({
-        {{"id", "sting"}, {"name", "Sting"}, {"kind", "melee_weapon_attack"}, {"to_hit", 8}, {"reach", 5}, {"targets", 1},
-         {"damage", Json::array({{{"dice", "1d6+3"}, {"type", "piercing"}}})}},
+        {{"id", "sting"}, {"name", "Sting"}, {"kind", "melee_weapon_attack"}, {"to_hit", 30}, {"reach", 5}, {"targets", 1},
+         {"damage", Json::array({{{"dice", "1d6+3"}, {"type", "piercing"}}})},
+         {"on_hit", Json::array({{{"kind", "save_condition"}, {"save", {{"ability", "con"}, {"dc", 13}}},
+                                  {"apply", Json::array({{{"condition", "poisoned"}, {"duration", {{"kind", "rounds"}, {"n", 10}}}}})}}})}},
         {{"id", "glare"}, {"name", "Glare"}, {"kind", "save_effect"}, {"save", {{"ability", "wis"}, {"dc", 13}}},
          {"range_ft", 30}, {"damage", Json::array({{{"dice", "2d6"}, {"type", "psychic"}}})}},
     });
@@ -99,7 +101,7 @@ Json form_a() {
     m["senses"] = {{"darkvision", 60}, {"passive_perception", 13}};
     m["traits"] = Json::array();
     m["actions"] = Json::array({
-        {{"id", "slam"}, {"name", "Slam"}, {"kind", "melee_weapon_attack"}, {"to_hit", 6}, {"reach", 5}, {"targets", 1},
+        {{"id", "slam"}, {"name", "Slam"}, {"kind", "melee_weapon_attack"}, {"to_hit", 30}, {"reach", 5}, {"targets", 1},
          {"damage", Json::array({{{"dice", "1d8+2"}, {"type", "bludgeoning"}}})}},
         {{"id", "spit"}, {"name", "Spit"}, {"kind", "ranged_weapon_attack"}, {"to_hit", 30}, {"range", Json::array({30, 120})},
          {"targets", 1}, {"damage", Json::array({{{"dice", "1d4"}, {"type", "acid"}}})},
@@ -217,18 +219,18 @@ struct Fight {
     }
 };
 
-const char* kPool48[] = {
-    "srd51.monster.ape", "srd51.monster.axe_beak", "srd51.monster.bandit", "srd51.monster.berserker",
-    "srd51.monster.blood_hawk", "srd51.monster.boar", "srd51.monster.bugbear", "srd51.monster.cat",
-    "srd51.monster.commoner", "srd51.monster.crab", "srd51.monster.cultist", "srd51.monster.draft_horse",
-    "srd51.monster.eagle", "srd51.monster.elephant", "srd51.monster.elk", "srd51.monster.giant_boar",
-    "srd51.monster.giant_crab", "srd51.monster.giant_eagle", "srd51.monster.giant_elk", "srd51.monster.giant_goat",
-    "srd51.monster.giant_owl", "srd51.monster.giant_scorpion", "srd51.monster.giant_sea_horse",
-    "srd51.monster.giant_vulture", "srd51.monster.giant_wasp", "srd51.monster.goat", "srd51.monster.goblin",
-    "srd51.monster.grimlock", "srd51.monster.guard", "srd51.monster.hobgoblin", "srd51.monster.kobold",
-    "srd51.monster.merfolk", "srd51.monster.mule", "srd51.monster.orc", "srd51.monster.owl", "srd51.monster.pony",
-    "srd51.monster.raven", "srd51.monster.rhinoceros", "srd51.monster.riding_horse", "srd51.monster.scorpion",
-    "srd51.monster.scout", "srd51.monster.spy", "srd51.monster.stirge", "srd51.monster.thug",
+// Id byte order. D4(f) drops goblin, spy, orc, berserker, boar, and giant_boar (bonus action or trait lost, or Relentless unlimited).
+const char* kPool42[] = {
+    "srd51.monster.ape", "srd51.monster.axe_beak", "srd51.monster.bandit", "srd51.monster.blood_hawk",
+    "srd51.monster.bugbear", "srd51.monster.cat", "srd51.monster.commoner", "srd51.monster.crab",
+    "srd51.monster.cultist", "srd51.monster.draft_horse", "srd51.monster.eagle", "srd51.monster.elephant",
+    "srd51.monster.elk", "srd51.monster.giant_crab", "srd51.monster.giant_eagle", "srd51.monster.giant_elk",
+    "srd51.monster.giant_goat", "srd51.monster.giant_owl", "srd51.monster.giant_scorpion",
+    "srd51.monster.giant_sea_horse", "srd51.monster.giant_vulture", "srd51.monster.giant_wasp",
+    "srd51.monster.goat", "srd51.monster.grimlock", "srd51.monster.guard", "srd51.monster.hobgoblin",
+    "srd51.monster.kobold", "srd51.monster.merfolk", "srd51.monster.mule", "srd51.monster.owl",
+    "srd51.monster.pony", "srd51.monster.raven", "srd51.monster.rhinoceros", "srd51.monster.riding_horse",
+    "srd51.monster.scorpion", "srd51.monster.scout", "srd51.monster.stirge", "srd51.monster.thug",
     "srd51.monster.tribal_warrior", "srd51.monster.veteran", "srd51.monster.vulture", "srd51.monster.warhorse",
 };
 
@@ -338,6 +340,7 @@ TEST_CASE("Change Shape: revert spends an action, a switch is one action, encoun
     CHECK(f.who(f.self).speed_ft == 20);
     CHECK(f.who(f.self).climb_ft == 20);
     CHECK(f.who(f.self).attacks[0].id == "peck");
+    CHECK_FALSE(f.c().state().budget.action);   // the switch is the one action (D9)
     bool saw_revert = false, saw_transform = false;
     for (std::size_t i = before_switch; i < f.c().events().size(); ++i) {
         const auto& e = f.c().events()[i];
@@ -405,6 +408,116 @@ TEST_CASE("Change Shape union: a resistance, a vulnerability and a sense the cre
     CHECK(f.who(f.self).resistances == 0);
     CHECK(f.who(f.self).vulnerabilities == 0);
     CHECK(f.who(f.self).darkvision_ft == 0);
+
+    // Every other union family, on a form the fixture does not share with the other tests.
+    Json rich = form_a();
+    rich["id"] = "test.change.union";
+    rich["damage_immunities"] = Json::array({"poison"});
+    rich["condition_immunities"] = Json::array({"frightened"});
+    rich["saving_throws"] = {{"con", true}};
+    rich["senses"] = {{"darkvision", 60}, {"blindsight", 10}, {"tremorsense", 30}, {"truesight", 15}, {"passive_perception", 13}};
+    rich["traits"] = Json::array({
+        {{"id", "pack_tactics"}, {"name", "Pack Tactics"}, {"effect", {{"kind", "pack_tactics"}}}},
+        {{"id", "keen_smell"}, {"name", "Keen Smell"}, {"effect", {{"kind", "keen_senses"}, {"senses", Json::array({"smell"})}}}},
+        {{"id", "damage_resistances_nonmagical"}, {"name", "Damage Resistances"},
+         {"effect", {{"kind", "damage_mitigation"}, {"resistances", {{"nonmagical", Json::array({"bludgeoning"})}}}}}},
+        {{"id", "rampage"}, {"name", "Rampage"},
+         {"effect", {{"kind", "on_event"}, {"on", "reduce_to_zero"}, {"limit", "once_per_turn"},
+                     {"when", Json::array({{{"kind", "weapon"}, {"is", "melee"}}})},
+                     {"effects", Json::array({{{"kind", "bonus_attack"}, {"attack_id", "slam"}}})}}}},
+    });
+    rich["reactions"] = Json::array({
+        {{"id", "shrug"}, {"name", "Shrug"}, {"window", {{"kind", "damaged"}}},
+         {"effect", {{"kind", "reduce_damage"}, {"fraction", "half"}}}},
+    });
+    ContentLibrary lib;
+    REQUIRE_FALSE(lib.add_spell(zap()));
+    auto added = lib.add(rich, "monster");
+    REQUIRE_MESSAGE(!added, added.value_or(""));
+    Json who = changer_doc({"test.change.union"});
+    who["id"] = "test.change.union_who";
+    added = lib.add(who, "monster");
+    REQUIRE_MESSAGE(!added, added.value_or(""));
+    REQUIRE_FALSE(lib.add(foe_doc(), "monster"));
+    auto chunk = arena({{"test.change.union_who", {4, 4}}, {"test.change.foe", {5, 4}}}, {"", "foes"});
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, lib, 3);
+    REQUIRE(combat);
+    const CombatantId self = chunk.spawns[0].stable_id;
+    auto actor = [&]() -> rules5e::Combatant& {
+        for (auto& k : CombatTestAccess::state(*combat).combatants)
+            if (k.id == self) return k;
+        REQUIRE(false);
+        return CombatTestAccess::state(*combat).combatants.front();
+    };
+    for (int i = 0; i < 6 && rules5e::current_actor(combat->state()) != self; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(combat->state()), ActionKind::EndTurn};
+        REQUIRE(combat->submit(e).ok);
+    }
+    const Archetype* form = lib.find("test.change.union");
+    REQUIRE(form);
+    CHECK(actor().roll_traits.empty());
+    CHECK(actor().reactions.empty());
+    CHECK(actor().bonus_attacks.empty());
+    CHECK((actor().immunities & rules5e::bit(rules5e::DamageType::Poison)) == 0);
+    CHECK((actor().condition_immunities & rules5e::bit(rules5e::Condition::Frightened)) == 0);
+    CHECK((actor().save_proficiencies & rules5e::bit(rules5e::Ability::Con)) == 0);
+    Command u;
+    u.request = {self, ActionKind::UseFeature};
+    u.request.feature_id = 1;
+    u.request.form_archetype = 1;
+    auto tr = combat->submit(u);
+    REQUIRE_MESSAGE(tr.ok, tr.error);
+    CHECK((actor().resistances & rules5e::bit(rules5e::DamageType::Fire)) != 0);
+    CHECK((actor().immunities & rules5e::bit(rules5e::DamageType::Poison)) != 0);
+    CHECK((actor().vulnerabilities & rules5e::bit(rules5e::DamageType::Cold)) != 0);
+    CHECK((actor().resist_qualified.nonmagical & rules5e::bit(rules5e::DamageType::Bludgeoning)) != 0);
+    CHECK((actor().condition_immunities & rules5e::bit(rules5e::Condition::Frightened)) != 0);
+    CHECK((actor().save_proficiencies & rules5e::bit(rules5e::Ability::Con)) != 0);
+    CHECK(actor().darkvision_ft == 60);
+    CHECK(actor().blindsight_ft == 10);
+    CHECK(actor().tremorsense_ft == 30);
+    CHECK(actor().truesight_ft == 15);
+    CHECK((actor().keen_senses & rules5e::kKeenSmell) != 0);
+    REQUIRE(actor().roll_traits.size() == form->base.roll_traits.size());
+    CHECK(actor().roll_traits[0].when == form->base.roll_traits[0].when);
+    REQUIRE(actor().reactions.size() == 1);
+    CHECK(actor().reactions[0].id == form->base.reactions[0].id);
+    CHECK(actor().bonus_attacks.size() == form->base.bonus_attacks.size());
+    bool rampage = false;
+    for (const auto& t : actor().triggers)
+        for (const auto& e : t.effects)
+            rampage = rampage || e.kind == rules5e::RiderKind::BonusAttack;
+    CHECK(rampage);
+    Command end;
+    end.request = {self, ActionKind::EndTurn};
+    REQUIRE(combat->submit(end).ok);
+    for (int i = 0; i < 6 && rules5e::current_actor(combat->state()) != self; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(combat->state()), ActionKind::EndTurn};
+        REQUIRE(combat->submit(e).ok);
+    }
+    Command rev2;
+    rev2.request = {self, ActionKind::Revert};
+    auto reverted = combat->submit(rev2);
+    REQUIRE_MESSAGE(reverted.ok, reverted.error);
+    CHECK((actor().immunities & rules5e::bit(rules5e::DamageType::Poison)) == 0);
+    CHECK((actor().resist_qualified.nonmagical & rules5e::bit(rules5e::DamageType::Bludgeoning)) == 0);
+    CHECK((actor().condition_immunities & rules5e::bit(rules5e::Condition::Frightened)) == 0);
+    CHECK((actor().save_proficiencies & rules5e::bit(rules5e::Ability::Con)) == 0);
+    CHECK(actor().blindsight_ft == 0);
+    CHECK(actor().tremorsense_ft == 0);
+    CHECK(actor().truesight_ft == 0);
+    CHECK(actor().keen_senses == 0);
+    CHECK(actor().roll_traits.empty());
+    CHECK(actor().reactions.empty());
+    CHECK(actor().bonus_attacks.empty());
+    rampage = false;
+    for (const auto& t : actor().triggers)
+        for (const auto& e : t.effects)
+            rampage = rampage || e.kind == rules5e::RiderKind::BonusAttack;
+    CHECK_FALSE(rampage);
 }
 
 TEST_CASE("Change Shape D7b: Magic Weapons is re-applied to the form's attacks and does not stay after revert") {
@@ -427,6 +540,93 @@ TEST_CASE("Change Shape D7b: Magic Weapons is re-applied to the form's attacks a
     REQUIRE(f.who(f.self).attacks.size() == 1);
     CHECK(f.who(f.self).attacks[0].id == "sting");
     CHECK((f.who(f.self).attacks[0].qualifiers & rules5e::kAttackMagical) != 0);
+    // Control: the same form, without the magic_weapons trait, keeps non-magical rows.
+    ContentLibrary plain;
+    REQUIRE_FALSE(plain.add(form_a(), "monster"));
+    REQUIRE_FALSE(plain.add(foe_doc(), "monster"));
+    Json bare = changer_doc({"test.change.form_a"});
+    bare["id"] = "test.change.plain";
+    Json kept = Json::array();
+    for (const Json& t : bare["traits"])
+        if (t.value("id", "") != "magic_weapons") kept.push_back(t);
+    bare["traits"] = std::move(kept);
+    REQUIRE_FALSE(plain.add(bare, "monster"));
+    auto chunk = arena({{"test.change.plain", {4, 4}}, {"test.change.foe", {5, 4}}}, {"", "foes"});
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, plain, 9);
+    REQUIRE(combat);
+    const CombatantId self = chunk.spawns[0].stable_id;
+    for (int i = 0; i < 6 && rules5e::current_actor(combat->state()) != self; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(combat->state()), ActionKind::EndTurn};
+        REQUIRE(combat->submit(e).ok);
+    }
+    Command u;
+    u.request = {self, ActionKind::UseFeature};
+    u.request.feature_id = 1;
+    u.request.form_archetype = 1;
+    auto tr = combat->submit(u);
+    REQUIRE_MESSAGE(tr.ok, tr.error);
+    const auto* me = rules5e::find(combat->state(), self);
+    REQUIRE(me);
+    REQUIRE(me->attacks.size() == 2);
+    CHECK((me->attacks[0].qualifiers & rules5e::kAttackMagical) == 0);
+    CHECK((me->attacks[1].qualifiers & rules5e::kAttackMagical) == 0);
+}
+
+TEST_CASE("Change Shape M1: a MERGE form does not fire the own attack's on_hit rider; revert does") {
+    Fight f;
+    uint32_t sting_rider = 0;
+    for (const auto& t : f.who(f.self).triggers)
+        for (const auto& p : t.when)
+            if (p.kind == rules5e::PredicateKind::AttackIs && p.a == 0) sting_rider = t.id;
+    REQUIRE(sting_rider != 0);
+    auto saves_since = [&](std::size_t mark) {
+        int n = 0;
+        for (std::size_t i = mark; i < f.c().events().size(); ++i) {
+            const auto& e = f.c().events()[i];
+            if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::SavingThrowRolled && e.rules.actor == f.foe) ++n;
+        }
+        return n;
+    };
+    auto hit = [&](uint8_t attack) {
+        for (int n = 0; n < 8; ++n) {
+            f.advance_to(f.self);
+            const auto mark = f.c().events().size();
+            Command atk;
+            atk.request = {f.self, ActionKind::Attack, f.foe, attack};
+            auto r = f.c().submit(atk);
+            REQUIRE_MESSAGE(r.ok, r.error);
+            bool landed = false;
+            for (std::size_t i = mark; i < f.c().events().size(); ++i) {
+                const auto& e = f.c().events()[i];
+                if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::AttackResolved && e.rules.actor == f.self && (e.rules.c & 1))
+                    landed = true;
+            }
+            if (landed) return mark;
+            f.end_turn();
+        }
+        FAIL("attack did not hit");
+        return f.c().events().size();
+    };
+    f.advance_to(f.self);
+    REQUIRE(f.use_form(1).ok);
+    for (const auto& t : f.who(f.self).triggers) CHECK(t.id != sting_rider);
+    f.end_turn();
+    const auto form_mark = hit(0);   // form attack 0 (slam), the slot the own sting rider used to index
+    CHECK(saves_since(form_mark) == 0);
+    f.end_turn();
+    f.advance_to(f.self);
+    Command rev;
+    rev.request = {f.self, ActionKind::Revert};
+    REQUIRE(f.c().submit(rev).ok);
+    bool restored = false;
+    for (const auto& t : f.who(f.self).triggers)
+        if (t.id == sting_rider) restored = true;
+    CHECK(restored);
+    f.end_turn();
+    const auto own_mark = hit(0);
+    CHECK(saves_since(own_mark) > 0);
 }
 
 TEST_CASE("Change Shape own-actions gate: save action and feature are refused, a real spell is not, Change Shape is never listed") {
@@ -444,6 +644,10 @@ TEST_CASE("Change Shape own-actions gate: save action and feature are refused, a
     CHECK(f.c().can_use_feature(f.self, f.change_id));
     CHECK_FALSE(f.offered(ActionKind::CastSpell, f.glare_id));
     CHECK(f.offered(ActionKind::CastSpell, f.zap_id));
+    // The AI save-action probe reads the same list (driver.cpp). Glare is in reach and would be the action.
+    Command ai = next_command(f.c(), f.foe);
+    CHECK(ai.request.spell_id != f.glare_id);
+    CHECK(ai.request.kind == ActionKind::Attack);
     Command glare;
     glare.request = {f.self, ActionKind::CastSpell, f.foe};
     glare.request.spell_id = f.glare_id;
@@ -485,7 +689,7 @@ TEST_CASE("Change Shape own-actions gate: save action and feature are refused, a
     REQUIRE_MESSAGE(mended.ok, mended.error);
 }
 
-TEST_CASE("Change Shape pool: humanoid or beast, CR at most own, id order, and the six D4 groups stay out") {
+TEST_CASE("Change Shape pool: the ten exclusion groups stay out, and test 16 pins the 42 S1 ids in byte order") {
     ContentLibrary small;
     auto eligible = [](const std::string& id, const char* cr) {
         Json m = goblin_base(id);
@@ -526,6 +730,24 @@ TEST_CASE("Change Shape pool: humanoid or beast, CR at most own, id order, and t
                                        {"window", {{"kind", "being_hit"}, {"melee_only", true}}},
                                        {"effect", {{"kind", "ac_bonus"}, {"bonus", 2}}}}});
     REQUIRE_FALSE(small.add(parry, "monster"));
+    Json aggressive = eligible("test.pool.aggressive", "1/4");
+    aggressive["traits"] = Json::array({{{"id", "aggressive"}, {"name", "Aggressive"}, {"effect", {{"kind", "aggressive"}}}}});
+    REQUIRE_FALSE(small.add(aggressive, "monster"));
+    Json reckless = eligible("test.pool.reckless", "1/4");
+    reckless["traits"] = Json::array({{{"id", "reckless"}, {"name", "Reckless"}, {"effect", {{"kind", "reckless_attack"}}}}});
+    REQUIRE_FALSE(small.add(reckless, "monster"));
+    Json nimble = eligible("test.pool.nimble", "1/4");
+    nimble["traits"] = Json::array({{{"id", "nimble_escape"}, {"name", "Nimble Escape"},
+                                     {"effect", {{"kind", "bonus_action_grant"}, {"actions", Json::array({"disengage", "hide"})}}}}});
+    REQUIRE_FALSE(small.add(nimble, "monster"));
+    Json relentless = eligible("test.pool.relentless", "1/4");
+    relentless["$schema"] = "monster@5";
+    relentless["traits"] = Json::array({{{"id", "relentless"}, {"name", "Relentless"},
+                                         {"effect", {{"kind", "on_event"}, {"on", "drop_to_zero"},
+                                                     {"when", Json::array({{{"kind", "damage_at_most"}, {"amount", 7}}})},
+                                                     {"usage", {{"kind", "per_rest"}, {"uses", 1}, {"rest", "short"}}},
+                                                     {"effects", Json::array({{{"kind", "set_hp"}, {"value", 1}}})}}}}});
+    REQUIRE_FALSE(small.add(relentless, "monster"));
     Json bite = eligible("test.pool.bite", "1/4");
     bite["actions"] = Json::array({
         {{"id", "bite"}, {"name", "Bite"}, {"kind", "melee_weapon_attack"}, {"to_hit", 4}, {"reach", 5}, {"targets", 1},
@@ -553,9 +775,13 @@ TEST_CASE("Change Shape pool: humanoid or beast, CR at most own, id order, and t
     REQUIRE(ff->forms.size() == 2);
     CHECK(ff->forms[0] == "test.pool.a");
     CHECK(ff->forms[1] == "test.pool.m");
+    CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.nimble") == ff->forms.end());
+    CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.aggressive") == ff->forms.end());
+    CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.reckless") == ff->forms.end());
+    CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.relentless") == ff->forms.end());
     CHECK(a->feature_specs.at(1).form_choices == 2);
 
-    // The pack, recounted: 112 humanoid or beast at CR 4 or lower, 88 after D4, 48 after D4(e).
+    // The pack: 112 humanoid or beast at CR 4 or lower, 88 after D4, then D4(e) and D4(f) leave 42.
     ContentLibrary pack;
     const auto dir = std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/srd51.core";
     REQUIRE(pack.load_pack(dir.string()).empty());
@@ -570,9 +796,9 @@ TEST_CASE("Change Shape pool: humanoid or beast, CR at most own, id order, and t
     for (const auto& [id, feat] : sel->form_features)
         if (feat.sub_kind == Archetype::FormSubKind::ChangeShapeMerge) { pool = &feat; fid = id; }
     REQUIRE(pool);
-    REQUIRE(pool->forms.size() == 48);
-    CHECK(sel->feature_specs.at(fid).form_choices == 48);
-    for (std::size_t i = 0; i < 48; ++i) CHECK(pool->forms[i] == kPool48[i]);
+    REQUIRE(pool->forms.size() == 42);
+    CHECK(sel->feature_specs.at(fid).form_choices == 42);
+    for (std::size_t i = 0; i < 42; ++i) CHECK(pool->forms[i] == kPool42[i]);
     for (const std::string& id : pool->forms) {
         const Archetype* form = pack.find(id);
         REQUIRE(form);
@@ -584,8 +810,100 @@ TEST_CASE("Change Shape pool: humanoid or beast, CR at most own, id order, and t
                                "srd51.monster.drow", "srd51.monster.druid", "srd51.monster.priest",
                                "srd51.monster.wereboar", "srd51.monster.wererat", "srd51.monster.weretiger",
                                "srd51.monster.werewolf", "srd51.monster.swarm_of_rats", "srd51.monster.bandit_captain",
-                               "srd51.monster.noble", "srd51.monster.knight", "srd51.monster.wolf"})
+                               "srd51.monster.noble", "srd51.monster.knight", "srd51.monster.wolf",
+                               "srd51.monster.goblin", "srd51.monster.spy", "srd51.monster.orc",
+                               "srd51.monster.berserker", "srd51.monster.boar", "srd51.monster.giant_boar"})
         CHECK(std::find(pool->forms.begin(), pool->forms.end(), absent) == pool->forms.end());
+}
+
+TEST_CASE("Change Shape test 21: D4(f) keeps the six out while MERGE does not carry their capabilities") {
+    const char* six[] = {"srd51.monster.goblin", "srd51.monster.spy", "srd51.monster.orc",
+                         "srd51.monster.berserker", "srd51.monster.boar", "srd51.monster.giant_boar"};
+    ContentLibrary pack;
+    const auto dir = std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/srd51.core";
+    REQUIRE(pack.load_pack(dir.string()).empty());
+    Json selector = goblin_base("test.change.d4f");
+    selector["$schema"] = "monster@5";
+    selector["type"] = "celestial";
+    selector["challenge"] = {{"rating", "4"}, {"xp", 1100}};
+    selector["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"},
+                                       {"effect", {{"kind", "change_shape"}, {"profile", "merge"},
+                                                   {"select", {{"types", Json::array({"humanoid", "beast"})}, {"max_cr", "own"}}}}}}});
+    selector["actions"] = Json::array({
+        {{"id", "sting"}, {"name", "Sting"}, {"kind", "melee_weapon_attack"}, {"to_hit", 4}, {"reach", 5}, {"targets", 1},
+         {"damage", Json::array({{{"dice", "1d4"}, {"type", "piercing"}}})}},
+    });
+    REQUIRE_FALSE(pack.add(selector, "monster"));
+    const Archetype* sel = pack.find("test.change.d4f");
+    REQUIRE(sel);
+    const Archetype::FormFeature* pool = nullptr;
+    for (const auto& [id, feat] : sel->form_features)
+        if (feat.sub_kind == Archetype::FormSubKind::ChangeShapeMerge) pool = &feat;
+    REQUIRE(pool);
+    REQUIRE(pool->forms.size() == 42);
+    for (const char* id : six)
+        CHECK(std::find(pool->forms.begin(), pool->forms.end(), id) == pool->forms.end());
+
+    // An explicit form is allowed, so the absence above is not what this half checks. MERGE still does not
+    // copy bonus_action_grants, aggressive, reckless_attack, or the form's usage pool. If it starts to, this
+    // fails, and the D4(f) exclusion has to be lifted in the same change.
+    Json form = goblin_base("test.d4f.form");
+    form["$schema"] = "monster@5";
+    form["type"] = "beast";
+    form["traits"] = Json::array({
+        {{"id", "nimble_escape"}, {"name", "Nimble Escape"},
+         {"effect", {{"kind", "bonus_action_grant"}, {"actions", Json::array({"disengage", "hide"})}}}},
+        {{"id", "aggressive"}, {"name", "Aggressive"}, {"effect", {{"kind", "aggressive"}}}},
+        {{"id", "reckless"}, {"name", "Reckless"}, {"effect", {{"kind", "reckless_attack"}}}},
+        {{"id", "relentless"}, {"name", "Relentless"},
+         {"effect", {{"kind", "on_event"}, {"on", "drop_to_zero"},
+                     {"when", Json::array({{{"kind", "damage_at_most"}, {"amount", 7}}})},
+                     {"usage", {{"kind", "per_rest"}, {"uses", 1}, {"rest", "short"}}},
+                     {"effects", Json::array({{{"kind", "set_hp"}, {"value", 1}}})}}}},
+    });
+    ContentLibrary lib;
+    REQUIRE_FALSE(lib.add(form, "monster"));
+    Json bare = goblin_base("test.d4f.who");
+    bare["$schema"] = "monster@5";
+    bare["type"] = "celestial";
+    bare["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"},
+                                   {"effect", {{"kind", "change_shape"}, {"profile", "merge"},
+                                               {"forms", Json::array({"test.d4f.form"})}}}}});
+    bare["actions"] = Json::array({
+        {{"id", "sting"}, {"name", "Sting"}, {"kind", "melee_weapon_attack"}, {"to_hit", 4}, {"reach", 5}, {"targets", 1},
+         {"damage", Json::array({{{"dice", "1d6"}, {"type", "piercing"}}})}},
+    });
+    REQUIRE_FALSE(lib.add(bare, "monster"));
+    REQUIRE_FALSE(lib.add(foe_doc(), "monster"));
+    const Archetype* fa = lib.find("test.d4f.form");
+    REQUIRE(fa);
+    CHECK(fa->base.aggressive);
+    CHECK(fa->base.reckless_attack);
+    CHECK((fa->base.bonus_action_grants & rules5e::bit(ActionKind::Disengage)) != 0);
+    REQUIRE_FALSE(fa->resources.empty());
+    auto chunk = arena({{"test.d4f.who", {4, 4}}, {"test.change.foe", {5, 4}}}, {"", "foes"});
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, lib, 5);
+    REQUIRE(combat);
+    const CombatantId self = chunk.spawns[0].stable_id;
+    for (int i = 0; i < 6 && rules5e::current_actor(combat->state()) != self; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(combat->state()), ActionKind::EndTurn};
+        REQUIRE(combat->submit(e).ok);
+    }
+    Command u;
+    u.request = {self, ActionKind::UseFeature};
+    u.request.feature_id = 1;
+    u.request.form_archetype = 1;
+    auto tr = combat->submit(u);
+    REQUIRE_MESSAGE(tr.ok, tr.error);
+    const auto* me = rules5e::find(combat->state(), self);
+    REQUIRE(me);
+    CHECK_FALSE(me->aggressive);
+    CHECK_FALSE(me->reckless_attack);
+    CHECK((me->bonus_action_grants & rules5e::bit(ActionKind::Disengage)) == 0);
+    CHECK((me->bonus_action_grants & rules5e::bit(ActionKind::Hide)) == 0);
+    CHECK(rules5e::find_pool(combat->state(), self, fa->resources[0].pool_id) == nullptr);
 }
 
 TEST_CASE("Change Shape D17: 256 eligible forms fail to load and 255 load") {
@@ -628,6 +946,12 @@ TEST_CASE("Change Shape D17: 256 eligible forms fail to load and 255 load") {
         REQUIRE(spec != a->feature_specs.end());
         CHECK(spec->second.form_choices == 255);
         CHECK(a->form_features.at(1).forms.size() == 255);
+        auto err = ok.add(one("test.late.255"), "monster");
+        REQUIRE(err);
+        CHECK(err->find("test.late.255") != std::string::npos);
+        CHECK(err->find("255") != std::string::npos);
+        CHECK(ok.find("test.change.cap"));
+        CHECK_FALSE(ok.find("test.late.255"));
     }
 }
 
@@ -644,6 +968,20 @@ TEST_CASE("Change Shape D8: equipment on a change_shape creature is a load error
     REQUIRE(err);
     CHECK(err->find("test.change.geared") != std::string::npos);
     CHECK(err->find("equipment") != std::string::npos);
+}
+
+TEST_CASE("Change Shape: an unknown explicit form is a load error") {
+    ContentLibrary lib;
+    Json m = goblin_base("test.change.unknown");
+    m["$schema"] = "monster@5";
+    m["type"] = "celestial";
+    m["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"},
+                                {"effect", {{"kind", "change_shape"}, {"profile", "merge"},
+                                            {"forms", Json::array({"test.change.missing"})}}}}});
+    auto err = lib.add(m, "monster");
+    REQUIRE(err);
+    CHECK(err->find("unknown form 'test.change.missing'") != std::string::npos);
+    CHECK_FALSE(lib.find("test.change.unknown"));
 }
 
 TEST_CASE("Change Shape attack_archetype: range and grapple_on_hit come from the form") {
@@ -745,42 +1083,10 @@ TEST_CASE("Change Shape AI never selects the feature") {
     CHECK(f.who(f.self).form == FormKind::None);
 }
 
-TEST_CASE("Change Shape hash, schema 14, and a Transformed stream reports v10") {
+TEST_CASE("Change Shape schema stays 14, and a Transformed stream reports v10") {
+    // The two determinism pins live in legendary_actions_tests.cpp (seed 11 at the legendary beast,
+    // seed 4 at fighter vs goblin). They are not copied here; that file is where they move.
     CHECK(kSimEventSchemaVersion == 14);
-    ContentLibrary plain;
-    REQUIRE(plain.load(sample_set()).empty());
-    auto ch = arena({{"srd51.character.fighter_1", {4, 4}}, {"srd51.monster.goblin", {8, 4}}});
-    ecs::Registry reg;
-    auto fight = Combat::create(reg, ch, plain, 4);
-    REQUIRE(fight);
-    Command end;
-    end.request = {rules5e::current_actor(fight->state()), ActionKind::EndTurn};
-    REQUIRE(fight->submit(end).ok);
-    CHECK(fight->hash() == 0x67bca9677135717dull);
-    Json beast = load_json("content/packs/srd51.core/monsters/goblin.json");
-    beast["$schema"] = "monster@7";
-    beast["id"] = "test.legendary.beast";
-    beast["type"] = "beast";
-    beast["challenge"] = {{"rating", "0"}, {"xp", 10}};
-    beast["name"] = "Legendary Beast";
-    beast["hit_points"]["average"] = 80;
-    beast["legendary_actions_per_round"] = 3;
-    beast["legendary_actions"] = Json::array({
-        {{"id", "bite"}, {"name", "Bite"}, {"description", "One bite."}, {"cost", 1}, {"use", {{"attack", "scimitar"}}}},
-        {{"id", "sniff"}, {"name", "Sniff"}, {"description", "A Perception check."}, {"use", {{"check", "perception"}}}},
-        {{"id", "stride"}, {"name", "Stride"}, {"description", "Move up to its speed."}, {"use", {{"move", "speed"}}}},
-        {{"id", "glide"}, {"name", "Glide"}, {"description", "Move without provoking."},
-         {"use", {{"move", "half_speed"}, {"no_opportunity_attacks", true}}}},
-    });
-    ContentLibrary legend;
-    REQUIRE(legend.load(sample_set()).empty());
-    REQUIRE_FALSE(legend.add(beast, "monster"));
-    auto ch11 = arena({{"srd51.character.fighter_1", {7, 4}}, {"test.legendary.beast", {8, 4}}});
-    ecs::Registry reg11;
-    auto pinned = Combat::create(reg11, ch11, legend, 11);
-    REQUIRE(pinned);
-    CHECK(pinned->hash() == 0x40c5e7a2531bae06ull);
-
     Fight f;
     f.advance_to(f.self);
     REQUIRE(f.use_form(1).ok);

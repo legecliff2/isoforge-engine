@@ -1316,6 +1316,8 @@ def check_change_shape(doc: dict, typ: str, ctx: dict, errs: list[str], warns: l
             errs.append(f"{path}: change_shape effect: unknown key '{extra[0]}'")
         if eff.get("profile") != "merge":
             errs.append(f"{path}: change_shape: profile must be merge")
+        if "cost" in eff and eff.get("cost") not in ("action", "bonus_action"):
+            errs.append(f"{path}: change_shape cost must be action or bonus_action")
         has_forms = "forms" in eff
         has_select = "select" in eff
         if not has_forms and not has_select:

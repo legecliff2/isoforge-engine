@@ -7869,7 +7869,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             const Combatant* om = row ? find(s, row->mark) : nullptr;
             const bool dropped = row && (!om || om->dead || om->hp <= 0);
             const bool this_turn = row && row->mark_dropped && row->mark_dropped_stamp == turn_stamp(s);
-            if (dropped && !this_turn)
+            if (dropped && !this_turn && !spell_blocked(d->id))
                 for (const Combatant& t : s.combatants) {   // any living creature but the caster and the old mark (no range / sight)
                     if (t.dead || t.gone || t.id == a.id || t.id == row->mark) continue;
                     ActionRequest r{a.id, ActionKind::CastSpell, t.id};
@@ -7880,7 +7880,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (s.hooks.spells && !is_incapacitated(a))   // R-G11: move a zone (Moonbeam); sim adds the destination (legal_zone_tiles)
         for (const auto& z : s.zones) {
             const SpellDef* d = s.hooks.spells->find(z.spell_id);
-            if (z.owner != a.id || !d || d->zone.move_cost == 0 || d->zone.anchor != ZoneAnchor::Point || z.cast_stamp == turn_stamp(s)) continue;
+            if (z.owner != a.id || !d || spell_blocked(d->id) || d->zone.move_cost == 0 || d->zone.anchor != ZoneAnchor::Point || z.cast_stamp == turn_stamp(s)) continue;
             if (d->zone.move_cost == 2 ? !b.bonus_action : !can_act) continue;
             ActionRequest r{a.id, ActionKind::CastSpell, a.id};
             r.spell_id = z.spell_id; r.spell_level = z.slot_level; r.zone_move = z.zone_id;
@@ -7897,7 +7897,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         for (const auto& e : s.effects) {
             if (e.caster != a.id || e.control != uint8_t(ControlKind::Command)) continue;
             const SpellDef* d = s.hooks.spells->find(e.spell_id);
-            if (!d || !d->charm_command) continue;
+            if (!d || !d->charm_command || spell_blocked(d->id)) continue;
             const Combatant* t = find(s, e.target);
             if (!t || t->dead) continue;
             for (uint8_t w = 1; w <= uint8_t(CommandWord::Suicidal); ++w) {
