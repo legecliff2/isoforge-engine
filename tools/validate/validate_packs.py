@@ -802,6 +802,7 @@ COMMON2_ID = "https://isoforge.dev/schemas/common/v2.schema.json"
 NATIVE_EFFECT_ARMS = {"on_event": "on_event_effect", "apply_modifier": "apply_modifier_effect",
                       "grant_action": "grant_action_effect", "heal_pool": "heal_pool_effect",
                       "wild_shape": "wild_shape_effect", "shapechanger": "shapechanger_effect",   # R-G12 7.2q
+                      "change_shape": "change_shape_effect",   # Change Shape MERGE (contract v0.1.2 P1)
                       "extra_attack": "extra_attack_effect",   # EC #179
                       "spell_mod": "spell_mod_effect",         # 7.2zb
                       "heal_bonus": "heal_bonus_effect"}       # 7.2zc

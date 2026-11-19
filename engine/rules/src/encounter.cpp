@@ -6887,6 +6887,10 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             return fail("possessed: the body's spells are not available");
         if (a.possessed_by != 0 && def && possession_feature_blocked(a, def->id))
             return fail("possessed: class features are not available");
+        // Change Shape own-actions gate (R-a). Keyed on the list, not on a.form: the list holds only this
+        // creature's save-action spell ids and its non-Change-Shape feature ids. A real spell is not on it.
+        if (def && std::find(a.form_blocked_features.begin(), a.form_blocked_features.end(), def->id) != a.form_blocked_features.end())
+            return fail("feature not usable in this form");
         if (a.form == FormKind::Polymorph || a.form == FormKind::WildShape) return fail("cannot cast spells in this form");   // R-G12
         if ((!def || def->is_spell) && std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) {
                 return !m.possession_held && m.target == a.id && (m.spec.blocks & 1); }))
@@ -7674,6 +7678,10 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     }
     const Combatant& a = *find(s, turn_body(s));
     const TurnBudget& b = s.budget;
+    // Change Shape own-actions gate: save actions are CastSpell offers. The same list can_use_feature reads.
+    auto spell_blocked = [&](uint32_t id) {
+        return std::find(a.form_blocked_features.begin(), a.form_blocked_features.end(), id) != a.form_blocked_features.end();
+    };
     auto add = [&](ActionKind k, bool bonus = false, CombatantId target = 0) {
         ActionRequest r{a.id, k, target};
         r.as_bonus_action = bonus;
@@ -7819,6 +7827,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     const bool no_casting = a.form == FormKind::Polymorph || a.form == FormKind::WildShape;   // R-G12: can't cast in the form
     if (s.hooks.spells && !is_incapacitated(a) && !no_casting) {
         for (uint32_t id : a.spells_known) {
+            if (spell_blocked(id)) continue;
             const SpellDef* d = s.hooks.spells->find(id);
             if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon ||
                       d->kind == SpellEffectKind::SummonWeapon || d->kind == SpellEffectKind::Descriptive || d->rider_only)) continue;   // R-G12: sim builds Polymorph requests (form choice); descriptive is never cast; B3b rider_only is not a standalone action
@@ -7845,7 +7854,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             append_spell_targets(out, s, a, *d, r);
         }
     }
-    if (b.free_rider != 0 && s.hooks.spells && !is_incapacitated(a) && !no_casting) {   // B3b: after the pincers, one free rider, no action
+    if (b.free_rider != 0 && s.hooks.spells && !is_incapacitated(a) && !no_casting && !spell_blocked(b.free_rider)) {   // B3b: after the pincers, one free rider, no action
         if (const SpellDef* d = s.hooks.spells->find(b.free_rider)) {
             ActionRequest r{a.id, ActionKind::CastSpell};
             r.spell_id = d->id; r.spell_level = 0;
@@ -8792,6 +8801,11 @@ std::string_view begin_possession(EncounterState& s, CombatantId ghost_id, Comba
     Combatant* body = mut_of(s, body_id);
     if (!ghost || !body || ghost == body) return "bad target";
     if (ghost->dead || body->dead) return "target is dead";
+    // D16: a possessor that is already in a form cannot start the link. D13 (refuse Possession of a body
+    // that is in a Change Shape form, and refuse Change Shape while possessed or possessing) stays
+    // DEFERRED under D5(a): the couatl keeps its own creature type, so the ghost's humanoid gate never
+    // opens on it. If a later ruling takes the form's type (D5(b)), that guard becomes live.
+    if (ghost->form != FormKind::None) return "possessor is transformed";
     if (ghost->possessing != 0) return "already possessing";
     if (body->possessed_by != 0) return "target is already possessed";
     if (body->possessing != 0) return "can't possess a possessing ghost";
@@ -9153,7 +9167,9 @@ bool apply_form(Combatant& c, FormKind kind, const FormStats& f) {
         c.legendary_pool = 0;
     }
     c.form = kind;
-    c.form_blocked_features = kind == FormKind::WildShape ? f.blocked_features : std::vector<uint32_t>{};
+    // Wild Shape, or Change Shape MERGE (FormStats::own_actions_gate). A classic Shapechanger leaves the
+    // gate false and the list empty, so existing forms are unchanged.
+    c.form_blocked_features = (kind == FormKind::WildShape || f.own_actions_gate) ? f.blocked_features : std::vector<uint32_t>{};
     if (c.possessed_by != 0) reapply_possession_overlay(c);   // B12: the overlay survives the form
     return true;
 }

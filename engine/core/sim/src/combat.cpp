@@ -97,6 +97,7 @@ void apply_true_form(rules5e::Combatant& k, const Archetype& a) {
     for (const auto& [fid, ff] : a.form_features) {
         (void)fid;
         if (ff.kind != static_cast<uint8_t>(rules5e::FormKind::Shapechanger)) continue;
+        if (ff.sub_kind == Archetype::FormSubKind::ChangeShapeMerge) continue;   // MERGE has no true-form subset
         subset_form_block(k.attacks, k.multiattacks, k.triggers, ff.limit_true_actions, ff.true_blocked_actions,
                           ff.limit_true_traits, ff.true_blocked_traits);
     }
@@ -3586,17 +3587,23 @@ std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* c
 const Archetype* Combat::form_archetype(CombatantId creature, rules5e::FormKind kind, uint32_t source, uint8_t index) const {
     if (!content_) return nullptr;
     if (kind == rules5e::FormKind::Polymorph) return index < beasts_.size() ? beasts_[index] : nullptr;
-    if (kind != rules5e::FormKind::WildShape) return nullptr;
     const Archetype* own = archetype(creature);
     if (!own) return nullptr;
     const auto ff = own->form_features.find(source);
-    if (ff == own->form_features.end() || ff->second.kind != uint8_t(kind) || index >= ff->second.forms.size()) return nullptr;
+    if (ff == own->form_features.end() || ff->second.kind != uint8_t(kind)) return nullptr;
+    // Classic shapechanger forms are shapes[] on the creature's own block, not archetype ids.
+    // Change Shape MERGE stores the pool in forms[], the same way Wild Shape does.
+    const bool pool = kind == rules5e::FormKind::WildShape ||
+                      (kind == rules5e::FormKind::Shapechanger && ff->second.sub_kind == Archetype::FormSubKind::ChangeShapeMerge);
+    if (!pool || index >= ff->second.forms.size()) return nullptr;
     return content_->find(ff->second.forms[index]);
 }
 
 const Archetype* Combat::attack_archetype(CombatantId id) const {
     const auto* k = rules5e::find(state_, id);
-    if (k && (k->form == rules5e::FormKind::Polymorph || k->form == rules5e::FormKind::WildShape) && k->form_archetype != 0)
+    // Polymorph, Wild Shape, and Change Shape MERGE (D2): range and grapple_on_hit side tables are the form's.
+    // A classic Shapechanger form resolves to no archetype, so the creature's own tables stay.
+    if (k && k->form != rules5e::FormKind::None && k->form_archetype != 0)
         if (const Archetype* f = form_archetype(id, k->form, k->form_source, uint8_t(k->form_archetype - 1))) return f;
     return archetype(id);
 }
@@ -3654,8 +3661,90 @@ std::optional<rules5e::FormStats> Combat::build_form(const rules5e::Combatant& w
     rules5e::FormStats f;
     if (kind == rules5e::FormKind::Shapechanger) {
         const auto ff = own->form_features.find(source);
-        if (ff == own->form_features.end() || ff->second.kind != uint8_t(kind) || index >= ff->second.shapes.size())
-            return no("unknown shapechanger form");
+        if (ff == own->form_features.end() || ff->second.kind != uint8_t(kind)) return no("unknown shapechanger form");
+        if (ff->second.sub_kind == Archetype::FormSubKind::ChangeShapeMerge) {
+            // MERGE (couatl sentence, D5/D7). A switch is built while the previous form is still worn, so the
+            // "own" side is the true-form snapshot (who.base), not the live merged block.
+            if (index >= ff->second.forms.size()) return no("unknown form archetype");
+            const Archetype* fa = form_archetype(who.id, kind, source, index);
+            if (!fa) return no("unknown form archetype");
+            if (who.form != rules5e::FormKind::None && who.base) {
+                f = *who.base;
+            } else {
+                f = stats_of(who);
+                f.set_senses = true;
+                f.darkvision_ft = who.darkvision_ft;
+                f.blindsight_ft = who.blindsight_ft;
+                f.tremorsense_ft = who.tremorsense_ft;
+                f.truesight_ft = who.truesight_ft;
+                f.ability_reduction = who.ability_reduction;
+            }
+            f.hp = who.hp;
+            f.hp_max = (who.form != rules5e::FormKind::None && who.base) ? who.base->hp_max : who.hp_max;
+            const rules5e::Combatant& fb = fa->base;
+            f.ac = fb.ac;
+            f.speed_ft = fb.speed_ft;
+            f.fly_ft = fb.fly_ft;
+            f.swim_ft = fb.swim_ft;
+            f.climb_ft = fb.climb_ft;
+            f.burrow_ft = fb.burrow_ft;
+            f.hover = fb.hover;
+            f.abilities.score[std::size_t(rules5e::Ability::Str)] = fb.abilities.score[std::size_t(rules5e::Ability::Str)];
+            f.abilities.score[std::size_t(rules5e::Ability::Dex)] = fb.abilities.score[std::size_t(rules5e::Ability::Dex)];
+            // size and creature_type stay own (D5). attacks are the form's rows only, so bonus-attack
+            // indices address those rows and are not merged with the creature's own.
+            f.attacks = fb.attacks;
+            f.multiattacks = fb.multiattacks;
+            f.attacks_per_action = fb.attacks_per_action;
+            f.bonus_attacks = fb.bonus_attacks;
+            if (own->magic_weapons)   // D7b: the kept trait follows the form's weapon attacks
+                for (auto& at : f.attacks) at.qualifiers |= rules5e::kAttackMagical;
+            f.resistances |= fb.resistances;
+            f.immunities |= fb.immunities;
+            f.vulnerabilities |= fb.vulnerabilities;
+            f.condition_immunities |= fb.condition_immunities;
+            f.save_proficiencies |= fb.save_proficiencies;   // D7: gains save proficiencies it lacks. Skills stay own (S-6).
+            f.resist_qualified.nonmagical |= fb.resist_qualified.nonmagical;
+            f.resist_qualified.nonmagical_not_silvered |= fb.resist_qualified.nonmagical_not_silvered;
+            f.resist_qualified.nonmagical_not_adamantine |= fb.resist_qualified.nonmagical_not_adamantine;
+            f.immune_qualified.nonmagical |= fb.immune_qualified.nonmagical;
+            f.immune_qualified.nonmagical_not_silvered |= fb.immune_qualified.nonmagical_not_silvered;
+            f.immune_qualified.nonmagical_not_adamantine |= fb.immune_qualified.nonmagical_not_adamantine;
+            f.set_senses = true;
+            f.darkvision_ft = std::max(f.darkvision_ft, fb.darkvision_ft);
+            f.blindsight_ft = std::max(f.blindsight_ft, fb.blindsight_ft);
+            f.tremorsense_ft = std::max(f.tremorsense_ft, fb.tremorsense_ft);
+            f.truesight_ft = std::max(f.truesight_ft, fb.truesight_ft);
+            f.keen_senses = uint8_t(f.keen_senses | fb.keen_senses);
+            auto same_roll = [](const rules5e::RollTrait& x, const rules5e::RollTrait& y) {
+                return x.roll == y.roll && x.mode == y.mode && x.when == y.when && x.target_conditions == y.target_conditions &&
+                       x.target_types == y.target_types && x.save_abilities == y.save_abilities &&
+                       x.save_vs_conditions == y.save_vs_conditions && x.save_vs_damage_types == y.save_vs_damage_types;
+            };
+            for (const auto& t : fb.roll_traits)
+                if (std::none_of(f.roll_traits.begin(), f.roll_traits.end(), [&](const rules5e::RollTrait& h) { return same_roll(h, t); }))
+                    f.roll_traits.push_back(t);
+            for (const auto& t : fb.triggers)
+                if (t.id == 0 || std::none_of(f.triggers.begin(), f.triggers.end(), [&](const rules5e::Trigger& h) { return h.id == t.id; }))
+                    f.triggers.push_back(t);
+            for (const auto& t : fb.reactions)
+                if (t.id == 0 || std::none_of(f.reactions.begin(), f.reactions.end(), [&](const rules5e::Reaction& h) { return h.id == t.id; }))
+                    f.reactions.push_back(t);
+            // Own-actions gate (R-a): only this creature's feature ids and its synthetic save-action spell ids.
+            // Change Shape's own feature id is never on the list, so revert and switch still work. Real spells are not listed.
+            f.own_actions_gate = true;
+            f.blocked_features.clear();
+            for (std::size_t i = 0; i < own->features.size(); ++i) {
+                const uint32_t id = uint32_t(i + 1);
+                if (id == source) continue;
+                f.blocked_features.push_back(id);
+            }
+            for (const auto& sa : own->save_actions)
+                if (sa.spell_id != source &&
+                    std::find(f.blocked_features.begin(), f.blocked_features.end(), sa.spell_id) == f.blocked_features.end())
+                    f.blocked_features.push_back(sa.spell_id);
+        } else {
+        if (index >= ff->second.shapes.size()) return no("unknown shapechanger form");
         const auto& sh = ff->second.shapes[index];
         f = stats_of(who);   // abilities, saves, skills, resistances: the live creature ("statistics are the same")
         f.hp = who.hp;
@@ -3701,6 +3790,7 @@ std::optional<rules5e::FormStats> Combat::build_form(const rules5e::Combatant& w
                 at.damage.count = static_cast<uint8_t>(std::min(n, 255));
             }
         }
+        }   // classic shapechanger (shapes[] on the creature's own block)
     } else if (kind == rules5e::FormKind::WildShape || kind == rules5e::FormKind::Polymorph) {
         const Archetype* fa = form_archetype(who.id, kind, source, index);
         if (!fa) return no("unknown form archetype");

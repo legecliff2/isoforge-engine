@@ -58,7 +58,8 @@ STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
 COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze", "wild_shape", "shapechanger", "extra_attack", "transparent", "bonus_attack",
                                        "grant_die", "half_proficiency",   # 7.2za: gated in their hooks
                                        "spell_mod",   # 7.2zb: gated in its hook
-                                       "heal_bonus"})   # 7.2zc: gated in its hook
+                                       "heal_bonus",   # 7.2zc: gated in its hook
+                                       "change_shape"})   # Change Shape MERGE (contract v0.1.2 P1): closed arm change_shape_effect
 # compile_gaze defaults for the optional fields the validator warns about when omitted.
 GAZE_DEFAULTS = {"condition": "restrained", "repeat_save": "end_of_turn", "escalate_to": "petrified"}
 # 7.2n (sim #148, features.cpp apply_slot_recovery): the classes slot_recovery accepts.
@@ -540,6 +541,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     check_save_max_size(doc, errs)
     check_refused_condition_durations(doc, errs, warns)
     check_transforms(doc, ctx, errs, warns)
+    check_change_shape(doc, typ, ctx, errs, warns)
     errs += check_class_hooks(doc)   # 7.2y
     errs += check_barbarian_hooks(doc)   # 7.2z
     errs += check_bard_hooks(doc)   # 7.2za
@@ -1287,6 +1289,72 @@ def polymorph_spell_warnings(doc: dict, ctx: dict) -> list[str]:
             if c > lim:
                 out.append(f"polymorph: form '{f}' above max_cr")
     return out
+
+
+CHANGE_SHAPE_KEYS = frozenset({"kind", "profile", "cost", "forms", "select"})
+CHANGE_SHAPE_SELECT_KEYS = frozenset({"types", "max_cr"})
+
+
+def check_change_shape(doc: dict, typ: str, ctx: dict, errs: list[str], warns: list[str]) -> None:
+    """change_shape MERGE (contract v0.1.2 P1). Mirrors the loader: one declaration, monsters only,
+    profile merge, forms or select, duplicate and unknown explicit forms, and equipment[] (D8).
+    The D4 pool and the D17 cap are load-time (they need the whole library)."""
+    monsters = ctx.get("monsters") or {}
+    ext = ctx.get("external_ok") or (lambda _a: False)
+    seen = False
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "change_shape":
+            continue
+        if seen:
+            errs.append(f"{path}: change_shape: one declaration per document")
+            continue
+        seen = True
+        if typ != "monster":
+            errs.append(f"{path}: change_shape: monsters only")
+        extra = sorted(k for k in eff if k not in CHANGE_SHAPE_KEYS)
+        if extra:
+            errs.append(f"{path}: change_shape effect: unknown key '{extra[0]}'")
+        if eff.get("profile") != "merge":
+            errs.append(f"{path}: change_shape: profile must be merge")
+        has_forms = "forms" in eff
+        has_select = "select" in eff
+        if not has_forms and not has_select:
+            errs.append(f"{path}: change_shape: needs forms or select")
+        if has_forms and has_select:
+            warns.append(f"{path}: change_shape: forms overrides select")
+        if has_forms:
+            seen_ids: list[str] = []
+            for form_id in eff.get("forms") or []:
+                if not isinstance(form_id, str):
+                    continue
+                if form_id in seen_ids:
+                    errs.append(f"{path}: change_shape: duplicate form '{form_id}'")
+                    continue
+                seen_ids.append(form_id)
+                if form_id not in monsters and not ext(form_id):
+                    errs.append(f"{path}: change_shape: unknown form '{form_id}'")
+        if has_select and isinstance(eff.get("select"), dict):
+            sel = eff["select"]
+            sx = sorted(k for k in sel if k not in CHANGE_SHAPE_SELECT_KEYS)
+            if sx:
+                errs.append(f"{path}: change_shape select: unknown key '{sx[0]}'")
+            if sel.get("max_cr") != "own":
+                errs.append(f"{path}: change_shape: max_cr must be \"own\"")
+            types = sel.get("types")
+            if not isinstance(types, list) or not types:
+                errs.append(f"{path}: change_shape: select.types must be humanoid and/or beast")
+            else:
+                named: list[str] = []
+                for name in types:
+                    if name not in ("humanoid", "beast"):
+                        errs.append(f"{path}: change_shape: select type '{name}' is not humanoid or beast")
+                    elif name in named:
+                        errs.append(f"{path}: change_shape: duplicate select type '{name}'")
+                    else:
+                        named.append(name)
+        eq = doc.get("equipment")
+        if isinstance(eq, list) and eq:
+            errs.append(f"{doc.get('id', '?')}: change_shape: equipment[] is not allowed")
 
 
 def check_transforms(doc: dict, ctx: dict, errs: list[str], warns: list[str]) -> None:
