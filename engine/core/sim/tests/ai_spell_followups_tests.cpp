@@ -422,3 +422,42 @@ TEST_CASE("AI mark: move_mark is offered once the marked creature drops to 0 hp,
     for (const auto& m : f.c->state().modifiers) if (m.spec.mark_scope != 0) CHECK(m.mark == f.id[2]);
     CHECK_FALSE(move_mark_command(*f.c, f.id[0]));   // the new mark is alive and the bonus action is gone
 }
+
+TEST_CASE("AI mark: move_mark is not built for a possessed body") {
+    Fight f({{kMarker, 10, 10}, {kGoblin, 12, 10}, {kGoblin, 14, 10}, {kGoblin, 13, 12}});
+    f.advance_to(0);
+    Command cast;
+    cast.request = {f.id[0], ActionKind::CastSpell, f.id[1]};
+    cast.request.spell_id = rules5e::spell_id_of(kChosenMark);
+    cast.request.spell_level = 1;
+    cast.request.targets = {f.id[1]};
+    complete_request(*f.c, cast.request);
+    REQUIRE(f.submit(cast).ok);
+    Command end;
+    end.request = {f.id[0], ActionKind::EndTurn};
+    REQUIRE(f.submit(end).ok);
+    f.advance_to(0);
+    f.who(1).hp = 0;
+    f.who(1).dead = true;
+    auto open = move_mark_command(*f.c, f.id[0], f.id[3]);
+    REQUIRE(open);
+    CHECK(open->request.kind == ActionKind::CastSpell);
+    CHECK(open->request.move_mark);
+    CHECK(open->request.actor == f.id[0]);
+    // The possessor's slot drives the body. Concentration is still held here: begin_possession would end it,
+    // and this is the guard that stops the CastSpell the rules refuse.
+    f.who(0).possessed_by = f.id[2];
+    CHECK_FALSE(move_mark_command(*f.c, f.id[0], f.id[3]));
+    f.who(2).possessing = f.id[0];
+    f.advance_to(2);
+    REQUIRE(rules5e::current_actor(f.c->state()) == f.id[2]);
+    REQUIRE(rules5e::turn_body(f.c->state()) == f.id[0]);
+    const Command nc = next_command(*f.c, f.id[3]);
+    const bool move = nc.request.kind == ActionKind::CastSpell && nc.request.move_mark;
+    CHECK_FALSE(move);
+    f.who(0).possessed_by = 0;
+    auto again = move_mark_command(*f.c, f.id[0], f.id[3]);
+    REQUIRE(again);
+    CHECK(again->request.kind == ActionKind::CastSpell);
+    CHECK(again->request.move_mark);
+}

@@ -144,7 +144,9 @@ uint8_t choose_mark_ability(const Combat& c, CombatantId target) {
 std::optional<Command> move_mark_command(const Combat& c, CombatantId self, std::optional<CombatantId> preferred) {
     const auto& s = c.state();
     const auto* me = rules5e::find(s, self);
-    if (!me || me->concentration_spell == 0 || !s.budget.bonus_action || s.budget.sequence != 0) return std::nullopt;
+    // move_mark is CastSpell. A possessed body is refused ("possessed: the body's spells are not available").
+    if (!me || me->possessed_by != 0) return std::nullopt;
+    if (me->concentration_spell == 0 || !s.budget.bonus_action || s.budget.sequence != 0) return std::nullopt;
     if (!rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return std::nullopt;
     const auto* def = c.spell_def(me->concentration_spell);
     if (!def || def->move_mark == 0 || def->kind == rules5e::SpellEffectKind::Descriptive) return std::nullopt;
@@ -1187,6 +1189,10 @@ bool choose_grapple_instead(const Combat& c, const rules5e::ActionRequest& q) {
     const auto* me = rules5e::find(s, q.actor);
     const auto* t = rules5e::find(s, q.target);
     if (!me || !t || t->dead || q.attack_index >= me->attacks.size() || !me->attacks[q.attack_index].grapple_instead_ok) return false;
+    // special_action refuses Grapple (special 1) and grapple_instead when the actor counts as incapacitated.
+    // A possessed body does. Shove (special 2 prone, special 3 five feet) is not refused, and this function
+    // does not choose a shove: next_command returns a special request before this flag is set.
+    if (rules5e::counts_as_incapacitated(*me)) return false;
     // (b) already held by me, incapacitated or restrained: the Bite is legal already, so take the damage
     if (t->has(rules5e::Condition::Grappled) && rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) == me->id) return false;
     if (rules5e::counts_as_incapacitated(*t) || t->has(rules5e::Condition::Restrained)) return false;

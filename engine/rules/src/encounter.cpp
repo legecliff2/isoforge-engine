@@ -20,14 +20,14 @@
 
 namespace rules5e {
 
+namespace {
+
 // True when `id` is a class, background, or proficiency-race feature, or the synthetic spell id of a
 // save action whose content id is one of those features (Turn Undead, Turn the Unholy).
 bool possession_feature_blocked(const Combatant& a, uint32_t id) {
     return std::find(a.possession_blocked_features.begin(), a.possession_blocked_features.end(), id) !=
            a.possession_blocked_features.end();
 }
-
-namespace {
 
 // Set for the duration of a step to the pre-step state (sight reads that). Declared here so repeat saves can see it.
 thread_local const EncounterState* g_sight_base = nullptr;

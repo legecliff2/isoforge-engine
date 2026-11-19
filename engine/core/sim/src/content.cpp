@@ -3503,19 +3503,26 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
     // A character save action whose content id is a blocked class, background, or proficiency-race
     // feature is that feature (Turn Undead, Turn the Unholy). CastSpell names the synthetic spell id,
-    // not the UseFeature index, so the spell id is recorded on the same list. Monsters stay empty.
+    // not the UseFeature index, so the spell id is recorded on the same list. An id that matches no
+    // feature fails the load: a renamed class-feature save action would otherwise stay unblocked.
+    // Monsters stay empty.
     if (schema_type == "character") {
         for (const auto& sa : a.save_actions) {
+            std::size_t matched = a.features.size();
             for (std::size_t i = 0; i < a.features.size(); ++i) {
                 if (a.features[i].id != sa.id) continue;
-                const uint32_t fid = uint32_t(i + 1);
-                if (std::find(c.possession_blocked_features.begin(), c.possession_blocked_features.end(), fid) ==
-                    c.possession_blocked_features.end())
-                    continue;
-                if (std::find(c.possession_blocked_features.begin(), c.possession_blocked_features.end(), sa.spell_id) ==
-                    c.possession_blocked_features.end())
-                    c.possession_blocked_features.push_back(sa.spell_id);
+                matched = i;
+                break;
             }
+            if (matched == a.features.size())
+                return a.id + ": save action '" + sa.id + "' does not match a feature id";
+            const uint32_t fid = uint32_t(matched + 1);
+            if (std::find(c.possession_blocked_features.begin(), c.possession_blocked_features.end(), fid) ==
+                c.possession_blocked_features.end())
+                continue;
+            if (std::find(c.possession_blocked_features.begin(), c.possession_blocked_features.end(), sa.spell_id) ==
+                c.possession_blocked_features.end())
+                c.possession_blocked_features.push_back(sa.spell_id);
         }
     }
     // B3b: a multiattack option's free_rider names a rider_only save_effect of this creature. Sequences for the decls were
