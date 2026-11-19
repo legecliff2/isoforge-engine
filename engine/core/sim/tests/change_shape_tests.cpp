@@ -970,18 +970,93 @@ TEST_CASE("Change Shape D8: equipment on a change_shape creature is a load error
     CHECK(err->find("equipment") != std::string::npos);
 }
 
-TEST_CASE("Change Shape: an unknown explicit form is a load error") {
-    ContentLibrary lib;
-    Json m = goblin_base("test.change.unknown");
-    m["$schema"] = "monster@5";
-    m["type"] = "celestial";
-    m["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"},
-                                {"effect", {{"kind", "change_shape"}, {"profile", "merge"},
-                                            {"forms", Json::array({"test.change.missing"})}}}}});
-    auto err = lib.add(m, "monster");
-    REQUIRE(err);
-    CHECK(err->find("unknown form 'test.change.missing'") != std::string::npos);
-    CHECK_FALSE(lib.find("test.change.unknown"));
+// A one-pack directory. Contents are loaded in sorted path order, so monsters/couatl.json is added
+// before monsters/wolf.json. The unknown-forms pass runs after that loop.
+struct TempPack {
+    std::filesystem::path root, dir;
+    explicit TempPack(const std::string& id) {
+        root = std::filesystem::temp_directory_path() / ("isoforge_change_shape_" + id);
+        std::filesystem::remove_all(root);
+        dir = root / id;
+        std::filesystem::create_directories(dir / "monsters");
+    }
+    ~TempPack() { std::filesystem::remove_all(root); }
+    void write(const std::string& rel, const Json& j) {
+        std::ofstream out(dir / rel);
+        REQUIRE(out.good());
+        out << j.dump(2) << "\n";
+    }
+    Json monster(const std::string& id, const char* type) {
+        Json m = goblin_base(id);
+        m["$schema"] = "monster@5";
+        m["type"] = type;
+        m["armor_class"]["note"] = "natural armor";
+        m.erase("behavior");
+        m.erase("skills");
+        m.erase("tags");
+        return m;
+    }
+};
+
+TEST_CASE("Change Shape: an unknown explicit form is a load error, and a later same-pack form loads") {
+    const char* kAttr = "System Reference Document 5.1 test fixture.";
+    {
+        TempPack pack("test.change_shape");
+        Json owner = pack.monster("test.pack.couatl", "celestial");
+        owner["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"},
+                                        {"effect", {{"kind", "change_shape"}, {"profile", "merge"},
+                                                    {"forms", Json::array({"test.pack.wolf"})}}}}});
+        Json form = pack.monster("test.pack.wolf", "beast");
+        form["traits"] = Json::array();
+        pack.write("monsters/couatl.json", owner);
+        pack.write("monsters/wolf.json", form);
+        pack.write("manifest.json", {{"$schema", "manifest@1"},
+                                     {"id", "test.change_shape"},
+                                     {"version", "1.0.0"},
+                                     {"engine_min", "0.1.0"},
+                                     {"feature_level", 1},
+                                     {"api_level", 1},
+                                     {"rules_profile", "srd51"},
+                                     {"requires", Json::array()},
+                                     {"attribution", kAttr},
+                                     {"contents", Json::array({"monsters/couatl.json", "monsters/wolf.json"})}});
+        ContentLibrary lib;
+        auto errs = lib.load_pack(pack.dir.string());
+        const std::string why = errs.empty() ? std::string() : errs[0];
+        REQUIRE_MESSAGE(errs.empty(), why);
+        const Archetype* who = lib.find("test.pack.couatl");
+        REQUIRE(who);
+        const Archetype::FormFeature* ff = nullptr;
+        for (const auto& [id, feat] : who->form_features)
+            if (feat.sub_kind == Archetype::FormSubKind::ChangeShapeMerge) ff = &feat;
+        REQUIRE(ff);
+        REQUIRE(ff->forms.size() == 1);
+        CHECK(ff->forms[0] == "test.pack.wolf");
+    }
+    {
+        TempPack pack("test.change_missing");
+        Json owner = pack.monster("test.pack.couatl", "celestial");
+        owner["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"},
+                                        {"effect", {{"kind", "change_shape"}, {"profile", "merge"},
+                                                    {"forms", Json::array({"test.pack.missing"})}}}}});
+        pack.write("monsters/couatl.json", owner);
+        pack.write("manifest.json", {{"$schema", "manifest@1"},
+                                     {"id", "test.change_missing"},
+                                     {"version", "1.0.0"},
+                                     {"engine_min", "0.1.0"},
+                                     {"feature_level", 1},
+                                     {"api_level", 1},
+                                     {"rules_profile", "srd51"},
+                                     {"requires", Json::array()},
+                                     {"attribution", kAttr},
+                                     {"contents", Json::array({"monsters/couatl.json"})}});
+        ContentLibrary lib;
+        auto errs = lib.load_pack(pack.dir.string());
+        REQUIRE_FALSE(errs.empty());
+        bool named = false;
+        for (const std::string& e : errs) named = named || e.find("unknown form 'test.pack.missing'") != std::string::npos;
+        CHECK(named);
+    }
 }
 
 TEST_CASE("Change Shape attack_archetype: range and grapple_on_hit come from the form") {

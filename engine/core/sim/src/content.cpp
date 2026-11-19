@@ -2739,14 +2739,6 @@ std::vector<const Archetype*> library_plus(const std::map<std::string, Archetype
 }  // namespace
 
 std::optional<std::string> ContentLibrary::change_shape_pool_error(const Archetype& candidate) const {
-    // Explicit forms[] must already be loaded. Change Shape only: Wild Shape still resolves at use time.
-    for (const auto& [fid, ff] : candidate.form_features) {
-        (void)fid;
-        if (ff.sub_kind != Archetype::FormSubKind::ChangeShapeMerge || ff.select_pool) continue;
-        for (const std::string& id : ff.forms)
-            if (id != candidate.id && by_id_.find(id) == by_id_.end())
-                return candidate.id + ": change_shape: unknown form '" + id + "'";
-    }
     const auto all = library_plus(by_id_, &candidate);
     auto over = [&](const Archetype& owner) -> std::optional<std::string> {
         for (const auto& [fid, ff] : owner.form_features) {
@@ -3955,6 +3947,16 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
             errors.push_back(pack_id + ":" + d.path + ": " + ex.what());
         }
     }
+    // Explicit Change Shape forms[] are checked after every monster is loaded, so a form that sorts
+    // later in the same pack is visible. Wild Shape still resolves at use time. The error names the form.
+    for (const auto& [id, a] : by_id_)
+        for (const auto& [fid, ff] : a.form_features) {
+            (void)fid;
+            if (ff.sub_kind != Archetype::FormSubKind::ChangeShapeMerge || ff.select_pool) continue;
+            for (const std::string& form : ff.forms)
+                if (by_id_.find(form) == by_id_.end())
+                    errors.push_back(a.pack_id + ":" + id + ": change_shape: unknown form '" + form + "'");
+        }
     // Spellcasting references must resolve to a loaded spell@1 (same rule as the validator).
     for (const auto& [id, a] : by_id_)
         {
