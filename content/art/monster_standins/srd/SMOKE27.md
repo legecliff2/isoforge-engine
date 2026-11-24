@@ -151,7 +151,7 @@ AD PASS on Medusa 4f (the pre-existing 2px #1E2228 island on SE/SW at (23,22)+(2
 
 ## Anim (2026-11-10 ~9:35 PM ET) — built, awaiting AD audit
 
-Bake is local only (no repo / git / PR). Medusa is Art Done and was not touched: no medusa anim clips, no overwrite of v2 SE, v1 SE, or NE/SW/NW idle_00.
+This bake was not pushed at the time. Medusa is Art Done and was not touched: no medusa anim clips, no overwrite of v2 SE, v1 SE, or NE/SW/NW idle_00.
 
 Roster baked: mimic | rust-monster | gray-ooze — medium 32×48, pivot (16,47). Full 9 clips × 4 facings (idle / walk / react / attack / cast / stun / death / fall / fall_impact). Modest template from #18–#26. All three plant on y45 with a row-46 pivot gap. Never the floater split=H-1. idle_00 was locked first (12/12) and never overwritten.
 
@@ -189,7 +189,7 @@ Mimic stays the gaping toothy chest with a reaching khaki tongue; the lid, maw a
 
 ## Anim — Medusa (2026-11-10 ~9:42 PM ET) — #27 complete, awaiting AD audit
 
-AD PASSed Medusa 4f Art, so her Anim was baked on the same pipeline as mimic / rust-monster / gray-ooze to finish Smoke #27. Local only (no repo / git / PR). The AD-passed v2 SE key (`b4db6a6d0f5c29f15f0e750c4144ca19`) is the locked source; the v1 backup `frames/medusa/medium/se/_v1/mon_medusa_medium_se_idle_00.png` (`3a2b3b3d391a726e7e0468e4d26ee46e`) was not written. Medusa was added to the 12 already-locked idle_00 keys (now 16/16).
+AD PASSed Medusa 4f Art, so her Anim was baked on the same pipeline as mimic / rust-monster / gray-ooze to finish Smoke #27. This bake was not pushed at the time. The AD-passed v2 SE key (`b4db6a6d0f5c29f15f0e750c4144ca19`) is the locked source; the v1 backup `frames/medusa/medium/se/_v1/mon_medusa_medium_se_idle_00.png` (`3a2b3b3d391a726e7e0468e4d26ee46e`) was not written. Medusa was added to the 12 already-locked idle_00 keys (now 16/16).
 
 ### Grounding / special handling
 Usual modest humanoid biped template, grounded. `detect_standard` splits at 44/44/46/46 (se/sw/ne/nw). Every facing plants on y46 and fills the bin (top y1) — same class as the #22 dryad/satyr, #25 rakshasa, and #26 doppelganger. Never floater split=H-1.
@@ -220,4 +220,6 @@ Medusa stays the tall robed woman with a bow and quiver, non-sexualized. The ide
 - /workspace/smoke27_medusa_x4.png (2384×2416) · /workspace/smoke27_medusa_walk_f00-f05_x8.png (1624×1560)
 - previews/mon_smoke27_anim_all_clips_4facing_x8.png regenerated with all four (rows medusa | mimic | rust-monster | gray-ooze, 4768×19400)
 
-**AD sign-off (records, 2026-11-24 CT): Art+Anim PASS (soft notes as recorded above). This batch was passed by AD in chat and reported Done to Producer at the time; this line only writes that verdict into the doc. Supersedes any "awaiting AD audit" status above. Local only, no PR.**
+**AD sign-off (records, 2026-11-24 CT): Art+Anim PASS (soft notes as recorded above). This batch was passed by AD in chat and reported Done to Producer at the time; this line only writes that verdict into the doc. Supersedes any "awaiting AD audit" status above.**
+
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #27. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `medusa`, `rust-monster`, `gray-ooze`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.

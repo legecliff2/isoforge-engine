@@ -15,7 +15,7 @@ SE: `google/nano-banana-2.1` (1K, 1:1, png, thinking high, safety 4, limit_gener
 
 NE: `google/nano-banana-2.1/edit` with the SE raw as likeness reference (`image_urls` = uploaded `fal_raw/{slug}_se_idle_00_raw.png`), three-quarter back view facing up-left, then the same birefnet → post path. SW = mirror(SE), NW = mirror(NE) via existing `mirror()`.
 
-Swarm rule: 5–9 DISTINCT readable creatures, islands at least 1px apart (rats ≥2px), no 1px specks. AD allowed dropping or merging the two undersized spider fragments if the frame stayed contract-safe and at least 4 spiders remained. A whole-flock vertical nudge is allowed. Islands too small to be a creature may be deleted; nothing is hand-drawn. Speck clean is only truly isolated 1px fringe; connected 1px spider legs are kept. Palette ⊆ {#1E2228 #5C6370 #8C7A62 #828282}. Hard alpha 0/255. Edge columns empty. Pivot (16,47). Local only; no git. Animator clips left out of the fail set.
+Swarm rule: 5–9 DISTINCT readable creatures, islands at least 1px apart (rats ≥2px), no 1px specks. AD allowed dropping or merging the two undersized spider fragments if the frame stayed contract-safe and at least 4 spiders remained. A whole-flock vertical nudge is allowed. Islands too small to be a creature may be deleted; nothing is hand-drawn. Speck clean is only truly isolated 1px fringe; connected 1px spider legs are kept. Palette ⊆ {#1E2228 #5C6370 #8C7A62 #828282}. Hard alpha 0/255. Edge columns empty. Pivot (16,47). This pass was not pushed at the time. Animator clips left out of the fail set.
 
 ## Art Done — rats, ravens, wasps 4f (unchanged this pass)
 
@@ -70,7 +70,7 @@ All four facings: 32×48, pivot (16,47) α255, alpha {0,255}, on-palette, cols 0
 - previews/mon_smoke30_4facing_idle_00_fal_x8.png (1036×1560; rows rats | ravens | wasps | spiders)
 
 ## md5 guard
-`scripts/smoke30_md5_guard.py check-spiders-4f` vs `.smoke30_md5_pre_v3.json` (17332+9+0 = **17341** frames, taken after the spiders v2 backup and before v3 / the fragment drop / spiders ne/sw/nw): **PASS**. pre 17341 / cur 17788. 1 changed (`frames/swarm-of-spiders/medium/se/…_idle_00.png`, the fragment drop) + 3 added (spiders ne/sw/nw idle_00) + 0 removed. Concurrent Animator clips for the Art Done trio (rats, ravens, wasps non-idle_00): 444, excluded from the fail set (listed as CONCURRENT-ADD-S30-ANIM). Trio idle_00 hashes unchanged. Smoke 1–29 idle art: 0 modified/removed by this pass. Local only; no git.
+`scripts/smoke30_md5_guard.py check-spiders-4f` vs `.smoke30_md5_pre_v3.json` (17332+9+0 = **17341** frames, taken after the spiders v2 backup and before v3 / the fragment drop / spiders ne/sw/nw): **PASS**. pre 17341 / cur 17788. 1 changed (`frames/swarm-of-spiders/medium/se/…_idle_00.png`, the fragment drop) + 3 added (spiders ne/sw/nw idle_00) + 0 removed. Concurrent Animator clips for the Art Done trio (rats, ravens, wasps non-idle_00): 444, excluded from the fail set (listed as CONCURRENT-ADD-S30-ANIM). Trio idle_00 hashes unchanged. Smoke 1–29 idle art: 0 modified/removed by this pass. This pass was not pushed at the time.
 
 The Animator's `baseline` / `check-anim` commands in the same guard script were left in place and were not overwritten. `check-4f` vs the older pre-4f baseline is unchanged and is not the check for this pass.
 
@@ -125,7 +125,6 @@ Locked spider idle_00 (also in `.smoke30_idle00_locked.json`):
 - NE `01caafd4942caead56ac7dfba27b4345`
 - NW `a55b29fbb6bf25adb287752d30318adc`
 
-Local only; no git.
 
 ### Anim paths
 
@@ -135,4 +134,6 @@ Local only; no git.
 - `/workspace/smoke30_swarm-of-spiders_walk_f00-f05_x8.png` (1624×1560)
 - `previews/mon_smoke30_anim_all_clips_4facing_x8.png` (4768×19400; rows rats | ravens | spiders | wasps, tracker order)
 
-**AD sign-off (records, 2026-11-24 CT): Art+Anim PASS (soft notes as recorded above). This batch was passed by AD in chat and reported Done to Producer at the time; this line only writes that verdict into the doc. Supersedes any "awaiting AD audit" status above. Local only, no PR.**
+**AD sign-off (records, 2026-11-24 CT): Art+Anim PASS (soft notes as recorded above). This batch was passed by AD in chat and reported Done to Producer at the time; this line only writes that verdict into the doc. Supersedes any "awaiting AD audit" status above.**
+
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #30. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `swarm-of-rats`, `swarm-of-ravens`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.

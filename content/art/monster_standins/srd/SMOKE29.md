@@ -126,7 +126,7 @@ md5 guard (`scripts/smoke29_md5_guard.py check-4f` vs `.smoke29_md5_pre_4f.json`
 
 ## Anim (2026-11-10 ~10:01 PM ET) — built, awaiting AD audit
 
-Bake is local only (no repo / git / PR). Per-island approach reused from the #28 bats flock baker (`scripts/smoke29_swarms.py`, `scripts/build_smoke29_swarm_clips.py`). idle_00 was locked first (16/16) and never overwritten.
+This bake was not pushed at the time. Per-island approach reused from the #28 bats flock baker (`scripts/smoke29_swarms.py`, `scripts/build_smoke29_swarm_clips.py`). idle_00 was locked first (16/16) and never overwritten.
 
 Roster baked: swarm-of-centipedes | swarm-of-insects | swarm-of-poisonous-snakes | swarm-of-quippers — medium 32×48, pivot (16,47). Full 9 clips × 4 facings (idle / walk / react / attack / cast / stun / death / fall / fall_impact). The contract pivot at (16,47) is restored from idle_00 on every frame; no other pivot-row pixels are invented.
 
@@ -172,4 +172,6 @@ Centipedes stay 7 distinct segmented wavy bodies with leg ticks, on/near the gro
 - previews/mon_smoke29_anim_all_clips_4facing_x8.png (all four stacked in tracker order centipedes | insects | poisonous-snakes | quippers, 4768×19400)
 - /workspace/smoke29_{slug}_x4.png (2384×2416) · /workspace/smoke29_{slug}_walk_f00-f05_x8.png (1624×1560)
 
-**AD sign-off (records, 2026-11-24 CT): Art+Anim PASS (soft notes as recorded above). This batch was passed by AD in chat and reported Done to Producer at the time; this line only writes that verdict into the doc. Supersedes any "awaiting AD audit" status above. Local only, no PR.**
+**AD sign-off (records, 2026-11-24 CT): Art+Anim PASS (soft notes as recorded above). This batch was passed by AD in chat and reported Done to Producer at the time; this line only writes that verdict into the doc. Supersedes any "awaiting AD audit" status above.**
+
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #29. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `swarm-of-insects`, `swarm-of-poisonous-snakes`, `swarm-of-quippers`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.

@@ -185,7 +185,7 @@ md5 guard (`scripts/smoke28_md5_guard.py check-bats-4f` vs `.smoke28_md5_pre_bat
 
 ## Anim (2026-11-10 ~9:50 PM ET) — built, awaiting AD audit
 
-Bake is local only (no repo / git / PR). Swarm-of-bats is Art Done (4f PASSed during this window) and was not touched: no bats anim clips, no overwrite of SE v2, the v1 SE backup, or NE/SW/NW idle_00.
+This bake was not pushed at the time. Swarm-of-bats is Art Done (4f PASSed during this window) and was not touched: no bats anim clips, no overwrite of SE v2, the v1 SE backup, or NE/SW/NW idle_00.
 
 Roster baked: shrieker | violet-fungus | swarm-of-beetles — medium 32×48, pivot (16,47). Full 9 clips × 4 facings (idle / walk / react / attack / cast / stun / death / fall / fall_impact). Modest template from #18–#27. Shrieker and violet-fungus plant on y45 with a row-46 pivot gap; swarm-of-beetles plants on y44. Never the floater split=H-1. idle_00 was locked first (12/12, not bats) and never overwritten.
 
@@ -232,7 +232,7 @@ Shrieker stays the broad-capped thick-stalk fungus, no tendrils (534/532/534/532
 
 ## Anim — Swarm of Bats (2026-11-10 ~9:58 PM ET) — #28 complete, awaiting AD audit
 
-AD PASSed Swarm-of-Bats 4f Art, so its Anim was baked on a per-bat flock pipeline to finish Smoke #28 as one set of four. Local only (no repo / git / PR). The AD-passed v2 SE key (`7d65006cd4322a9f90e0c341ec51d080`) is the locked source; the v1 backup `frames/swarm-of-bats/medium/se/_v1/mon_swarm-of-bats_medium_se_idle_00.png` (`42e59f066dfafd78e762fe4b5cdc0717`) was not written. Bats was added to the 12 already-locked idle_00 keys (now 16/16). The trio's already-baked #28 frames were not rewritten.
+AD PASSed Swarm-of-Bats 4f Art, so its Anim was baked on a per-bat flock pipeline to finish Smoke #28 as one set of four. This bake was not pushed at the time. The AD-passed v2 SE key (`7d65006cd4322a9f90e0c341ec51d080`) is the locked source; the v1 backup `frames/swarm-of-bats/medium/se/_v1/mon_swarm-of-bats_medium_se_idle_00.png` (`42e59f066dfafd78e762fe4b5cdc0717`) was not written. Bats was added to the 12 already-locked idle_00 keys (now 16/16). The trio's already-baked #28 frames were not rewritten.
 
 ### Grounding / per-bat motion
 Floater, not a grounded clump. `split_y` = H-1 = 47/47/47/47 on every facing. Tagged `"floater": true`, `"flock": true`, `"airborne": true`, `"bridge": null`, `"vacated_fill": null`, `"stationary": true` (travel dx 0). The contract pivot at (16,47) is restored from idle_00 on every frame; no other pivot-row pixels are invented. The flock stays airborne with no ground contact (lowest bat in idle is base y40; death/fall drift it down to at most y44).
@@ -268,4 +268,6 @@ Swarm of Bats stays the loose airborne flock of large, simple M/V-wing bats (164
 - previews/mon_smoke28_anim_all_clips_4facing_x8.png (all four stacked in tracker order shrieker | violet-fungus | swarm-of-bats | swarm-of-beetles, 4768×19400)
 - /workspace/smoke28_swarm-of-bats_x4.png (2384×2416) · /workspace/smoke28_swarm-of-bats_walk_f00-f05_x8.png (1624×1560)
 
-**AD sign-off (records, 2026-11-24 CT): Art+Anim PASS (soft notes as recorded above). This batch was passed by AD in chat and reported Done to Producer at the time; this line only writes that verdict into the doc. Supersedes any "awaiting AD audit" status above. Local only, no PR.**
+**AD sign-off (records, 2026-11-24 CT): Art+Anim PASS (soft notes as recorded above). This batch was passed by AD in chat and reported Done to Producer at the time; this line only writes that verdict into the doc. Supersedes any "awaiting AD audit" status above.**
+
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #28. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `shrieker`, `violet-fungus`, `swarm-of-bats`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.
