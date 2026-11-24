@@ -1,5 +1,7 @@
 # Smoke #30 — Mediums 4f idle_00 (fal) + spiders SE v2 trimmed / 4f
 
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #30. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `swarm-of-rats`, `swarm-of-ravens`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.
+
 **Status: Art Done (all four); Anim built for all four (trio AD PASS; swarm-of-spiders Anim awaiting AD audit)**
 
 AD 2026-11-10: spiders 4f soft-PASS. Four spiders is a documented exception to the 5–9 swarm rule, because they read as spiders, they are distinct from the beetles, and v3 proved more spiders don't survive this 32px bin. The two 5–6px fragment islands were dropped from the delivered v2; the remaining four (widths 8–10) stand as the Art Done idle_00.

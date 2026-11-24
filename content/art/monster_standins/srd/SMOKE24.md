@@ -1,5 +1,7 @@
 # Smoke #24 — Mediums SE idle_00 (fal)
 
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #24. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `hell-hound`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.
+
 **Status: SE soft-PASS (AD) · 4-facing soft-PASS (AD) · Art Done · Anim built, awaiting AD audit**
 
 Roster: Erinyes | Hell Hound | Lemure | Night Hag — all **medium** 32×48, pivot (16,47) opaque.

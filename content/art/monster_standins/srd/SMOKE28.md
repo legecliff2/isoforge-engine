@@ -1,5 +1,7 @@
 # Smoke #28 — Mediums SE idle_00 (fal)
 
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #28. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `shrieker`, `violet-fungus`, `swarm-of-bats`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.
+
 **Status: Art Done (shrieker, violet-fungus, swarm-of-bats, swarm-of-beetles) · Anim built for all four, awaiting AD audit**
 
 Roster: Shrieker | Violet Fungus | Swarm of Bats | Swarm of Beetles — all **medium** 32×48, pivot (16,47) opaque.

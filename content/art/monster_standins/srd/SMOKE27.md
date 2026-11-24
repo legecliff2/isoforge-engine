@@ -1,5 +1,7 @@
 # Smoke #27 — Mediums SE idle_00 (fal)
 
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #27. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `medusa`, `rust-monster`, `gray-ooze`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.
+
 **Status: Art Done (medusa, mimic, rust-monster, gray-ooze) · Anim built for all four, awaiting AD audit**
 
 Roster: Medusa | Mimic | Rust Monster | Gray Ooze — all **medium** 32×48, pivot (16,47) opaque.
