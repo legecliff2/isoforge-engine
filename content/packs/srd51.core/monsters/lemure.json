@@ -1,0 +1,97 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.lemure",
+  "name": "Lemure",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "fiend",
+  "tags": [
+    "devil"
+  ],
+  "alignment": "lawful evil",
+  "armor_class": {
+    "value": 7
+  },
+  "hands": 2,
+  "hit_points": {
+    "average": 13,
+    "formula": "3d8"
+  },
+  "speed": {
+    "walk": 15
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 5,
+    "con": 11,
+    "int": 1,
+    "wis": 11,
+    "cha": 3
+  },
+  "damage_resistances": [
+    "cold"
+  ],
+  "damage_immunities": [
+    "fire",
+    "poison"
+  ],
+  "condition_immunities": [
+    "charmed",
+    "frightened",
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 120,
+    "passive_perception": 10
+  },
+  "languages": [
+    "understands Infernal but can't speak"
+  ],
+  "challenge": {
+    "rating": "0",
+    "xp": 10
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "devils_sight",
+      "name": "Devil's Sight",
+      "description": "Magical darkness doesn't impede the lemure's darkvision. (Descriptive only: no engine flag.)"
+    },
+    {
+      "id": "hellish_rejuvenation",
+      "name": "Hellish Rejuvenation",
+      "description": "A lemure that dies in the Nine Hells comes back to life with all its hit points in 1d10 days unless it is killed by a good-aligned creature with a bless spell cast on that creature or its remains are sprinkled with holy water. (Descriptive only: out of encounter, and plane- and condition-gated. Not regen. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "fist",
+      "name": "Fist",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "str"
+      },
+      "ability": "str",
+      "attack_bonus": {
+        "value": 3,
+        "reason": "SRD 5.1 Lemure Fist prints +3; Str 10 (+0) + PB 2 = +2 (approved: match the SRD print)"
+      },
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +3 to hit, reach 5 ft., one target. Hit: 2 (1d4) bludgeoning damage."
+    }
+  ]
+}
