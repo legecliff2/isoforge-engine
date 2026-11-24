@@ -1,5 +1,6 @@
-// Change Shape P1 (contract v0.1.2). MERGE reuses FormKind::Shapechanger. No new kind, no hash byte,
-// schema stays 14. Fixtures only: no couatl content. D10, D11, and the D13 possession guard stay deferred.
+// Change Shape P1 (contract v0.1.2) and P2 (the real couatl). MERGE reuses FormKind::Shapechanger.
+// No new kind, no hash byte, schema stays 14. D10, D11, and the D13 possession guard stay deferred.
+// The bite-in-form clause stays deferred (D4(e)). Gear absorbed or borne stays deferred (D8).
 #include <doctest/doctest.h>
 
 #include <cstdio>
@@ -873,6 +874,15 @@ TEST_CASE("Change Shape test 21: D4(f) keeps the six out while MERGE does not ca
     REQUIRE(pool->forms.size() == 42);
     for (const char* id : six)
         CHECK(std::find(pool->forms.begin(), pool->forms.end(), id) == pool->forms.end());
+    const Archetype* real = pack.find("srd51.monster.couatl");
+    REQUIRE(real);
+    const Archetype::FormFeature* real_pool = nullptr;
+    for (const auto& [id, feat] : real->form_features)
+        if (feat.sub_kind == Archetype::FormSubKind::ChangeShapeMerge) real_pool = &feat;
+    REQUIRE(real_pool);
+    REQUIRE(real_pool->forms.size() == 42);
+    for (const char* id : six)
+        CHECK(std::find(real_pool->forms.begin(), real_pool->forms.end(), id) == real_pool->forms.end());
 
     // An explicit form is allowed, so the absence above is not what this half checks. MERGE still does not
     // copy bonus_action_grants, aggressive, reckless_attack, or the form's usage pool. If it starts to, this
@@ -1561,4 +1571,227 @@ TEST_CASE("Change Shape keeps its size, so a larger form still fits where a Larg
     CHECK(me->form == FormKind::Shapechanger);
     CHECK(me->size == rules5e::Size::Medium);
     CHECK(combat->footprint_size(self) == 1);
+}
+
+namespace {
+
+struct CouatlPool {
+    ContentLibrary lib;
+    const Archetype* who = nullptr;
+    const Archetype::FormFeature* pool = nullptr;
+    uint32_t fid = 0;
+    CouatlPool() {
+        const auto dir = std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/srd51.core";
+        REQUIRE(lib.load_pack(dir.string()).empty());
+        who = lib.find("srd51.monster.couatl");
+        REQUIRE(who);
+        for (const auto& [id, feat] : who->form_features)
+            if (feat.sub_kind == Archetype::FormSubKind::ChangeShapeMerge) { pool = &feat; fid = id; }
+        REQUIRE(pool);
+    }
+};
+
+void reach(Combat& combat, CombatantId self) {
+    for (int i = 0; i < 8 && rules5e::current_actor(combat.state()) != self; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(combat.state()), ActionKind::EndTurn};
+        REQUIRE(combat.submit(e).ok);
+    }
+    REQUIRE(rules5e::current_actor(combat.state()) == self);
+}
+
+bool attack_named(const rules5e::Attack& at, const char* needle) {
+    return at.id.find(needle) != std::string_view::npos;
+}
+
+}  // namespace
+
+TEST_CASE("Change Shape test 16: the real couatl's pool is the 42 pinned ids, and Change Shape is available at spawn") {
+    CouatlPool c;
+    CHECK_FALSE(c.who->base.shapechanger);
+    CHECK(c.who->base.creature_type == rules5e::CreatureType::Celestial);
+    CHECK(c.who->size == CreatureSize::Medium);
+    CHECK(c.who->base.proficiency_bonus == 2);
+    CHECK(c.who->equipment.empty());
+    CHECK(c.pool->select_pool);
+    REQUIRE(c.pool->forms.size() == 42);
+    CHECK(c.who->feature_specs.at(c.fid).form_choices == 42);
+    for (std::size_t i = 0; i < 42; ++i) CHECK(c.pool->forms[i] == kPool42[i]);
+    for (const char* absent : {"srd51.monster.goblin", "srd51.monster.spy", "srd51.monster.orc",
+                               "srd51.monster.berserker", "srd51.monster.boar", "srd51.monster.giant_boar"})
+        CHECK(std::find(c.pool->forms.begin(), c.pool->forms.end(), absent) == c.pool->forms.end());
+    for (const std::string& id : c.pool->forms) {
+        const Archetype* form = c.lib.find(id);
+        REQUIRE(form);
+        CHECK(form->base.proficiency_bonus == 2);
+        CHECK_FALSE(form->pool_bite);
+        CHECK((form->base.creature_type == rules5e::CreatureType::Humanoid || form->base.creature_type == rules5e::CreatureType::Beast));
+    }
+    auto chunk = arena({{"srd51.monster.couatl", {4, 4}}, {"srd51.monster.goblin", {6, 4}}}, {"", "foes"});
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, c.lib, 11);
+    REQUIRE(combat);
+    const CombatantId self = chunk.spawns[0].stable_id;
+    const auto* spawned = rules5e::find(combat->state(), self);
+    REQUIRE(spawned);
+    CHECK(spawned->form == FormKind::None);
+    CHECK(spawned->size == rules5e::Size::Medium);
+    CHECK(spawned->creature_type == rules5e::CreatureType::Celestial);
+    CHECK_FALSE(spawned->shapechanger);
+    CHECK(spawned->proficiency_bonus == 2);
+    reach(*combat, self);
+    // UseFeature is submitted directly. legal_actions does not enumerate it. can_use_feature is the spawn gate.
+    CHECK(combat->can_use_feature(self, c.fid));
+    Command ai = next_command(*combat, chunk.spawns[1].stable_id);
+    CHECK(ai.request.kind != ActionKind::UseFeature);
+    CHECK(rules5e::find(combat->state(), self)->form == FormKind::None);
+}
+
+TEST_CASE("Change Shape test 17: a form without a bite can be left at will, and Bite and Constrict are replaced") {
+    CouatlPool c;
+    const Archetype* form = c.lib.find(c.pool->forms[0]);
+    REQUIRE(form);
+    CHECK_FALSE(form->pool_bite);
+    for (const auto& at : form->base.attacks) CHECK_FALSE(attack_named(at, "bite"));
+    auto chunk = arena({{"srd51.monster.couatl", {4, 4}}, {"srd51.monster.goblin", {6, 4}}}, {"", "foes"});
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, c.lib, 11);
+    REQUIRE(combat);
+    const CombatantId self = chunk.spawns[0].stable_id;
+    reach(*combat, self);
+    Command u;
+    u.request = {self, ActionKind::UseFeature};
+    u.request.feature_id = c.fid;
+    u.request.form_archetype = 1;
+    auto tr = combat->submit(u);
+    REQUIRE_MESSAGE(tr.ok, tr.error);
+    const auto* me = rules5e::find(combat->state(), self);
+    REQUIRE(me);
+    CHECK(me->form == FormKind::Shapechanger);
+    CHECK(me->size == rules5e::Size::Medium);
+    CHECK(me->creature_type == rules5e::CreatureType::Celestial);
+    CHECK(me->proficiency_bonus == 2);
+    REQUIRE_FALSE(me->attacks.empty());
+    for (const auto& at : me->attacks) {
+        CHECK(at.id != "bite");
+        CHECK(at.id != "constrict");
+        CHECK_FALSE(attack_named(at, "bite"));
+    }
+    Command end;
+    end.request = {self, ActionKind::EndTurn};
+    REQUIRE(combat->submit(end).ok);
+    reach(*combat, self);
+    bool revert_offered = false;
+    for (const auto& q : combat->legal_actions())
+        if (q.kind == ActionKind::Revert) revert_offered = true;
+    CHECK(revert_offered);
+    CHECK(combat->can_use_feature(self, c.fid));
+    Command rev;
+    rev.request = {self, ActionKind::Revert};
+    auto reverted = combat->submit(rev);
+    REQUIRE_MESSAGE(reverted.ok, reverted.error);
+    me = rules5e::find(combat->state(), self);
+    REQUIRE(me);
+    CHECK(me->form == FormKind::None);
+    REQUIRE(me->attacks.size() == 2);
+    CHECK(me->attacks[0].id == "bite");
+    CHECK(me->attacks[1].id == "constrict");
+}
+
+TEST_CASE("Change Shape test 18: the loader rejects a malformed change_shape effect, and the real couatl loads") {
+    // The validator half is tests/validate/test_v4_validator.py (cs_bad_profile, cs_cost_reaction,
+    // cs_unknown_form, cs_two, and the equipment check). This is the loader half.
+    auto bad = [](Json effect) {
+        ContentLibrary lib;
+        Json m = goblin_base("test.change.bad");
+        m["$schema"] = "monster@5";
+        m["type"] = "celestial";
+        m["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"}, {"effect", std::move(effect)}}});
+        auto err = lib.add(m, "monster");
+        REQUIRE(err);
+        return *err;
+    };
+    CHECK(bad({{"kind", "change_shape"}, {"profile", "replace"}, {"forms", Json::array({"x"})}}).find("profile must be merge") != std::string::npos);
+    CHECK(bad({{"kind", "change_shape"}, {"profile", "merge"}}).find("needs forms or select") != std::string::npos);
+    CHECK(bad({{"kind", "change_shape"}, {"profile", "merge"}, {"note", true},
+               {"select", {{"types", Json::array({"beast"})}, {"max_cr", "own"}}}}).find("unknown key 'note'") != std::string::npos);
+    CHECK(bad({{"kind", "change_shape"}, {"profile", "merge"},
+               {"select", {{"types", Json::array({"dragon"})}, {"max_cr", "own"}}}}).find("not humanoid or beast") != std::string::npos);
+    CouatlPool c;
+    CHECK(c.pool->select_pool);
+    CHECK(c.pool->forms.size() == 42);
+    CHECK_FALSE(c.who->base.shapechanger);
+}
+
+TEST_CASE("Change Shape test 20: D4(e) keeps every bite form out of the real couatl pool") {
+    // 40 humanoid or beast forms at CR 4 or below survive D4 and carry a bite. They stay out until
+    // the bite rule exists. A pool that starts accepting them fails here.
+    CouatlPool c;
+    int bite_forms = 0;
+    for (const auto& [id, o] : c.lib.all()) {
+        if (o.schema_type != "monster" || o.cr_x8 < 0 || o.cr_x8 > c.who->cr_x8) continue;
+        if (o.base.creature_type != rules5e::CreatureType::Humanoid && o.base.creature_type != rules5e::CreatureType::Beast) continue;
+        if (o.pool_spellcasting || o.pool_shapechanger || o.swarm || o.pool_nonattack || !o.pool_bite) continue;
+        ++bite_forms;
+        CHECK(std::find(c.pool->forms.begin(), c.pool->forms.end(), id) == c.pool->forms.end());
+    }
+    CHECK(bite_forms == 40);
+    for (const std::string& id : c.pool->forms) {
+        const Archetype* form = c.lib.find(id);
+        REQUIRE(form);
+        CHECK_FALSE(form->pool_bite);
+    }
+}
+
+TEST_CASE("Change Shape D7b: the real couatl's form attacks are magical while transformed and revert clears them") {
+    CouatlPool c;
+    const Archetype* form = c.lib.find("srd51.monster.ape");
+    REQUIRE(form);
+    REQUIRE_FALSE(form->base.attacks.empty());
+    for (const auto& at : form->base.attacks) CHECK((at.qualifiers & rules5e::kAttackMagical) == 0);
+    std::size_t ape = c.pool->forms.size();
+    for (std::size_t i = 0; i < c.pool->forms.size(); ++i)
+        if (c.pool->forms[i] == "srd51.monster.ape") ape = i;
+    REQUIRE(ape < c.pool->forms.size());
+    auto chunk = arena({{"srd51.monster.couatl", {4, 4}}, {"srd51.monster.goblin", {6, 4}}}, {"", "foes"});
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, c.lib, 11);
+    REQUIRE(combat);
+    const CombatantId self = chunk.spawns[0].stable_id;
+    reach(*combat, self);
+    const auto* before = rules5e::find(combat->state(), self);
+    REQUIRE(before);
+    REQUIRE(before->attacks.size() == 2);
+    CHECK((before->attacks[0].qualifiers & rules5e::kAttackMagical) != 0);
+    CHECK((before->attacks[1].qualifiers & rules5e::kAttackMagical) != 0);
+    Command u;
+    u.request = {self, ActionKind::UseFeature};
+    u.request.feature_id = c.fid;
+    u.request.form_archetype = uint8_t(ape + 1);
+    auto tr = combat->submit(u);
+    REQUIRE_MESSAGE(tr.ok, tr.error);
+    const auto* me = rules5e::find(combat->state(), self);
+    REQUIRE(me);
+    REQUIRE(me->attacks.size() == form->base.attacks.size());
+    for (std::size_t i = 0; i < me->attacks.size(); ++i) {
+        CHECK(me->attacks[i].id == form->base.attacks[i].id);
+        CHECK((me->attacks[i].qualifiers & rules5e::kAttackMagical) != 0);
+        CHECK((form->base.attacks[i].qualifiers & rules5e::kAttackMagical) == 0);
+    }
+    Command end;
+    end.request = {self, ActionKind::EndTurn};
+    REQUIRE(combat->submit(end).ok);
+    reach(*combat, self);
+    Command rev;
+    rev.request = {self, ActionKind::Revert};
+    REQUIRE(combat->submit(rev).ok);
+    me = rules5e::find(combat->state(), self);
+    REQUIRE(me);
+    CHECK(me->form == FormKind::None);
+    REQUIRE(me->attacks.size() == 2);
+    CHECK(me->attacks[0].id == "bite");
+    CHECK(me->attacks[1].id == "constrict");
+    CHECK((me->attacks[0].qualifiers & rules5e::kAttackMagical) != 0);
+    CHECK((me->attacks[1].qualifiers & rules5e::kAttackMagical) != 0);
+    for (const auto& at : form->base.attacks) CHECK((at.qualifiers & rules5e::kAttackMagical) == 0);
 }
