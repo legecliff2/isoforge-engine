@@ -91,6 +91,9 @@ std::string monster_art_dir(std::string_view monster_id) {
     std::string dir = monster_art_slug(monster_id);
     for (char& c : dir)
         if (c == '_') c = '-';
+    // The SRD block id is succubus. The medium kit shipped with the art drop is named
+    // for both forms in the stat-block title.
+    if (dir == "succubus") return "succubus-incubus";
     return dir;
 }
 

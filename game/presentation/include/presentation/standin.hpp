@@ -43,7 +43,8 @@ StandinCanvas standin_canvas(std::string_view bin);
 std::string monster_art_slug(std::string_view monster_id);
 
 // Directory name under srd/. Content ids use underscores; the art tree uses hyphens
-// ("srd51.monster.blink_dog" -> "blink-dog").
+// ("srd51.monster.blink_dog" -> "blink-dog"). The succubus stat block is
+// srd51.monster.succubus; its shipped kit directory is succubus-incubus.
 std::string monster_art_dir(std::string_view monster_id);
 
 // Where a stand-in kit's frames live. per_monster is false for today's bin-only kit:

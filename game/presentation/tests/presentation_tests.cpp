@@ -4,6 +4,7 @@
 #include "presentation/png.hpp"
 #include "presentation/standin.hpp"
 
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -181,6 +182,7 @@ TEST_CASE("stand-in kit: per-monster directory, then the shared bin") {
     CHECK(monster_art_slug("srd51.monster.young_black_dragon") == "young_black_dragon");
     CHECK(monster_art_dir("srd51.monster.blink_dog") == "blink-dog");
     CHECK(monster_art_dir("srd51.monster.swarm_of_bats") == "swarm-of-bats");
+    CHECK(monster_art_dir("srd51.monster.succubus") == "succubus-incubus");
     CHECK(monster_art_slug("wolf") == "wolf");
     CHECK(monster_art_slug("").empty());
     CHECK(monster_art_slug("srd51.monster.").empty());
@@ -277,6 +279,104 @@ TEST_CASE("stand-in kit: per-monster directory, then the shared bin") {
     REQUIRE(wolf_ne.frame >= 0);
     CHECK(wolf_kit->frame_at(size_t(wolf_ne.frame)).missing);
     std::filesystem::remove_all(base);
+}
+
+TEST_CASE("stand-in kit: shipped medium kits resolve, and west frames are the authored files") {
+    struct Creature { const char* id; const char* dir; };
+    const Creature roster[] = {
+        {"srd51.monster.basilisk", "basilisk"},
+        {"srd51.monster.blink_dog", "blink-dog"},
+        {"srd51.monster.death_dog", "death-dog"},
+        {"srd51.monster.dryad", "dryad"},
+        {"srd51.monster.ettercap", "ettercap"},
+        {"srd51.monster.gargoyle", "gargoyle"},
+        {"srd51.monster.gray_ooze", "gray-ooze"},
+        {"srd51.monster.green_hag", "green-hag"},
+        {"srd51.monster.grick", "grick"},
+        {"srd51.monster.harpy", "harpy"},
+        {"srd51.monster.hell_hound", "hell-hound"},
+        {"srd51.monster.invisible_stalker", "invisible-stalker"},
+        {"srd51.monster.medusa", "medusa"},
+        {"srd51.monster.rust_monster", "rust-monster"},
+        {"srd51.monster.satyr", "satyr"},
+        {"srd51.monster.sea_hag", "sea-hag"},
+        {"srd51.monster.shrieker", "shrieker"},
+        {"srd51.monster.succubus", "succubus-incubus"},
+        {"srd51.monster.swarm_of_bats", "swarm-of-bats"},
+        {"srd51.monster.swarm_of_insects", "swarm-of-insects"},
+        {"srd51.monster.swarm_of_poisonous_snakes", "swarm-of-poisonous-snakes"},
+        {"srd51.monster.swarm_of_quippers", "swarm-of-quippers"},
+        {"srd51.monster.swarm_of_rats", "swarm-of-rats"},
+        {"srd51.monster.swarm_of_ravens", "swarm-of-ravens"},
+        {"srd51.monster.violet_fungus", "violet-fungus"},
+        {"srd51.monster.xorn", "xorn"},
+    };
+    for (const Creature& c : roster) {
+        CAPTURE(c.id);
+        const StandinKitLoc loc = resolve_standin_kit(root(), c.id, "medium");
+        CHECK(loc.per_monster);
+        CHECK(loc.slug == c.dir);
+        CHECK(loc.root == root() / "srd" / c.dir);
+        CHECK(std::filesystem::is_directory(loc.root / "medium" / "sw"));
+        CHECK(std::filesystem::is_directory(loc.root / "medium" / "nw"));
+    }
+
+    // Basilisk stands in for the pixel check. Every sw/nw frame must be the file
+    // on disk. At least one of each west facing must differ from a flip of east.
+    const KitClip clips[] = {
+        {"idle", 4, 6, ClipMode::Loop},
+        {"walk", 6, 10, ClipMode::Loop},
+        {"react", 3, 12, ClipMode::Once},
+        {"attack", 6, 12, ClipMode::Once},
+        {"cast", 4, 10, ClipMode::Once},
+        {"stun", 4, 8, ClipMode::Loop},
+        {"death", 5, 8, ClipMode::HoldLast},
+        {"fall", 3, 12, ClipMode::Loop},
+        {"fall_impact", 3, 12, ClipMode::Once},
+    };
+    const StandinKitLoc basilisk = resolve_standin_kit(root(), "srd51.monster.basilisk", "medium");
+    REQUIRE(basilisk.per_monster);
+    const auto kit = MonsterStandinKit::load(basilisk.root, "medium", clips, basilisk.slug);
+    REQUIRE(kit);
+    CHECK(kit->missing_count() == 0);
+    int sw_not_mirror = 0, nw_not_mirror = 0;
+    auto frame_of = [&](std::string_view facing, std::string_view clip, int index) -> const ImageRgba* {
+        for (std::size_t n = 0; n < kit->frame_count(); ++n) {
+            const StandinFrameView v = kit->frame_at(n);
+            if (v.facing == facing && v.clip == clip && v.index == index && !v.missing) return v.image;
+        }
+        return nullptr;
+    };
+    for (const KitClip& clip : clips) {
+        for (int i = 0; i < clip.frames; ++i) {
+            CAPTURE(clip.id);
+            CAPTURE(i);
+            char num[8];
+            std::snprintf(num, sizeof num, "%02d", i);
+            const auto file = [&](const char* facing) {
+                return basilisk.root / "medium" / facing /
+                       (std::string("mon_basilisk_medium_") + facing + "_" + clip.id + "_" + num + ".png");
+            };
+            const ImageRgba* se = frame_of("se", clip.id, i);
+            const ImageRgba* sw = frame_of("sw", clip.id, i);
+            const ImageRgba* ne = frame_of("ne", clip.id, i);
+            const ImageRgba* nw = frame_of("nw", clip.id, i);
+            REQUIRE(se);
+            REQUIRE(sw);
+            REQUIRE(ne);
+            REQUIRE(nw);
+            const auto sw_png = decode_png(read_bin(file("sw")));
+            const auto nw_png = decode_png(read_bin(file("nw")));
+            REQUIRE(sw_png);
+            REQUIRE(nw_png);
+            CHECK(sw->rgba == sw_png->rgba);
+            CHECK(nw->rgba == nw_png->rgba);
+            if (sw->rgba != hflip_pivot(*se).rgba) ++sw_not_mirror;
+            if (nw->rgba != hflip_pivot(*ne).rgba) ++nw_not_mirror;
+        }
+    }
+    CHECK(sw_not_mirror > 0);
+    CHECK(nw_not_mirror > 0);
 }
 
 TEST_CASE("stand-in kit: the bin-only fallback still uses the mirrored west frame") {
