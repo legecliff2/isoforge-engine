@@ -1,0 +1,190 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.bearded_devil",
+  "name": "Bearded Devil",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "fiend",
+  "tags": [
+    "devil"
+  ],
+  "alignment": "lawful evil",
+  "armor_class": {
+    "value": 13,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 11,
+    "dex": true
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.glaive",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 52,
+    "formula": "8d8+16"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 15,
+    "con": 15,
+    "int": 9,
+    "wis": 11,
+    "cha": 11
+  },
+  "saving_throws": {
+    "str": 5,
+    "con": 4,
+    "wis": 2
+  },
+  "damage_resistances": [
+    "cold"
+  ],
+  "damage_immunities": [
+    "fire",
+    "poison"
+  ],
+  "condition_immunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 120,
+    "passive_perception": 10
+  },
+  "languages": [
+    "Infernal",
+    "telepathy 120 ft."
+  ],
+  "challenge": {
+    "rating": "3",
+    "xp": 700
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "damage_resistances_nonmagical",
+      "name": "Damage Resistances",
+      "description": "Resistant to bludgeoning, piercing, and slashing from nonmagical attacks that aren't silvered.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "resistances": {
+          "nonmagical_not_silvered": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "devils_sight",
+      "name": "Devil's Sight",
+      "description": "Magical darkness doesn't impede the devil's darkvision. (Descriptive only: no engine flag.)"
+    },
+    {
+      "id": "steadfast",
+      "name": "Steadfast",
+      "description": "The devil can't be frightened while it can see an allied creature within 30 feet of it. (Descriptive only: not a frightened immunity. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "magic_resistance",
+      "name": "Magic Resistance",
+      "description": "The devil has advantage on saving throws against spells and other magical effects.",
+      "effect": {
+        "kind": "save_advantage",
+        "magical": true
+      }
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The devil makes two attacks: one with its beard and one with its glaive.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "beard_glaive",
+            "attacks": [
+              "beard",
+              "glaive"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "beard",
+      "name": "Beard",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d8",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ],
+      "damage_override": {
+        "dice": "1d8+2",
+        "reason": "SRD 5.1 Bearded Devil Beard prints 6 (1d8 + 2); Str 16 derives 1d8 + 3"
+      },
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 12
+          },
+          "apply": [
+            {
+              "condition": "poisoned",
+              "duration": {
+                "kind": "rounds",
+                "n": 10
+              },
+              "repeat_save": "end_of_turn"
+            }
+          ]
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one creature. Hit: 6 (1d8 + 2) piercing damage, and the target must succeed on a DC 12 Constitution saving throw or be poisoned for 1 minute. While poisoned in this way, the target can't regain hit points. The target can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success. (The poisoned condition for 1 minute, with the end-of-turn repeat save, is the on_hit. While poisoned in this way, the target can't regain hit points is descriptive only: not mummy curse.no_regain_hp. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "glaive",
+      "name": "Glaive",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.glaive",
+      "use": "two_hands",
+      "ability": "str",
+      "to_hit": 5,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d10+3",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 10 ft., one target. Hit: 8 (1d10 + 3) slashing damage. If the target is a creature other than an undead or a construct, it must succeed on a DC 12 Constitution saving throw or lose 5 (1d10) hit points at the start of each of its turns due to an infernal wound. Each time the devil hits the wounded target with this attack, the damage dealt by the wound increases by 5 (1d10). Any creature can take an action to stanch the wound with a successful DC 12 Wisdom (Medicine) check. The wound also closes if the target receives magical healing. (Infernal Wound is deferred entirely. It goes through Rules first. No stub: no on_hit, no save, no ongoing damage. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

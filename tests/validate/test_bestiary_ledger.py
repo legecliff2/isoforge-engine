@@ -7,7 +7,7 @@ content_validate_* files; this PR does not register a ctest name):
   python3 tools/validate/run_unittest_file.py tests/validate/test_bestiary_ledger.py
 
 ledger.py and validate_bridge.py must not import Tk. Counts are pinned to the
-ledger after erinyes was authored as an honest partial (Parry stays uncompiled; the longbow poison is until_cured): 207 authored, 4 deferred.
+ledger after azer, lemure, barbed devil, and bearded devil were authored as honest partials, and after erinyes was authored as an honest partial (Parry stays uncompiled; the longbow poison is until_cured): 211 authored, 4 deferred.
 """
 from __future__ import annotations
 
@@ -88,10 +88,10 @@ class LedgerTests(unittest.TestCase):
         for name in ("ledger.py", "validate_bridge.py"):
             self.assertEqual(_imports_tk(EDITOR / name), [], name)
 
-    def test_counts_match_headings_207_and_4(self):
+    def test_counts_match_headings_211_and_4(self):
         book = self.book
-        self.assertEqual(book.authored_expected, 207)
-        self.assertEqual(len(book.authored), 207)
+        self.assertEqual(book.authored_expected, 211)
+        self.assertEqual(len(book.authored), 211)
         self.assertEqual(book.parked_expected, 4)
         self.assertEqual(len(book.parked), 4)
         self.assertEqual(book.count_errors(), ())
@@ -164,11 +164,18 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(guardian.name, "Shield Guardian")
         self.assertEqual(guardian.path, ledger.DEFAULT_MONSTERS_DIR / "shield_guardian.json")
         self.assertNotIn("srd51.monster.shield_guardian", parked)
-        erinyes = by_id["srd51.monster.erinyes"]
-        self.assertTrue(erinyes.partial)
-        self.assertEqual(erinyes.name, "Erinyes")
-        self.assertEqual(erinyes.path, ledger.DEFAULT_MONSTERS_DIR / "erinyes.json")
-        self.assertNotIn("srd51.monster.erinyes", parked)
+        for mid, name, stem in (
+            ("srd51.monster.azer", "Azer", "azer.json"),
+            ("srd51.monster.lemure", "Lemure", "lemure.json"),
+            ("srd51.monster.barbed_devil", "Barbed Devil", "barbed_devil.json"),
+            ("srd51.monster.bearded_devil", "Bearded Devil", "bearded_devil.json"),
+            ("srd51.monster.erinyes", "Erinyes", "erinyes.json"),
+        ):
+            row = by_id[mid]
+            self.assertTrue(row.partial, mid)
+            self.assertEqual(row.name, name)
+            self.assertEqual(row.path, ledger.DEFAULT_MONSTERS_DIR / stem)
+            self.assertNotIn(mid, parked)
         mimic = parked["srd51.monster.mimic"]
         self.assertEqual(mimic.name, "Mimic")
         self.assertIsNone(mimic.path)
