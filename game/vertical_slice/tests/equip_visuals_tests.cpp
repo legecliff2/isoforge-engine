@@ -20,6 +20,7 @@
 #include "assets/schema_registry.hpp"
 #include "equip_scene.hpp"
 #include "equip_visuals.hpp"
+#include "presentation/equip_art.hpp"
 #include "render_null/null_device.hpp"
 #include "rules5e/equipment.hpp"
 #include "session.hpp"
@@ -445,4 +446,207 @@ TEST_CASE("equip visuals: backpack, quiver and bolt case go to the back; the pou
     CHECK(find_item(*a, "srd51.item.component_pouch") == nullptr);   // not the belt pouch
     CHECK(find_item(*a, "srd51.item.chain_mail") == nullptr);        // worn armor stays undrawn
     { std::error_code ec; fs::remove_all(root, ec); }
+}
+
+namespace {
+bool same_quads(const std::vector<EquipQuad>& a, const std::vector<EquipQuad>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i].at.x != b[i].at.x || a[i].at.y != b[i].at.y) return false;
+        if (a[i].size.x != b[i].size.x || a[i].size.y != b[i].size.y) return false;
+        if (a[i].emissive != b[i].emissive) return false;
+        if (a[i].color.r != b[i].color.r || a[i].color.g != b[i].color.g || a[i].color.b != b[i].color.b ||
+            a[i].color.a != b[i].color.a)
+            return false;
+    }
+    return true;
+}
+} // namespace
+
+TEST_CASE("equip art: unmapped items keep today's quads, anchors, and z") {
+    const AttachPoints se = attach_points(Facing::SouthEast);
+    CHECK(se.main_hand.x == 9.f);
+    CHECK(se.main_hand.y == 4.f);
+    CHECK(se.off_hand.x == -9.f);
+    CHECK(se.off_hand.y == 4.f);
+    CHECK(se.back.x == -7.f);
+    CHECK(se.back.y == 2.f);
+    CHECK(se.hip.x == 6.f);
+    CHECK(se.hip.y == 8.f);
+    const AttachPoints sw = attach_points(Facing::SouthWest);
+    const AttachPoints nw = attach_points(Facing::NorthWest);
+    CHECK(sw.main_hand.x == -se.main_hand.x);
+    CHECK(sw.off_hand.x == -se.off_hand.x);
+    CHECK(sw.back.x == -se.back.x);
+    CHECK(sw.hip.x == -se.hip.x);
+    CHECK(nw.back.x == -se.back.x);
+    CHECK(nw.hip.x == -se.hip.x);
+    CHECK(sw.main_hand.y == se.main_hand.y);
+    CHECK(attach_points(Facing::NorthEast).back.x == se.back.x);
+
+    CHECK(kZBack == 2);
+    CHECK(kZBody == 4);
+    CHECK(kZWornFront == 5);
+    CHECK(kZFarHand == 6);
+    CHECK(kZNearHand == 7);
+    CHECK(kZLight == 8);
+    CHECK(kZOutline == 9);
+    CHECK(worn_z(AttachSlot::Back, Facing::SouthEast) == kZBack);
+    CHECK(worn_z(AttachSlot::Back, Facing::SouthWest) == kZBack);
+    CHECK(worn_z(AttachSlot::Back, Facing::NorthEast) == kZWornFront);
+    CHECK(worn_z(AttachSlot::Back, Facing::NorthWest) == kZWornFront);
+    CHECK(worn_z(AttachSlot::Hip, Facing::SouthEast) == kZWornFront);
+    CHECK(worn_z(AttachSlot::Hip, Facing::NorthEast) == kZBack);
+    CHECK(kZWornFront < kZFarHand);
+    CHECK(kZFarHand < kZNearHand);
+    CHECK(kZNearHand < kZLight);
+    CHECK(kZLight < kZOutline);
+
+    ActorView a;
+    a.facing = Facing::SouthEast;
+    a.equipment = {equip_scene::item(2, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longsword"),
+                   equip_scene::item(3, AttachSlot::OffHand, EquipKind::Shield, "srd51.item.shield"),
+                   equip_scene::item(8, AttachSlot::MainHand, EquipKind::Light, "srd51.item.torch"),
+                   equip_scene::item(4, AttachSlot::Back, EquipKind::Other, "srd51.item.backpack"),
+                   equip_scene::item(9, AttachSlot::Back, EquipKind::Weapon, "srd51.item.longbow"),
+                   equip_scene::item(6, AttachSlot::Back, EquipKind::Other, "srd51.item.quiver"),
+                   equip_scene::item(7, AttachSlot::Back, EquipKind::Other, "srd51.item.case_crossbow_bolt"),
+                   equip_scene::item(5, AttachSlot::Hip, EquipKind::Other, "srd51.item.pouch")};
+    const std::vector<EquipLayer> layers = equip_layers(a);
+    const EquipLayer* body = nullptr;
+    for (const EquipLayer& l : layers)
+        if (l.part == EquipPart::Body) body = &l;
+    REQUIRE(body);
+    CHECK(body->z == kZBody);
+    CHECK(body->at.x == 0.f);
+    CHECK(body->at.y == 0.f);
+    for (const EquipLayer& l : layers) {
+        if (!l.item) continue;
+        CHECK(equip_art_choice(nullptr, *l.item, l.part, a.facing, a.standin_bin).sprite == nullptr);
+        CHECK(equip_art_choice(nullptr, *l.item, l.part, a.facing, "huge").mirror_x == false);
+        const std::vector<EquipQuad> quads = equip_quads(*l.item, l.part, l.at);
+        CHECK_FALSE(quads.empty());
+        if (l.item->content_id == "srd51.item.longsword") {
+            CHECK(l.part == EquipPart::MainHand);
+            CHECK(l.z == kZNearHand);
+            CHECK(l.at.x == se.main_hand.x);
+            CHECK(l.at.y == se.main_hand.y);
+        } else if (l.item->content_id == "srd51.item.shield") {
+            CHECK(l.part == EquipPart::OffHand);
+            CHECK(l.z == kZFarHand);
+            CHECK(l.at.x == se.off_hand.x);
+        } else if (l.item->content_id == "srd51.item.torch") {
+            CHECK(l.part == EquipPart::HeldLight);
+            CHECK(l.z == kZLight);
+            CHECK(l.at.x == se.main_hand.x);
+        }
+        if (l.part == EquipPart::Back) {
+            CHECK(l.z == kZBack);
+            CHECK(l.at.x == se.back.x);
+            CHECK(l.at.y == se.back.y);
+        }
+        if (l.part == EquipPart::Hip) {
+            CHECK(l.z == kZWornFront);
+            CHECK(l.at.x == se.hip.x);
+            CHECK(l.at.y == se.hip.y);
+        }
+    }
+    const EquipVisual* quiver = nullptr;
+    const EquipVisual* bolts = nullptr;
+    const EquipVisual* bow = nullptr;
+    const EquipVisual* sword = nullptr;
+    for (const EquipVisual& e : a.equipment) {
+        if (e.content_id == "srd51.item.quiver") quiver = &e;
+        if (e.content_id == "srd51.item.case_crossbow_bolt") bolts = &e;
+        if (e.content_id == "srd51.item.longbow") bow = &e;
+        if (e.content_id == "srd51.item.longsword") sword = &e;
+    }
+    REQUIRE(quiver);
+    REQUIRE(bolts);
+    REQUIRE(bow);
+    REQUIRE(sword);
+    const std::vector<EquipQuad> quiver_q = equip_quads(*quiver, EquipPart::Back, se.back);
+    const std::vector<EquipQuad> bolt_q = equip_quads(*bolts, EquipPart::Back, se.back);
+    CHECK(same_quads(quiver_q, bolt_q));
+    CHECK(quiver_q.size() == 1);
+    CHECK(quiver_q[0].size.x == 14.f);
+    CHECK(quiver_q[0].size.y == 16.f);
+    const std::vector<EquipQuad> bow_q = equip_quads(*bow, EquipPart::Back, se.back);
+    const std::vector<EquipQuad> sword_back = equip_quads(*sword, EquipPart::Back, se.back);
+    CHECK(bow_q[0].color.r != sword_back[0].color.r);
+    EquipVisual torch = equip_scene::item(8, AttachSlot::MainHand, EquipKind::Light, "srd51.item.torch");
+    torch.lit = true;
+    torch.bright_ft = 20;
+    torch.dim_ft = 20;
+    int flames = 0;
+    for (const EquipQuad& q : equip_quads(torch, EquipPart::HeldLight, se.main_hand)) flames += q.emissive ? 1 : 0;
+    CHECK(flames == 1);
+
+    a.facing = Facing::SouthWest;
+    const EquipArtChoice west = equip_art_choice(nullptr, *quiver, EquipPart::Back, a.facing, "medium");
+    CHECK(west.sprite == nullptr);
+    CHECK(west.mirror_x);
+    const std::vector<EquipLayer> west_layers = equip_layers(a);
+    for (const EquipLayer& l : west_layers) {
+        if (l.part == EquipPart::Back) CHECK(l.at.x == sw.back.x);
+        if (l.part == EquipPart::Hip) CHECK(l.at.x == sw.hip.x);
+        if (l.part == EquipPart::MainHand) CHECK(l.at.x == sw.main_hand.x);
+    }
+}
+
+#ifndef SLICE_STANDIN_ROOT
+#define SLICE_STANDIN_ROOT ""
+#endif
+
+TEST_CASE("equip art: choice follows content id and view, and leaves the attach point alone") {
+    const fs::path art = fs::temp_directory_path() / ("isoforge_equip_art_choice_" + run_suffix());
+    std::error_code ec;
+    fs::remove_all(art, ec);
+    fs::create_directories(art / "srd51.item.quiver");
+    fs::create_directories(art / "srd51.item.case_crossbow_bolt");
+    fs::create_directories(art / "_kind" / "weapon");
+    const fs::path png = fs::path(SLICE_STANDIN_ROOT);
+    fs::copy_file(png / "frames/tiny/se/mon_tiny_se_idle_00.png", art / "srd51.item.quiver" / "back.se.png");
+    fs::copy_file(png / "frames/small/se/mon_small_se_idle_00.png", art / "srd51.item.case_crossbow_bolt" / "back.se.png");
+    fs::copy_file(png / "frames/tiny/ne/mon_tiny_ne_idle_00.png", art / "srd51.item.quiver" / "back.ne.png");
+    fs::copy_file(png / "frames/medium/se/mon_medium_se_idle_00.png", art / "_kind" / "weapon" / "main_hand.se.png");
+    const eng::presentation::EquipArtTable table = eng::presentation::EquipArtTable::load(art);
+
+    const EquipVisual quiver = equip_scene::item(6, AttachSlot::Back, EquipKind::Other, "srd51.item.quiver");
+    const EquipVisual bolts = equip_scene::item(7, AttachSlot::Back, EquipKind::Other, "srd51.item.case_crossbow_bolt");
+    const EquipVisual bow = equip_scene::item(9, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longbow");
+    const EquipArtChoice quiver_se = equip_art_choice(&table, quiver, EquipPart::Back, Facing::SouthEast, "medium");
+    const EquipArtChoice quiver_sw = equip_art_choice(&table, quiver, EquipPart::Back, Facing::SouthWest, "large");
+    const EquipArtChoice quiver_ne = equip_art_choice(&table, quiver, EquipPart::Back, Facing::NorthEast, "");
+    const EquipArtChoice quiver_nw = equip_art_choice(&table, quiver, EquipPart::Back, Facing::NorthWest, "huge");
+    const EquipArtChoice bolt_se = equip_art_choice(&table, bolts, EquipPart::Back, Facing::SouthEast, "medium");
+    REQUIRE(quiver_se.sprite);
+    REQUIRE(bolt_se.sprite);
+    REQUIRE(quiver_ne.sprite);
+    CHECK_FALSE(quiver_se.mirror_x);
+    CHECK(quiver_sw.mirror_x);
+    CHECK(quiver_sw.sprite == quiver_se.sprite);
+    CHECK_FALSE(quiver_ne.mirror_x);
+    CHECK(quiver_nw.mirror_x);
+    CHECK(quiver_nw.sprite == quiver_ne.sprite);
+    CHECK(quiver_se.sprite->image.w == 16);
+    CHECK(bolt_se.sprite->image.w == 24);
+    CHECK(quiver_se.sprite != bolt_se.sprite);
+    CHECK(quiver_ne.sprite != quiver_se.sprite);
+    const eng::Vec2f back = attach_points(Facing::SouthEast).back;
+    const eng::Vec2f anchor = equip_sprite_anchor(quiver_se.sprite->pivot_x, quiver_se.sprite->pivot_y, back);
+    CHECK(anchor.x == float(quiver_se.sprite->pivot_x) - back.x);
+    CHECK(anchor.y == float(quiver_se.sprite->pivot_y) - back.y);
+    CHECK(back.x == -7.f);
+    CHECK(back.y == 2.f);
+
+    const EquipArtChoice bow_hand = equip_art_choice(&table, bow, EquipPart::MainHand, Facing::SouthEast, "small");
+    REQUIRE(bow_hand.sprite);
+    CHECK(bow_hand.sprite->image.w == 32);
+    const EquipArtChoice bow_away = equip_art_choice(&table, bow, EquipPart::MainHand, Facing::NorthEast, "medium");
+    CHECK(bow_away.sprite == nullptr);
+    const std::vector<EquipQuad> still = equip_quads(bow, EquipPart::MainHand, attach_points(Facing::SouthEast).main_hand);
+    CHECK(still.size() == 2);
+    CHECK(still[0].color.r < 0.7f);
+    fs::remove_all(art, ec);
 }
