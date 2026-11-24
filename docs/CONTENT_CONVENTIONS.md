@@ -2195,5 +2195,6 @@ An explicit `forms[]` list bypasses D4, D4(e), and D4(f) and is kept in authored
 Deferred, not this section:
 
 * DEFERRED 15. An own Reaction whose use is an attack still carries `attack_index` into the creature's own rows. MERGE still unions the reaction rows. No pool form has `reactions[]`, and the couatl has none. A BonusAttack rider bound by `AttackIs` is unreachable for the same reason.
+* DEFERRED 15. An own `on_event` trigger that is not `AttackIs`, whose `RiderKind::BonusAttack` `e.value` indexes the live attacks (`encounter.cpp` `effect_applies`, the size check, and the grant that stores `e.value + 1`). MERGE keeps that trigger, so the index addresses the form's rows. Unreachable today: no pool form has one, the couatl has none, and gnoll and giant hyena Rampage are already excluded by D4(e).
 * D10 (the deva's proficiency split), D11 (dragon legendary actions in a form), D13 (Possession of a body in a Change Shape form, and Change Shape while possessed or possessing), and the REPLACE profile. AI form choice stays deferred. The bite rule that would lift D4(e) is not built.
 

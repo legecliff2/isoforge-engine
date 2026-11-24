@@ -694,7 +694,7 @@ TEST_CASE("Change Shape own-actions gate: save action and feature are refused, a
     REQUIRE_MESSAGE(mended.ok, mended.error);
 }
 
-TEST_CASE("Change Shape pool: the ten exclusion groups stay out, and test 16 pins the 42 S1 ids in byte order") {
+TEST_CASE("Change Shape pool: the fourteen exclusion groups stay out, and test 16 pins the 42 S1 ids in byte order") {
     ContentLibrary small;
     auto eligible = [](const std::string& id, const char* cr) {
         Json m = goblin_base(id);
