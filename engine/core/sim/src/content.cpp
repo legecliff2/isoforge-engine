@@ -2667,21 +2667,38 @@ void note_possession_class_base(rules5e::Combatant& c, const std::vector<Feature
     if (any) c.possession_class_base = std::move(base);
 }
 
+// D4(f) usage kinds. per_rest and per_day are the limited-use pools. recharge is the ActionUse row.
+// pool names a resources[] pool. All four are registered for the slot's own archetype only.
+bool change_shape_limited_usage(const Json& node) {
+    if (node.is_object()) {
+        if (auto u = node.find("usage"); u != node.end() && u->is_object()) {
+            const std::string uk = u->value("kind", "");
+            if (uk == "per_rest" || uk == "per_day" || uk == "recharge" || uk == "pool") return true;
+        }
+        for (auto it = node.begin(); it != node.end(); ++it)
+            if (change_shape_limited_usage(it.value())) return true;
+    } else if (node.is_array()) {
+        for (const Json& x : node)
+            if (change_shape_limited_usage(x)) return true;
+    }
+    return false;
+}
+
 void note_change_shape_pool_facts(Archetype& a, const Json& doc) {
     if (!a.spell_ids.empty() || !a.innate_spell_ids.empty()) a.pool_spellcasting = true;
     for (const auto& f : a.features) {
         if (f.id == "spellcasting" || f.id == "innate_spellcasting") a.pool_spellcasting = true;
         // D4(f), the same reason as the Parry exclusion: a printed capability MERGE would drop or over-grant.
         // bonus_action_grant, aggressive, and reckless_attack live outside FormStats, so the form loses them.
-        // A per-rest or per-day usage is a pool registered only for the slot's own archetype; with no pool,
-        // the use is unlimited (Relentless). A category, not a list of ids.
         if (f.kind == "bonus_action_grant" || f.kind == "aggressive" || f.kind == "reckless_attack")
             a.pool_uncarried = true;
-        if (auto u = f.effect.find("usage"); u != f.effect.end() && u->is_object()) {
-            const std::string uk = u->value("kind", "");
-            if (uk == "per_rest" || uk == "per_day") a.pool_uncarried = true;
-        }
     }
+    // Every usage object on the document: traits, actions, reactions, and nested effects. A recharge
+    // row, a per-rest / per-day use, or a usage that names a pool is registered only for the slot's
+    // own archetype. MERGE does not register it, so the use would be unlimited or lost. A resources[]
+    // pool is the same row even when no usage names it yet. A category, not a list of ids.
+    if (change_shape_limited_usage(doc)) a.pool_uncarried = true;
+    if (auto rs = doc.find("resources"); rs != doc.end() && rs->is_array() && !rs->empty()) a.pool_uncarried = true;
     auto bite_text = [](std::string s) {
         for (char& ch : s) ch = char(std::tolower(static_cast<unsigned char>(ch)));
         return s.find("bite") != std::string::npos;
@@ -2709,7 +2726,8 @@ bool change_shape_excluded(const Archetype& o) {
     return o.pool_spellcasting || o.pool_shapechanger || o.swarm || o.pool_nonattack || o.pool_bite || o.pool_uncarried;
 }
 
-// `all` is id byte order (std::map order, the Polymorph precedent).
+// `all` is id byte order of the monsters loaded into this library (std::map order, the Polymorph
+// precedent). A different loaded set is a different order, and a later id's index can move.
 std::vector<std::string> change_shape_pool_ids(const Archetype& owner, const std::vector<const Archetype*>& all,
                                               const Archetype::FormFeature& ff) {
     std::vector<std::string> ids;
@@ -2745,9 +2763,9 @@ std::optional<std::string> ContentLibrary::change_shape_pool_error(const Archety
             (void)fid;
             if (!ff.select_pool || ff.sub_kind != Archetype::FormSubKind::ChangeShapeMerge) continue;
             if (change_shape_pool_ids(owner, all, ff).size() > 255) {
-                // The document this add() is refusing: the owner, or the form that would be the 256th.
-                const std::string& refused = (&owner == &candidate) ? owner.id : candidate.id;
-                return refused + ": change_shape: more than 255 forms";
+                // `candidate` is the document this add() refuses. `owner` is the selector whose pool
+                // overflowed (the same id when the selector itself is the 256th).
+                return candidate.id + ": change_shape: " + owner.id + " would have more than 255 forms";
             }
         }
         return std::nullopt;
@@ -3948,7 +3966,10 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
         }
     }
     // Explicit Change Shape forms[] are checked after every monster is loaded, so a form that sorts
-    // later in the same pack is visible. Wild Shape still resolves at use time. The error names the form.
+    // earlier or later in the same pack, or that lives in a dependency pack or a later pack of this
+    // load, is visible. Only load() rejects an unknown id. add() does not. The check is existence-only
+    // by design: an explicit list bypasses the D4 / D4(e) / D4(f) pool filters, and a form that exists
+    // is kept even when a select pool would have dropped it. Wild Shape still resolves at use time.
     for (const auto& [id, a] : by_id_)
         for (const auto& [fid, ff] : a.form_features) {
             (void)fid;

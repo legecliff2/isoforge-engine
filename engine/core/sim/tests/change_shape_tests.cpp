@@ -6,6 +6,11 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "sample_set.hpp"
 #include "sim/combat.hpp"
@@ -689,7 +694,7 @@ TEST_CASE("Change Shape own-actions gate: save action and feature are refused, a
     REQUIRE_MESSAGE(mended.ok, mended.error);
 }
 
-TEST_CASE("Change Shape pool: the ten exclusion groups stay out, and test 16 pins the 42 S1 ids in byte order") {
+TEST_CASE("Change Shape pool: the fourteen exclusion groups stay out, and test 16 pins the 42 S1 ids in byte order") {
     ContentLibrary small;
     auto eligible = [](const std::string& id, const char* cr) {
         Json m = goblin_base(id);
@@ -748,6 +753,27 @@ TEST_CASE("Change Shape pool: the ten exclusion groups stay out, and test 16 pin
                                                      {"usage", {{"kind", "per_rest"}, {"uses", 1}, {"rest", "short"}}},
                                                      {"effects", Json::array({{{"kind", "set_hp"}, {"value", 1}}})}}}}});
     REQUIRE_FALSE(small.add(relentless, "monster"));
+    Json recharge = eligible("test.pool.recharge", "1/4");
+    recharge["$schema"] = "monster@5";
+    recharge["traits"] = Json::array({{{"id", "breath"}, {"name", "Breath"},
+                                       {"effect", {{"kind", "on_event"}, {"on", "turn_start"},
+                                                   {"usage", {{"kind", "recharge"}, {"min", 5}}},
+                                                   {"effects", Json::array({{{"kind", "heal_self"}, {"value", 1}}})}}}}});
+    REQUIRE_FALSE(small.add(recharge, "monster"));
+    Json pooled = eligible("test.pool.pool", "1/4");
+    pooled["$schema"] = "monster@5";
+    pooled["resources"] = Json::array({{{"id", "fury"}, {"max", 1}, {"recharge", "short_rest"}}});
+    pooled["traits"] = Json::array({{{"id", "spend"}, {"name", "Spend"},
+                                     {"effect", {{"kind", "on_event"}, {"on", "turn_start"},
+                                                 {"usage", {{"kind", "pool"}, {"pool", "fury"}, {"cost", 1}}},
+                                                 {"effects", Json::array({{{"kind", "heal_self"}, {"value", 1}}})}}}}});
+    REQUIRE_FALSE(small.add(pooled, "monster"));
+    Json per_day = eligible("test.pool.per_day", "1/4");
+    per_day["actions"][0]["usage"] = {{"kind", "per_day"}, {"uses", 1}};
+    REQUIRE_FALSE(small.add(per_day, "monster"));
+    Json res_only = eligible("test.pool.resources", "1/4");
+    res_only["resources"] = Json::array({{{"id", "fury"}, {"max", 1}, {"recharge", "long_rest"}}});
+    REQUIRE_FALSE(small.add(res_only, "monster"));
     Json bite = eligible("test.pool.bite", "1/4");
     bite["actions"] = Json::array({
         {{"id", "bite"}, {"name", "Bite"}, {"kind", "melee_weapon_attack"}, {"to_hit", 4}, {"reach", 5}, {"targets", 1},
@@ -779,6 +805,10 @@ TEST_CASE("Change Shape pool: the ten exclusion groups stay out, and test 16 pin
     CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.aggressive") == ff->forms.end());
     CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.reckless") == ff->forms.end());
     CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.relentless") == ff->forms.end());
+    CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.recharge") == ff->forms.end());
+    CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.pool") == ff->forms.end());
+    CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.per_day") == ff->forms.end());
+    CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.resources") == ff->forms.end());
     CHECK(a->feature_specs.at(1).form_choices == 2);
 
     // The pack: 112 humanoid or beast at CR 4 or lower, 88 after D4, then D4(e) and D4(f) leave 42.
@@ -949,6 +979,7 @@ TEST_CASE("Change Shape D17: 256 eligible forms fail to load and 255 load") {
         auto err = ok.add(one("test.late.255"), "monster");
         REQUIRE(err);
         CHECK(err->find("test.late.255") != std::string::npos);
+        CHECK(err->find("test.change.cap") != std::string::npos);
         CHECK(err->find("255") != std::string::npos);
         CHECK(ok.find("test.change.cap"));
         CHECK_FALSE(ok.find("test.late.255"));
@@ -970,33 +1001,103 @@ TEST_CASE("Change Shape D8: equipment on a change_shape creature is a load error
     CHECK(err->find("equipment") != std::string::npos);
 }
 
-// A one-pack directory. Contents are loaded in sorted path order, so monsters/couatl.json is added
-// before monsters/wolf.json. The unknown-forms pass runs after that loop.
+namespace {
+// One temp root per construction. The process id keeps concurrent ctest runs apart, and the
+// counter keeps each test's directory distinct inside one process.
+std::filesystem::path unique_change_shape_root(const std::string& id) {
+    static unsigned seq = 0;
+#ifdef _WIN32
+    const auto pid = _getpid();
+#else
+    const auto pid = getpid();
+#endif
+    return std::filesystem::temp_directory_path() /
+           ("isoforge_change_shape_" + std::to_string(pid) + "_" + std::to_string(++seq) + "_" + id);
+}
+
+const char* kPackAttr = "System Reference Document 5.1 test fixture.";
+
+Json pack_manifest(const std::string& id, Json contents, Json depends = Json::array()) {
+    Json m = {{"$schema", "manifest@1"},
+              {"id", id},
+              {"version", "1.0.0"},
+              {"engine_min", "0.1.0"},
+              {"feature_level", 1},
+              {"api_level", 1},
+              {"rules_profile", "srd51"},
+              {"requires", Json::array()},
+              {"attribution", kPackAttr},
+              {"contents", std::move(contents)}};
+    if (!depends.empty()) m["depends"] = std::move(depends);
+    return m;
+}
+
+Json pack_monster(const std::string& id, const char* type) {
+    Json m = goblin_base(id);
+    m["$schema"] = "monster@5";
+    m["type"] = type;
+    m["armor_class"]["note"] = "natural armor";
+    m.erase("behavior");
+    m.erase("skills");
+    m.erase("tags");
+    return m;
+}
+
+void write_json(const std::filesystem::path& path, const Json& j) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path);
+    REQUIRE(out.good());
+    out << j.dump(2) << "\n";
+}
+
+// A one-pack directory. Contents are loaded in sorted path order.
 struct TempPack {
     std::filesystem::path root, dir;
     explicit TempPack(const std::string& id) {
-        root = std::filesystem::temp_directory_path() / ("isoforge_change_shape_" + id);
+        root = unique_change_shape_root(id);
         std::filesystem::remove_all(root);
         dir = root / id;
         std::filesystem::create_directories(dir / "monsters");
     }
     ~TempPack() { std::filesystem::remove_all(root); }
-    void write(const std::string& rel, const Json& j) {
-        std::ofstream out(dir / rel);
-        REQUIRE(out.good());
-        out << j.dump(2) << "\n";
+    void write(const std::string& rel, const Json& j) { write_json(dir / rel, j); }
+    Json monster(const std::string& id, const char* type) { return pack_monster(id, type); }
+};
+
+// Two pack directories under one root, so PackSet::resolve can see a depends edge.
+struct TempPackRoot {
+    std::filesystem::path root;
+    explicit TempPackRoot(const std::string& id) {
+        root = unique_change_shape_root(id);
+        std::filesystem::remove_all(root);
+        std::filesystem::create_directories(root);
     }
-    Json monster(const std::string& id, const char* type) {
-        Json m = goblin_base(id);
-        m["$schema"] = "monster@5";
-        m["type"] = type;
-        m["armor_class"]["note"] = "natural armor";
-        m.erase("behavior");
-        m.erase("skills");
-        m.erase("tags");
-        return m;
+    ~TempPackRoot() { std::filesystem::remove_all(root); }
+    std::filesystem::path pack_dir(const std::string& id) const {
+        auto d = root / id;
+        std::filesystem::create_directories(d / "monsters");
+        return d;
     }
 };
+
+void advance_actor(Combat& c, CombatantId self) {
+    for (int i = 0; i < 8 && rules5e::current_actor(c.state()) != self; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(c.state()), ActionKind::EndTurn};
+        REQUIRE(c.submit(e).ok);
+    }
+    REQUIRE(rules5e::current_actor(c.state()) == self);
+}
+
+bool landed_hit(const Combat& c, std::size_t mark, CombatantId self) {
+    for (std::size_t i = mark; i < c.events().size(); ++i) {
+        const auto& e = c.events()[i];
+        if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::AttackResolved && e.rules.actor == self && (e.rules.c & 1))
+            return true;
+    }
+    return false;
+}
+}  // namespace
 
 TEST_CASE("Change Shape: an unknown explicit form is a load error, and a later same-pack form loads") {
     const char* kAttr = "System Reference Document 5.1 test fixture.";
@@ -1057,6 +1158,249 @@ TEST_CASE("Change Shape: an unknown explicit form is a load error, and a later s
         for (const std::string& e : errs) named = named || e.find("unknown form 'test.pack.missing'") != std::string::npos;
         CHECK(named);
     }
+}
+
+TEST_CASE("Change Shape: a same-pack form that sorts before its owner loads, and add() does not reject an unknown form") {
+    {
+        TempPack pack("test.change_early");
+        Json form = pack.monster("test.pack.ape", "beast");
+        form["traits"] = Json::array();
+        Json owner = pack.monster("test.pack.zz", "celestial");
+        owner["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"},
+                                        {"effect", {{"kind", "change_shape"}, {"profile", "merge"},
+                                                    {"forms", Json::array({"test.pack.ape"})}}}}});
+        pack.write("monsters/ape.json", form);
+        pack.write("monsters/zz.json", owner);
+        pack.write("manifest.json", pack_manifest("test.change_early", Json::array({"monsters/ape.json", "monsters/zz.json"})));
+        ContentLibrary lib;
+        auto errs = lib.load_pack(pack.dir.string());
+        const std::string why = errs.empty() ? std::string() : errs[0];
+        REQUIRE_MESSAGE(errs.empty(), why);
+        const Archetype* who = lib.find("test.pack.zz");
+        REQUIRE(who);
+        const Archetype::FormFeature* ff = nullptr;
+        for (const auto& [id, feat] : who->form_features)
+            if (feat.sub_kind == Archetype::FormSubKind::ChangeShapeMerge) ff = &feat;
+        REQUIRE(ff);
+        REQUIRE(ff->forms.size() == 1);
+        CHECK(ff->forms[0] == "test.pack.ape");
+    }
+    {
+        ContentLibrary direct;
+        Json owner = pack_monster("test.direct.unknown", "celestial");
+        owner["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"},
+                                        {"effect", {{"kind", "change_shape"}, {"profile", "merge"},
+                                                    {"forms", Json::array({"test.not.loaded"})}}}}});
+        auto err = direct.add(owner, "monster");
+        const std::string why = err ? *err : std::string();
+        REQUIRE_MESSAGE(!err, why);
+        CHECK(direct.find("test.direct.unknown"));
+    }
+}
+
+TEST_CASE("Change Shape: an explicit form from a dependency pack loads, and a form from a later pack loads") {
+    {
+        TempPackRoot root("dep");
+        const auto dep = root.pack_dir("test.cs.dep");
+        const auto owner = root.pack_dir("test.cs.owner");
+        Json form = pack_monster("test.dep.bite", "beast");
+        form["traits"] = Json::array();
+        form["actions"] = Json::array({
+            {{"id", "bite"}, {"name", "Bite"}, {"kind", "melee_weapon_attack"}, {"to_hit", 4}, {"reach", 5}, {"targets", 1},
+             {"damage", Json::array({{{"dice", "1d4"}, {"type", "piercing"}}})}},
+        });
+        write_json(dep / "monsters" / "form.json", form);
+        write_json(dep / "manifest.json", pack_manifest("test.cs.dep", Json::array({"monsters/form.json"})));
+        Json who = pack_monster("test.owner.couatl", "celestial");
+        who["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"},
+                                      {"effect", {{"kind", "change_shape"}, {"profile", "merge"},
+                                                  {"forms", Json::array({"test.dep.bite"})}}}}});
+        Json selector = pack_monster("test.owner.selector", "celestial");
+        selector["challenge"] = {{"rating", "4"}, {"xp", 1100}};
+        selector["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"},
+                                           {"effect", {{"kind", "change_shape"}, {"profile", "merge"},
+                                                       {"select", {{"types", Json::array({"beast"})}, {"max_cr", "own"}}}}}}});
+        selector["actions"] = Json::array({
+            {{"id", "sting"}, {"name", "Sting"}, {"kind", "melee_weapon_attack"}, {"to_hit", 4}, {"reach", 5}, {"targets", 1},
+             {"damage", Json::array({{{"dice", "1d4"}, {"type", "piercing"}}})}},
+        });
+        write_json(owner / "monsters" / "couatl.json", who);
+        write_json(owner / "monsters" / "selector.json", selector);
+        write_json(owner / "manifest.json",
+                   pack_manifest("test.cs.owner", Json::array({"monsters/couatl.json", "monsters/selector.json"}),
+                                 Json::array({{{"id", "test.cs.dep"}, {"version", "^1.0"}}})));
+        const std::filesystem::path roots[] = {root.root};
+        const std::string req[] = {"test.cs.owner"};
+        const auto set = assets::PackSet::resolve(roots, req);
+        REQUIRE(set.ok());
+        ContentLibrary lib;
+        auto errs = lib.load(set);
+        const std::string why = errs.empty() ? std::string() : errs[0];
+        REQUIRE_MESSAGE(errs.empty(), why);
+        const Archetype* bite = lib.find("test.dep.bite");
+        REQUIRE(bite);
+        CHECK(bite->pool_bite);
+        const Archetype* explicit_owner = lib.find("test.owner.couatl");
+        REQUIRE(explicit_owner);
+        const Archetype::FormFeature* kept = nullptr;
+        for (const auto& [id, feat] : explicit_owner->form_features)
+            if (feat.sub_kind == Archetype::FormSubKind::ChangeShapeMerge) kept = &feat;
+        REQUIRE(kept);
+        REQUIRE(kept->forms.size() == 1);
+        CHECK(kept->forms[0] == "test.dep.bite");
+        const Archetype* sel = lib.find("test.owner.selector");
+        REQUIRE(sel);
+        const Archetype::FormFeature* pool = nullptr;
+        for (const auto& [id, feat] : sel->form_features)
+            if (feat.sub_kind == Archetype::FormSubKind::ChangeShapeMerge) pool = &feat;
+        REQUIRE(pool);
+        CHECK(pool->forms.empty());
+    }
+    {
+        TempPackRoot root("later");
+        const auto early = root.pack_dir("test.cs.early");
+        const auto later = root.pack_dir("test.cs.later");
+        Json who = pack_monster("test.early.couatl", "celestial");
+        who["traits"] = Json::array({{{"id", "change_shape"}, {"name", "Change Shape"},
+                                      {"effect", {{"kind", "change_shape"}, {"profile", "merge"},
+                                                  {"forms", Json::array({"test.later.form"})}}}}});
+        write_json(early / "monsters" / "couatl.json", who);
+        write_json(early / "manifest.json", pack_manifest("test.cs.early", Json::array({"monsters/couatl.json"})));
+        Json form = pack_monster("test.later.form", "beast");
+        form["traits"] = Json::array();
+        write_json(later / "monsters" / "form.json", form);
+        write_json(later / "manifest.json",
+                   pack_manifest("test.cs.later", Json::array({"monsters/form.json"}),
+                                 Json::array({{{"id", "test.cs.early"}, {"version", "^1.0"}}})));
+        const std::filesystem::path roots[] = {root.root};
+        const std::string req[] = {"test.cs.later"};
+        const auto set = assets::PackSet::resolve(roots, req);
+        REQUIRE(set.ok());
+        ContentLibrary lib;
+        auto errs = lib.load(set);
+        const std::string why = errs.empty() ? std::string() : errs[0];
+        REQUIRE_MESSAGE(errs.empty(), why);
+        const Archetype* found = lib.find("test.early.couatl");
+        REQUIRE(found);
+        const Archetype::FormFeature* ff = nullptr;
+        for (const auto& [id, feat] : found->form_features)
+            if (feat.sub_kind == Archetype::FormSubKind::ChangeShapeMerge) ff = &feat;
+        REQUIRE(ff);
+        REQUIRE(ff->forms.size() == 1);
+        CHECK(ff->forms[0] == "test.later.form");
+        CHECK(lib.find("test.later.form"));
+    }
+}
+
+TEST_CASE("Change Shape D1: a form's own on_hit rider fires") {
+    Json form = form_a();
+    form["actions"][0]["on_hit"] = Json::array({{{"kind", "apply_condition"},
+                                                  {"apply", Json::array({{{"condition", "blinded"},
+                                                                          {"duration", {{"kind", "rounds"}, {"n", 1}}}}})}}});
+    ContentLibrary lib;
+    REQUIRE_FALSE(lib.add(form, "monster"));
+    REQUIRE_FALSE(lib.add(foe_doc(), "monster"));
+    REQUIRE_FALSE(lib.add(changer_doc({"test.change.form_a"}), "monster"));
+    auto chunk = arena({{"test.change.couatl", {4, 4}}, {"test.change.foe", {5, 4}}}, {"", "foes"});
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, lib, 7);
+    REQUIRE(combat);
+    const CombatantId self = chunk.spawns[0].stable_id, foe = chunk.spawns[1].stable_id;
+    advance_actor(*combat, self);
+    Command u;
+    u.request = {self, ActionKind::UseFeature};
+    u.request.feature_id = 1;
+    u.request.form_archetype = 1;
+    auto tr = combat->submit(u);
+    REQUIRE_MESSAGE(tr.ok, tr.error);
+    Command done;
+    done.request = {self, ActionKind::EndTurn};
+    REQUIRE(combat->submit(done).ok);
+    bool blinded = false;
+    for (int n = 0; n < 8 && !blinded; ++n) {
+        advance_actor(*combat, self);
+        const auto mark = combat->events().size();
+        Command atk;
+        atk.request = {self, ActionKind::Attack, foe, 0};
+        auto r = combat->submit(atk);
+        REQUIRE_MESSAGE(r.ok, r.error);
+        if (landed_hit(*combat, mark, self))
+            blinded = rules5e::find(combat->state(), foe)->has(rules5e::Condition::Blinded);
+        if (!blinded) {
+            Command e;
+            e.request = {self, ActionKind::EndTurn};
+            if (!combat->submit(e).ok) break;
+        }
+    }
+    CHECK(blinded);
+}
+
+TEST_CASE("Change Shape: an own on_event trigger still fires while the creature is in a form") {
+    Json who = changer_doc({"test.change.form_a"});
+    who["traits"].push_back(
+        {{"id", "mark"},
+         {"name", "Mark"},
+         {"description", "Own on_event."},
+         {"effect",
+          {{"kind", "on_event"},
+           {"on", "hit"},
+           {"effects", Json::array({{{"kind", "apply_condition"},
+                                     {"apply", Json::array({{{"condition", "frightened"},
+                                                             {"duration", {{"kind", "rounds"}, {"n", 1}}}}})}}})}}}});
+    ContentLibrary lib;
+    REQUIRE_FALSE(lib.add(form_a(), "monster"));
+    REQUIRE_FALSE(lib.add(foe_doc(), "monster"));
+    auto err = lib.add(who, "monster");
+    const std::string why = err ? *err : std::string();
+    REQUIRE_MESSAGE(!err, why);
+    auto chunk = arena({{"test.change.couatl", {4, 4}}, {"test.change.foe", {5, 4}}}, {"", "foes"});
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, lib, 8);
+    REQUIRE(combat);
+    const CombatantId self = chunk.spawns[0].stable_id, foe = chunk.spawns[1].stable_id;
+    const uint32_t mark_id = rules5e::spell_id_of("test.change.couatl#mark#0");
+    advance_actor(*combat, self);
+    Command u;
+    u.request = {self, ActionKind::UseFeature};
+    u.request.feature_id = 1;
+    u.request.form_archetype = 1;
+    auto tr = combat->submit(u);
+    REQUIRE_MESSAGE(tr.ok, tr.error);
+    const auto* me = rules5e::find(combat->state(), self);
+    REQUIRE(me);
+    bool present = false;
+    for (const auto& t : me->triggers)
+        if (t.id == mark_id) present = true;
+    CHECK(present);
+    Command done;
+    done.request = {self, ActionKind::EndTurn};
+    REQUIRE(combat->submit(done).ok);
+    bool frightened = false;
+    for (int n = 0; n < 8 && !frightened; ++n) {
+        advance_actor(*combat, self);
+        const auto mark = combat->events().size();
+        Command atk;
+        atk.request = {self, ActionKind::Attack, foe, 0};
+        auto r = combat->submit(atk);
+        REQUIRE_MESSAGE(r.ok, r.error);
+        if (landed_hit(*combat, mark, self))
+            frightened = rules5e::find(combat->state(), foe)->has(rules5e::Condition::Frightened);
+        if (!frightened) {
+            Command e;
+            e.request = {self, ActionKind::EndTurn};
+            if (!combat->submit(e).ok) break;
+        }
+    }
+    CHECK(frightened);
+}
+
+TEST_CASE("Change Shape AI: the true form picks Glare") {
+    Fight f;
+    f.advance_to(f.self);
+    CHECK(f.who(f.self).form == FormKind::None);
+    Command ai = next_command(f.c(), f.foe);
+    CHECK(ai.request.kind == ActionKind::CastSpell);
+    CHECK(ai.request.spell_id == f.glare_id);
 }
 
 TEST_CASE("Change Shape attack_archetype: range and grapple_on_hit come from the form") {
