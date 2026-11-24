@@ -1968,10 +1968,19 @@ class MonsterTable(unittest.TestCase):
         }])
         self.assertNotIn("max_size", constrict["on_hit"][0])
         self.assertIn("Medium or smaller", constrict["description"])
-        shape = act("couatl", "change_shape")
-        self.assertEqual(shape["kind"], "special")
-        self.assertNotIn("effect", shape)
+        self.assertNotIn("change_shape", [a["id"] for a in couatl["actions"]])
+        shape = trait("couatl", "change_shape")
+        self.assertEqual(shape["effect"], {
+            "kind": "change_shape",
+            "profile": "merge",
+            "cost": "action",
+            "select": {"types": ["humanoid", "beast"], "max_cr": "own"},
+        })
+        self.assertNotIn("forms", shape["effect"])
+        self.assertIn("magically polymorphs", shape["description"])
         self.assertIn("shapechanger is not set", shape["description"])
+        self.assertIn("D4(e)", shape["description"])
+        self.assertNotIn("Descriptive only", shape["description"])
 
         for idx in ("mimic", "doppelganger", "succubus-incubus"):
             self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
@@ -3592,7 +3601,7 @@ class MonsterTable(unittest.TestCase):
 
     def test_shapechanger_forms(self):
         # SRD 5.1 printed AC and speed for each fixed form (CONTENT_CONVENTIONS §58).
-        # The stat-block AC and speed stay the true form. Couatl Change Shape stays a special action.
+        # The stat-block AC and speed stay the true form. Couatl Change Shape is the MERGE trait (§60).
         def forms(idx):
             eff = {t["id"]: t["effect"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "shapechanger"}
             self.assertEqual(len(eff), 1, idx)
@@ -3672,9 +3681,10 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(load("oni")["weapon_dice_multiplier"], 2)
         for idx in ("werewolf", "wererat", "wereboar", "weretiger", "werebear", "succubus", "oni", "couatl"):
             self.assertEqual(load(idx)["$schema"], "monster@5")
-        couatl_shape = {a["id"]: a for a in load("couatl")["actions"]}["change_shape"]
-        self.assertEqual(couatl_shape["kind"], "special")
-        self.assertNotIn("effect", couatl_shape)
+        couatl_shape = {t["id"]: t for t in load("couatl")["traits"]}["change_shape"]
+        self.assertEqual(couatl_shape["effect"]["kind"], "change_shape")
+        self.assertEqual(couatl_shape["effect"]["profile"], "merge")
+        self.assertNotIn("change_shape", [a["id"] for a in load("couatl")["actions"]])
 
     def test_succubus(self):
         # Charm is charm_command (CONTENT_CONVENTIONS §47). Draining Kiss is drain_max_hp
