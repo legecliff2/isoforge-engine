@@ -3967,9 +3967,14 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
     }
     // Explicit Change Shape forms[] are checked after every monster is loaded, so a form that sorts
     // earlier or later in the same pack, or that lives in a dependency pack or a later pack of this
-    // load, is visible. Only load() rejects an unknown id. add() does not. The check is existence-only
-    // by design: an explicit list bypasses the D4 / D4(e) / D4(f) pool filters, and a form that exists
-    // is kept even when a select pool would have dropped it. Wild Shape still resolves at use time.
+    // load, is visible. Only load() rejects an unknown id. add() does not, and must not: it sees only
+    // monsters already inserted, so the same id would be refused or kept depending on add order. An
+    // owner added before its form (a later same-pack document, or a later pack) is a valid load and
+    // would be refused. A form that sorts first, or that comes from a dependency pack, is visible only
+    // because it was inserted earlier. The finished set exists only after this loop.
+    // The check is existence-only by design: an explicit list bypasses the D4 / D4(e) / D4(f) pool
+    // filters, and a form that exists is kept even when a select pool would have dropped it. Wild
+    // Shape still resolves at use time.
     for (const auto& [id, a] : by_id_)
         for (const auto& [fid, ff] : a.form_features) {
             (void)fid;
