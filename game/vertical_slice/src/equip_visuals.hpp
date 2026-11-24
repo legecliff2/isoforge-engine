@@ -18,11 +18,17 @@
 //   kZLight (8)      held lights (torch, lantern) in either hand, at that hand's attachment point; then its flame
 //   kZOutline (9)    Faerie Fire outline ring (after body / equip)
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 #include "base/math.hpp"
 #include "base/present_math.hpp"
 #include "view_model.hpp"
+
+namespace eng::presentation {
+class EquipArtTable;
+struct EquipArtSprite;
+} // namespace eng::presentation
 
 namespace slice {
 
@@ -64,6 +70,23 @@ std::vector<EquipLayer> equip_layers(const ActorView&);
 // bottom-centre in px from the token anchor. Emissive quads (a lit flame) skip the tile light tint.
 struct EquipQuad { eng::Vec2f at{}, size{}; eng::Color color{1, 1, 1, 1}; bool emissive = false; };
 std::vector<EquipQuad> equip_quads(const EquipVisual&, EquipPart, eng::Vec2f at);
+
+// Equipment art is chosen beside the quads, not instead of the attach table.
+// West facings mirror x (attach_points) and, when a sprite exists, mirror the
+// sprite about its pivot. se is toward; ne is away. A null sprite means the
+// caller draws equip_quads, which is today's picture for an unmapped item.
+struct EquipArtChoice {
+    const eng::presentation::EquipArtSprite* sprite = nullptr;
+    bool mirror_x = false;
+};
+// `size_bin` empty is medium. A non-medium bin falls back to medium inside the table,
+// then to the kind default, then to no sprite.
+EquipArtChoice equip_art_choice(const eng::presentation::EquipArtTable* table, const EquipVisual&, EquipPart, Facing,
+                                std::string_view size_bin);
+// Pivot pixel, in sprite px from the top-left, placed on the token anchor + `at`.
+inline eng::Vec2f equip_sprite_anchor(int pivot_x, int pivot_y, eng::Vec2f at) {
+    return {float(pivot_x) - at.x, float(pivot_y) - at.y};
+}
 // The flame is drawn (and the sim publishes a glow) only when the light is lit and sheds light: the same test as glows_from.
 inline bool sheds_light(const EquipVisual& e) { return e.lit && (e.bright_ft > 0 || e.dim_ft > 0); }
 

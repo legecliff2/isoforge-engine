@@ -2,7 +2,7 @@
 # iso2d stays a sprite batcher; it does not open files or decode PNG.
 # third_party/puff is Mark Adler's puff 2.3 (zlib contrib), unaltered. The copyright
 # and redistribution terms are in puff.h.
-add_library(presentation STATIC src/png.cpp src/standin.cpp third_party/puff/puff.c)
+add_library(presentation STATIC src/png.cpp src/standin.cpp src/equip_art.cpp third_party/puff/puff.c)
 target_include_directories(presentation PUBLIC include PRIVATE third_party/puff)
 target_link_libraries(presentation PUBLIC eng::base)
 _engine_warnings(presentation)

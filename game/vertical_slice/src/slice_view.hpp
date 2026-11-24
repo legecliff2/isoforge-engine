@@ -61,6 +61,8 @@ private:
     std::unique_ptr<Textures> tex_;
     struct StandinCache;
     std::unique_ptr<StandinCache> standins_;
+    struct EquipArt;
+    std::unique_ptr<EquipArt> equip_art_;
     double present_s_ = 0;
     struct TintLookup;
     struct TintEntry { int32_t cx, cy; const uint8_t* light; const uint8_t* fog; };
