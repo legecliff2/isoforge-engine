@@ -74,6 +74,30 @@ StandinCanvas standin_canvas(std::string_view bin) {
     return {};
 }
 
+std::string monster_art_slug(std::string_view monster_id) {
+    if (monster_id.empty()) return {};
+    const auto dot = monster_id.rfind('.');
+    const std::string_view slug = dot == std::string_view::npos ? monster_id : monster_id.substr(dot + 1);
+    if (slug.empty() || slug == "." || slug == "..") return {};
+    for (char ch : slug) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+        if (!ok) return {};
+    }
+    return std::string(slug);
+}
+
+std::filesystem::path resolve_standin_kit_root(const std::filesystem::path& standin_root, std::string_view monster_id,
+                                               std::string_view bin) {
+    if (standin_canvas(bin).w == 0) return standin_root;
+    const std::string slug = monster_art_slug(monster_id);
+    if (slug.empty()) return standin_root;
+    const std::filesystem::path specific = standin_root / "srd" / slug / std::string(bin);
+    std::error_code ec;
+    if (std::filesystem::is_directory(specific, ec)) return specific;
+    return standin_root;
+}
+
 std::size_t MonsterStandinKit::missing_count() const {
     std::size_t n = 0;
     for (const Frame& f : frames_) n += f.missing ? 1 : 0;

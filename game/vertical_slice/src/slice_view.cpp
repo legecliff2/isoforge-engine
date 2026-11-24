@@ -5,6 +5,7 @@
 #include "footprint_visuals.hpp"
 #include "iso2d/zone_look.hpp"
 #include "assets/clip_registry.hpp"
+#include "presentation/equip_art.hpp"
 #include "presentation/standin.hpp"
 
 #include <algorithm>
@@ -13,6 +14,7 @@
 #include <filesystem>
 #include <map>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <vector>
@@ -138,6 +140,9 @@ int floor_mod32(int v) { return ((v % 32) + 32) % 32; }
 #ifndef SLICE_CLIP_FILE
 #define SLICE_CLIP_FILE ""
 #endif
+#ifndef SLICE_EQUIP_ART_ROOT
+#define SLICE_EQUIP_ART_ROOT ""
+#endif
 
 const char* facing_name(Facing f) {
     switch (f) {
@@ -208,7 +213,10 @@ struct SliceView::StandinCache {
         std::vector<TextureId> tex;
     };
     // nullopt: this bin was looked up and is not on disk. Map nodes stay put, so a Bin* is stable.
+    // A per-monster key is "{content_id}|{bin}". shared_fallback remembers a monster whose
+    // srd/{slug}/{bin} directory is missing, so the next frame uses the shared bin kit.
     std::map<std::string, std::optional<Bin>, std::less<>> bins;
+    std::set<std::string, std::less<>> shared_fallback;
     std::map<uint32_t, Vec2i> tiles;
 
     explicit StandinCache(IRenderDevice& d) : dev(d) {
@@ -255,11 +263,11 @@ struct SliceView::StandinCache {
         return label_body_anchor(true, float(presentation::standin_canvas(bin).h), pawn_h, pawn_scale);
     }
 
-    Bin* bin_for(const std::string& name) {
-        const auto [it, inserted] = bins.try_emplace(name, std::nullopt);
+    Bin* load_bin(const std::string& key, const std::filesystem::path& kit_root, const std::string& bin_name) {
+        const auto [it, inserted] = bins.try_emplace(key, std::nullopt);
         if (!inserted) return it->second ? &*it->second : nullptr;
-        const assets::ClipRegistry* reg = registry(name);
-        if (root.empty() || !reg) return nullptr;
+        const assets::ClipRegistry* reg = registry(bin_name);
+        if (kit_root.empty() || !reg) return nullptr;
         std::vector<presentation::KitClip> specs;
         for (const assets::Clip& c : reg->clips) {
             if (c.frames < 1 || c.fps < 1) continue;
@@ -269,7 +277,7 @@ struct SliceView::StandinCache {
             else if (!c.mode.empty() && c.mode != "loop") continue;
             specs.push_back({c.id, c.frames, c.fps, mode});
         }
-        auto kit = presentation::MonsterStandinKit::load(root, name, specs);
+        auto kit = presentation::MonsterStandinKit::load(kit_root, bin_name, specs);
         if (!kit) return nullptr;
         Bin loaded;
         loaded.kit = std::move(*kit);
@@ -289,6 +297,22 @@ struct SliceView::StandinCache {
         return &*it->second;
     }
 
+    Bin* bin_for(const std::string& name) { return load_bin(name, root, name); }
+
+    // Per-monster kit when srd/{slug}/{bin} exists, otherwise the shared bin kit.
+    Bin* kit_for(std::string_view monster_id, const std::string& bin_name) {
+        if (monster_id.empty()) return bin_for(bin_name);
+        const std::string specific = std::string(monster_id) + "|" + bin_name;
+        if (shared_fallback.find(specific) != shared_fallback.end()) return bin_for(bin_name);
+        if (const auto it = bins.find(specific); it != bins.end()) return it->second ? &*it->second : nullptr;
+        const std::filesystem::path kit_root = presentation::resolve_standin_kit_root(root, monster_id, bin_name);
+        if (kit_root == root) {
+            shared_fallback.insert(specific);
+            return bin_for(bin_name);
+        }
+        return load_bin(specific, kit_root, bin_name);
+    }
+
     struct Body {
         TextureId tex{};
         uint32_t w = 0, h = 0;
@@ -301,7 +325,7 @@ struct SliceView::StandinCache {
         if (a.visual_kind != "standin") return std::nullopt;
         const std::string name = a.standin_bin.empty() ? std::string("medium") : a.standin_bin;
         const assets::ClipRegistry* reg = registry(name);
-        Bin* bin = bin_for(name);
+        Bin* bin = kit_for(a.content_id, name);
         if (!reg || !bin) return std::nullopt;
         std::string clip = a.clip.empty() ? std::string("idle") : a.clip;
         if (a.dead) clip = "death";
@@ -320,9 +344,46 @@ struct SliceView::StandinCache {
     }
 };
 
+struct SliceView::EquipArt {
+    IRenderDevice& dev;
+    presentation::EquipArtTable table;
+    std::vector<TextureId> authored, mirrored;
+
+    explicit EquipArt(IRenderDevice& d) : dev(d) {
+        table = presentation::EquipArtTable::load(SLICE_EQUIP_ART_ROOT);
+        authored.resize(table.size());
+        mirrored.resize(table.size());
+        for (size_t i = 0; i < table.size(); ++i) {
+            const presentation::EquipArtSprite* sprite = table.sprite_at(i);
+            if (!sprite) continue;
+            authored[i] = upload(sprite->image, "equip");
+            const presentation::ImageRgba west = presentation::mirror_sprite_around_pivot(sprite->image, sprite->pivot_x);
+            mirrored[i] = upload(west, "equip-west");
+        }
+    }
+    ~EquipArt() {
+        for (TextureId t : authored) if (t.valid()) dev.destroy(t);
+        for (TextureId t : mirrored) if (t.valid()) dev.destroy(t);
+    }
+    EquipArt(const EquipArt&) = delete;
+    EquipArt& operator=(const EquipArt&) = delete;
+
+    TextureId upload(const presentation::ImageRgba& image, const char* name) {
+        if (image.empty()) return {};
+        TextureDesc td{};
+        td.w = image.w;
+        td.h = image.h;
+        td.fmt = Format::RGBA8_UNORM;
+        td.filter = Filter::Nearest;
+        td.debug_name = name;
+        const auto px = std::span<const uint8_t>(image.rgba.data(), image.rgba.size());
+        return dev.create_texture(td, std::as_bytes(px));
+    }
+};
+
 SliceView::SliceView(IRenderDevice& dev)
     : world_(dev, 8192), ui_(dev, 8192), lights_(dev), fogs_(dev), tex_(std::make_unique<Textures>(dev)),
-      standins_(std::make_unique<StandinCache>(dev)) {}
+      standins_(std::make_unique<StandinCache>(dev)), equip_art_(std::make_unique<EquipArt>(dev)) {}
 
 // Mirrors the LightFrame into per-chunk R8 light and fog maps. The tracked set (sampled + blocked
 // chunks) is reconciled against the snapshot (robust to skipped frames). Blocked chunks are kept
@@ -678,6 +739,19 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             // Equipment layers (equip_visuals.hpp): fixed z around the body inside the actor's sort key.
             for (const EquipLayer& l : equip_layers(a)) {
                 if (l.part == EquipPart::Body) { world_.draw(p, iso, actor_sort, 1, a.id, kZBody); continue; }
+                const EquipArtChoice art = equip_art_choice(&equip_art_->table, *l.item, l.part, a.facing, a.standin_bin);
+                if (art.sprite && art.sprite->key < equip_art_->authored.size()) {
+                    const TextureId tex = art.mirror_x ? equip_art_->mirrored[art.sprite->key] : equip_art_->authored[art.sprite->key];
+                    if (tex.valid()) {
+                        const eng::Vec2f anchor = equip_sprite_anchor(art.sprite->pivot_x, art.sprite->pivot_y, l.at);
+                        float w = float(art.sprite->image.w), h = float(art.sprite->image.h), ax = anchor.x, ay = anchor.y;
+                        place_on_footprint(w, h, ax, ay, fp, grow_body);
+                        iso2d::Sprite s{tex, w, h, ax, ay};
+                        s.tint = lit_by;
+                        world_.draw(s, iso, actor_sort, 1, a.id, l.z);
+                        continue;
+                    }
+                }
                 for (const EquipQuad& q : equip_quads(*l.item, l.part, l.at)) {
                     float w = q.size.x, h = q.size.y, ax = q.size.x / 2.f - q.at.x, ay = q.size.y - q.at.y;
                     // Same scale as the body. Bottom-centre sits on the token anchor + q.at.

@@ -704,6 +704,7 @@ void apply_visible_figure(const ::rules5e::EncounterState& st, uint32_t viewer, 
 
 void copy_visual(const sim::Archetype* arch, ActorView& a) {
     if (!arch) return;
+    a.content_id = arch->id;
     a.kit = arch->visual.kit;
     a.standin_bin = arch->visual.standin_bin;
     a.art_root = arch->visual.art_root;

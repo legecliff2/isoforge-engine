@@ -37,6 +37,18 @@ struct StandinCanvas {
 };
 StandinCanvas standin_canvas(std::string_view bin);
 
+// Last segment of a monster content id ("srd51.monster.young_black_dragon" ->
+// "young_black_dragon"). Empty when the id is missing or that segment is not one
+// safe path component (letters, digits, '_' and '-'; no slash, no "." or "..").
+std::string monster_art_slug(std::string_view monster_id);
+
+// Per-monster kit root: {standin_root}/srd/{slug}/{bin} when that directory exists.
+// Otherwise `standin_root`, today's bin-only kit. An unknown bin, or a slug that
+// monster_art_slug rejects, stays on the shared root. The directory uses the same
+// frames/{bin}/{facing}/mon_{bin}_... layout MonsterStandinKit::load already reads.
+std::filesystem::path resolve_standin_kit_root(const std::filesystem::path& standin_root,
+                                               std::string_view monster_id, std::string_view bin);
+
 // One clip the kit should load. `id` is already resolved (Core's ClipRegistry::resolve).
 struct KitClip {
     std::string id;
@@ -64,8 +76,10 @@ struct StandinPose {
 class MonsterStandinKit {
 public:
     // `bin` is tiny|small|medium|large|huge. PNGs are
-    // frames/{bin}/{facing}/mon_{bin}_{facing}_{clip}_{ff}.png.
-    // A missing file is a magenta checker. nullopt when `bin` is unknown or `clips` is empty.
+    // frames/{bin}/{facing}/mon_{bin}_{facing}_{clip}_{ff}.png under `root`.
+    // A per-monster kit passes the root from resolve_standin_kit_root; the names
+    // do not change. A missing file is a magenta checker. nullopt when `bin` is
+    // unknown or `clips` is empty.
     static std::optional<MonsterStandinKit> load(const std::filesystem::path& root, std::string_view bin,
                                                   std::span<const KitClip> clips);
 

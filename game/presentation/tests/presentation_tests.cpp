@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "presentation/equip_art.hpp"
 #include "presentation/png.hpp"
 #include "presentation/standin.hpp"
 
@@ -173,4 +174,202 @@ TEST_CASE("stand-in kit: loads authored frames and a missing file is a checker")
     CHECK(bare->frame_at(size_t(gap.frame)).missing);
     CHECK(bare->frame_at(size_t(gap.frame)).image->px(4, 0)[0] == 255);
     std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("stand-in kit: per-monster directory, then the shared bin") {
+    CHECK(monster_art_slug("srd51.monster.wolf") == "wolf");
+    CHECK(monster_art_slug("srd51.monster.young_black_dragon") == "young_black_dragon");
+    CHECK(monster_art_slug("wolf") == "wolf");
+    CHECK(monster_art_slug("").empty());
+    CHECK(monster_art_slug("srd51.monster.").empty());
+    CHECK(monster_art_slug("..").empty());
+    CHECK(monster_art_slug("srd51.monster.wolf/../x").empty());
+    CHECK(monster_art_slug("srd51.monster.wolf\\x").empty());
+
+    const auto base = std::filesystem::temp_directory_path() / "isoforge-standin-monster";
+    std::filesystem::remove_all(base);
+    const auto shared = base / "frames" / "medium" / "se";
+    const auto wolf = base / "srd" / "wolf" / "medium" / "frames" / "medium" / "se";
+    const auto ogre = base / "srd" / "ogre" / "huge" / "frames" / "huge" / "se";
+    std::filesystem::create_directories(shared);
+    std::filesystem::create_directories(wolf);
+    std::filesystem::create_directories(ogre);
+    std::filesystem::copy_file(root() / "frames/medium/se/mon_medium_se_idle_00.png", shared / "mon_medium_se_idle_00.png");
+    std::filesystem::copy_file(root() / "frames/medium/se/mon_medium_se_idle_01.png", wolf / "mon_medium_se_idle_00.png");
+    // No authored huge frame: the existing loader still builds the 72x96 canvas and marks it missing.
+
+    CHECK(resolve_standin_kit_root(base, "srd51.monster.wolf", "medium") == base / "srd" / "wolf" / "medium");
+    CHECK(resolve_standin_kit_root(base, "srd51.monster.goblin", "medium") == base);
+    CHECK(resolve_standin_kit_root(base, "srd51.monster.ogre", "huge") == base / "srd" / "ogre" / "huge");
+    CHECK(resolve_standin_kit_root(base, "srd51.monster.ogre", "medium") == base);
+    CHECK(resolve_standin_kit_root(base, "", "medium") == base);
+    CHECK(resolve_standin_kit_root(base, "srd51.monster.wolf", "gargantuan") == base);
+    CHECK(resolve_standin_kit_root(root(), "srd51.monster.wolf", "medium") == root());
+    CHECK(resolve_standin_kit_root(root(), "srd51.monster.ogre", "huge") == root());
+
+    const KitClip idle[] = {{"idle", 1, 6, ClipMode::Loop}};
+    const auto wolf_kit = MonsterStandinKit::load(resolve_standin_kit_root(base, "srd51.monster.wolf", "medium"), "medium", idle);
+    const auto gob_kit = MonsterStandinKit::load(resolve_standin_kit_root(base, "srd51.monster.goblin", "medium"), "medium", idle);
+    const auto ogre_kit = MonsterStandinKit::load(resolve_standin_kit_root(base, "srd51.monster.ogre", "huge"), "huge", idle);
+    REQUIRE(wolf_kit);
+    REQUIRE(gob_kit);
+    REQUIRE(ogre_kit);
+    const StandinPose wolf_se = wolf_kit->pose("se", "idle", 0);
+    const StandinPose gob_se = gob_kit->pose("se", "idle", 0);
+    const StandinPose ogre_se = ogre_kit->pose("se", "idle", 0);
+    REQUIRE(wolf_se.frame >= 0);
+    REQUIRE(gob_se.frame >= 0);
+    REQUIRE(ogre_se.frame >= 0);
+    const ImageRgba* wolf_px = wolf_kit->frame_at(size_t(wolf_se.frame)).image;
+    const ImageRgba* gob_px = gob_kit->frame_at(size_t(gob_se.frame)).image;
+    const ImageRgba* ogre_px = ogre_kit->frame_at(size_t(ogre_se.frame)).image;
+    REQUIRE(wolf_px);
+    REQUIRE(gob_px);
+    REQUIRE(ogre_px);
+    CHECK_FALSE(wolf_kit->frame_at(size_t(wolf_se.frame)).missing);
+    CHECK_FALSE(gob_kit->frame_at(size_t(gob_se.frame)).missing);
+    CHECK(ogre_kit->frame_at(size_t(ogre_se.frame)).missing);
+    CHECK(wolf_px->rgba != gob_px->rgba);
+    CHECK(ogre_px->w == 72);
+    CHECK(ogre_px->h == 96);
+    CHECK(ogre_kit->frame_at(size_t(ogre_se.frame)).pivot_x == 36);
+    CHECK(ogre_kit->frame_at(size_t(ogre_se.frame)).pivot_y == 95);
+    // Other facings of the one-frame fixture were not copied, so they stay checkers.
+    const StandinPose wolf_ne = wolf_kit->pose("ne", "idle", 0);
+    REQUIRE(wolf_ne.frame >= 0);
+    CHECK(wolf_kit->frame_at(size_t(wolf_ne.frame)).missing);
+    std::filesystem::remove_all(base);
+}
+
+TEST_CASE("equipment art: content id, then medium, then kind, then nothing") {
+    const auto kit = std::filesystem::temp_directory_path() / "isoforge-equip-art";
+    std::filesystem::remove_all(kit);
+    const auto quiver = kit / "srd51.item.quiver";
+    const auto bolts = kit / "srd51.item.case_crossbow_bolt";
+    const auto pack = kit / "srd51.item.backpack";
+    const auto sword = kit / "srd51.item.longsword";
+    std::filesystem::create_directories(quiver);
+    std::filesystem::create_directories(bolts);
+    std::filesystem::create_directories(pack / "large");
+    std::filesystem::create_directories(pack / "medium");
+    std::filesystem::create_directories(sword);
+    std::filesystem::create_directories(kit / "_kind" / "weapon");
+    std::filesystem::create_directories(kit / "_kind" / "other");
+    std::filesystem::copy_file(root() / "frames/tiny/se/mon_tiny_se_idle_00.png", quiver / "back.se.png");
+    std::filesystem::copy_file(root() / "frames/small/se/mon_small_se_idle_00.png", bolts / "back.se.png");
+    std::filesystem::copy_file(root() / "frames/medium/se/mon_medium_se_idle_00.png", pack / "back.se.png");
+    std::filesystem::copy_file(root() / "frames/medium/ne/mon_medium_ne_idle_00.png", pack / "back.ne.png");
+    std::filesystem::copy_file(root() / "frames/large/se/mon_large_se_idle_00.png", pack / "large" / "back.se.png");
+    std::filesystem::copy_file(root() / "frames/small/se/mon_small_se_idle_01.png", pack / "medium" / "back.se.png");
+    // "off_hand" sorts after "medium", so a flat file must not beat the medium/ override.
+    std::filesystem::copy_file(root() / "frames/tiny/se/mon_tiny_se_idle_02.png", pack / "off_hand.se.png");
+    std::filesystem::copy_file(root() / "frames/small/ne/mon_small_ne_idle_00.png", pack / "medium" / "off_hand.se.png");
+    std::filesystem::copy_file(root() / "frames/tiny/ne/mon_tiny_ne_idle_00.png", sword / "main_hand.se.png");
+    std::filesystem::copy_file(root() / "frames/small/ne/mon_small_ne_idle_00.png", kit / "_kind" / "weapon" / "main_hand.ne.png");
+    std::filesystem::copy_file(root() / "frames/large/ne/mon_large_ne_idle_00.png", kit / "_kind" / "other" / "hip.se.png");
+
+    CHECK(EquipArtTable::load(kit / "no-such-root").size() == 0);
+    const EquipArtTable table = EquipArtTable::load(kit);
+    CHECK(table.size() > 0);
+
+    EquipArtQuery q;
+    q.part = EquipArtPart::Back;
+    q.view = EquipArtView::Toward;
+    q.content_id = "srd51.item.quiver";
+    q.kind = "other";
+    const EquipArtSprite* quiver_se = table.find(q);
+    q.content_id = "srd51.item.case_crossbow_bolt";
+    const EquipArtSprite* bolt_se = table.find(q);
+    REQUIRE(quiver_se);
+    REQUIRE(bolt_se);
+    CHECK(quiver_se->image.w == 16);
+    CHECK(bolt_se->image.w == 24);
+    CHECK(quiver_se->image.rgba != bolt_se->image.rgba);
+    CHECK(quiver_se->pivot_x == 8);
+    CHECK(quiver_se->pivot_y == 15);
+
+    q.content_id = "srd51.item.quiver";
+    q.view = EquipArtView::Away;
+    CHECK(table.find(q) == nullptr);
+
+    q.content_id = "srd51.item.backpack";
+    q.view = EquipArtView::Toward;
+    q.size_bin = "large";
+    const EquipArtSprite* large = table.find(q);
+    REQUIRE(large);
+    CHECK(large->image.w == 48);
+    q.size_bin = "huge";
+    const EquipArtSprite* huge_falls_to_medium = table.find(q);
+    REQUIRE(huge_falls_to_medium);
+    CHECK(huge_falls_to_medium->image.w == 24);
+    q.size_bin = "medium";
+    CHECK(table.find(q) == huge_falls_to_medium);
+    q.size_bin = "";
+    CHECK(table.find(q) == huge_falls_to_medium);
+    q.part = EquipArtPart::OffHand;
+    q.size_bin = "medium";
+    const EquipArtSprite* off = table.find(q);
+    REQUIRE(off);
+    CHECK(off->image.w == 24);
+    q.part = EquipArtPart::Back;
+    q.view = EquipArtView::Away;
+    q.size_bin = "huge";
+    const EquipArtSprite* away = table.find(q);
+    REQUIRE(away);
+    CHECK(away->image.w == 32);
+    CHECK(away != large);
+
+    q.content_id = "srd51.item.longbow";
+    q.kind = "weapon";
+    q.part = EquipArtPart::MainHand;
+    q.view = EquipArtView::Toward;
+    q.size_bin = "medium";
+    CHECK(table.find(q) == nullptr);
+    q.content_id = "srd51.item.club";
+    q.view = EquipArtView::Away;
+    const EquipArtSprite* kind_weapon = table.find(q);
+    REQUIRE(kind_weapon);
+    CHECK(kind_weapon->image.w == 24);
+    q.content_id = "srd51.item.longsword";
+    q.view = EquipArtView::Toward;
+    const EquipArtSprite* sword_se = table.find(q);
+    REQUIRE(sword_se);
+    CHECK(sword_se->image.w == 16);
+    CHECK(sword_se != kind_weapon);
+
+    q.content_id = "srd51.item.pouch";
+    q.kind = "other";
+    q.part = EquipArtPart::Hip;
+    q.view = EquipArtView::Toward;
+    const EquipArtSprite* pouch = table.find(q);
+    REQUIRE(pouch);
+    CHECK(pouch->image.w == 48);
+    q.part = EquipArtPart::Back;
+    CHECK(table.find(q) == nullptr);
+
+    std::filesystem::create_directories(kit / "srd51.item.torch" / "small");
+    std::filesystem::copy_file(root() / "frames/tiny/se/mon_tiny_se_idle_01.png",
+                               kit / "srd51.item.torch" / "small" / "held_light.se.png");
+    const EquipArtTable sized = EquipArtTable::load(kit);
+    q.content_id = "srd51.item.torch";
+    q.kind = "light";
+    q.part = EquipArtPart::HeldLight;
+    q.view = EquipArtView::Toward;
+    q.size_bin = "small";
+    const EquipArtSprite* torch_small = sized.find(q);
+    REQUIRE(torch_small);
+    CHECK(torch_small->image.w == 16);
+    q.size_bin = "large";
+    CHECK(sized.find(q) == nullptr);
+    q.size_bin = "medium";
+    CHECK(sized.find(q) == nullptr);
+
+    const ImageRgba& src = quiver_se->image;
+    const ImageRgba flipped = mirror_sprite_around_pivot(src, quiver_se->pivot_x);
+    CHECK(flipped.w == src.w);
+    CHECK(std::memcmp(flipped.px(uint32_t(quiver_se->pivot_x), uint32_t(quiver_se->pivot_y)),
+                      src.px(uint32_t(quiver_se->pivot_x), uint32_t(quiver_se->pivot_y)), 4) == 0);
+    const ImageRgba standin_flip = hflip_pivot(src);
+    CHECK(flipped.rgba == standin_flip.rgba);
+    std::filesystem::remove_all(kit);
 }
