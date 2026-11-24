@@ -3743,6 +3743,14 @@ std::optional<rules5e::FormStats> Combat::build_form(const rules5e::Combatant& w
             // creature's own rows (the same family as an AttackIs rider). Whether own reactions count as
             // "other actions" is unsettled. No pool form has reactions[], and the couatl has none, so
             // MERGE still unions the rows. No behaviour change here.
+            // A BonusAttack rider bound by AttackIs (an on_hit bonus_attack whose index is into the
+            // owner's attack rows) is unreachable: no pool form has one, and the couatl has none. The
+            // AttackIs erase above drops that rider with the other own on_hit riders.
+            // DEFERRED 15, the other case: an own on_event trigger that is not AttackIs, whose
+            // RiderKind::BonusAttack e.value indexes the live attacks (encounter.cpp:1718-1720, grant
+            // at :1794-1795). MERGE keeps that trigger, so the index addresses the form's rows.
+            // Unreachable today: no pool form has one, the couatl has none, and gnoll and
+            // giant_hyena Rampage are already out by D4(e).
             // Own-actions gate (R-a): only this creature's feature ids and its synthetic save-action spell ids.
             // Change Shape's own feature id is never on the list, so revert and switch still work. Real spells are not listed.
             f.own_actions_gate = true;

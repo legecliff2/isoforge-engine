@@ -4495,7 +4495,7 @@
           ]
         }
       ],
-      "description": "Change Shape MERGE (contract v0.1.2 P1). Reuses FormKind::Shapechanger with a sim-side sub-kind on FormFeature. profile is merge only; REPLACE is not built. An explicit forms list overrides select. select compiles a pool at load: rated monsters of the named types whose CR is at most the creature's own, in id byte order, minus spellcasting or innate spellcasting, a live shapechanger or Change Shape form feature, the swarm tag, a non-attack action or any reactions[] or bonus_actions[] entry, a bite attack (D4, D4(e)), and a form whose compiled traits include bonus_action_grant, aggressive, or reckless_attack, or a per-rest / per-day usage pool (D4(f), the same reason as Parry: the bonus action or trait is lost, or Relentless becomes unlimited). More than 255 forms is a load error (D17). equipment[] on the creature is a load error (D8). The AI never uses it (D12).",
+      "description": "Change Shape MERGE (contract v0.1.2 P1). Reuses FormKind::Shapechanger with a sim-side sub-kind on FormFeature. profile is merge only; REPLACE is not built. select compiles a pool at load: rated monsters of the named types whose CR is at most the creature's own, in the id byte order of the monsters loaded into that library (a different loaded set is a different order), minus spellcasting or innate spellcasting, a live shapechanger or Change Shape form feature, the swarm tag, a non-attack action or any reactions[] or bonus_actions[] entry, a bite attack (D4, D4(e)), and a form with bonus_action_grant, aggressive, or reckless_attack, or any usage kind per_rest, per_day, recharge, or pool, or a resources[] pool (D4(f), the same reason as Parry: the bonus action or trait is lost, or a limited use becomes unlimited). An explicit forms[] list overrides select and bypasses that D4 / D4(e) / D4(f) filtering. Only ContentLibrary::load() rejects an unknown explicit form, after every monster in the load; add() does not. That check is existence-only: it does not apply the pool rules. More than 255 select forms is a load error naming the refused document and the owner whose pool overflowed (D17). equipment[] on the creature is a load error (D8). The AI never uses it (D12).",
       "properties": {
         "kind": {
           "const": "change_shape"
@@ -4510,7 +4510,7 @@
         },
         "forms": {
           "$ref": "#/$defs/transform_forms",
-          "description": "Explicit archetype ids. Overrides select. form_archetype = 1 + index into this list."
+          "description": "Explicit archetype ids. Overrides select and bypasses the D4 / D4(e) / D4(f) pool filters. form_archetype = 1 + index into this list. Only ContentLibrary::load() rejects an unknown id, and that check is existence-only."
         },
         "select": {
           "type": "object",
