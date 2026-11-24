@@ -7,7 +7,7 @@ content_validate_* files; this PR does not register a ctest name):
   python3 tools/validate/run_unittest_file.py tests/validate/test_bestiary_ledger.py
 
 ledger.py and validate_bridge.py must not import Tk. Counts are pinned to the
-ledger after shield guardian left Deferred (Bound, Shield, and Regeneration; Spell Storing, the telepathic call, same plane, and distance and direction stay description only): 206 authored, 4 deferred.
+ledger after the four SRD 5.1 insect swarm variants were authored (beetles burrow 5, centipede drop-to-0 sentence description only, spiders description-only Spider Climb / Web Sense / Web Walker, wasps walk 5 and fly 30). They are not parked: 210 authored, 4 deferred.
 """
 from __future__ import annotations
 
@@ -88,10 +88,10 @@ class LedgerTests(unittest.TestCase):
         for name in ("ledger.py", "validate_bridge.py"):
             self.assertEqual(_imports_tk(EDITOR / name), [], name)
 
-    def test_counts_match_headings_206_and_4(self):
+    def test_counts_match_headings_210_and_4(self):
         book = self.book
-        self.assertEqual(book.authored_expected, 206)
-        self.assertEqual(len(book.authored), 206)
+        self.assertEqual(book.authored_expected, 210)
+        self.assertEqual(len(book.authored), 210)
         self.assertEqual(book.parked_expected, 4)
         self.assertEqual(len(book.parked), 4)
         self.assertEqual(book.count_errors(), ())

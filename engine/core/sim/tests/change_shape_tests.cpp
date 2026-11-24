@@ -812,7 +812,8 @@ TEST_CASE("Change Shape pool: the fourteen exclusion groups stay out, and test 1
     CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.resources") == ff->forms.end());
     CHECK(a->feature_specs.at(1).form_choices == 2);
 
-    // The pack: 112 humanoid or beast at CR 4 or lower, 88 after D4, then D4(e) and D4(f) leave 42.
+    // The pack: 116 humanoid or beast at CR 4 or lower (the four insect swarms are beasts), 88 after D4
+    // (the swarm tag drops them), then D4(e) and D4(f) leave 42.
     ContentLibrary pack;
     const auto dir = std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/srd51.core";
     REQUIRE(pack.load_pack(dir.string()).empty());
@@ -840,7 +841,10 @@ TEST_CASE("Change Shape pool: the fourteen exclusion groups stay out, and test 1
     for (const char* absent : {"srd51.monster.acolyte", "srd51.monster.cult_fanatic", "srd51.monster.deep_gnome",
                                "srd51.monster.drow", "srd51.monster.druid", "srd51.monster.priest",
                                "srd51.monster.wereboar", "srd51.monster.wererat", "srd51.monster.weretiger",
-                               "srd51.monster.werewolf", "srd51.monster.swarm_of_rats", "srd51.monster.bandit_captain",
+                               "srd51.monster.werewolf", "srd51.monster.swarm_of_rats",
+                               "srd51.monster.swarm_of_insects", "srd51.monster.swarm_of_beetles",
+                               "srd51.monster.swarm_of_centipedes", "srd51.monster.swarm_of_spiders",
+                               "srd51.monster.swarm_of_wasps", "srd51.monster.bandit_captain",
                                "srd51.monster.noble", "srd51.monster.knight", "srd51.monster.wolf",
                                "srd51.monster.goblin", "srd51.monster.spy", "srd51.monster.orc",
                                "srd51.monster.berserker", "srd51.monster.boar", "srd51.monster.giant_boar"})
