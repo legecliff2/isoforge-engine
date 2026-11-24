@@ -1,5 +1,7 @@
 #include "equip_visuals.hpp"
 
+#include "presentation/equip_art.hpp"
+
 #include <algorithm>
 #include <string_view>
 
@@ -96,6 +98,44 @@ std::vector<EquipQuad> equip_quads(const EquipVisual& e, EquipPart part, eng::Ve
     case EquipKind::Other: q.push_back({at, {5.f, 5.f}, kGrey}); break;
     }
     return q;
+}
+
+namespace {
+const char* kind_name(EquipKind k) {
+    switch (k) {
+    case EquipKind::Weapon: return "weapon";
+    case EquipKind::Shield: return "shield";
+    case EquipKind::Light: return "light";
+    case EquipKind::Other: return "other";
+    }
+    return "other";
+}
+eng::presentation::EquipArtPart art_part(EquipPart part) {
+    switch (part) {
+    case EquipPart::Back: return eng::presentation::EquipArtPart::Back;
+    case EquipPart::Hip: return eng::presentation::EquipArtPart::Hip;
+    case EquipPart::OffHand: return eng::presentation::EquipArtPart::OffHand;
+    case EquipPart::HeldLight: return eng::presentation::EquipArtPart::HeldLight;
+    case EquipPart::MainHand: return eng::presentation::EquipArtPart::MainHand;
+    case EquipPart::Body: return eng::presentation::EquipArtPart::MainHand;
+    }
+    return eng::presentation::EquipArtPart::MainHand;
+}
+} // namespace
+
+EquipArtChoice equip_art_choice(const eng::presentation::EquipArtTable* table, const EquipVisual& e, EquipPart part,
+                                Facing facing, std::string_view size_bin) {
+    EquipArtChoice choice;
+    choice.mirror_x = facing == Facing::SouthWest || facing == Facing::NorthWest;
+    if (!table || part == EquipPart::Body) return choice;
+    eng::presentation::EquipArtQuery query;
+    query.content_id = e.content_id;
+    query.kind = kind_name(e.kind);
+    query.part = art_part(part);
+    query.view = facing_shows_back(facing) ? eng::presentation::EquipArtView::Away : eng::presentation::EquipArtView::Toward;
+    query.size_bin = size_bin;
+    choice.sprite = table->find(query);
+    return choice;
 }
 
 } // namespace slice

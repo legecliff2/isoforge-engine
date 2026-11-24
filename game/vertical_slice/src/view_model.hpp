@@ -76,6 +76,10 @@ struct ActorView {
     std::string kit;
     std::string standin_bin;   // tiny | small | medium | large; empty otherwise
     std::string art_root;      // pack-relative; empty when the stat block names none
+    // Archetype id ("srd51.monster.wolf"). Copied from the archetype the session already
+    // reads for the display name. Empty when that archetype is missing. Stand-in art
+    // looks up srd/{slug}/{bin} from this id, then the shared bin kit. Not a sim field.
+    std::string content_id;
     bool        size_short = false;   // authored; M0 does not apply plates or scale
     std::string clip;
     std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)
