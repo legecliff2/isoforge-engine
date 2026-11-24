@@ -4,11 +4,11 @@ This directory stores the canonical 4-facing, 9-clip medium kits for the **26** 
 
 ## Why not `frames/{bin}/{facing}/`
 
-The engine's stand-in loader is still bin-only. `MonsterStandinKit::load` (`game/presentation/src/standin.cpp`) reads:
+The generic silhouette stand-ins stay at:
 
 `content/art/monster_standins/frames/{bin}/{facing}/mon_{bin}_{facing}_{clip}_{ff:02d}.png`
 
-Those folders hold the generic silhouette stand-ins. This PR does **not** overwrite them, and it does not change `content/packs/srd51.core/art/clips.json` or any monster content row. These frames show in game once R&P's render PR A adds the per-monster lookup.
+This tree does not overwrite them, and it does not change `content/packs/srd51.core/art/clips.json` or any monster content row. The renderer loads a creature from `srd/{slug}/{bin}/` when that directory exists, and otherwise keeps the generic bin kit.
 
 ## Layout
 

@@ -37,6 +37,30 @@ struct StandinCanvas {
 };
 StandinCanvas standin_canvas(std::string_view bin);
 
+// Last segment of a monster content id ("srd51.monster.young_black_dragon" ->
+// "young_black_dragon"). Empty when the id is missing or that segment is not one
+// safe path component (letters, digits, '_' and '-'; no slash, no "." or "..").
+std::string monster_art_slug(std::string_view monster_id);
+
+// Directory name under srd/. Content ids use underscores; the art tree uses hyphens
+// ("srd51.monster.blink_dog" -> "blink-dog"). The succubus stat block is
+// srd51.monster.succubus; its shipped kit directory is succubus-incubus.
+std::string monster_art_dir(std::string_view monster_id);
+
+// Where a stand-in kit's frames live. per_monster is false for today's bin-only kit:
+// root/frames/{bin}/{facing}/mon_{bin}_... and the west files are the generator's
+// flip-plus-one of east. per_monster is true when srd/{dir}/{bin}/ exists: root is
+// srd/{dir}, frames are {bin}/{facing}/mon_{dir}_{bin}_... for se, sw, ne and nw.
+// Those four facings are authored. The art manifest may set mirrored_from to null
+// and omit strip; this loader does not derive sw/nw from se/ne.
+struct StandinKitLoc {
+    std::filesystem::path root;
+    std::string slug;
+    bool per_monster = false;
+};
+StandinKitLoc resolve_standin_kit(const std::filesystem::path& standin_root, std::string_view monster_id,
+                                   std::string_view bin);
+
 // One clip the kit should load. `id` is already resolved (Core's ClipRegistry::resolve).
 struct KitClip {
     std::string id;
@@ -63,11 +87,14 @@ struct StandinPose {
 
 class MonsterStandinKit {
 public:
-    // `bin` is tiny|small|medium|large|huge. PNGs are
-    // frames/{bin}/{facing}/mon_{bin}_{facing}_{clip}_{ff}.png.
-    // A missing file is a magenta checker. nullopt when `bin` is unknown or `clips` is empty.
+    // `bin` is tiny|small|medium|large|huge. With an empty `slug`, PNGs are
+    // frames/{bin}/{facing}/mon_{bin}_{facing}_{clip}_{ff}.png under `root`
+    // (the bin kit; sw/nw on disk are the flip-plus-one mirrors). With a slug,
+    // PNGs are {bin}/{facing}/mon_{slug}_{bin}_{facing}_{clip}_{ff}.png and
+    // every facing is the file itself, not a mirror of se/ne. A missing file
+    // is a magenta checker. nullopt when `bin` is unknown or `clips` is empty.
     static std::optional<MonsterStandinKit> load(const std::filesystem::path& root, std::string_view bin,
-                                                  std::span<const KitClip> clips);
+                                                  std::span<const KitClip> clips, std::string_view slug = {});
 
     const std::string& bin() const { return bin_; }
     std::size_t frame_count() const { return frames_.size(); }
