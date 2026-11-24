@@ -1314,7 +1314,7 @@ std::optional<std::string> apply_change_shape(Archetype& a, const FeatureDecl& f
                 return f.id + ": change_shape: duplicate form '" + id + "'";
             ff.forms.push_back(id);
         }
-        ff.select_pool = false;   // an explicit list overrides select (D3)
+        ff.select_pool = false;   // an explicit list overrides select and bypasses D4 / D4(e) / D4(f) (D3, D6)
     } else {
         const auto sel = f.effect.find("select");
         if (!sel->is_object() || !only_keys(*sel, {"types", "max_cr"}, bad))

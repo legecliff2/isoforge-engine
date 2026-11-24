@@ -128,9 +128,10 @@ struct Archetype {
     // (the Parry exclusion: offering the form would drop a printed capability).
     // pool_bite: an attack whose id or name contains "bite" (D4(e), until the bite rule is built).
     // pool_shapechanger: a live shapechanger or Change Shape form feature (a nested form).
-    // pool_uncarried (D4(f)): a compiled trait of kind bonus_action_grant, aggressive, or reckless_attack, or any
-    // trait that carries a per-rest / per-day usage pool. Same reason as Parry: the bonus action or trait is lost
-    // (those fields are not in FormStats), or Relentless becomes unlimited (no pool is registered for the form).
+    // pool_uncarried (D4(f)): a compiled trait of kind bonus_action_grant, aggressive, or reckless_attack; any
+    // usage whose kind is per_rest, per_day, recharge, or pool (a trait, an action, or a nested effect); or a
+    // resources[] pool. Same reason as Parry: the bonus action or trait is lost (those fields are not in
+    // FormStats), or the per-archetype row is not registered for the form, so a limited use becomes unlimited.
     bool magic_weapons = false;
     bool pool_spellcasting = false;
     bool pool_nonattack = false;

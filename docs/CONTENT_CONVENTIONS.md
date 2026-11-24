@@ -2054,7 +2054,7 @@ Legendary Resistance is unchanged: a failed save still spends `Combatant::legend
 
 ## 58. Shapechanger forms (live)
 
-SRD 5.1 Shapechanger, the "statistics are the same except …" family, and Change Shape actions with that same sentence (the oni). Not the 9th-level Shapechange spell, and not Change Shape that replaces the stat block from a challenge-rating catalog. Those stay deferred. The lycanthrope, succubus, and oni JSON in `srd51.core` author these keys. Couatl Change Shape stays description-only. This section is the engine those files use.
+SRD 5.1 Shapechanger, the "statistics are the same except …" family, and Change Shape actions with that same sentence (the oni). Not the 9th-level Shapechange spell. Change Shape that replaces AC, movement, Strength, Dexterity, and actions from a challenge-rating catalog is §60. The lycanthrope, succubus, and oni JSON in `srd51.core` author these keys. Couatl JSON stays description-only. This section is the engine those files use.
 
 The kind is the existing `FormKind::Shapechanger`. There is no new `FormKind`, `ActionKind`, or `EventKind`. §58 did not change `kSimEventSchemaVersion` (it was 13 when §58 shipped). §59 sets that constant to 14, and `event_stream_version` returns 14 only for a stream that contains kinds 55 or 56. The new keys are in place on common@2 `shapechanger_effect` / `shapechanger_form`. A file older than monster@5, and every character file, keeps the old key set: naming a new key is `<key> needs a monster@5 file`. A monster@4 form speed may still name `walk`. `fly`, `swim`, `climb`, `burrow`, and `hover` on that object are `speed.<key> needs a monster@5 file`. Before this, a monster@4 or character file that named one of those keys loaded and the key was ignored. No file in this repo named one.
 
@@ -2100,7 +2100,7 @@ Recorded, not changed (G16): Polymorph refuses a creature with the shapechanger 
 Deferred, not this section:
 
 * The 9th-level Shapechange spell, True Polymorph, and Polymorph content. Spell levels 4-9 stay held.
-* Change Shape with a challenge-rating catalog: couatl, deva, and the ancient metallic dragons. No union rule for "gains any statistics it lacks", and printed to-hit has no proficiency term.
+* Change Shape for deva and the ancient metallic dragons. The couatl MERGE engine is §60. Printed to-hit has no proficiency term.
 * The vampire, in bat and mist form. No sunlight gate and no running water.
 * The mimic and the doppelganger. Their traits are not live, and neither file is authored here.
 * The imp, the quasit, and the night hag. They are not in the pack. The speed and `trait: false` keys can express them later.
@@ -2175,4 +2175,25 @@ Deferred, not this section: D9 legendary host or possessor beyond the B10 guard 
 A stat-block spell (`is_spell` true), including a monster's innate or prepared spell, stays refused. SRD 5.1 does not say whether spellcasting printed on the stat block is the target's knowledge or one of its statistics. This section does not treat a spell as a statistic. A non-spell save action keeps the action's printed DC (`fixed_dc`), including the proficiency bonus already inside that number. The ghost's Intelligence, Wisdom, and Charisma are not substituted into that DC, and the proficiency bonus is not removed from it. The SRD does not say to recompute it. A possessed humanoid host's Etherealness, teleport, and leap are not gated. Those actions are not spells, so a cast is not refused for possession. SRD 5.1 does not say whether they are statistics the ghost uses. They are not approximated. The built-in AI does not choose them. A printed reaction the loader does not compile (Parry: `being_hit` and `ac_bonus`) stays uncompiled. It is not given another window.
 
 D3: `counts_as_incapacitated` is `is_incapacitated` or a possessed body. `can_act` stays on the real condition, so the possessor's Attack, Dash, and the other actions through the body still run. Dodge gives no benefit (the attack-roll disadvantage and the Dexterity-save advantage). Dodge, Grapple (`special` 1), and `grapple_instead` are refused with `incapacitated` and are not offered. An on-hit grapple a body attack starts is dropped at the next prune, because the grappler counts as incapacitated. An opportunity attack is not offered against the possessing ghost.
+
+## 60. Change Shape (MERGE)
+
+SRD 5.1 Change Shape that keeps the creature's own statistics except armor class, movement, Strength, Dexterity, and actions (the couatl). Not the oni's "statistics are the same except" Change Shape (§58) and not the 9th-level Shapechange spell. No couatl JSON is authored here. The kind is the existing `FormKind::Shapechanger`. The sub-kind is `FormFeature::sub_kind` `ChangeShapeMerge`. There is no new `FormKind`, `ActionKind`, or `EventKind`, and no new hash byte. `kSimEventSchemaVersion` stays 14. Next free hash tag stays **0xEC**.
+
+`common@2` `change_shape_effect` is `profile` `merge`, `cost` `action` or `bonus_action`, and either `forms` or `select`. `equipment[]` on the creature is a load error (D8). MERGE keeps size, creature type, and the one hit point pool (D5). It copies the form's AC, speeds, Strength, Dexterity, and attack rows. Resistances, immunities, vulnerabilities, condition immunities, save proficiencies, and senses are a union. The form's `on_hit` riders fire on the form's attacks. The creature's own `on_hit` riders (an `AttackIs` predicate) are dropped for the form and return on revert. An own `on_event` trigger that is not `AttackIs` stays on the creature and still fires in the form. The built-in AI never uses the feature (D12). In its true form the same AI still picks the creature's own save action.
+
+`select` builds the pool at load. The monster must be rated (`cr_x8` from 0 through the owner's), and its type must be one of `select.types` (`humanoid` and/or `beast`). The order is id byte order of the monsters loaded into that library. The order depends on which monsters are loaded: adding or removing a monster can change a later id's index. A replay of a select pool needs the same loaded set.
+
+D4 drops a form with spellcasting or innate spellcasting (a spell list, or a trait id `spellcasting` / `innate_spellcasting`), a live shapechanger or Change Shape form feature, the swarm tag, or an action that is not a melee or ranged weapon attack or multiattack, or any `reactions[]` or `bonus_actions[]` entry.
+
+D4(e) drops a form with an attack whose id or name contains `bite`, until the bite rule is built. That exclusion is separate from the six forms below.
+
+D4(f) drops a form whose compiled traits include `bonus_action_grant`, `aggressive`, or `reckless_attack`, or that carries any usage kind `per_rest`, `per_day`, `recharge`, or `pool` (a trait, an action, or a nested effect), or a `resources[]` pool. Those rows are registered for the slot's own archetype. MERGE does not register them, so the use would be lost or unlimited. The six `srd51.core` forms that rule removes are goblin (Nimble Escape), spy (Cunning Action), orc (Aggressive), berserker (Reckless), boar (Relentless), and giant_boar (Relentless). The `srd51.core` humanoid-or-beast pool at CR 4 is 42 ids, pinned in order.
+
+An explicit `forms[]` list bypasses D4, D4(e), and D4(f) and is kept in authored order. Only `ContentLibrary::load()` rejects an unknown explicit form, after every monster document in that load is in. `ContentLibrary::add()` does not. The check is existence-only by design: a form that exists is kept even when a select pool would have dropped it. A form that sorts before its owner, a form from a dependency pack, and a form from a later pack of the same load are all visible to that pass. More than 255 select forms is a load error. The message names the refused document and the owner whose pool overflowed (D17).
+
+Deferred, not this section:
+
+* DEFERRED 15. An own Reaction whose use is an attack still carries `attack_index` into the creature's own rows. MERGE still unions the reaction rows. No pool form has `reactions[]`, and the couatl has none. A BonusAttack rider bound by `AttackIs` is unreachable for the same reason.
+* D10 (the deva's proficiency split), D11 (dragon legendary actions in a form), D13 (Possession of a body in a Change Shape form, and Change Shape while possessed or possessing), and the REPLACE profile. AI form choice stays deferred. The bite rule that would lift D4(e) is not built.
 

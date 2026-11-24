@@ -1298,7 +1298,10 @@ CHANGE_SHAPE_SELECT_KEYS = frozenset({"types", "max_cr"})
 def check_change_shape(doc: dict, typ: str, ctx: dict, errs: list[str], warns: list[str]) -> None:
     """change_shape MERGE (contract v0.1.2 P1). Mirrors the loader: one declaration, monsters only,
     profile merge, forms or select, duplicate and unknown explicit forms, and equipment[] (D8).
-    The D4 pool and the D17 cap are load-time (they need the whole library)."""
+    The D4 / D4(e) / D4(f) pool and the D17 cap are load-time (they need the whole library).
+    An explicit forms[] list bypasses that filtering. The loader's unknown-form check runs only
+    in ContentLibrary.load() and is existence-only; this validator still names an id missing
+    from the pack context."""
     monsters = ctx.get("monsters") or {}
     ext = ctx.get("external_ok") or (lambda _a: False)
     seen = False
