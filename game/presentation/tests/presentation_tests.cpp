@@ -179,6 +179,8 @@ TEST_CASE("stand-in kit: loads authored frames and a missing file is a checker")
 TEST_CASE("stand-in kit: per-monster directory, then the shared bin") {
     CHECK(monster_art_slug("srd51.monster.wolf") == "wolf");
     CHECK(monster_art_slug("srd51.monster.young_black_dragon") == "young_black_dragon");
+    CHECK(monster_art_dir("srd51.monster.blink_dog") == "blink-dog");
+    CHECK(monster_art_dir("srd51.monster.swarm_of_bats") == "swarm-of-bats");
     CHECK(monster_art_slug("wolf") == "wolf");
     CHECK(monster_art_slug("").empty());
     CHECK(monster_art_slug("srd51.monster.").empty());
@@ -189,56 +191,110 @@ TEST_CASE("stand-in kit: per-monster directory, then the shared bin") {
     const auto base = std::filesystem::temp_directory_path() / "isoforge-standin-monster";
     std::filesystem::remove_all(base);
     const auto shared = base / "frames" / "medium" / "se";
-    const auto wolf = base / "srd" / "wolf" / "medium" / "frames" / "medium" / "se";
-    const auto ogre = base / "srd" / "ogre" / "huge" / "frames" / "huge" / "se";
+    const auto wolf_se = base / "srd" / "wolf" / "medium" / "se";
+    const auto wolf_sw = base / "srd" / "wolf" / "medium" / "sw";
+    const auto ogre = base / "srd" / "ogre" / "huge" / "se";
+    const auto dog = base / "srd" / "blink-dog" / "medium" / "se";
     std::filesystem::create_directories(shared);
-    std::filesystem::create_directories(wolf);
+    std::filesystem::create_directories(wolf_se);
+    std::filesystem::create_directories(wolf_sw);
     std::filesystem::create_directories(ogre);
+    std::filesystem::create_directories(dog);
     std::filesystem::copy_file(root() / "frames/medium/se/mon_medium_se_idle_00.png", shared / "mon_medium_se_idle_00.png");
-    std::filesystem::copy_file(root() / "frames/medium/se/mon_medium_se_idle_01.png", wolf / "mon_medium_se_idle_00.png");
-    // No authored huge frame: the existing loader still builds the 72x96 canvas and marks it missing.
+    std::filesystem::copy_file(root() / "frames/medium/se/mon_medium_se_idle_01.png", wolf_se / "mon_wolf_medium_se_idle_00.png");
+    // Authored SW is a different frame, not hflip_pivot(SE). clips.json matches the art manifest:
+    // mirrored_from null, no strip key.
+    std::filesystem::copy_file(root() / "frames/medium/se/mon_medium_se_idle_02.png", wolf_sw / "mon_wolf_medium_sw_idle_00.png");
+    std::ofstream(base / "srd" / "clips.json") << R"({
+  "clips": [{
+    "slug": "wolf",
+    "size": "medium",
+    "facing": "sw",
+    "clip": "idle",
+    "frames": 1,
+    "mirrored_from": null,
+    "paths": ["content/art/monster_standins/srd/wolf/medium/sw/mon_wolf_medium_sw_idle_00.png"]
+  }]
+})";
 
-    CHECK(resolve_standin_kit_root(base, "srd51.monster.wolf", "medium") == base / "srd" / "wolf" / "medium");
-    CHECK(resolve_standin_kit_root(base, "srd51.monster.goblin", "medium") == base);
-    CHECK(resolve_standin_kit_root(base, "srd51.monster.ogre", "huge") == base / "srd" / "ogre" / "huge");
-    CHECK(resolve_standin_kit_root(base, "srd51.monster.ogre", "medium") == base);
-    CHECK(resolve_standin_kit_root(base, "", "medium") == base);
-    CHECK(resolve_standin_kit_root(base, "srd51.monster.wolf", "gargantuan") == base);
-    CHECK(resolve_standin_kit_root(root(), "srd51.monster.wolf", "medium") == root());
-    CHECK(resolve_standin_kit_root(root(), "srd51.monster.ogre", "huge") == root());
+    const StandinKitLoc wolf_loc = resolve_standin_kit(base, "srd51.monster.wolf", "medium");
+    const StandinKitLoc gob_loc = resolve_standin_kit(base, "srd51.monster.goblin", "medium");
+    const StandinKitLoc ogre_loc = resolve_standin_kit(base, "srd51.monster.ogre", "huge");
+    const StandinKitLoc dog_loc = resolve_standin_kit(base, "srd51.monster.blink_dog", "medium");
+    CHECK(wolf_loc.per_monster);
+    CHECK(wolf_loc.slug == "wolf");
+    CHECK(wolf_loc.root == base / "srd" / "wolf");
+    CHECK_FALSE(gob_loc.per_monster);
+    CHECK(gob_loc.root == base);
+    CHECK(ogre_loc.per_monster);
+    CHECK(ogre_loc.root == base / "srd" / "ogre");
+    CHECK(dog_loc.per_monster);
+    CHECK(dog_loc.slug == "blink-dog");
+    CHECK_FALSE(resolve_standin_kit(base, "srd51.monster.ogre", "medium").per_monster);
+    CHECK_FALSE(resolve_standin_kit(base, "", "medium").per_monster);
+    CHECK_FALSE(resolve_standin_kit(base, "srd51.monster.wolf", "gargantuan").per_monster);
+    CHECK_FALSE(resolve_standin_kit(root(), "srd51.monster.wolf", "medium").per_monster);
+    CHECK_FALSE(resolve_standin_kit(root(), "srd51.monster.ogre", "huge").per_monster);
 
     const KitClip idle[] = {{"idle", 1, 6, ClipMode::Loop}};
-    const auto wolf_kit = MonsterStandinKit::load(resolve_standin_kit_root(base, "srd51.monster.wolf", "medium"), "medium", idle);
-    const auto gob_kit = MonsterStandinKit::load(resolve_standin_kit_root(base, "srd51.monster.goblin", "medium"), "medium", idle);
-    const auto ogre_kit = MonsterStandinKit::load(resolve_standin_kit_root(base, "srd51.monster.ogre", "huge"), "huge", idle);
+    const auto wolf_kit = MonsterStandinKit::load(wolf_loc.root, "medium", idle, wolf_loc.slug);
+    const auto gob_kit = MonsterStandinKit::load(gob_loc.root, "medium", idle, gob_loc.slug);
+    const auto ogre_kit = MonsterStandinKit::load(ogre_loc.root, "huge", idle, ogre_loc.slug);
     REQUIRE(wolf_kit);
     REQUIRE(gob_kit);
     REQUIRE(ogre_kit);
-    const StandinPose wolf_se = wolf_kit->pose("se", "idle", 0);
-    const StandinPose gob_se = gob_kit->pose("se", "idle", 0);
-    const StandinPose ogre_se = ogre_kit->pose("se", "idle", 0);
-    REQUIRE(wolf_se.frame >= 0);
-    REQUIRE(gob_se.frame >= 0);
-    REQUIRE(ogre_se.frame >= 0);
-    const ImageRgba* wolf_px = wolf_kit->frame_at(size_t(wolf_se.frame)).image;
-    const ImageRgba* gob_px = gob_kit->frame_at(size_t(gob_se.frame)).image;
-    const ImageRgba* ogre_px = ogre_kit->frame_at(size_t(ogre_se.frame)).image;
+    const StandinPose wolf_se_pose = wolf_kit->pose("se", "idle", 0);
+    const StandinPose wolf_sw_pose = wolf_kit->pose("sw", "idle", 0);
+    const StandinPose gob_se_pose = gob_kit->pose("se", "idle", 0);
+    const StandinPose ogre_se_pose = ogre_kit->pose("se", "idle", 0);
+    REQUIRE(wolf_se_pose.frame >= 0);
+    REQUIRE(wolf_sw_pose.frame >= 0);
+    REQUIRE(gob_se_pose.frame >= 0);
+    REQUIRE(ogre_se_pose.frame >= 0);
+    const ImageRgba* wolf_px = wolf_kit->frame_at(size_t(wolf_se_pose.frame)).image;
+    const ImageRgba* wolf_sw_px = wolf_kit->frame_at(size_t(wolf_sw_pose.frame)).image;
+    const ImageRgba* gob_px = gob_kit->frame_at(size_t(gob_se_pose.frame)).image;
+    const ImageRgba* ogre_px = ogre_kit->frame_at(size_t(ogre_se_pose.frame)).image;
     REQUIRE(wolf_px);
+    REQUIRE(wolf_sw_px);
     REQUIRE(gob_px);
     REQUIRE(ogre_px);
-    CHECK_FALSE(wolf_kit->frame_at(size_t(wolf_se.frame)).missing);
-    CHECK_FALSE(gob_kit->frame_at(size_t(gob_se.frame)).missing);
-    CHECK(ogre_kit->frame_at(size_t(ogre_se.frame)).missing);
+    CHECK_FALSE(wolf_kit->frame_at(size_t(wolf_se_pose.frame)).missing);
+    CHECK_FALSE(wolf_kit->frame_at(size_t(wolf_sw_pose.frame)).missing);
+    CHECK_FALSE(gob_kit->frame_at(size_t(gob_se_pose.frame)).missing);
+    CHECK(ogre_kit->frame_at(size_t(ogre_se_pose.frame)).missing);
     CHECK(wolf_px->rgba != gob_px->rgba);
+    const ImageRgba mirrored = hflip_pivot(*wolf_px);
+    CHECK(wolf_sw_px->rgba != mirrored.rgba);
+    const auto authored_sw = decode_png(read_bin(wolf_sw / "mon_wolf_medium_sw_idle_00.png"));
+    REQUIRE(authored_sw);
+    CHECK(wolf_sw_px->rgba == authored_sw->rgba);
     CHECK(ogre_px->w == 72);
     CHECK(ogre_px->h == 96);
-    CHECK(ogre_kit->frame_at(size_t(ogre_se.frame)).pivot_x == 36);
-    CHECK(ogre_kit->frame_at(size_t(ogre_se.frame)).pivot_y == 95);
-    // Other facings of the one-frame fixture were not copied, so they stay checkers.
+    CHECK(ogre_kit->frame_at(size_t(ogre_se_pose.frame)).pivot_x == 36);
+    CHECK(ogre_kit->frame_at(size_t(ogre_se_pose.frame)).pivot_y == 95);
     const StandinPose wolf_ne = wolf_kit->pose("ne", "idle", 0);
     REQUIRE(wolf_ne.frame >= 0);
     CHECK(wolf_kit->frame_at(size_t(wolf_ne.frame)).missing);
     std::filesystem::remove_all(base);
+}
+
+TEST_CASE("stand-in kit: the bin-only fallback still uses the mirrored west frame") {
+    const KitClip idle[] = {{"idle", 1, 6, ClipMode::Loop}};
+    const auto kit = MonsterStandinKit::load(root(), "medium", idle);
+    REQUIRE(kit);
+    const StandinPose se = kit->pose("se", "idle", 0);
+    const StandinPose sw = kit->pose("sw", "idle", 0);
+    REQUIRE(se.frame >= 0);
+    REQUIRE(sw.frame >= 0);
+    CHECK_FALSE(kit->frame_at(size_t(se.frame)).missing);
+    CHECK_FALSE(kit->frame_at(size_t(sw.frame)).missing);
+    const ImageRgba* se_px = kit->frame_at(size_t(se.frame)).image;
+    const ImageRgba* sw_px = kit->frame_at(size_t(sw.frame)).image;
+    REQUIRE(se_px);
+    REQUIRE(sw_px);
+    CHECK(sw_px->rgba == hflip_pivot(*se_px).rgba);
+    CHECK(sw_px->rgba != pure_hflip(*se_px).rgba);
 }
 
 TEST_CASE("equipment art: content id, then medium, then kind, then nothing") {

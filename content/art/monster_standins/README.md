@@ -12,7 +12,7 @@ Regenerate: `python3 build_monster_standins.py` (Pillow). Deterministic; overwri
 
 Layout: `frames/{size}/{facing}/mon_*.png`, `strips/{size}/{facing}/*_strip.png`, `previews/*_x4.png` (4× nearest), `clips.json` manifest.
 
-Per-monster kits, when a later art drop adds them, live at `srd/{slug}/{bin}/` under this directory. `slug` is the last segment of the monster id (`srd51.monster.wolf` → `wolf`). That directory is a kit root: the same `frames/{bin}/{facing}/mon_{bin}_{facing}_{clip}_{ff}.png` names as the shared bins. A missing directory keeps the shared bin kit. No per-monster frames ship in this tree.
+Per-monster kits, when a later art drop adds them, live at `srd/{slug}/{bin}/{facing}/mon_{slug}_{bin}_{facing}_{clip}_{ff}.png`. `slug` is the monster id's last segment with underscores written as hyphens (`srd51.monster.blink_dog` → `blink-dog`). All four facings are authored files. The art manifest may set `mirrored_from` to null and omit `strip`; sw/nw are not produced by mirroring se/ne at runtime. A missing `srd/{slug}/{bin}/` directory keeps the shared bin kit, whose west frames stay the flip-plus-one files this tree already ships.
 
 Locked (change only via spec): size bins + pivots, facing names, clip names/frame counts/fps/modes, file naming, construction palette.
 Free to change: silhouette shape and per-frame motion in `params()`/`draw()`.

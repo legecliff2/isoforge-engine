@@ -263,7 +263,8 @@ struct SliceView::StandinCache {
         return label_body_anchor(true, float(presentation::standin_canvas(bin).h), pawn_h, pawn_scale);
     }
 
-    Bin* load_bin(const std::string& key, const std::filesystem::path& kit_root, const std::string& bin_name) {
+    Bin* load_bin(const std::string& key, const std::filesystem::path& kit_root, const std::string& bin_name,
+                  std::string_view slug) {
         const auto [it, inserted] = bins.try_emplace(key, std::nullopt);
         if (!inserted) return it->second ? &*it->second : nullptr;
         const assets::ClipRegistry* reg = registry(bin_name);
@@ -277,7 +278,7 @@ struct SliceView::StandinCache {
             else if (!c.mode.empty() && c.mode != "loop") continue;
             specs.push_back({c.id, c.frames, c.fps, mode});
         }
-        auto kit = presentation::MonsterStandinKit::load(kit_root, bin_name, specs);
+        auto kit = presentation::MonsterStandinKit::load(kit_root, bin_name, specs, slug);
         if (!kit) return nullptr;
         Bin loaded;
         loaded.kit = std::move(*kit);
@@ -297,20 +298,21 @@ struct SliceView::StandinCache {
         return &*it->second;
     }
 
-    Bin* bin_for(const std::string& name) { return load_bin(name, root, name); }
+    Bin* bin_for(const std::string& name) { return load_bin(name, root, name, {}); }
 
     // Per-monster kit when srd/{slug}/{bin} exists, otherwise the shared bin kit.
+    // The per-monster kit loads se/sw/ne/nw files. It does not mirror se/ne.
     Bin* kit_for(std::string_view monster_id, const std::string& bin_name) {
         if (monster_id.empty()) return bin_for(bin_name);
         const std::string specific = std::string(monster_id) + "|" + bin_name;
         if (shared_fallback.find(specific) != shared_fallback.end()) return bin_for(bin_name);
         if (const auto it = bins.find(specific); it != bins.end()) return it->second ? &*it->second : nullptr;
-        const std::filesystem::path kit_root = presentation::resolve_standin_kit_root(root, monster_id, bin_name);
-        if (kit_root == root) {
+        const presentation::StandinKitLoc loc = presentation::resolve_standin_kit(root, monster_id, bin_name);
+        if (!loc.per_monster) {
             shared_fallback.insert(specific);
             return bin_for(bin_name);
         }
-        return load_bin(specific, kit_root, bin_name);
+        return load_bin(specific, loc.root, bin_name, loc.slug);
     }
 
     struct Body {
@@ -319,7 +321,9 @@ struct SliceView::StandinCache {
         int pivot_x = 0, pivot_y = 0;
     };
 
-    // Authored se/sw/ne/nw frames, uv 0..1. West art is already flip+1px; a UV swap would miss that shift.
+    // Authored se/sw/ne/nw frames, uv 0..1. Bin-kit west frames are flip+1px on disk.
+    // A per-monster kit's west frames are the authored files, not a runtime mirror.
+    // A UV swap would miss the bin kit's 1px shift.
     // size_short is stored by Core and not applied. Aliases come only from ClipRegistry::resolve.
     std::optional<Body> body_for(const ActorView& a, double t) {
         if (a.visual_kind != "standin") return std::nullopt;

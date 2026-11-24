@@ -87,15 +87,27 @@ std::string monster_art_slug(std::string_view monster_id) {
     return std::string(slug);
 }
 
-std::filesystem::path resolve_standin_kit_root(const std::filesystem::path& standin_root, std::string_view monster_id,
-                                               std::string_view bin) {
-    if (standin_canvas(bin).w == 0) return standin_root;
-    const std::string slug = monster_art_slug(monster_id);
-    if (slug.empty()) return standin_root;
-    const std::filesystem::path specific = standin_root / "srd" / slug / std::string(bin);
+std::string monster_art_dir(std::string_view monster_id) {
+    std::string dir = monster_art_slug(monster_id);
+    for (char& c : dir)
+        if (c == '_') c = '-';
+    return dir;
+}
+
+StandinKitLoc resolve_standin_kit(const std::filesystem::path& standin_root, std::string_view monster_id,
+                                   std::string_view bin) {
+    StandinKitLoc loc;
+    loc.root = standin_root;
+    if (standin_canvas(bin).w == 0) return loc;
+    const std::string dir = monster_art_dir(monster_id);
+    if (dir.empty()) return loc;
+    const std::filesystem::path specific = standin_root / "srd" / dir / std::string(bin);
     std::error_code ec;
-    if (std::filesystem::is_directory(specific, ec)) return specific;
-    return standin_root;
+    if (!std::filesystem::is_directory(specific, ec)) return loc;
+    loc.root = standin_root / "srd" / dir;
+    loc.slug = dir;
+    loc.per_monster = true;
+    return loc;
 }
 
 std::size_t MonsterStandinKit::missing_count() const {
@@ -148,11 +160,36 @@ StandinPose MonsterStandinKit::pose(std::string_view facing, std::string_view cl
     return pose;
 }
 
+namespace {
+// Bin kit: mon_{bin}_{facing}_{clip}_{ff}.png
+// Per-monster: mon_{slug}_{bin}_{facing}_{clip}_{ff}.png
+std::string frame_file(std::string_view slug, std::string_view bin, std::string_view facing, std::string_view clip,
+                      int index) {
+    char num[8];
+    std::snprintf(num, sizeof num, "%02d", index);
+    std::string name = "mon_";
+    if (!slug.empty()) {
+        name.append(slug);
+        name.push_back('_');
+    }
+    name.append(bin);
+    name.push_back('_');
+    name.append(facing);
+    name.push_back('_');
+    name.append(clip);
+    name.push_back('_');
+    name.append(num);
+    name.append(".png");
+    return name;
+}
+} // namespace
+
 std::optional<MonsterStandinKit> MonsterStandinKit::load(const std::filesystem::path& root, std::string_view bin,
-                                                          std::span<const KitClip> clips) {
+                                                          std::span<const KitClip> clips, std::string_view slug) {
     const StandinCanvas canvas = standin_canvas(bin);
     if (canvas.w == 0 || clips.empty()) return std::nullopt;
     static constexpr const char* kFacings[] = {"se", "sw", "ne", "nw"};
+    const bool per_monster = !slug.empty();
     MonsterStandinKit kit;
     kit.bin_ = std::string(bin);
     for (const KitClip& c : clips) {
@@ -170,9 +207,11 @@ std::optional<MonsterStandinKit> MonsterStandinKit::load(const std::filesystem::
                 frame.index = fi;
                 frame.pivot_x = canvas.pivot_x;
                 frame.pivot_y = canvas.pivot_y;
-                char name[96];
-                std::snprintf(name, sizeof name, "mon_%s_%s_%s_%02d.png", kit.bin_.c_str(), facing, c.id.c_str(), fi);
-                const auto path = root / "frames" / kit.bin_ / facing / name;
+                // Per-monster sw/nw are the files on disk. Do not flip se/ne at runtime.
+                // The bin kit's west files are already the flip-plus-one mirrors.
+                const std::string name = frame_file(slug, kit.bin_, facing, c.id, fi);
+                const auto path = per_monster ? root / kit.bin_ / facing / name
+                                              : root / "frames" / kit.bin_ / facing / name;
                 if (auto img = read_png(path); img && img->w == canvas.w && img->h == canvas.h) {
                     frame.image = std::move(*img);
                 } else {
