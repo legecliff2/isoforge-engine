@@ -1,0 +1,137 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.azer",
+  "name": "Azer",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "elemental",
+  "alignment": "lawful neutral",
+  "armor_class": {
+    "value": 17,
+    "note": "natural armor, shield"
+  },
+  "natural_armor": {
+    "base": 14,
+    "dex": true
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.warhammer",
+      "equipped": true
+    }
+  ],
+  "emits_light": {
+    "bright_ft": 10,
+    "dim_ft": 10
+  },
+  "hands": 2,
+  "hit_points": {
+    "average": 39,
+    "formula": "6d8+12"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 17,
+    "dex": 12,
+    "con": 15,
+    "int": 12,
+    "wis": 13,
+    "cha": 10
+  },
+  "saving_throws": {
+    "con": 4
+  },
+  "damage_immunities": [
+    "fire",
+    "poison"
+  ],
+  "condition_immunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [
+    "Ignan"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "heated_body",
+      "name": "Heated Body",
+      "description": "A creature that touches the azer or hits it with a melee attack while within 5 feet of it takes 5 (1d10) fire damage. (Descriptive only: the 1d10 contact fire has no passive on-hit-by construct, as salamander Heated Body and Black Pudding Corrosive Form. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "heated_weapons",
+      "name": "Heated Weapons",
+      "description": "When the azer hits with a metal melee weapon, it deals an extra 3 (1d6) fire damage (included in the attack)."
+    },
+    {
+      "id": "illumination",
+      "name": "Illumination",
+      "description": "The azer sheds bright light in a 10-foot radius and dim light for an additional 10 feet."
+    }
+  ],
+  "actions": [
+    {
+      "id": "warhammer",
+      "name": "Warhammer",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.warhammer",
+      "ability": "str",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "bludgeoning"
+        },
+        {
+          "dice": "1d6",
+          "type": "fire"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 7 (1d8 + 3) bludgeoning damage, or 8 (1d10 + 3) bludgeoning damage if used with two hands to make a melee attack, plus 3 (1d6) fire damage."
+    },
+    {
+      "id": "warhammer_two_handed",
+      "name": "Warhammer (two hands)",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.warhammer",
+      "use": "two_hands",
+      "ability": "str",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d10+3",
+          "type": "bludgeoning"
+        },
+        {
+          "dice": "1d6",
+          "type": "fire"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 7 (1d8 + 3) bludgeoning damage, or 8 (1d10 + 3) bludgeoning damage if used with two hands to make a melee attack, plus 3 (1d6) fire damage."
+    }
+  ]
+}
