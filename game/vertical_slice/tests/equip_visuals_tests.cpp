@@ -1196,7 +1196,8 @@ TEST_CASE("equip art: missing H4 parts fall back to quads, and the neck quad sho
     ActorView a;
     a.facing = Facing::SouthEast;
     a.equipment = {amulet};
-    const EquipLayer* neck = layer_part(equip_layers(a, shared_body_attach(), &shipped), 8, EquipPart::Neck);
+    const std::vector<EquipLayer> toward = equip_layers(a, shared_body_attach(), &shipped);
+    const EquipLayer* neck = layer_part(toward, 8, EquipPart::Neck);
     REQUIRE(neck);
     CHECK(neck->z == kZWornFront);
     const AttachPoints se = attach_points(shared_body_attach(), Facing::SouthEast);
@@ -1204,11 +1205,14 @@ TEST_CASE("equip art: missing H4 parts fall back to quads, and the neck quad sho
     CHECK(neck->at.y == se.neck.y);
     CHECK(equip_quads(*neck->item, neck->part, neck->at).size() == 1);
     a.facing = Facing::SouthWest;
-    REQUIRE(layer_part(equip_layers(a, shared_body_attach(), &shipped), 8, EquipPart::Neck));
+    const std::vector<EquipLayer> west = equip_layers(a, shared_body_attach(), &shipped);
+    REQUIRE(layer_part(west, 8, EquipPart::Neck));
     a.facing = Facing::NorthEast;
-    CHECK(layer_part(equip_layers(a, shared_body_attach(), &shipped), 8, EquipPart::Neck) == nullptr);
+    const std::vector<EquipLayer> away_e = equip_layers(a, shared_body_attach(), &shipped);
+    CHECK(layer_part(away_e, 8, EquipPart::Neck) == nullptr);
     a.facing = Facing::NorthWest;
-    CHECK(layer_part(equip_layers(a, shared_body_attach(), &shipped), 8, EquipPart::Neck) == nullptr);
+    const std::vector<EquipLayer> away_w = equip_layers(a, shared_body_attach(), &shipped);
+    CHECK(layer_part(away_w, 8, EquipPart::Neck) == nullptr);
 
     const fs::path kit = fs::temp_directory_path() / ("isoforge_h4_gap_" + run_suffix());
     std::error_code ec;
