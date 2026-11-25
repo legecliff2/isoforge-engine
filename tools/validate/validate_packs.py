@@ -57,7 +57,16 @@ SKILL_ABILITY = {"athletics": "str", "acrobatics": "dex", "sleight_of_hand": "de
 # SRD 5.1 / a6212be printed skill totals that are neither proficiency (mod + PB) nor expertise
 # (mod + 2*PB). Priest Religion +4: Int 13 is +1, so proficiency is +3 and expertise is +5.
 # The print is the authored total (packing lock). Medicine +7 and Persuasion +3 already match.
-PRINTED_SKILL_TOTALS = {("srd51.monster.priest", "religion"): 4}
+# Night hag: each printed total is the ability modifier + PB + 1 (CR 5, PB 3). Deception is
+# Cha +3 (proficiency +6, expertise +9, printed +7). Insight and Perception are Wis +2
+# (proficiency +5, expertise +8, printed +6). Stealth is Dex +2 (same +5 / +8, printed +6).
+PRINTED_SKILL_TOTALS = {
+    ("srd51.monster.priest", "religion"): 4,
+    ("srd51.monster.night_hag", "deception"): 7,
+    ("srd51.monster.night_hag", "insight"): 6,
+    ("srd51.monster.night_hag", "perception"): 6,
+    ("srd51.monster.night_hag", "stealth"): 6,
+}
 
 
 def modifier(score: int) -> int:
