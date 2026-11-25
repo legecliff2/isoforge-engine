@@ -484,8 +484,13 @@ TEST_CASE("T2/T10a: a warded swallow cannot redirect onto a creature that fails 
     s.effects.push_back(w);
     add_condition(mut(s, 2), Condition::Warded);
     auto alts = ward_alternate_targets(s, 1, 2, 0, 1);
-    CHECK(std::find(alts.begin(), alts.end(), 3) == alts.end());
-    CHECK(std::find(alts.begin(), alts.end(), 4) == alts.end());
+    bool alt_ungrappled = false, alt_huge = false;
+    for (CombatantId id : alts) {
+        alt_ungrappled = alt_ungrappled || id == 3;
+        alt_huge = alt_huge || id == 4;
+    }
+    CHECK_FALSE(alt_ungrappled);
+    CHECK_FALSE(alt_huge);
     auto req = swing(2, 1);
     req.ward_alternate = 3;
     auto refused = step(s, req);
