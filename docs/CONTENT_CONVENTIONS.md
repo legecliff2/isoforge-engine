@@ -1146,7 +1146,7 @@ Product calls, not a second contain model:
 * The printed "grappled (escape DC 14)" is the Strength escape check on the contain. A sourced Grappled condition is not added. Two escapes would be a second action the stat block does not print. Drag-by-grapple is not this sentence.
 * Turn-start damage is automatic, the gelatinous cube's contain damage. The printed "DC 14 Constitution saving throw or take 13 (2d8 + 4)" is not rolled. The dice are the printed `2d8+4`.
 * "Unable to breathe" is the existing suffocation gap (coverage row 11). Not modelled.
-* "If the mound moves, the engulfed target moves with it" is the existing contain carry. `container_of` is set. Sim movement of contained creatures stays pending.
+* "If the mound moves, the engulfed target moves with it" is the existing contain carry. `container_of` is set. Sim movement of engulfed creatures stays pending. Swallow carry is §62.
 * Lightning Absorption is §43. It is not this key.
 
 `srd51.monster.shambling_mound` authors this option on Multiattack (`slams`: slam ×2) and Lightning Absorption (§43). Slam is natural 2d8 Str (+7 / 2d8 + 4 bludgeoning, reach 5). The printed Constitution save is not rolled. There is no sourced Grappled condition. Unable to breathe, and the engulfed creature moving with the mound, stay the contain gaps. Counts are 204 authored and 6 deferred.
@@ -2246,5 +2246,13 @@ On its own turn a Move whose `move_ft` is not `exit_ft` is refused: `inside a co
 
 **Legendary shape (T11).** No new legendary key. `use.attack` names the attack id, including a `variant_of` row, and `cost` is the option's cost. C-D D7 applies the gate, `target_max_size` and `attack_locked` to that attack.
 
-**Not this section.** T9 carry, T7 placement, the sim exit move, and T12 AI are a later PR. Swallowing a creature the bite's damage kills stays deferred: the attack's after-riders do not run on a dead target. Giant toad and giant frog stay `attack_effect` until a follow-up content PR. Reflective Carapace, Siege Monster, and the tarrasque statistics row are not ruled here.
+**Carry (T9).** While `container_of` is a `contain == 2` effect, sim gives the creature no tile of its own: it does not occupy or block, and `distance_tiles`, reach, `within_ft` and area templates use the container's footprint and altitude. The stored anchor and `alt_ft` follow the container, including the corpse state. Engulf (`contain == 1`) is not carried.
+
+**Regurgitation placement (T7, Q-T4).** For each kind-2 exit, in order, sim puts the creature on the unoccupied walkable tile within 10 ft (2 tiles, 3D distance from the container's footprint) nearest that footprint. Ties take the first tile in row scan (y, then x). If none, the nearest walkable tile at any distance. Nothing is logged. Kind 1 is not placed: the creature keeps the anchor carry last stored. Kind 4 is the exit move's logged tile.
+
+**Corpse exit (T8, Q-T3).** A Step whose `to` is an unoccupied walkable tile in the corpse's footprint or within 5 ft (1 tile, the same 3D distance) is one Move with `move_ft` = `exit_ft`, whatever the tile. The logged `to` is that tile. Any other Step is refused: `inside a corpse: exit with exit_ft of movement`. Rules then spend that budget, end the effect, add Prone unless immune, and push kind 4.
+
+**AI (T12).** In a multiattack slot that has a `grappled_by_self` alternate, the built-in policy uses that alternate when the target is grappled by the user, Large or smaller (and not above the alternate's `target_max_size`), and alive. Otherwise it uses the listed attack. It still never spends a legendary action.
+
+**Not this section.** Swallowing a creature the bite's damage kills stays deferred: the attack's after-riders do not run on a dead target. Giant toad and giant frog stay `attack_effect` until a follow-up content PR. Line of sight, zones, and outbound targeting from inside are not given a new rule. Reflective Carapace, Siege Monster, and the tarrasque statistics row are not ruled here. A map with no walkable tile at all is not given a placement.
 
