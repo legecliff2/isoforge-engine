@@ -1,6 +1,6 @@
 # Smoke #23 — Mediums SE idle_00 (fal)
 
-**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #23. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `sea-hag`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449) and the Group D follow-up:** This note is the production record for smoke #23. The tree now holds 37 medium creatures in Long Dusk Mapping B (26 from #449/#458, plus 11 Group D / couatl kits). From this smoke, the tree includes: `sea-hag`, `barbed-devil`, `bearded-devil`. Held back (kept local): `chain-devil`, `rakshasa`, `doppelganger`, `mimic`.
 
 **Status: SE soft-PASS (AD) · 4-facing soft-PASS (AD) · Art Done · Anim built, awaiting AD audit**
 
@@ -115,4 +115,4 @@ Caveats: generic torso motion only. Feet stay planted (torso bobs above detected
 
 **AD sign-off (records, 2026-11-24 CT): Art+Anim PASS (soft notes as recorded above). This batch was passed by AD in chat and reported Done to Producer at the time; this line only writes that verdict into the doc. Supersedes any "awaiting AD audit" status above.**
 
-**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #23. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `sea-hag`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449) and the Group D follow-up:** This note is the production record for smoke #23. The tree now holds 37 medium creatures in Long Dusk Mapping B (26 from #449/#458, plus 11 Group D / couatl kits). From this smoke, the tree includes: `sea-hag`, `barbed-devil`, `bearded-devil`. Held back (kept local): `chain-devil`, `rakshasa`, `doppelganger`, `mimic`.
