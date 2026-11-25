@@ -1,6 +1,6 @@
 # SRD medium monster art (PR #449)
 
-This directory stores the canonical 4-facing, 9-clip medium kits for the **26** SRD creatures in [PR #449](https://github.com/legecliff2/isoforge-engine/pull/449). The frames are construction greys. Branch: `art/monster-medium-pr-a`.
+This directory stores the canonical 4-facing, 9-clip medium kits for the **26** SRD creatures in [PR #449](https://github.com/legecliff2/isoforge-engine/pull/449). The frames are now Long Dusk Mapping B. Branch: `art/monster-medium-pr-a`.
 
 ## Why not `frames/{bin}/{facing}/`
 
