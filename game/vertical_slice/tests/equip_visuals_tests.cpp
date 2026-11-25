@@ -794,6 +794,77 @@ TEST_CASE("equip attach: per-body table, shared fallback, west mirrors x") {
     fs::remove_all(root, ec);
 }
 
+TEST_CASE("equip attach: paperdoll uses the humanoid table; a medium stand-in does not") {
+    const fs::path shipped{SLICE_STANDIN_ROOT};
+    CHECK_FALSE(fs::is_regular_file(shipped / "frames" / "medium" / "attach.json"));
+    ActorView pc;
+    pc.visual_kind = "paperdoll";
+    pc.standin_bin = "medium";
+    const std::string bin = pc.standin_bin.empty() ? std::string("medium") : pc.standin_bin;
+    const BodyAttach doll = load_body_attach(shipped, pc.content_id, bin, pc.visual_kind);
+    CHECK(doll.loaded);
+    const AttachPoints se = attach_points(doll, Facing::SouthEast);
+    CHECK(se.main_hand.x == 4.f);
+    CHECK(se.main_hand.y == 3.f);
+    CHECK(se.off_hand.x == -4.f);
+    CHECK(se.back.x == -2.f);
+    CHECK(se.back.y == -9.f);
+    CHECK(se.hip_main.x == 1.f);
+    CHECK(se.hip_main.y == -3.f);
+    CHECK(se.hip_off.x == -5.f);
+    CHECK(se.neck.x == 1.f);
+    CHECK(se.neck.y == -11.f);
+    const AttachPoints ne = attach_points(doll, Facing::NorthEast);
+    CHECK(ne.hip_off.x == -6.f);
+    CHECK(ne.hip_off.y == -3.f);
+    CHECK(ne.hip_main.x == 4.f);
+    CHECK(ne.back.x == -1.f);
+    CHECK(ne.back.y == -9.f);
+    CHECK(ne.neck.x == 0.f);   // no ne neck in the file; the shared point remains
+    CHECK(ne.neck.y == 2.f);
+    pc.facing = Facing::SouthEast;
+    pc.equipment = {equip_scene::item(4, AttachSlot::Neck, EquipKind::Other, "srd51.item.holy_symbol_amulet")};
+    const std::vector<EquipLayer> layers = equip_layers(pc, doll);
+    const EquipLayer* neck = nullptr;
+    for (const EquipLayer& l : layers)
+        if (l.part == EquipPart::Neck) neck = &l;
+    REQUIRE(neck);
+    CHECK(neck->z == kZWornFront);
+    CHECK(neck->at.x == 1.f);
+    CHECK(neck->at.y == -11.f);
+
+    ActorView hag;
+    hag.visual_kind = "standin";
+    hag.content_id = "srd51.monster.green_hag";
+    hag.standin_bin = "medium";
+    const BodyAttach standin = load_body_attach(shipped, hag.content_id, hag.standin_bin, hag.visual_kind);
+    CHECK_FALSE(standin.loaded);
+    CHECK(attach_points(standin, Facing::SouthEast).neck.y == 2.f);
+    CHECK(attach_points(standin, Facing::SouthEast).main_hand.x == 9.f);
+    CHECK(attach_points(standin, Facing::NorthEast).hip_off.x == -6.f);
+    CHECK(attach_points(standin, Facing::NorthEast).hip_off.y == 8.f);
+
+    const fs::path tree = fs::temp_directory_path() / ("isoforge_paperdoll_vs_blob_" + run_suffix());
+    std::error_code ec;
+    fs::remove_all(tree, ec);
+    const fs::path standins = tree / "monster_standins";
+    fs::create_directories(standins / "frames" / "medium");
+    fs::create_directories(tree / "paperdoll" / "medium");
+    std::ofstream(standins / "frames" / "medium" / "attach.json") << R"({"se":{"main":[30,1]}})";
+    std::ofstream(tree / "paperdoll" / "medium" / "attach.json")
+        << R"({"se":{"neck":[1,-11]},"ne":{"hip-off":[-6,-3]}})";
+    const BodyAttach blob = load_body_attach(standins, "srd51.monster.green_hag", "medium", "standin");
+    CHECK(blob.loaded);
+    CHECK(attach_points(blob, Facing::SouthEast).main_hand.x == 30.f);
+    CHECK(attach_points(blob, Facing::SouthEast).neck.y == 2.f);
+    const BodyAttach human = load_body_attach(standins, "srd51.monster.green_hag", "medium", "paperdoll");
+    CHECK(human.loaded);
+    CHECK(attach_points(human, Facing::SouthEast).neck.y == -11.f);
+    CHECK(attach_points(human, Facing::NorthEast).hip_off.x == -6.f);
+    CHECK(attach_points(human, Facing::SouthEast).main_hand.x == 9.f);
+    fs::remove_all(tree, ec);
+}
+
 TEST_CASE("equip hips: sheath, two-weapon fighting, pouch, and hidden extras") {
     const BodyAttach body = shared_body_attach();
     const AttachPoints se = attach_points(body, Facing::SouthEast);

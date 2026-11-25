@@ -51,7 +51,7 @@ inline bool facing_shows_neck(Facing f) {
 }
 // Back: in front of the body on an away facing, behind it otherwise (the rear rule).
 // Hip: the front-belt rule, the opposite. Call this only for Back and Hip (both hip anchors).
-// TODO(art): confirm whether the far-side hip-off needs z2 on profile views. Both hips use this rule until Art says otherwise.
+// TODO(art): Art decided hip-off stays z5 for M0, including the far side. Move the far side to z2 only when true E/W facings ship.
 inline int32_t worn_z(AttachSlot slot, Facing f) {
     const bool away = facing_shows_back(f);
     const bool in_front = slot == AttachSlot::Back ? away : !away;
@@ -62,7 +62,7 @@ enum class EquipPart : uint8_t { Back, Body, OffHand, MainHand, HeldLight, HipMa
 
 // Attachment points in screen px relative to the actor's iso point (the token's anchor), for one authored facing.
 // West facings negate x. hip_main is today's hip, on the main-hand side. hip_off is the off-hand side of the belt.
-// neck (0, 2) is a provisional chest point until Art names one.
+// neck (0, 2) is the shared fallback. The paperdoll medium kit names its own neck.
 struct AttachPoints {
     eng::Vec2f main_hand{9.f, 4.f}, off_hand{-9.f, 4.f}, back{-7.f, 2.f};
     eng::Vec2f hip_main{6.f, 8.f}, hip_off{-6.f, 8.f}, neck{0.f, 2.f};
@@ -78,12 +78,16 @@ struct BodyAttach {
 // The shared table every body uses when it has no attach.json.
 inline BodyAttach shared_body_attach() { return {}; }
 
-// Optional attach.json beside a body kit, under the monster stand-in root. Authored facings only:
+// Optional attach.json beside a body kit. Authored facings only:
 //   { "se": { "main": [x,y], "off": [x,y], "back": [x,y], "hip-main": [x,y], "hip-off": [x,y], "neck": [x,y] },
 //     "ne": { ... } }
-// A missing key keeps that shared point. Lookup is the per-monster kit first
-// (srd/{dir}/{bin}/attach.json), then the bin kit (frames/{bin}/attach.json), then the shared table.
-BodyAttach load_body_attach(const std::filesystem::path& standin_root, std::string_view monster_id, std::string_view bin);
+// A missing key keeps that shared point. Offsets are screen px from the token anchor.
+// visual_kind "paperdoll" reads {standin_root}/../paperdoll/{bin}/attach.json first (the humanoid
+// doll, not the generic blob). Anything else reads the per-monster kit srd/{dir}/{bin}/attach.json.
+// Both then fall through to frames/{bin}/attach.json, then the shared table. frames/{bin} stays the
+// generic medium blob and does not carry the humanoid points.
+BodyAttach load_body_attach(const std::filesystem::path& standin_root, std::string_view monster_id, std::string_view bin,
+                            std::string_view visual_kind = {});
 AttachPoints attach_points(const BodyAttach& body, Facing facing);
 
 struct EquipLayer {

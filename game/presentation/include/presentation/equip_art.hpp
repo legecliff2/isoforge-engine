@@ -23,8 +23,8 @@
 //   4. nothing (placeholder quads). A missing file is not a checker.
 // Content ids are matched whole. A quiver file is not a bolt-case file.
 // kit.json may set one pivot [x, y] per sprite that exists. Absent, or outside
-// the cell, the pivot stays bottom-centre (w/2, h-1). H4 cells are 24x24 and
-// H4's provisional pivot is [12, 20] where that sprite is on disk.
+// the cell, the pivot stays bottom-centre (w/2, h-1). H4 art will declare [12, 12].
+// [12, 20] is not a default.
 // Optional back_role (quiver | bolt_case | pack | other) is stored per content id.
 #include "presentation/png.hpp"
 

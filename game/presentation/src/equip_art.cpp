@@ -399,8 +399,7 @@ EquipArtTable EquipArtTable::load(const std::filesystem::path& root) {
         auto image = read_png(file);
         if (!image || image->empty()) return;
         EquipArtSprite sprite;
-        // Seam: PR B's optional pivot [x, y] per part per view. Absent, bottom-centre.
-        // H4's provisional pivot is [12, 20]. Not read until that manifest is wired.
+        // Absent kit.json pivot: bottom-centre. H4 will name [12, 12] in the manifest.
         sprite.pivot_x = int(image->w / 2);
         sprite.pivot_y = int(image->h - 1);
         sprite.image = std::move(*image);

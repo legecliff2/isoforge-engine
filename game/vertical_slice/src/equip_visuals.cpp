@@ -180,7 +180,7 @@ void push_hip(std::vector<EquipLayer>& out, const EquipVisual& e, EquipPart part
     EquipLayer l;
     l.item = &e;
     l.part = part;
-    l.z = worn_z(AttachSlot::Hip, facing);   // both hips; far-side hip-off on profile is the TODO on worn_z
+    l.z = worn_z(AttachSlot::Hip, facing);   // both hips, including far-side hip-off, stay on this rule for M0
     l.at = at;
     out.push_back(l);
 }
@@ -193,15 +193,20 @@ AttachPoints attach_points(const BodyAttach& body, Facing facing) {
     return p;
 }
 
-BodyAttach load_body_attach(const std::filesystem::path& standin_root, std::string_view monster_id, std::string_view bin) {
+BodyAttach load_body_attach(const std::filesystem::path& standin_root, std::string_view monster_id, std::string_view bin,
+                            std::string_view visual_kind) {
     const bool known = eng::presentation::standin_canvas(bin).w != 0;
-    if (known) {
+    if (!known) return shared_body_attach();
+    const std::string bin_name(bin);
+    if (visual_kind == "paperdoll") {
+        if (auto body = read_attach_file(standin_root.parent_path() / "paperdoll" / bin_name / "attach.json")) return *body;
+    } else {
         const std::string dir = eng::presentation::monster_art_dir(monster_id);
         if (!dir.empty()) {
-            if (auto body = read_attach_file(standin_root / "srd" / dir / std::string(bin) / "attach.json")) return *body;
+            if (auto body = read_attach_file(standin_root / "srd" / dir / bin_name / "attach.json")) return *body;
         }
-        if (auto body = read_attach_file(standin_root / "frames" / std::string(bin) / "attach.json")) return *body;
     }
+    if (auto body = read_attach_file(standin_root / "frames" / bin_name / "attach.json")) return *body;
     return shared_body_attach();
 }
 

@@ -356,9 +356,9 @@ struct SliceView::EquipArt {
 
     const BodyAttach& body_attach(const ActorView& a) {
         const std::string bin = a.standin_bin.empty() ? std::string("medium") : a.standin_bin;
-        const std::string key = a.content_id + "|" + bin;
+        const std::string key = a.visual_kind + "|" + a.content_id + "|" + bin;
         const auto [it, inserted] = attach.try_emplace(key);
-        if (inserted) it->second = load_body_attach(SLICE_STANDIN_ROOT, a.content_id, bin);
+        if (inserted) it->second = load_body_attach(SLICE_STANDIN_ROOT, a.content_id, bin, a.visual_kind);
         return it->second;
     }
 
