@@ -8,8 +8,10 @@
 //   {content_id}/{part}.{view}.png                         medium, the default bin
 //   {content_id}/{bin}/{part}.{view}.png                   size override
 //   _kind/{weapon|shield|light|other}/{part}.{view}.png    per-kind default (medium)
-// part: back, hip, main_hand, off_hand, held_light
+// part: back, hip, main_hand, off_hand, held_light, neck
 // view: se (toward), ne (away). West is a mirror of that view, not its own file.
+// neck is toward-only: neck.se is loaded, neck.ne is rejected. The hip part is the
+// sheathed view and has no side; the renderer assigns hip-main or hip-off.
 // bin: tiny, small, medium, large, huge. A `{bin}` file wins over the flat medium
 // file for that same bin. Any other directory name is ignored.
 //
@@ -18,8 +20,9 @@
 //   2. content_id + medium
 //   3. the kind default
 //   4. nothing (placeholder quads)
-// Pivot is the bottom-centre pixel (w/2, h-1) until a manifest names one. It is
-// the point that lands on the slot's attach point.
+// Pivot is the bottom-centre pixel (w/2, h-1) until a manifest names one. PR B's
+// manifest may set an optional [x, y] per part per view; H4's provisional pivot
+// is [12, 20]. It is the point that lands on the slot's attach point.
 #include "presentation/png.hpp"
 
 #include <cstddef>
@@ -31,7 +34,7 @@
 namespace eng::presentation {
 
 enum class EquipArtView : uint8_t { Toward, Away };   // se, ne
-enum class EquipArtPart : uint8_t { Back, Hip, MainHand, OffHand, HeldLight };
+enum class EquipArtPart : uint8_t { Back, Hip, MainHand, OffHand, HeldLight, Neck };
 
 struct EquipArtSprite {
     ImageRgba image;

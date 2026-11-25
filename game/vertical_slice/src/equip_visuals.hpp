@@ -11,13 +11,18 @@
 //                    Hip, the front belt, on away facings (ne, nw; and n).
 //   kZBody (4)       the body (pawn)
 //   kZWornFront (5)  in front of the body, behind both hands. Back on away facings; Hip on toward/profile.
+//                    Neck sits here too, and only on toward facings (se, sw). Away facings draw no neck.
 //                    There was no integer between the body and the far hand, so the hand, light and outline
 //                    constants moved up by one. Their order relative to the body is the same.
 //   6, 7             the hands: facing East (SE / NE) off hand 6, main hand 7 (main hand on the camera side);
 //                    facing West (SW / NW) mirrored: main hand 6, off hand 7, and every attachment x is mirrored
 //   kZLight (8)      held lights (torch, lantern) in either hand, at that hand's attachment point; then its flame
 //   kZOutline (9)    Faerie Fire outline ring (after body / equip)
+//
+// One back item is drawn. Hip-main and hip-off are separate anchors and share the hip z rule. A weapon's sheath
+// is that weapon's `hip` art part (no side field on the sprite); this layout assigns the anchor.
 #include <cstdint>
+#include <filesystem>
 #include <string_view>
 #include <vector>
 
@@ -40,23 +45,46 @@ inline constexpr int32_t kZBack = 2, kZBody = 4, kZWornFront = 5, kZFarHand = 6,
 inline bool facing_shows_back(Facing f) {
     return f == Facing::NorthEast || f == Facing::NorthWest;
 }
+// Neck is toward-only (se, sw). Away hides it. Profile e/w are not toward; M0 has none, and this does not treat them as se/sw.
+inline bool facing_shows_neck(Facing f) {
+    return f == Facing::SouthEast || f == Facing::SouthWest;
+}
 // Back: in front of the body on an away facing, behind it otherwise (the rear rule).
-// Hip: the front-belt rule, the opposite. Call this only for Back and Hip.
+// Hip: the front-belt rule, the opposite. Call this only for Back and Hip (both hip anchors).
+// TODO(art): confirm whether the far-side hip-off needs z2 on profile views. Both hips use this rule until Art says otherwise.
 inline int32_t worn_z(AttachSlot slot, Facing f) {
     const bool away = facing_shows_back(f);
     const bool in_front = slot == AttachSlot::Back ? away : !away;
     return in_front ? kZWornFront : kZBack;
 }
 
-enum class EquipPart : uint8_t { Back, Body, OffHand, MainHand, HeldLight, Hip };
+enum class EquipPart : uint8_t { Back, Body, OffHand, MainHand, HeldLight, HipMain, HipOff, Neck };
 
-// Attachment points in screen px relative to the actor's iso point (the token's anchor), facing SouthEast; West facings
-// negate x. Same for every pawn sprite (one placeholder body); per-sprite tables slot in here when art arrives.
-// hip sits on the belt, opposite the back sling, so the two placeholders do not share a point.
+// Attachment points in screen px relative to the actor's iso point (the token's anchor), for one authored facing.
+// West facings negate x. hip_main is today's hip, on the main-hand side. hip_off is the off-hand side of the belt.
+// neck (0, 2) is a provisional chest point until Art names one.
 struct AttachPoints {
-    eng::Vec2f main_hand{9.f, 4.f}, off_hand{-9.f, 4.f}, back{-7.f, 2.f}, hip{6.f, 8.f};
+    eng::Vec2f main_hand{9.f, 4.f}, off_hand{-9.f, 4.f}, back{-7.f, 2.f};
+    eng::Vec2f hip_main{6.f, 8.f}, hip_off{-6.f, 8.f}, neck{0.f, 2.f};
 };
-AttachPoints attach_points(Facing);
+
+// One body's authored points. se and ne are stored; sw mirrors se and nw mirrors ne. `loaded` is false when no
+// attach.json was found and both facings are the shared table above.
+struct BodyAttach {
+    AttachPoints se{};
+    AttachPoints ne{};
+    bool loaded = false;
+};
+// The shared table every body uses when it has no attach.json.
+inline BodyAttach shared_body_attach() { return {}; }
+
+// Optional attach.json beside a body kit, under the monster stand-in root. Authored facings only:
+//   { "se": { "main": [x,y], "off": [x,y], "back": [x,y], "hip-main": [x,y], "hip-off": [x,y], "neck": [x,y] },
+//     "ne": { ... } }
+// A missing key keeps that shared point. Lookup is the per-monster kit first
+// (srd/{dir}/{bin}/attach.json), then the bin kit (frames/{bin}/attach.json), then the shared table.
+BodyAttach load_body_attach(const std::filesystem::path& standin_root, std::string_view monster_id, std::string_view bin);
+AttachPoints attach_points(const BodyAttach& body, Facing facing);
 
 struct EquipLayer {
     EquipPart part = EquipPart::Body;
@@ -64,17 +92,28 @@ struct EquipLayer {
     const EquipVisual* item = nullptr;   // nullptr for Body
     eng::Vec2f at{};                     // attachment point (px from the token anchor)
 };
-// Body plus one layer per drawable item, in draw order (z, then item instance). Deterministic in the item list order.
-std::vector<EquipLayer> equip_layers(const ActorView&);
+// Body plus the drawn items, in draw order (z, then item instance). An empty body is the shared table.
+// Sheaths of wielded weapons are extra layers on the weapon's own item (its hip art part).
+std::vector<EquipLayer> equip_layers(const ActorView& actor, const BodyAttach& body = {});
 // Placeholder art: simple colored quads (no item art in content yet), back to front within the layer. `at` is the quad's
 // bottom-centre in px from the token anchor. Emissive quads (a lit flame) skip the tile light tint.
+// A weapon drawn as HipMain or HipOff is a sheath. Unmapped, it has no quad: the hand quad is the weapon.
 struct EquipQuad { eng::Vec2f at{}, size{}; eng::Color color{1, 1, 1, 1}; bool emissive = false; };
 std::vector<EquipQuad> equip_quads(const EquipVisual&, EquipPart, eng::Vec2f at);
+
+// Rear containers only. Shields and stowed two-handed or versatile weapons are not containers;
+// back priority reads those from kind, hands, and versatile.
+// Seam (container_back_role): PR B's optional manifest field `back_role`
+// (quiver | bolt_case | pack | other) per content_id. Until that manifest is wired the seam
+// returns nothing and the role is derived from the content id.
+enum class BackRole : uint8_t { None, Quiver, BoltCase, Pack, Other };
+BackRole container_back_role(std::string_view content_id);
 
 // Equipment art is chosen beside the quads, not instead of the attach table.
 // West facings mirror x (attach_points) and, when a sprite exists, mirror the
 // sprite about its pivot. se is toward; ne is away. A null sprite means the
 // caller draws equip_quads, which is today's picture for an unmapped item.
+// HipMain and HipOff both look up the `hip` part. Neck looks up `neck`, toward only.
 struct EquipArtChoice {
     const eng::presentation::EquipArtSprite* sprite = nullptr;
     bool mirror_x = false;

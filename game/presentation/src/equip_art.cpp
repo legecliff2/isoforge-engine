@@ -32,6 +32,7 @@ std::optional<EquipArtPart> parse_part(std::string_view s) {
     if (s == "main_hand") return EquipArtPart::MainHand;
     if (s == "off_hand") return EquipArtPart::OffHand;
     if (s == "held_light") return EquipArtPart::HeldLight;
+    if (s == "neck") return EquipArtPart::Neck;
     return std::nullopt;
 }
 
@@ -49,6 +50,8 @@ bool parse_sprite_name(const std::filesystem::path& file, EquipArtPart& part, Eq
     const auto p = parse_part(std::string_view(stem).substr(0, dot));
     const auto v = parse_view(std::string_view(stem).substr(dot + 1));
     if (!p || !v) return false;
+    // neck is toward-only. The schema accepts neck.se and rejects neck.ne.
+    if (*p == EquipArtPart::Neck && *v == EquipArtView::Away) return false;
     part = *p;
     view = *v;
     return true;
@@ -135,6 +138,8 @@ EquipArtTable EquipArtTable::load(const std::filesystem::path& root) {
         auto image = read_png(file);
         if (!image || image->empty()) return;
         EquipArtSprite sprite;
+        // Seam: PR B's optional pivot [x, y] per part per view. Absent, bottom-centre.
+        // H4's provisional pivot is [12, 20]. Not read until that manifest is wired.
         sprite.pivot_x = int(image->w / 2);
         sprite.pivot_y = int(image->h - 1);
         sprite.image = std::move(*image);

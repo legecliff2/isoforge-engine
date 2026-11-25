@@ -529,3 +529,27 @@ TEST_CASE("equipment art: content id, then medium, then kind, then nothing") {
     CHECK(flipped.rgba == standin_flip.rgba);
     std::filesystem::remove_all(kit);
 }
+
+TEST_CASE("equipment art: neck.se loads and neck.ne is rejected") {
+    const auto kit = std::filesystem::temp_directory_path() / "isoforge-equip-neck";
+    std::filesystem::remove_all(kit);
+    const auto amulet = kit / "srd51.item.holy_symbol_amulet";
+    std::filesystem::create_directories(amulet);
+    std::filesystem::copy_file(root() / "frames/tiny/se/mon_tiny_se_idle_00.png", amulet / "neck.se.png");
+    std::filesystem::copy_file(root() / "frames/small/ne/mon_small_ne_idle_00.png", amulet / "neck.ne.png");
+    const EquipArtTable table = EquipArtTable::load(kit);
+    CHECK(table.size() == 1);
+    EquipArtQuery q;
+    q.content_id = "srd51.item.holy_symbol_amulet";
+    q.kind = "other";
+    q.part = EquipArtPart::Neck;
+    q.view = EquipArtView::Toward;
+    const EquipArtSprite* toward = table.find(q);
+    REQUIRE(toward);
+    CHECK(toward->image.w == 16);
+    CHECK(toward->pivot_x == 8);
+    CHECK(toward->pivot_y == 15);
+    q.view = EquipArtView::Away;
+    CHECK(table.find(q) == nullptr);
+    std::filesystem::remove_all(kit);
+}

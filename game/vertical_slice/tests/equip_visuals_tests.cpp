@@ -73,7 +73,7 @@ TEST_CASE("equip visuals: fixed draw order around the body; facing West swaps th
     ActorView a = vm.actors[0];
     a.equipment.push_back(equip_scene::item(13, AttachSlot::MainHand, EquipKind::Light, "srd51.item.torch"));
     using P = EquipPart;
-    CHECK(parts(a) == std::vector<P>{P::Back, P::Body, P::OffHand, P::MainHand, P::HeldLight});
+    CHECK(parts(a) == std::vector<P>{P::Back, P::Body, P::HipMain, P::OffHand, P::MainHand, P::HeldLight});
     // Any input order gives the same layers.
     ActorView r = a;
     std::reverse(r.equipment.begin(), r.equipment.end());
@@ -87,18 +87,21 @@ TEST_CASE("equip visuals: fixed draw order around the body; facing West swaps th
     CHECK(la.front().z > 0);
     for (size_t i = 1; i < la.size(); ++i) CHECK(la[i - 1].z < la[i].z);
     for (Facing f : {Facing::SouthWest, Facing::NorthWest}) {
-        CHECK(attach_points(f).main_hand.x < 0.f);
-        CHECK(attach_points(f).back.x == -attach_points(Facing::SouthEast).back.x);
-        CHECK(attach_points(f).hip.x == -attach_points(Facing::SouthEast).hip.x);
+        const BodyAttach shared = shared_body_attach();
+        CHECK(attach_points(shared, f).main_hand.x < 0.f);
+        CHECK(attach_points(shared, f).back.x == -attach_points(shared, Facing::SouthEast).back.x);
+        CHECK(attach_points(shared, f).hip_main.x == -attach_points(shared, Facing::SouthEast).hip_main.x);
+        CHECK(attach_points(shared, f).hip_off.x == -attach_points(shared, Facing::SouthEast).hip_off.x);
     }
     // Toward (SW): the back stays behind the body. Away (NW / NE): it draws in front of the body, hands still mirrored.
+    // The longsword's sheath is hip-main and uses the hip z rule, so it swaps sides of the body with the back.
     a.facing = Facing::SouthWest;
-    CHECK(parts(a) == std::vector<P>{P::Back, P::Body, P::MainHand, P::OffHand, P::HeldLight});
+    CHECK(parts(a) == std::vector<P>{P::Back, P::Body, P::HipMain, P::MainHand, P::OffHand, P::HeldLight});
     a.facing = Facing::NorthWest;
-    CHECK(parts(a) == std::vector<P>{P::Body, P::Back, P::MainHand, P::OffHand, P::HeldLight});
+    CHECK(parts(a) == std::vector<P>{P::HipMain, P::Body, P::Back, P::MainHand, P::OffHand, P::HeldLight});
     a.facing = Facing::NorthEast;
-    CHECK(parts(a) == std::vector<P>{P::Body, P::Back, P::OffHand, P::MainHand, P::HeldLight});
-    CHECK(attach_points(Facing::SouthEast).main_hand.x > 0.f);
+    CHECK(parts(a) == std::vector<P>{P::HipMain, P::Body, P::Back, P::OffHand, P::MainHand, P::HeldLight});
+    CHECK(attach_points(shared_body_attach(), Facing::SouthEast).main_hand.x > 0.f);
 }
 
 TEST_CASE("equip visuals: back and hip z flip around the body on all four facings") {
@@ -129,22 +132,30 @@ TEST_CASE("equip visuals: back and hip z flip around the body on all four facing
         const EquipLayer* pack = find_layer(ls, 4);
         const EquipLayer* dagger = find_layer(ls, 9);
         const EquipLayer* pouch = find_layer(ls, 5);
-        const EquipLayer* sword = find_layer(ls, 2);
         const EquipLayer* shield = find_layer(ls, 3);
         const EquipLayer* torch = find_layer(ls, 8);
+        // The sword is both the hand and the hip-main sheath.
+        const EquipLayer* sheath_layer = nullptr;
+        const EquipLayer* sword_hand = nullptr;
+        for (const EquipLayer& l : ls) {
+            if (!l.item || l.item->item != 2) continue;
+            if (l.part == EquipPart::HipMain) sheath_layer = &l;
+            if (l.part == EquipPart::MainHand) sword_hand = &l;
+        }
         REQUIRE(body);
         REQUIRE(pack);
-        REQUIRE(dagger);
+        CHECK(dagger == nullptr);   // one-handed, loses the back to the backpack
         REQUIRE(pouch);
-        REQUIRE(sword);
+        REQUIRE(sheath_layer);
+        REQUIRE(sword_hand);
         REQUIRE(shield);
         REQUIRE(torch);
         CHECK(pack->part == EquipPart::Back);
-        CHECK(dagger->part == EquipPart::Back);
-        CHECK(pouch->part == EquipPart::Hip);
+        CHECK(pouch->part == EquipPart::HipOff);   // one sheath (the sword): the pouch takes hip-off
+        CHECK(sheath_layer->part == EquipPart::HipMain);
         CHECK(pack->z == worn_z(AttachSlot::Back, f));
-        CHECK(dagger->z == pack->z);
         CHECK(pouch->z == worn_z(AttachSlot::Hip, f));
+        CHECK(sheath_layer->z == pouch->z);
         if (away) {
             CHECK(pack->z == kZWornFront);
             CHECK(pack->z > body->z);
@@ -157,16 +168,17 @@ TEST_CASE("equip visuals: back and hip z flip around the body on all four facing
             CHECK(pouch->z > body->z);
         }
         // Both worn layers stay behind both hands. The light stays above the hands, the outline above the light.
-        CHECK(pack->z < sword->z);
+        CHECK(pack->z < sword_hand->z);
         CHECK(pack->z < shield->z);
-        CHECK(pouch->z < sword->z);
+        CHECK(pouch->z < sword_hand->z);
         CHECK(pouch->z < shield->z);
-        CHECK(sword->z > body->z);
+        CHECK(sheath_layer->z < sword_hand->z);
+        CHECK(sword_hand->z > body->z);
         CHECK(shield->z > body->z);
-        CHECK(sword->z == ((f == Facing::SouthWest || f == Facing::NorthWest) ? kZFarHand : kZNearHand));
+        CHECK(sword_hand->z == ((f == Facing::SouthWest || f == Facing::NorthWest) ? kZFarHand : kZNearHand));
         CHECK(shield->z == ((f == Facing::SouthWest || f == Facing::NorthWest) ? kZNearHand : kZFarHand));
         CHECK(torch->z == kZLight);
-        CHECK(torch->z > sword->z);
+        CHECK(torch->z > sword_hand->z);
         CHECK(torch->z > shield->z);
         CHECK(kZOutline > kZLight);
         CHECK(kZLight > kZNearHand);
@@ -174,38 +186,41 @@ TEST_CASE("equip visuals: back and hip z flip around the body on all four facing
         CHECK(kZFarHand > kZWornFront);
         CHECK(kZWornFront > kZBody);
         CHECK(kZBody > kZBack);
-        // Same z: lower item instance first (pack 4 before the slung dagger 9), on either side of the body.
-        CHECK(index_of(ls, 4) < index_of(ls, 9));
-        const AttachPoints ap = attach_points(f);
+        // Same hip z: lower item instance first (sheath 2 before the pouch 5).
+        CHECK(index_of(ls, 2) < index_of(ls, 5));
+        const AttachPoints ap = attach_points(shared_body_attach(), f);
         CHECK(pack->at.x == ap.back.x);
         CHECK(pack->at.y == ap.back.y);
-        CHECK(pouch->at.x == ap.hip.x);
-        CHECK(pouch->at.y == ap.hip.y);
+        CHECK(sheath_layer->at.x == ap.hip_main.x);
+        CHECK(sheath_layer->at.y == ap.hip_main.y);
+        CHECK(pouch->at.x == ap.hip_off.x);
+        CHECK(pouch->at.y == ap.hip_off.y);
+        CHECK(equip_quads(*sheath_layer->item, EquipPart::HipMain, sheath_layer->at).empty());
     }
     // Input order does not change the tie-break.
     std::reverse(a.equipment.begin(), a.equipment.end());
     a.facing = Facing::NorthEast;
     const std::vector<EquipLayer> away = equip_layers(a);
-    CHECK(index_of(away, 4) < index_of(away, 9));
+    CHECK(index_of(away, 2) < index_of(away, 5));
     a.facing = Facing::SouthEast;
     const std::vector<EquipLayer> toward = equip_layers(a);
-    CHECK(index_of(toward, 4) < index_of(toward, 9));
+    CHECK(index_of(toward, 2) < index_of(toward, 5));
     // Placeholder quads: a pack is a bag, a slung weapon stays a shaft, a pouch is the belt bag.
     const EquipLayer* pack_layer = find_layer(toward, 4);
-    const EquipLayer* dagger_layer = find_layer(toward, 9);
     const EquipLayer* pouch_layer = find_layer(toward, 5);
     REQUIRE(pack_layer);
-    REQUIRE(dagger_layer);
     REQUIRE(pouch_layer);
     const EquipVisual* pack_item = pack_layer->item;
-    const EquipVisual* dagger_item = dagger_layer->item;
+    const EquipVisual* dagger_item = nullptr;
+    for (const EquipVisual& e : a.equipment)
+        if (e.item == 9) dagger_item = &e;
     const EquipVisual* pouch_item = pouch_layer->item;
     REQUIRE(pack_item);
     REQUIRE(dagger_item);
     REQUIRE(pouch_item);
     const std::vector<EquipQuad> pack_q = equip_quads(*pack_item, EquipPart::Back, {0, 0});
     const std::vector<EquipQuad> shaft_q = equip_quads(*dagger_item, EquipPart::Back, {0, 0});
-    const std::vector<EquipQuad> pouch_q = equip_quads(*pouch_item, EquipPart::Hip, {0, 0});
+    const std::vector<EquipQuad> pouch_q = equip_quads(*pouch_item, EquipPart::HipOff, {0, 0});
     REQUIRE(pack_q.size() == 1);
     REQUIRE(shaft_q.size() == 1);
     REQUIRE(pouch_q.size() == 1);
@@ -311,7 +326,7 @@ fs::path make_kit_pack() {
     return root;
 }
 // Same temp pack, with the fighter carrying a slung weapon and shield plus the four body-gear items.
-// component_pouch is carried too, and must not be drawn as the belt pouch.
+// component_pouch is a hip item of its own. The amulet is the neck.
 fs::path make_body_gear_pack() {
     const fs::path root = fs::temp_directory_path() / ("isoforge_equip_body_" + run_suffix());
     std::error_code ec;
@@ -332,7 +347,8 @@ fs::path make_body_gear_pack() {
                                           assets::Json{{"item", "srd51.item.quiver"}, {"equipped", false}},
                                           assets::Json{{"item", "srd51.item.case_crossbow_bolt"}, {"equipped", false}},
                                           assets::Json{{"item", "srd51.item.pouch"}, {"equipped", false}},
-                                          assets::Json{{"item", "srd51.item.component_pouch"}, {"equipped", false}}});
+                                          assets::Json{{"item", "srd51.item.component_pouch"}, {"equipped", false}},
+                                          assets::Json{{"item", "srd51.item.holy_symbol_amulet"}, {"equipped", false}}});
     std::ofstream(pack / "characters/fighter_1.json") << f.dump(2);
     return root;
 }
@@ -443,7 +459,13 @@ TEST_CASE("equip visuals: backpack, quiver and bolt case go to the back; the pou
     CHECK(bolts->slot == AttachSlot::Back);
     CHECK(pouch->slot == AttachSlot::Hip);
     CHECK(pouch->kind == EquipKind::Other);
-    CHECK(find_item(*a, "srd51.item.component_pouch") == nullptr);   // not the belt pouch
+    const EquipVisual* components = find_item(*a, "srd51.item.component_pouch");
+    const EquipVisual* amulet = find_item(*a, "srd51.item.holy_symbol_amulet");
+    REQUIRE(components);
+    REQUIRE(amulet);
+    CHECK(components->slot == AttachSlot::Hip);
+    CHECK(amulet->slot == AttachSlot::Neck);
+    CHECK(sword->versatile);   // longsword: presentation copy of the item, not a schema field
     CHECK(find_item(*a, "srd51.item.chain_mail") == nullptr);        // worn armor stays undrawn
     { std::error_code ec; fs::remove_all(root, ec); }
 }
@@ -464,25 +486,32 @@ bool same_quads(const std::vector<EquipQuad>& a, const std::vector<EquipQuad>& b
 } // namespace
 
 TEST_CASE("equip art: unmapped items keep today's quads, anchors, and z") {
-    const AttachPoints se = attach_points(Facing::SouthEast);
+    const BodyAttach shared = shared_body_attach();
+    const AttachPoints se = attach_points(shared, Facing::SouthEast);
     CHECK(se.main_hand.x == 9.f);
     CHECK(se.main_hand.y == 4.f);
     CHECK(se.off_hand.x == -9.f);
     CHECK(se.off_hand.y == 4.f);
     CHECK(se.back.x == -7.f);
     CHECK(se.back.y == 2.f);
-    CHECK(se.hip.x == 6.f);
-    CHECK(se.hip.y == 8.f);
-    const AttachPoints sw = attach_points(Facing::SouthWest);
-    const AttachPoints nw = attach_points(Facing::NorthWest);
+    CHECK(se.hip_main.x == 6.f);
+    CHECK(se.hip_main.y == 8.f);
+    CHECK(se.hip_off.x == -6.f);
+    CHECK(se.hip_off.y == 8.f);
+    CHECK(se.neck.x == 0.f);   // provisional chest point
+    CHECK(se.neck.y == 2.f);
+    const AttachPoints sw = attach_points(shared, Facing::SouthWest);
+    const AttachPoints nw = attach_points(shared, Facing::NorthWest);
     CHECK(sw.main_hand.x == -se.main_hand.x);
     CHECK(sw.off_hand.x == -se.off_hand.x);
     CHECK(sw.back.x == -se.back.x);
-    CHECK(sw.hip.x == -se.hip.x);
+    CHECK(sw.hip_main.x == -se.hip_main.x);
+    CHECK(sw.hip_off.x == -se.hip_off.x);
     CHECK(nw.back.x == -se.back.x);
-    CHECK(nw.hip.x == -se.hip.x);
+    CHECK(nw.hip_main.x == -se.hip_main.x);
+    CHECK(nw.hip_off.x == -se.hip_off.x);
     CHECK(sw.main_hand.y == se.main_hand.y);
-    CHECK(attach_points(Facing::NorthEast).back.x == se.back.x);
+    CHECK(attach_points(shared, Facing::NorthEast).back.x == se.back.x);
 
     CHECK(kZBack == 2);
     CHECK(kZBody == 4);
@@ -525,12 +554,16 @@ TEST_CASE("equip art: unmapped items keep today's quads, anchors, and z") {
         CHECK(equip_art_choice(nullptr, *l.item, l.part, a.facing, a.standin_bin).sprite == nullptr);
         CHECK(equip_art_choice(nullptr, *l.item, l.part, a.facing, "huge").mirror_x == false);
         const std::vector<EquipQuad> quads = equip_quads(*l.item, l.part, l.at);
-        CHECK_FALSE(quads.empty());
-        if (l.item->content_id == "srd51.item.longsword") {
-            CHECK(l.part == EquipPart::MainHand);
+        const bool sheath = (l.part == EquipPart::HipMain || l.part == EquipPart::HipOff) && l.item->kind == EquipKind::Weapon;
+        if (!sheath) CHECK_FALSE(quads.empty());
+        if (l.item->content_id == "srd51.item.longsword" && l.part == EquipPart::MainHand) {
             CHECK(l.z == kZNearHand);
             CHECK(l.at.x == se.main_hand.x);
             CHECK(l.at.y == se.main_hand.y);
+        } else if (l.item->content_id == "srd51.item.longsword" && l.part == EquipPart::HipMain) {
+            CHECK(l.z == kZWornFront);
+            CHECK(l.at.x == se.hip_main.x);
+            CHECK(equip_quads(*l.item, l.part, l.at).empty());
         } else if (l.item->content_id == "srd51.item.shield") {
             CHECK(l.part == EquipPart::OffHand);
             CHECK(l.z == kZFarHand);
@@ -545,10 +578,10 @@ TEST_CASE("equip art: unmapped items keep today's quads, anchors, and z") {
             CHECK(l.at.x == se.back.x);
             CHECK(l.at.y == se.back.y);
         }
-        if (l.part == EquipPart::Hip) {
+        if (l.part == EquipPart::HipOff) {
             CHECK(l.z == kZWornFront);
-            CHECK(l.at.x == se.hip.x);
-            CHECK(l.at.y == se.hip.y);
+            CHECK(l.at.x == se.hip_off.x);
+            CHECK(l.at.y == se.hip_off.y);
         }
     }
     const EquipVisual* quiver = nullptr;
@@ -589,7 +622,8 @@ TEST_CASE("equip art: unmapped items keep today's quads, anchors, and z") {
     const std::vector<EquipLayer> west_layers = equip_layers(a);
     for (const EquipLayer& l : west_layers) {
         if (l.part == EquipPart::Back) CHECK(l.at.x == sw.back.x);
-        if (l.part == EquipPart::Hip) CHECK(l.at.x == sw.hip.x);
+        if (l.part == EquipPart::HipMain) CHECK(l.at.x == sw.hip_main.x);
+        if (l.part == EquipPart::HipOff) CHECK(l.at.x == sw.hip_off.x);
         if (l.part == EquipPart::MainHand) CHECK(l.at.x == sw.main_hand.x);
     }
 }
@@ -633,7 +667,7 @@ TEST_CASE("equip art: choice follows content id and view, and leaves the attach 
     CHECK(bolt_se.sprite->image.w == 24);
     CHECK(quiver_se.sprite != bolt_se.sprite);
     CHECK(quiver_ne.sprite != quiver_se.sprite);
-    const eng::Vec2f back = attach_points(Facing::SouthEast).back;
+    const eng::Vec2f back = attach_points(shared_body_attach(), Facing::SouthEast).back;
     const eng::Vec2f anchor = equip_sprite_anchor(quiver_se.sprite->pivot_x, quiver_se.sprite->pivot_y, back);
     CHECK(anchor.x == float(quiver_se.sprite->pivot_x) - back.x);
     CHECK(anchor.y == float(quiver_se.sprite->pivot_y) - back.y);
@@ -645,8 +679,405 @@ TEST_CASE("equip art: choice follows content id and view, and leaves the attach 
     CHECK(bow_hand.sprite->image.w == 32);
     const EquipArtChoice bow_away = equip_art_choice(&table, bow, EquipPart::MainHand, Facing::NorthEast, "medium");
     CHECK(bow_away.sprite == nullptr);
-    const std::vector<EquipQuad> still = equip_quads(bow, EquipPart::MainHand, attach_points(Facing::SouthEast).main_hand);
+    const std::vector<EquipQuad> still = equip_quads(bow, EquipPart::MainHand, attach_points(shared_body_attach(), Facing::SouthEast).main_hand);
     CHECK(still.size() == 2);
     CHECK(still[0].color.r < 0.7f);
     fs::remove_all(art, ec);
+}
+
+namespace {
+const EquipLayer* layer_part(const std::vector<EquipLayer>& ls, uint32_t id, EquipPart part) {
+    for (const EquipLayer& l : ls)
+        if (l.item && l.item->item == id && l.part == part) return &l;
+    return nullptr;
+}
+bool layer_has(const std::vector<EquipLayer>& ls, uint32_t id) {
+    for (const EquipLayer& l : ls)
+        if (l.item && l.item->item == id) return true;
+    return false;
+}
+uint32_t back_winner(const ActorView& a) {
+    for (const EquipLayer& l : equip_layers(a))
+        if (l.part == EquipPart::Back && l.item) return l.item->item;
+    return 0;
+}
+EquipVisual gear(uint32_t id, AttachSlot slot, EquipKind kind, const char* cid) {
+    return equip_scene::item(id, slot, kind, cid);
+}
+} // namespace
+
+TEST_CASE("equip attach: per-body table, shared fallback, west mirrors x") {
+    const fs::path root = fs::temp_directory_path() / ("isoforge_attach_" + run_suffix());
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    const fs::path wolf = root / "srd" / "wolf" / "medium";
+    const fs::path goblin = root / "srd" / "goblin" / "medium";
+    const fs::path bin = root / "frames" / "medium";
+    fs::create_directories(wolf);
+    fs::create_directories(goblin);
+    fs::create_directories(bin);
+    std::ofstream(wolf / "attach.json") << R"({
+        "se": {"main": [3, 5], "off": [-4, 6], "back": [-1, 2], "hip-main": [8, 9], "hip-off": [-2, 9], "neck": [1, 2]},
+        "ne": {"main": [4, 1], "back": [5, 3], "hip-off": [-3, 7]}
+    })";
+    std::ofstream(bin / "attach.json") << R"({"se": {"main": [20, 1], "neck": [0, 6]}})";
+    std::ofstream(goblin / "attach.json") << "{not json";
+
+    const BodyAttach wolf_body = load_body_attach(root, "srd51.monster.wolf", "medium");
+    CHECK(wolf_body.loaded);
+    const AttachPoints se = attach_points(wolf_body, Facing::SouthEast);
+    CHECK(se.main_hand.x == 3.f);
+    CHECK(se.main_hand.y == 5.f);
+    CHECK(se.off_hand.x == -4.f);
+    CHECK(se.off_hand.y == 6.f);
+    CHECK(se.back.x == -1.f);
+    CHECK(se.hip_main.x == 8.f);
+    CHECK(se.hip_main.y == 9.f);
+    CHECK(se.hip_off.x == -2.f);
+    CHECK(se.neck.x == 1.f);
+    CHECK(se.neck.y == 2.f);
+    // A missing ne key keeps the shared point, not the custom se point.
+    const AttachPoints ne = attach_points(wolf_body, Facing::NorthEast);
+    CHECK(ne.main_hand.x == 4.f);
+    CHECK(ne.main_hand.y == 1.f);
+    CHECK(ne.off_hand.x == -9.f);
+    CHECK(ne.back.x == 5.f);
+    CHECK(ne.back.y == 3.f);
+    CHECK(ne.hip_main.x == 6.f);
+    CHECK(ne.hip_off.x == -3.f);
+    CHECK(ne.hip_off.y == 7.f);
+    CHECK(ne.neck.y == 2.f);
+    const AttachPoints sw = attach_points(wolf_body, Facing::SouthWest);
+    const AttachPoints nw = attach_points(wolf_body, Facing::NorthWest);
+    CHECK(sw.main_hand.x == -se.main_hand.x);
+    CHECK(sw.off_hand.x == -se.off_hand.x);
+    CHECK(sw.back.x == -se.back.x);
+    CHECK(sw.hip_main.x == -se.hip_main.x);
+    CHECK(sw.hip_off.x == -se.hip_off.x);
+    CHECK(sw.neck.x == -se.neck.x);
+    CHECK(sw.main_hand.y == se.main_hand.y);
+    CHECK(nw.main_hand.x == -ne.main_hand.x);
+    CHECK(nw.back.x == -ne.back.x);
+    CHECK(nw.hip_off.x == -ne.hip_off.x);
+    CHECK(nw.hip_main.x == -ne.hip_main.x);
+
+    // No per-monster file: the bin kit, then shared fill for the keys it omits.
+    const BodyAttach bear = load_body_attach(root, "srd51.monster.brown_bear", "medium");
+    CHECK(bear.loaded);
+    CHECK(attach_points(bear, Facing::SouthEast).main_hand.x == 20.f);
+    CHECK(attach_points(bear, Facing::SouthEast).off_hand.x == -9.f);
+    CHECK(attach_points(bear, Facing::SouthEast).neck.y == 6.f);
+    CHECK(attach_points(bear, Facing::SouthWest).main_hand.x == -20.f);
+
+    // A broken per-monster file falls through to the bin kit.
+    const BodyAttach broken = load_body_attach(root, "srd51.monster.goblin", "medium");
+    CHECK(broken.loaded);
+    CHECK(attach_points(broken, Facing::SouthEast).main_hand.x == 20.f);
+
+    // Per-monster wins over the bin kit: wolf did not pick up main [20, 1].
+    CHECK(se.main_hand.x == 3.f);
+
+    CHECK_FALSE(load_body_attach(root, "srd51.monster.wolf", "huge").loaded);
+    CHECK(attach_points(load_body_attach(root, "srd51.monster.wolf", "nope"), Facing::SouthEast).main_hand.x == 9.f);
+    const BodyAttach none = load_body_attach(root / "missing", "srd51.monster.wolf", "medium");
+    CHECK_FALSE(none.loaded);
+    CHECK(attach_points(none, Facing::SouthEast).hip_main.x == 6.f);
+    CHECK(attach_points(none, Facing::SouthEast).hip_off.x == -6.f);
+
+    const fs::path shipped{SLICE_STANDIN_ROOT};
+    CHECK(fs::is_directory(shipped / "srd" / "green-hag" / "medium"));
+    CHECK_FALSE(fs::is_regular_file(shipped / "srd" / "green-hag" / "medium" / "attach.json"));
+    const BodyAttach hag = load_body_attach(shipped, "srd51.monster.green_hag", "medium");
+    CHECK_FALSE(hag.loaded);
+    CHECK(attach_points(hag, Facing::SouthEast).back.x == -7.f);
+    CHECK(attach_points(hag, Facing::SouthWest).hip_main.x == -6.f);
+    fs::remove_all(root, ec);
+}
+
+TEST_CASE("equip hips: sheath, two-weapon fighting, pouch, and hidden extras") {
+    const BodyAttach body = shared_body_attach();
+    const AttachPoints se = attach_points(body, Facing::SouthEast);
+    ActorView a;
+    a.facing = Facing::SouthEast;
+    a.equipment = {gear(2, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longsword"),
+                   gear(5, AttachSlot::Hip, EquipKind::Other, "srd51.item.pouch")};
+    {
+        const auto ls = equip_layers(a, body);
+        const EquipLayer* sheath = layer_part(ls, 2, EquipPart::HipMain);
+        const EquipLayer* pouch = layer_part(ls, 5, EquipPart::HipOff);
+        REQUIRE(sheath);
+        REQUIRE(pouch);
+        CHECK(sheath->at.x == se.hip_main.x);
+        CHECK(pouch->at.x == se.hip_off.x);
+        CHECK(sheath->z == kZWornFront);
+        CHECK(pouch->z == kZWornFront);
+        CHECK(equip_quads(*sheath->item, sheath->part, sheath->at).empty());
+        CHECK(equip_quads(*pouch->item, pouch->part, pouch->at).size() == 1);
+    }
+    // Two weapons in hand: both sheaths, the pouch is hidden.
+    a.equipment.push_back(gear(3, AttachSlot::OffHand, EquipKind::Weapon, "srd51.item.dagger"));
+    {
+        const auto ls = equip_layers(a, body);
+        REQUIRE(layer_part(ls, 2, EquipPart::HipMain));
+        REQUIRE(layer_part(ls, 3, EquipPart::HipOff));
+        CHECK(layer_part(ls, 3, EquipPart::HipOff)->at.x == se.hip_off.x);
+        CHECK_FALSE(layer_has(ls, 5));
+        CHECK(layer_part(ls, 2, EquipPart::MainHand));
+        CHECK(layer_part(ls, 3, EquipPart::OffHand));
+    }
+    // No weapon in either hand: the pouch takes hip-main. An off-hand-only weapon is not a sheath.
+    a.equipment = {gear(3, AttachSlot::OffHand, EquipKind::Weapon, "srd51.item.dagger"),
+                   gear(5, AttachSlot::Hip, EquipKind::Other, "srd51.item.pouch")};
+    {
+        const auto ls = equip_layers(a, body);
+        REQUIRE(layer_part(ls, 5, EquipPart::HipMain));
+        CHECK(layer_part(ls, 5, EquipPart::HipMain)->at.x == se.hip_main.x);
+        CHECK(layer_part(ls, 3, EquipPart::HipOff) == nullptr);
+        CHECK(layer_part(ls, 3, EquipPart::OffHand));
+    }
+    // Component pouch is preferred over the belt pouch. The belt pouch and any other hip item are hidden.
+    // Two component pouches: the lower instance id wins.
+    a.equipment = {gear(9, AttachSlot::Hip, EquipKind::Other, "srd51.item.component_pouch"),
+                   gear(2, AttachSlot::Hip, EquipKind::Other, "srd51.item.pouch"),
+                   gear(4, AttachSlot::Hip, EquipKind::Other, "srd51.item.rope")};
+    {
+        const auto ls = equip_layers(a, body);
+        REQUIRE(layer_part(ls, 9, EquipPart::HipMain));
+        CHECK_FALSE(layer_has(ls, 2));
+        CHECK_FALSE(layer_has(ls, 4));
+    }
+    a.equipment = {gear(8, AttachSlot::Hip, EquipKind::Other, "srd51.item.component_pouch"),
+                   gear(3, AttachSlot::Hip, EquipKind::Other, "srd51.item.component_pouch")};
+    {
+        const auto ls = equip_layers(a, body);
+        REQUIRE(layer_part(ls, 3, EquipPart::HipMain));
+        CHECK_FALSE(layer_has(ls, 8));
+    }
+    // No component pouch: the belt pouch is the pouch, and a lower id wins a tie.
+    a.equipment = {gear(7, AttachSlot::Hip, EquipKind::Other, "srd51.item.pouch"),
+                   gear(6, AttachSlot::Hip, EquipKind::Other, "srd51.item.pouch"),
+                   gear(1, AttachSlot::MainHand, EquipKind::Light, "srd51.item.torch")};
+    {
+        const auto ls = equip_layers(a, body);
+        REQUIRE(layer_part(ls, 6, EquipPart::HipMain));   // no sheath
+        CHECK_FALSE(layer_has(ls, 7));
+    }
+    // One sheath and two pouches: component pouch on hip-off, belt hidden.
+    a.equipment = {gear(1, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.mace"),
+                   gear(11, AttachSlot::Hip, EquipKind::Other, "srd51.item.pouch"),
+                   gear(10, AttachSlot::Hip, EquipKind::Other, "srd51.item.component_pouch")};
+    {
+        const auto ls = equip_layers(a, body);
+        REQUIRE(layer_part(ls, 1, EquipPart::HipMain));
+        REQUIRE(layer_part(ls, 10, EquipPart::HipOff));
+        CHECK_FALSE(layer_has(ls, 11));
+    }
+    // Both hips use the hip z rule on every facing. West mirrors x.
+    a.equipment = {gear(1, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longsword"),
+                   gear(2, AttachSlot::OffHand, EquipKind::Weapon, "srd51.item.dagger")};
+    for (Facing f : {Facing::SouthEast, Facing::SouthWest, Facing::NorthEast, Facing::NorthWest}) {
+        a.facing = f;
+        const auto ls = equip_layers(a, body);
+        const EquipLayer* main = layer_part(ls, 1, EquipPart::HipMain);
+        const EquipLayer* off = layer_part(ls, 2, EquipPart::HipOff);
+        REQUIRE(main);
+        REQUIRE(off);
+        CHECK(main->z == worn_z(AttachSlot::Hip, f));
+        CHECK(off->z == worn_z(AttachSlot::Hip, f));
+        const AttachPoints ap = attach_points(body, f);
+        CHECK(main->at.x == ap.hip_main.x);
+        CHECK(off->at.x == ap.hip_off.x);
+        CHECK(main->z == (facing_shows_back(f) ? kZBack : kZWornFront));
+    }
+}
+
+TEST_CASE("equip back: one item, fixed priority, lower instance id wins a tie") {
+    CHECK(container_back_role("srd51.item.quiver") == BackRole::Quiver);
+    CHECK(container_back_role("srd51.item.case_crossbow_bolt") == BackRole::BoltCase);
+    CHECK(container_back_role("srd51.item.backpack") == BackRole::Pack);
+    CHECK(container_back_role("srd51.item.shield") == BackRole::None);
+    CHECK(container_back_role("srd51.item.longsword") == BackRole::None);
+
+    ActorView a;
+    auto bow = gear(1, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longbow");
+    bow.hands = 2;
+    auto quiver_hi = gear(10, AttachSlot::Back, EquipKind::Other, "srd51.item.quiver");
+    auto quiver_lo = gear(4, AttachSlot::Back, EquipKind::Other, "srd51.item.quiver");
+    auto bolts = gear(3, AttachSlot::Back, EquipKind::Other, "srd51.item.case_crossbow_bolt");
+    auto shield = gear(2, AttachSlot::Back, EquipKind::Shield, "srd51.item.shield");
+    auto held_shield = gear(2, AttachSlot::OffHand, EquipKind::Shield, "srd51.item.shield");
+    auto great = gear(8, AttachSlot::Back, EquipKind::Weapon, "srd51.item.greatsword");
+    great.hands = 2;
+    auto versatile = gear(5, AttachSlot::Back, EquipKind::Weapon, "srd51.item.longsword");
+    versatile.versatile = true;
+    auto pack = gear(9, AttachSlot::Back, EquipKind::Other, "srd51.item.backpack");
+    auto dagger = gear(7, AttachSlot::Back, EquipKind::Weapon, "srd51.item.dagger");
+    auto rope = gear(6, AttachSlot::Back, EquipKind::Other, "srd51.item.rope");
+
+    a.equipment = {bow, quiver_hi, bolts, shield, great, pack};
+    CHECK(back_winner(a) == 10);   // 1. quiver matching the wielded bow, ahead of a lower-id shield
+
+    a.equipment = {bow, quiver_hi, quiver_lo};
+    CHECK(back_winner(a) == 4);    // tie inside rank 1: lower instance id
+
+    auto xbow = gear(1, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.light_crossbow");
+    xbow.hands = 2;
+    a.equipment = {xbow, quiver_lo, bolts};
+    CHECK(back_winner(a) == 3);    // crossbow matches the bolt case, not the quiver
+
+    auto stowed_bow = gear(12, AttachSlot::Back, EquipKind::Weapon, "srd51.item.longbow");
+    stowed_bow.hands = 2;
+    a.equipment = {stowed_bow, quiver_lo, bolts, shield, great, pack};
+    CHECK(back_winner(a) == 2);    // 2. stowed shield. A bow on the back is not wielded, so the quiver stays rank 5.
+
+    a.equipment = {held_shield, pack, dagger};
+    CHECK(back_winner(a) == 9);    // a shield in the hand is not stowed
+    CHECK(layer_part(equip_layers(a), 2, EquipPart::OffHand));
+
+    a.equipment = {great, versatile, pack};
+    CHECK(back_winner(a) == 5);    // 3. two-handed and versatile tie; lower id is the versatile sword
+
+    a.equipment = {pack, quiver_lo, bolts, dagger};
+    CHECK(back_winner(a) == 9);    // 4. backpack ahead of a quiver that matches nothing
+
+    a.equipment = {quiver_hi, bolts, dagger, rope};
+    CHECK(back_winner(a) == 3);    // 5. other quiver / bolt case, lower id, ahead of other gear
+
+    a.equipment = {dagger, rope};
+    CHECK(back_winner(a) == 6);    // 6. other back gear, lower id
+
+    // The loser is not drawn.
+    a.equipment = {bow, quiver_lo, pack, shield};
+    const auto ls = equip_layers(a);
+    CHECK(layer_part(ls, 4, EquipPart::Back));
+    CHECK_FALSE(layer_has(ls, 9));
+    CHECK_FALSE(layer_has(ls, 2));
+}
+
+TEST_CASE("equip neck: visible on toward facings, hidden on away, z5") {
+    ActorView a;
+    a.equipment = {gear(4, AttachSlot::Neck, EquipKind::Other, "srd51.item.holy_symbol_amulet"),
+                   gear(8, AttachSlot::Neck, EquipKind::Other, "srd51.item.holy_symbol_amulet"),
+                   gear(1, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.mace")};
+    for (Facing f : {Facing::SouthEast, Facing::SouthWest}) {
+        a.facing = f;
+        const auto ls = equip_layers(a);
+        const EquipLayer* neck = layer_part(ls, 4, EquipPart::Neck);
+        REQUIRE(neck);
+        CHECK_FALSE(layer_has(ls, 8));   // tie: lower instance id
+        CHECK(neck->z == kZWornFront);
+        CHECK(neck->z < kZFarHand);
+        CHECK(neck->z > kZBody);
+        const AttachPoints ap = attach_points(shared_body_attach(), f);
+        CHECK(neck->at.x == ap.neck.x);
+        CHECK(neck->at.y == ap.neck.y);
+        CHECK(equip_quads(*neck->item, EquipPart::Neck, neck->at).size() == 1);
+    }
+    for (Facing f : {Facing::NorthEast, Facing::NorthWest}) {
+        a.facing = f;
+        const auto ls = equip_layers(a);
+        CHECK(layer_part(ls, 4, EquipPart::Neck) == nullptr);
+        CHECK_FALSE(layer_has(ls, 8));
+        CHECK(layer_part(ls, 1, EquipPart::MainHand));
+    }
+
+    const fs::path art = fs::temp_directory_path() / ("isoforge_equip_neck_" + run_suffix());
+    std::error_code ec;
+    fs::remove_all(art, ec);
+    fs::create_directories(art / "srd51.item.holy_symbol_amulet");
+    fs::create_directories(art / "srd51.item.longsword");
+    const fs::path png{SLICE_STANDIN_ROOT};
+    fs::copy_file(png / "frames/tiny/se/mon_tiny_se_idle_00.png", art / "srd51.item.holy_symbol_amulet" / "neck.se.png");
+    fs::copy_file(png / "frames/small/ne/mon_small_ne_idle_00.png", art / "srd51.item.holy_symbol_amulet" / "neck.ne.png");
+    fs::copy_file(png / "frames/tiny/se/mon_tiny_se_idle_01.png", art / "srd51.item.longsword" / "hip.se.png");
+    const eng::presentation::EquipArtTable table = eng::presentation::EquipArtTable::load(art);
+    const EquipVisual amulet = gear(4, AttachSlot::Neck, EquipKind::Other, "srd51.item.holy_symbol_amulet");
+    const EquipVisual sword = gear(1, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longsword");
+    const EquipArtChoice se = equip_art_choice(&table, amulet, EquipPart::Neck, Facing::SouthEast, "medium");
+    const EquipArtChoice sw = equip_art_choice(&table, amulet, EquipPart::Neck, Facing::SouthWest, "medium");
+    const EquipArtChoice ne = equip_art_choice(&table, amulet, EquipPart::Neck, Facing::NorthEast, "medium");
+    const EquipArtChoice nw = equip_art_choice(&table, amulet, EquipPart::Neck, Facing::NorthWest, "medium");
+    CHECK(table.size() == 2);   // neck.ne is not an entry
+    eng::presentation::EquipArtQuery neck_q;
+    neck_q.content_id = amulet.content_id;
+    neck_q.kind = "other";
+    neck_q.part = eng::presentation::EquipArtPart::Neck;
+    neck_q.view = eng::presentation::EquipArtView::Away;
+    CHECK(table.find(neck_q) == nullptr);
+    neck_q.view = eng::presentation::EquipArtView::Toward;
+    CHECK(table.find(neck_q) != nullptr);
+    REQUIRE(se.sprite);
+    CHECK_FALSE(se.mirror_x);
+    CHECK(sw.sprite == se.sprite);
+    CHECK(sw.mirror_x);
+    CHECK(ne.sprite == nullptr);
+    CHECK(nw.sprite == nullptr);
+    CHECK(se.sprite->image.w == 16);
+    const EquipArtChoice hip = equip_art_choice(&table, sword, EquipPart::HipMain, Facing::SouthEast, "");
+    const EquipArtChoice hip_off = equip_art_choice(&table, sword, EquipPart::HipOff, Facing::SouthEast, "");
+    REQUIRE(hip.sprite);
+    CHECK(hip_off.sprite == hip.sprite);   // one hip file; the anchor is chosen here, not in the name
+    fs::remove_all(art, ec);
+}
+
+TEST_CASE("equip draw order: unmapped items on a default body match main") {
+    // equip_scene on main: one back item per actor, no pouch, no neck. Sheaths add no quads, so the
+    // sprites submitted are the same list main drew. The golden hash below is that frame.
+    const ViewModel vm = equip_scene::build(true);
+    struct Drawn { EquipPart part; int32_t z; uint32_t item; float x, y; size_t quads; };
+    auto drawn = [](const ActorView& a) {
+        std::vector<Drawn> out;
+        for (const EquipLayer& l : equip_layers(a)) {
+            if (!l.item) continue;
+            const size_t n = equip_quads(*l.item, l.part, l.at).size();
+            if (n == 0) continue;
+            out.push_back({l.part, l.z, l.item->item, l.at.x, l.at.y, n});
+        }
+        return out;
+    };
+    const AttachPoints se = attach_points(shared_body_attach(), Facing::SouthEast);
+    const AttachPoints sw = attach_points(shared_body_attach(), Facing::SouthWest);
+    const std::vector<Drawn> fighter = {
+        {EquipPart::Back, kZBack, 12, se.back.x, se.back.y, 1},
+        {EquipPart::OffHand, kZFarHand, 11, se.off_hand.x, se.off_hand.y, 2},
+        {EquipPart::MainHand, kZNearHand, 10, se.main_hand.x, se.main_hand.y, 2},
+    };
+    const std::vector<Drawn> cleric = {
+        {EquipPart::Back, kZBack, 21, sw.back.x, sw.back.y, 1},
+        {EquipPart::MainHand, kZFarHand, 20, sw.main_hand.x, sw.main_hand.y, 2},
+        {EquipPart::HeldLight, kZLight, 22, sw.off_hand.x, sw.off_hand.y, 2},
+    };
+    const std::vector<Drawn> rogue = {
+        {EquipPart::OffHand, kZFarHand, 31, se.off_hand.x, se.off_hand.y, 2},
+        {EquipPart::HeldLight, kZLight, 30, se.main_hand.x, se.main_hand.y, 2},
+    };
+    auto same = [](const std::vector<Drawn>& got, const std::vector<Drawn>& exp) {
+        if (got.size() != exp.size()) return false;
+        for (size_t i = 0; i < got.size(); ++i) {
+            if (got[i].part != exp[i].part || got[i].z != exp[i].z || got[i].item != exp[i].item) return false;
+            if (got[i].x != exp[i].x || got[i].y != exp[i].y || got[i].quads != exp[i].quads) return false;
+        }
+        return true;
+    };
+    CHECK(same(drawn(vm.actors[0]), fighter));
+    CHECK(same(drawn(vm.actors[1]), cleric));
+    CHECK(same(drawn(vm.actors[2]), rogue));
+
+    ActorView hag = vm.actors[0];
+    hag.content_id = "srd51.monster.green_hag";
+    hag.standin_bin = "medium";
+    hag.visual_kind = "standin";
+    const BodyAttach hag_body = load_body_attach(fs::path(SLICE_STANDIN_ROOT), hag.content_id, hag.standin_bin);
+    CHECK_FALSE(hag_body.loaded);
+    CHECK(same(drawn(hag), fighter));
+    const auto hag_layers = equip_layers(hag, hag_body);
+    const auto pawn_layers = equip_layers(vm.actors[0]);
+    REQUIRE(hag_layers.size() == pawn_layers.size());
+    for (size_t i = 0; i < hag_layers.size(); ++i) {
+        CHECK(hag_layers[i].part == pawn_layers[i].part);
+        CHECK(hag_layers[i].z == pawn_layers[i].z);
+        CHECK(hag_layers[i].at.x == pawn_layers[i].at.x);
+        CHECK(hag_layers[i].at.y == pawn_layers[i].at.y);
+    }
+    CHECK(render_frame(vm).hash == 0xcfd377e872395730ull);
 }

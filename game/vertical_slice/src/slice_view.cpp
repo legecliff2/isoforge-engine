@@ -352,6 +352,15 @@ struct SliceView::EquipArt {
     IRenderDevice& dev;
     presentation::EquipArtTable table;
     std::vector<TextureId> authored, mirrored;
+    std::map<std::string, BodyAttach, std::less<>> attach;
+
+    const BodyAttach& body_attach(const ActorView& a) {
+        const std::string bin = a.standin_bin.empty() ? std::string("medium") : a.standin_bin;
+        const std::string key = a.content_id + "|" + bin;
+        const auto [it, inserted] = attach.try_emplace(key);
+        if (inserted) it->second = load_body_attach(SLICE_STANDIN_ROOT, a.content_id, bin);
+        return it->second;
+    }
 
     explicit EquipArt(IRenderDevice& d) : dev(d) {
         table = presentation::EquipArtTable::load(SLICE_EQUIP_ART_ROOT);
@@ -741,7 +750,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             world_.draw(p, iso, actor_sort, 1, a.id, kZBody);
         } else {
             // Equipment layers (equip_visuals.hpp): fixed z around the body inside the actor's sort key.
-            for (const EquipLayer& l : equip_layers(a)) {
+            for (const EquipLayer& l : equip_layers(a, equip_art_->body_attach(a))) {
                 if (l.part == EquipPart::Body) { world_.draw(p, iso, actor_sort, 1, a.id, kZBody); continue; }
                 const EquipArtChoice art = equip_art_choice(&equip_art_->table, *l.item, l.part, a.facing, a.standin_bin);
                 if (art.sprite && art.sprite->key < equip_art_->authored.size()) {
