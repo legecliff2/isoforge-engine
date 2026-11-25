@@ -1346,6 +1346,29 @@
           "const": true,
           "description": "B17 (save_effect, monster@5): ending the applied condition grants the same action immunity as immune_on_success (hours and scope, 0xE1). Needs immune_on_success and a tracked primary condition. The repeat save uses the action's magical flag. Dreadful Glare does not set this."
         },
+        "within_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 65535,
+          "multipleOf": 5,
+          "description": "C-D D1a (save_effect, CONTENT_CONVENTIONS §61): every other living creature within this many feet (3D, no sight). Needs origin self and no area. Sim derives the set. Not hashed."
+        },
+        "total_cover": {
+          "enum": ["skip", "no_skip"],
+          "description": "C-D D1b (save_effect, only with within_ft). skip: total cover makes no save (Wing Attack, Q6b). no_skip: a total-cover creature still saves, with no cover bonus (Frightful Presence, Q6a). Omitted means skip."
+        },
+        "chooses_targets": {
+          "const": true,
+          "description": "C-D D2 (save_effect, only with within_ft). The caster chooses: zone_excluded names creatures that are not chosen (0xB7). An empty list chooses every eligible creature, including allies."
+        },
+        "aware_only": {
+          "const": true,
+          "description": "C-D D3 (save_effect). A creature with Unconscious, or from whom the user is hidden, is not eligible: no save, no event, no immunity."
+        },
+        "repeat_disadvantage_in_sight": {
+          "const": true,
+          "description": "C-D D4 (save_effect). The tracked primary condition's end-of-turn repeat is at disadvantage while the source is in line of sight. Needs that condition. Derived, not hashed."
+        },
         "age_on_fail_by": {
           "type": "object",
           "additionalProperties": false,

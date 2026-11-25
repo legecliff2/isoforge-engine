@@ -176,7 +176,7 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
     // Batch 3 (Lich-approved): an option's `count_dice` ("1d4"; monster@5 only) names ONE attack made a rolled number
     // of times (SRD 5.1 violet fungus: "The violet fungus makes 1d4 Rotting Touch attacks.").
     // B7: engulf_both_hits on an option (Shambling Mound). Parsed here; content.cpp compiles the SpellDef.
-    struct Opt { std::string id; const Json* list; const Json* count; std::string rider; std::optional<Archetype::EngulfBothSpec> engulf; };
+    struct Opt { std::string id; const Json* list; const Json* count; std::string rider; std::optional<Archetype::EngulfBothSpec> engulf; std::string lead; };
     std::vector<Opt> opts;
     auto count_of = [](const Json& o) -> const Json* { auto c = o.find("count_dice"); return c == o.end() ? nullptr : &*c; };
     auto take_rider = [](const Json& o) -> std::optional<std::string> {
@@ -184,6 +184,12 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
         if (fr == o.end()) return std::string{};
         if (!fr->is_string() || fr->get<std::string>().empty()) return std::nullopt;
         return fr->get<std::string>();
+    };
+    auto take_lead = [](const Json& o) -> std::optional<std::string> {
+        auto la = o.find("lead_action");
+        if (la == o.end()) return std::string{};
+        if (!la->is_string() || la->get<std::string>().empty()) return std::nullopt;
+        return la->get<std::string>();
     };
     auto take_engulf = [](const Json& o, const std::string& where)
         -> std::pair<std::optional<std::string>, std::optional<Archetype::EngulfBothSpec>> {
@@ -227,20 +233,24 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
             const std::string oid = x["id"].get<std::string>();
             auto rider = take_rider(x);
             if (!rider) return f.id + ": multiattack option '" + oid + "': free_rider must name an action";
+            auto lead = take_lead(x);
+            if (!lead) return f.id + ": multiattack option '" + oid + "': lead_action must name an action";
             auto [eerr, spec] = take_engulf(x, f.id + ": multiattack option '" + oid + "'");
             if (eerr) return *eerr;
-            opts.push_back({oid, &x["attacks"], count_of(x), *rider, spec});
+            opts.push_back({oid, &x["attacks"], count_of(x), *rider, spec, *lead});
         }
     } else if (auto at = f.effect.find("attacks"); at != f.effect.end()) {
         auto rider = take_rider(f.effect);
         if (!rider) return f.id + ": multiattack free_rider must name an action";
+        auto lead = take_lead(f.effect);
+        if (!lead) return f.id + ": multiattack option 'multiattack': lead_action must name an action";
         auto [eerr, spec] = take_engulf(f.effect, f.id + ": multiattack option 'multiattack'");
         if (eerr) return *eerr;
-        opts.push_back({"multiattack", &*at, count_of(f.effect), *rider, spec});
+        opts.push_back({"multiattack", &*at, count_of(f.effect), *rider, spec, *lead});
     } else {
         return f.id + ": multiattack needs options[] or attacks[]";
     }
-    for (const auto& [oid, list, count, rider, engulf] : opts) {
+    for (const auto& [oid, list, count, rider, engulf, lead] : opts) {
         if (oid.empty()) return f.id + ": multiattack option id is empty";
         for (const auto& d : a.multiattack_decls)
             if (d.id == oid) return f.id + ": duplicate multiattack option '" + oid + "'";
@@ -281,6 +291,7 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
                 return f.id + ": multiattack option '" + oid + "': engulf_both_hits needs at least two attacks";
             d.engulf_both_hits = *engulf;
         }
+        if (!lead.empty()) d.lead_action = lead;
         a.multiattack_decls.push_back(std::move(d));
     }
     return std::nullopt;

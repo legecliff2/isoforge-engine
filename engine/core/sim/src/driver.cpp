@@ -769,6 +769,37 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 me->form_blocked_features.end())
                 continue;
             if (sa.teleport || sa.rider_only || sa.leap || sa.whirl || sa.whelm || sa.ethereal || sa.illusory || sa.passage || sa.healing_touch) continue;   // blink dog: destination not guessed. B3b: a free rider is not this action. B8: the AI does not jump or land. B10: the AI does not pick a random fling. B11: the AI does not use Whelm. B19: the AI does not use Etherealness. The visible-figure action is not this AI's choice. Invisible Passage is not this AI's choice. Healing Touch would heal the current foe.
+            // C-D D10: Frightful Presence when at least one hostile is in range, aware, not immune, and not
+            // already frightened by this user. zone_excluded is every non-hostile in that derived set.
+            // Casting it arms the lead_action attacks. Otherwise the plain multiattack is used below.
+            if (const auto* sd = c.spell_def(sa.spell_id); sd && sd->within_ft > 0 && sd->chooses_targets) {
+                bool worth = false;
+                std::vector<rules5e::CombatantId> exclude;
+                for (const auto& k : s.combatants) {
+                    if (k.id == self || k.dead || k.possessing != 0) continue;
+                    if (c.distance_tiles(self, k.id) * kFeetPerTile > int(sd->within_ft)) continue;
+                    if (!c.hostile(self, k.id)) { exclude.push_back(k.id); continue; }
+                    if (k.has(rules5e::Condition::Unconscious)) continue;
+                    if (rules5e::is_hidden_from(s, self, k.id)) continue;
+                    bool immune = false;
+                    for (const auto& im : s.action_immunities)
+                        if (im.creature == k.id && im.spell_id == sd->id && (im.source == 0 || im.source == self) &&
+                            uint32_t(s.round) < im.until_round)
+                            immune = true;
+                    if (immune) continue;
+                    if (k.has(rules5e::Condition::Frightened) &&
+                        rules5e::condition_source(s, k.id, rules5e::Condition::Frightened) == self)
+                        continue;
+                    worth = true;
+                }
+                if (!worth) continue;
+                Command cast;
+                cast.request = {self, ActionKind::CastSpell};
+                cast.request.spell_id = sa.spell_id;
+                cast.request.spell_level = 0;
+                cast.request.zone_excluded = std::move(exclude);
+                return cast;
+            }
             if (sa.usage_kind == 1) {
                 const auto* u = rules5e::find_action_use(s, self, sa.spell_id);
                 if (u && u->expended) continue;

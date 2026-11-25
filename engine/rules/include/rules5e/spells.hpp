@@ -668,6 +668,17 @@ struct SpellDef {
     // Protection from Evil and Good: the warded creature can't be possessed by immune_from_types.
     // A warded target spends the action and makes no save. An existing possession is not ended.
     bool blocks_possession = false;
+    // C-D dragon kit (CONTENT_CONVENTIONS §61). Static content: not hashed. 0 / false leaves every other spell unchanged.
+    // within_ft > 0: membership is every other living creature with distance_tiles × 5 <= within_ft (3D, no sight).
+    // total_cover_saves: a creature with total cover still makes the save (no cover bonus). false keeps the total-cover skip.
+    // chooses_targets: ActionRequest::zone_excluded names creatures that are not chosen (folded under 0xB7).
+    // aware_only: Unconscious, or the user hidden from the creature, is not eligible.
+    // repeat_los_disadvantage: the primary effect's end-of-turn repeat is at disadvantage while the source is in line of sight.
+    uint16_t within_ft = 0;
+    bool total_cover_saves = false;
+    bool chooses_targets = false;
+    bool aware_only = false;
+    bool repeat_los_disadvantage = false;
 };
 
 // B10 Whirlwind and B11 Whelm name creatures already in the user's space. Rules does not see tiles.
