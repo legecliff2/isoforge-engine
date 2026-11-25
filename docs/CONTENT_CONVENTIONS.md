@@ -1707,7 +1707,7 @@ Product calls, not decided here:
 * **The built-in AI.** It uses the existing area-save policy: it will not catch an ally, and it wants two hostiles, or one when no attack is legal. The sentence does affect allies. Whether the AI should, and whether it should ignore undead when it counts hostiles, is not decided here.
 * **`aged_years` is not hashed.** A fight that differs only in the year counter hashes the same. The d4 still consumes the encounter RNG, which is already hashed.
 
-`srd51.monster.ghost` authors this action with those keys. Greater restoration does not reverse the years. No ability-score aging. `aged_years` is not hashed. Not magical. The built-in AI uses the existing area-save policy. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Etherealness is §51. Not full Ghost support. No new hash tag. Counts are 210 authored and 4 deferred.
+`srd51.monster.ghost` authors this action with those keys. Greater restoration does not reverse the years. No ability-score aging. `aged_years` is not hashed. Not magical. The built-in AI uses the existing area-save policy. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Etherealness is §51. Not full Ghost support. No new hash tag. Counts are 211 authored and 4 deferred.
 
 Deferred, not this action:
 
@@ -1752,7 +1752,7 @@ Product calls, not decided here:
 * **Two guardians, one wearer.** Sequential half-up of the remainder is what keeps "transferred" from handing out more hit points than the wearer took. A ruling that only the first guardian receives the half is not taken.
 * **No sight hook.** Nothing is transferred. A ruling that missing positions count as within 60 feet is not taken.
 
-`srd51.monster.shield_guardian` authors this trait (`radius_ft` 60) with the printed construct stat block. The damage sentence is the trait. Same plane, the telepathic call, and the distance and direction stay descriptive. There is no amulet item. Spell Storing stays description only (HOLD). The Shield reaction is §54. Regeneration is §55 (`regain`). Multiattack is two fist attacks. Not full Shield Guardian support. No new hash tag. Counts are 210 authored and 4 deferred.
+`srd51.monster.shield_guardian` authors this trait (`radius_ft` 60) with the printed construct stat block. The damage sentence is the trait. Same plane, the telepathic call, and the distance and direction stay descriptive. There is no amulet item. Spell Storing stays description only (HOLD). The Shield reaction is §54. Regeneration is §55 (`regain`). Multiattack is two fist attacks. Not full Shield Guardian support. No new hash tag. Counts are 211 authored and 4 deferred.
 
 Deferred, not this trait:
 
@@ -1801,7 +1801,7 @@ Product calls, not decided here:
 * **Incorporeal Movement** is not this action. The creature does not move through creatures or objects.
 * **The built-in AI** does not use the action. Whether it should is not decided here.
 
-`srd51.monster.ghost` authors this action (`kind: etherealness`). Deep Ethereal is not a value. The built-in AI does not use it. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Not full Ghost support. Hash 0xE6 only while some combatant is not Material. No new hash tag. Counts are 210 authored and 4 deferred.
+`srd51.monster.ghost` authors this action (`kind: etherealness`). Deep Ethereal is not a value. The built-in AI does not use it. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Not full Ghost support. Hash 0xE6 only while some combatant is not Material. No new hash tag. Counts are 211 authored and 4 deferred.
 
 Deferred, not this action:
 
@@ -1949,7 +1949,7 @@ Product calls, not decided here:
 * **The reactor does not see the d20.** The sentence says "makes an attack", not "makes an attack roll" and not "when hit". `AttackRolled` is the later window.
 * **No sight hook.** The reaction is not offered.
 
-`srd51.monster.shield_guardian` authors this reaction (`ally_attacked`, `ac_bonus` 2) with the `bound` trait. The bonus is for the triggering attack only. A natural 20 still hits. Product choice, separate from the SRD sentence: after one guardian grants +2, later guardians are not offered and do not spend for that attack. A decline offers the next. The bonus is 2 or 0. The wearer is spawn override `bound_wearer`, not an amulet item. Spell Storing stays description only (HOLD). Same plane, the telepathic call, and the distance and direction stay descriptive on Bound. Regeneration is §55. Not full Shield Guardian support. No new hash tag. Counts are 210 authored and 4 deferred.
+`srd51.monster.shield_guardian` authors this reaction (`ally_attacked`, `ac_bonus` 2) with the `bound` trait. The bonus is for the triggering attack only. A natural 20 still hits. Product choice, separate from the SRD sentence: after one guardian grants +2, later guardians are not offered and do not spend for that attack. A decline offers the next. The bonus is 2 or 0. The wearer is spawn override `bound_wearer`, not an amulet item. Spell Storing stays description only (HOLD). Same plane, the telepathic call, and the distance and direction stay descriptive on Bound. Regeneration is §55. Not full Shield Guardian support. No new hash tag. Counts are 211 authored and 4 deferred.
 
 Deferred, not this reaction:
 
@@ -1988,7 +1988,7 @@ Nothing authors `regen` (§31) and `regain` on the same creature. The loader doe
 
 No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `regain` is static. Hit points and `Healed` are already hashed. Next free stays **0xE8**. Replay re-runs the turn. `FormStats` does not carry it. Shapechange is not this trait.
 
-`srd51.monster.shield_guardian` authors this trait (`amount` 10). The a6212be mirror prints "1 hit. point."; that period is a mirror typo. The authored sentence is "at least 1 hit point." Oni prints the same one-sentence shape and is not authored here. Vampire spawn is not this sentence. Spell Storing is not this trait. It stays description only (HOLD) on the shield guardian row. Not full Shield Guardian support. No new hash tag. Counts are 210 authored and 4 deferred.
+`srd51.monster.shield_guardian` authors this trait (`amount` 10). The a6212be mirror prints "1 hit. point."; that period is a mirror typo. The authored sentence is "at least 1 hit point." Oni prints the same one-sentence shape and is not authored here. Vampire spawn is not this sentence. Spell Storing is not this trait. It stays description only (HOLD) on the shield guardian row. Not full Shield Guardian support. No new hash tag. Counts are 211 authored and 4 deferred.
 
 ## 56. Healing Touch (monster@5 action `healing_touch`)
 
@@ -2028,7 +2028,7 @@ No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The dice and the three us
 * A general cure for Lesser Restoration, Lay on Hands, or Greater Restoration. They do not call this cure. Lesser Restoration still ends one listed condition and does not cure a bite disease. Lay on Hands still does not spend 5 points to cure a disease or neutralize a poison. Greater Restoration's hit point maximum option still clears Life Drain only.
 * Legendary actions, including Heal Self. Spell Storing. `unicorn.json`.
 
-This section does not author `srd51.monster.unicorn`. The row stays deferred until legendary actions and the stat block are written. Counts stay 210 authored and 4 deferred.
+This section does not author `srd51.monster.unicorn`. The row stays deferred until legendary actions and the stat block are written. Counts stay 211 authored and 4 deferred.
 
 ## 57. Legendary actions (monster@7)
 
@@ -2054,7 +2054,7 @@ Legendary Resistance is unchanged: a failed save still spends `Combatant::legend
 
 ## 58. Shapechanger forms (live)
 
-SRD 5.1 Shapechanger, the "statistics are the same except …" family, and Change Shape actions with that same sentence (the oni). Not the 9th-level Shapechange spell. Change Shape that replaces AC, movement, Strength, Dexterity, and actions from a challenge-rating catalog is §60. The lycanthrope, succubus, and oni JSON in `srd51.core` author these keys. Couatl Change Shape is the MERGE feature in §60, not these keys. This section is the engine the lycanthrope, succubus, and oni files use.
+SRD 5.1 Shapechanger, the "statistics are the same except …" family, and Change Shape actions with that same sentence (the oni). Not the 9th-level Shapechange spell. Change Shape that replaces AC, movement, Strength, Dexterity, and actions from a challenge-rating catalog is §60. The lycanthrope, succubus, oni, and night hag JSON in `srd51.core` author these keys. Couatl Change Shape is the MERGE feature in §60, not these keys. This section is the engine the lycanthrope, succubus, oni, and night hag files use.
 
 The kind is the existing `FormKind::Shapechanger`. There is no new `FormKind`, `ActionKind`, or `EventKind`. §58 did not change `kSimEventSchemaVersion` (it was 13 when §58 shipped). §59 sets that constant to 14, and `event_stream_version` returns 14 only for a stream that contains kinds 55 or 56. The new keys are in place on common@2 `shapechanger_effect` / `shapechanger_form`. A file older than monster@5, and every character file, keeps the old key set: naming a new key is `<key> needs a monster@5 file`. A monster@4 form speed may still name `walk`. `fly`, `swim`, `climb`, `burrow`, and `hover` on that object are `speed.<key> needs a monster@5 file`. Before this, a monster@4 or character file that named one of those keys loaded and the key was ignored. No file in this repo named one.
 
@@ -2103,7 +2103,7 @@ Deferred, not this section:
 * Change Shape for the deva, the ancient metallic dragons, and the adult bronze, silver, and gold dragons. The couatl MERGE engine is §60, and `srd51.monster.couatl` is live. Printed to-hit has no proficiency term.
 * The vampire, in bat and mist form. No sunlight gate and no running water.
 * The mimic and the doppelganger. Their traits are not live, and neither file is authored here.
-* The imp, the quasit, and the night hag. They are not in the pack. The speed and `trait: false` keys can express them later.
+* The imp and the quasit. They are not in the pack. The speed and `trait: false` keys can express them later. `srd51.monster.night_hag` is in the pack: Change Shape is this kind with `trait: false`, and the humanoid forms drop the claws.
 * The lycanthropy curse on a bite.
 * AI form choice, and form art.
 * A form that gains a weapon attack the loadout has not linked. `align_loadout_attacks` still stores that fresh row with a word-matched weapon link, `WeaponUse::TwoHands` for every versatile weapon, and hit and damage adjusts of 0. Calibrating it the way `build_loadout` does cannot match SRD 5.1 Versatile, so the code is unchanged. The gap is the appendix in `docs/ARCHITECTURE.md` (shapechanger loadout gap). `build_loadout` itself matches `two_handed_grip` by attack id (§3.3).
