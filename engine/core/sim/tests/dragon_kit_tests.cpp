@@ -197,7 +197,6 @@ TEST_CASE("C-D 1-2: within_ft is 3D with no sight gate; a wall does not drop eli
         return v;
     }();
     REQUIRE(c->set_altitude(ids[1], 120, kAltForced));
-    CombatTestAccess::state(*c).combatants;   // keep the access used
     for (auto& k : CombatTestAccess::state(*c).combatants) {
         if (k.id == ids[5]) k.conditions |= rules5e::bit(Condition::Blinded);
         if (k.id == ids[6]) k.conditions |= rules5e::bit(Condition::Deafened);
