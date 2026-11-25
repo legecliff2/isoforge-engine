@@ -1,0 +1,6 @@
+{
+  "$schema": "equip_kit@1",
+  "description": "Loose equipment PNGs under this directory, in the PR A layout. Lists only sprites that exist. H4 cells are 24 by 24. No non-medium bin is authored. A pivot is written only for a sprite that exists; the loader uses bottom-centre when the pivot is absent.",
+  "cell": [24, 24],
+  "items": []
+}

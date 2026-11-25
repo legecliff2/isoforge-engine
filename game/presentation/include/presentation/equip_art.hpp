@@ -1,10 +1,11 @@
 #pragma once
 // Equipment art kit (render side). Loose PNGs, loaded once, the same way a stand-in
-// kit loads frames. There is no manifest here: the content pack and its schema are
-// a later change. A missing root, or a missing file, is not a checker. The caller
-// falls through to the next key, and then to the placeholder quads.
+// kit loads frames. kit.json (equip_kit@1) beside the files may name one pivot per
+// sprite. A missing pivot is the bottom-centre pixel (w/2, h-1). A missing root,
+// a missing file, or a kit.json this loader cannot read is not a checker. The
+// caller falls through to the next key, and then to the placeholder quads.
 //
-// Layout under the kit root:
+// Layout under the kit root (unchanged):
 //   {content_id}/{part}.{view}.png                         medium, the default bin
 //   {content_id}/{bin}/{part}.{view}.png                   size override
 //   _kind/{weapon|shield|light|other}/{part}.{view}.png    per-kind default (medium)
@@ -12,14 +13,16 @@
 // view: se (toward), ne (away). West is a mirror of that view, not its own file.
 // bin: tiny, small, medium, large, huge. A `{bin}` file wins over the flat medium
 // file for that same bin. Any other directory name is ignored.
+// neck is a manifest part (holy symbol amulet, toward view only). This loader does
+// not read it: the table has no neck attach point.
 //
 // Resolution for one part and view:
 //   1. content_id + the requested bin (empty bin means medium)
 //   2. content_id + medium
 //   3. the kind default
 //   4. nothing (placeholder quads)
-// Pivot is the bottom-centre pixel (w/2, h-1) until a manifest names one. It is
-// the point that lands on the slot's attach point.
+// Content ids are matched whole. A quiver file is not a bolt-case file.
+// The pivot is the point that lands on the slot's attach point.
 #include "presentation/png.hpp"
 
 #include <cstddef>
