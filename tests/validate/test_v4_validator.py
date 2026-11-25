@@ -101,7 +101,7 @@ CASES = [
     ("inert_on_special_bonus_action_entry", D, [(["bonus_actions", 2, "inert"], True)], [], "/bonus_actions/2: 'inert' is reserved"),
     ("inert_on_effect", D, [(["traits", 3, "effect", "inert"], True)], [], "'inert' is reserved"),
     # --- schema negatives per def
-    ("schema_unknown_rider_kind", D, [(["actions", 0, "on_hit", 0, "kind"], "swallow")], [], "'swallow' is not one of"),
+    ("schema_unknown_rider_kind", D, [(["actions", 0, "on_hit", 0, "kind"], "not_a_rider")], [], "'not_a_rider' is not one of"),
     ("schema_unknown_predicate", R, [(["features", 0, "effect", "when", 0, "kind"], "full_moon")], [], "/when/0/kind: 'full_moon' is not one of"),
     ("schema_unknown_window", D, [(["reactions", 0, "window", "kind"], "tuesday")], [], "is not valid under any of"),
     ("schema_save_condition_without_on_success", D, [(["actions", 0, "on_hit", 0, "damage"], [{"dice": "1d4", "type": "fire"}])], [], "dependency"),
@@ -141,7 +141,7 @@ CASES = [
     ("item_valuable_forbids_damage", "items/shield.json", [(["category"], "valuable"), (["damage"], [{"dice": "1d4", "type": "fire"}])], [["ac_bonus"]], "/: 'damage' is not one of"),
     ("item_valuable_forbids_value_gp", "items/shield.json", [(["category"], "valuable"), (["value_gp"], 300)], [["ac_bonus"]], "Additional properties are not allowed ('value_gp'"),
     ("item_valuable_float_cost", "items/shield.json", [(["category"], "valuable"), (["cost_cp"], 1.5)], [["ac_bonus"]], "float value"),
-    ("item_unknown_rider_kind", "items/flame_tongue.json", [(["on_hit", 0, "kind"], "swallow")], [], "'swallow' is not one of"),
+    ("item_unknown_rider_kind", "items/flame_tongue.json", [(["on_hit", 0, "kind"], "not_a_rider")], [], "'not_a_rider' is not one of"),
     ("item_c17_grapple_rider", "items/flame_tongue.json", [(["on_hit", 1], {"kind": "grapple", "escape_dc": 12})], [], "grapple riders are rejected in items"),
     ("item_flat_damage_negative", "items/blowgun.json", [(["damage", 0, "flat"], -1)], [], "is not valid under any of"),
 ]
