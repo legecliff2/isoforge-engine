@@ -66,7 +66,7 @@
     {
       "id": "damage_resistances_nonmagical",
       "name": "Damage Resistances",
-      "description": "Resistant to bludgeoning, piercing, and slashing from nonmagical attacks that aren't silvered.",
+      "description": "Damage Resistances cold, fire; bludgeoning, piercing, and slashing from nonmagical attacks not made with silvered weapons",
       "effect": {
         "kind": "damage_mitigation",
         "resistances": {

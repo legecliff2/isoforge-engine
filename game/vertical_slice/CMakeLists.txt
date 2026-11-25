@@ -22,7 +22,8 @@ if(ENGINE_BUILD_TESTS)
     target_compile_definitions(vertical_slice_tests PRIVATE
         SLICE_PACK_ROOT="${PROJECT_SOURCE_DIR}/content/packs" SLICE_PACK="sample.vertical_slice"
         SLICE_CLIP_FILE="${PROJECT_SOURCE_DIR}/content/packs/srd51.core/art/clips.json"
-        SLICE_STANDIN_ROOT="${PROJECT_SOURCE_DIR}/content/art/monster_standins")
+        SLICE_STANDIN_ROOT="${PROJECT_SOURCE_DIR}/content/art/monster_standins"
+        SLICE_EQUIP_ART_ROOT="${PROJECT_SOURCE_DIR}/content/art/equipment")
     _engine_warnings(vertical_slice_tests)
     add_test(NAME vertical_slice_tests COMMAND vertical_slice_tests)
 

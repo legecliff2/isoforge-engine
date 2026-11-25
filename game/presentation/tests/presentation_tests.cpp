@@ -553,3 +553,113 @@ TEST_CASE("equipment art: neck.se loads and neck.ne is rejected") {
     CHECK(table.find(q) == nullptr);
     std::filesystem::remove_all(kit);
 }
+
+TEST_CASE("equipment art: manifest pivot, exact content ids, kind fallback, neck.se loads") {
+    const auto kit = std::filesystem::temp_directory_path() / "isoforge-equip-kit-manifest";
+    std::filesystem::remove_all(kit);
+    const auto quiver = kit / "srd51.item.quiver";
+    const auto pouch = kit / "srd51.item.pouch";
+    const auto amulet = kit / "srd51.item.holy_symbol_amulet";
+    std::filesystem::create_directories(quiver);
+    std::filesystem::create_directories(pouch);
+    std::filesystem::create_directories(amulet);
+    std::filesystem::create_directories(kit / "_kind" / "weapon");
+    const auto medium = root() / "frames/medium/se/mon_medium_se_idle_00.png";
+    std::filesystem::copy_file(medium, quiver / "back.se.png");
+    std::filesystem::copy_file(medium, pouch / "hip.se.png");
+    std::filesystem::copy_file(medium, amulet / "neck.se.png");
+    std::filesystem::copy_file(medium, kit / "_kind" / "weapon" / "main_hand.se.png");
+    {
+        std::ofstream out(kit / "kit.json");
+        out << R"({
+            "$schema": "equip_kit@1",
+            "cell": [24, 24],
+            "items": [
+                {"content_id": "srd51.item.quiver", "back_role": "quiver",
+                 "parts": [{"part": "back", "views": [{"view": "se", "pivot": [12, 20]}]}]},
+                {"content_id": "srd51.item.pouch",
+                 "parts": [{"part": "hip", "views": [{"view": "se"}]}]},
+                {"content_id": "srd51.item.holy_symbol_amulet",
+                 "parts": [{"part": "neck", "views": [{"view": "se", "pivot": [12, 20]}]}]}
+            ],
+            "kinds": [
+                {"kind": "weapon",
+                 "parts": [{"part": "main_hand", "views": [{"view": "se", "pivot": [12, 20]}]}]}
+            ]
+        })";
+    }
+    const EquipArtTable table = EquipArtTable::load(kit);
+    // neck.se.png is on disk and in the manifest. neck.ne is not a file.
+    CHECK(table.size() == 4);
+    const auto quiver_role = table.back_role("srd51.item.quiver");
+    REQUIRE(quiver_role);
+    CHECK(*quiver_role == "quiver");
+    CHECK_FALSE(table.back_role("srd51.item.pouch"));
+    CHECK_FALSE(table.back_role("srd51.item.holy_symbol_amulet"));
+
+    EquipArtQuery q;
+    q.part = EquipArtPart::Back;
+    q.view = EquipArtView::Toward;
+    q.content_id = "srd51.item.quiver";
+    q.kind = "other";
+    const EquipArtSprite* quiver_se = table.find(q);
+    REQUIRE(quiver_se);
+    CHECK(quiver_se->pivot_x == 12);
+    CHECK(quiver_se->pivot_y == 20);
+    CHECK(quiver_se->pivot_x != int(quiver_se->image.w / 2));
+    CHECK(quiver_se->pivot_y != int(quiver_se->image.h - 1));
+
+    q.content_id = "srd51.item.case_crossbow_bolt";
+    CHECK(table.find(q) == nullptr);
+    q.content_id = "srd51.item.quiver_extra";
+    CHECK(table.find(q) == nullptr);
+    q.content_id = "srd51.item.qui";
+    CHECK(table.find(q) == nullptr);
+
+    q.content_id = "srd51.item.pouch";
+    q.part = EquipArtPart::Hip;
+    const EquipArtSprite* pouch_se = table.find(q);
+    REQUIRE(pouch_se);
+    CHECK(pouch_se->pivot_x == int(pouch_se->image.w / 2));
+    CHECK(pouch_se->pivot_y == int(pouch_se->image.h - 1));
+    CHECK(pouch_se != quiver_se);
+
+    q.content_id = "srd51.item.club";
+    q.kind = "weapon";
+    q.part = EquipArtPart::MainHand;
+    const EquipArtSprite* club = table.find(q);
+    REQUIRE(club);
+    CHECK(club->pivot_x == 12);
+    CHECK(club->pivot_y == 20);
+    CHECK(club != quiver_se);
+    q.content_id = "srd51.item.longsword";
+    CHECK(table.find(q) == club);
+
+    q.content_id = "srd51.item.holy_symbol_amulet";
+    q.kind = "other";
+    q.part = EquipArtPart::Neck;
+    q.view = EquipArtView::Toward;
+    const EquipArtSprite* neck = table.find(q);
+    REQUIRE(neck);
+    CHECK(neck->pivot_x == 12);
+    CHECK(neck->pivot_y == 20);
+    q.view = EquipArtView::Away;
+    CHECK(table.find(q) == nullptr);
+
+    {
+        std::ofstream out(kit / "kit.json");
+        out << "{";
+    }
+    const EquipArtTable broken = EquipArtTable::load(kit);
+    q.content_id = "srd51.item.quiver";
+    q.kind = "other";
+    q.part = EquipArtPart::Back;
+    q.view = EquipArtView::Toward;
+    const EquipArtSprite* still = broken.find(q);
+    REQUIRE(still);
+    CHECK(still->pivot_x == int(still->image.w / 2));
+    CHECK(still->pivot_y == int(still->image.h - 1));
+    CHECK(broken.size() == 4);
+    CHECK_FALSE(broken.back_role("srd51.item.quiver"));
+    std::filesystem::remove_all(kit);
+}

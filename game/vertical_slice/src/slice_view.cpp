@@ -750,7 +750,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             world_.draw(p, iso, actor_sort, 1, a.id, kZBody);
         } else {
             // Equipment layers (equip_visuals.hpp): fixed z around the body inside the actor's sort key.
-            for (const EquipLayer& l : equip_layers(a, equip_art_->body_attach(a))) {
+            for (const EquipLayer& l : equip_layers(a, equip_art_->body_attach(a), &equip_art_->table)) {
                 if (l.part == EquipPart::Body) { world_.draw(p, iso, actor_sort, 1, a.id, kZBody); continue; }
                 const EquipArtChoice art = equip_art_choice(&equip_art_->table, *l.item, l.part, a.facing, a.standin_bin);
                 if (art.sprite && art.sprite->key < equip_art_->authored.size()) {

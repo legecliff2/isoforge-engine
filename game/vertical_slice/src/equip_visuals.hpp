@@ -94,7 +94,9 @@ struct EquipLayer {
 };
 // Body plus the drawn items, in draw order (z, then item instance). An empty body is the shared table.
 // Sheaths of wielded weapons are extra layers on the weapon's own item (its hip art part).
-std::vector<EquipLayer> equip_layers(const ActorView& actor, const BodyAttach& body = {});
+// `manifest` is the loaded equip_kit@1 table. Null keeps the content-id fallback for back_role.
+std::vector<EquipLayer> equip_layers(const ActorView& actor, const BodyAttach& body = {},
+                                    const eng::presentation::EquipArtTable* manifest = nullptr);
 // Placeholder art: simple colored quads (no item art in content yet), back to front within the layer. `at` is the quad's
 // bottom-centre in px from the token anchor. Emissive quads (a lit flame) skip the tile light tint.
 // A weapon drawn as HipMain or HipOff is a sheath. Unmapped, it has no quad: the hand quad is the weapon.
@@ -103,11 +105,10 @@ std::vector<EquipQuad> equip_quads(const EquipVisual&, EquipPart, eng::Vec2f at)
 
 // Rear containers only. Shields and stowed two-handed or versatile weapons are not containers;
 // back priority reads those from kind, hands, and versatile.
-// Seam (container_back_role): PR B's optional manifest field `back_role`
-// (quiver | bolt_case | pack | other) per content_id. Until that manifest is wired the seam
-// returns nothing and the role is derived from the content id.
+// Seam (container_back_role): one call to manifest_back_role, which reads equip_kit@1
+// items[].back_role (quiver | bolt_case | pack | other). A missing field falls back to the content id.
 enum class BackRole : uint8_t { None, Quiver, BoltCase, Pack, Other };
-BackRole container_back_role(std::string_view content_id);
+BackRole container_back_role(std::string_view content_id, const eng::presentation::EquipArtTable* manifest = nullptr);
 
 // Equipment art is chosen beside the quads, not instead of the attach table.
 // West facings mirror x (attach_points) and, when a sprite exists, mirror the

@@ -67,8 +67,17 @@ std::string_view item_slug(std::string_view id) {
     return dot == std::string_view::npos ? id : id.substr(dot + 1);
 }
 
-// PR B's manifest is not in this tree. The one call in container_back_role is the seam.
-std::optional<BackRole> manifest_back_role(std::string_view) { return std::nullopt; }
+// Seam: equip_kit@1 items[].back_role, whole content id. Unknown or absent is not a role.
+std::optional<BackRole> manifest_back_role(const eng::presentation::EquipArtTable* table, std::string_view content_id) {
+    if (!table) return std::nullopt;
+    const std::optional<std::string_view> raw = table->back_role(content_id);
+    if (!raw) return std::nullopt;
+    if (*raw == "quiver") return BackRole::Quiver;
+    if (*raw == "bolt_case") return BackRole::BoltCase;
+    if (*raw == "pack") return BackRole::Pack;
+    if (*raw == "other") return BackRole::Other;
+    return std::nullopt;
+}
 
 bool is_crossbow_id(std::string_view id) { return id.find("crossbow") != std::string_view::npos; }
 bool is_bow_id(std::string_view id) { return !is_crossbow_id(id) && id.find("bow") != std::string_view::npos; }
@@ -86,8 +95,9 @@ bool is_covered(const ActorView& a, uint32_t item) {
     return std::find(a.covered_equipment.begin(), a.covered_equipment.end(), item) != a.covered_equipment.end();
 }
 
-int back_rank(const EquipVisual& e, bool bow_wielded, bool crossbow_wielded) {
-    const BackRole role = container_back_role(e.content_id);
+int back_rank(const EquipVisual& e, bool bow_wielded, bool crossbow_wielded,
+              const eng::presentation::EquipArtTable* manifest) {
+    const BackRole role = container_back_role(e.content_id, manifest);
     if ((role == BackRole::Quiver && bow_wielded) || (role == BackRole::BoltCase && crossbow_wielded)) return 1;
     if (e.kind == EquipKind::Shield) return 2;   // slot is already Back: the sim said stowed
     if (e.kind == EquipKind::Weapon && (e.hands >= 2 || e.versatile)) return 3;
@@ -96,7 +106,7 @@ int back_rank(const EquipVisual& e, bool bow_wielded, bool crossbow_wielded) {
     return 6;
 }
 
-const EquipVisual* choose_back(const ActorView& a) {
+const EquipVisual* choose_back(const ActorView& a, const eng::presentation::EquipArtTable* manifest) {
     bool bow = false, crossbow = false;
     for (const EquipVisual& e : a.equipment) {
         if (is_covered(a, e.item)) continue;
@@ -109,7 +119,7 @@ const EquipVisual* choose_back(const ActorView& a) {
     int rank = 0;
     for (const EquipVisual& e : a.equipment) {
         if (is_covered(a, e.item) || e.slot != AttachSlot::Back) continue;
-        const int r = back_rank(e, bow, crossbow);
+        const int r = back_rank(e, bow, crossbow, manifest);
         if (!best || r < rank || (r == rank && e.item < best->item)) {
             best = &e;
             rank = r;
@@ -195,8 +205,8 @@ BodyAttach load_body_attach(const std::filesystem::path& standin_root, std::stri
     return shared_body_attach();
 }
 
-BackRole container_back_role(std::string_view content_id) {
-    if (const std::optional<BackRole> from_manifest = manifest_back_role(content_id)) return *from_manifest;
+BackRole container_back_role(std::string_view content_id, const eng::presentation::EquipArtTable* manifest) {
+    if (const std::optional<BackRole> from_manifest = manifest_back_role(manifest, content_id)) return *from_manifest;
     const std::string_view slug = item_slug(content_id);
     if (slug == "quiver") return BackRole::Quiver;
     if (slug == "case_crossbow_bolt") return BackRole::BoltCase;
@@ -204,10 +214,11 @@ BackRole container_back_role(std::string_view content_id) {
     return BackRole::None;
 }
 
-std::vector<EquipLayer> equip_layers(const ActorView& a, const BodyAttach& body) {
+std::vector<EquipLayer> equip_layers(const ActorView& a, const BodyAttach& body,
+                                  const eng::presentation::EquipArtTable* manifest) {
     const bool west = a.facing == Facing::SouthWest || a.facing == Facing::NorthWest;
     const AttachPoints ap = attach_points(body, a.facing);
-    const EquipVisual* back = choose_back(a);
+    const EquipVisual* back = choose_back(a, manifest);
     const HipAssign hip = assign_hips(a);
     const EquipVisual* neck = facing_shows_neck(a.facing) ? choose_neck(a) : nullptr;
     std::vector<EquipLayer> out;

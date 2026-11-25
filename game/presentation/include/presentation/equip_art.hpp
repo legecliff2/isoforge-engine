@@ -1,10 +1,11 @@
 #pragma once
 // Equipment art kit (render side). Loose PNGs, loaded once, the same way a stand-in
-// kit loads frames. There is no manifest here: the content pack and its schema are
-// a later change. A missing root, or a missing file, is not a checker. The caller
-// falls through to the next key, and then to the placeholder quads.
+// kit loads frames. kit.json (equip_kit@1) beside the files may name one pivot per
+// sprite. A missing pivot is the bottom-centre pixel (w/2, h-1). A missing root,
+// a missing file, or a kit.json this loader cannot read is not a checker. The
+// caller falls through to the next key, and then to the placeholder quads.
 //
-// Layout under the kit root:
+// Layout under the kit root (unchanged):
 //   {content_id}/{part}.{view}.png                         medium, the default bin
 //   {content_id}/{bin}/{part}.{view}.png                   size override
 //   _kind/{weapon|shield|light|other}/{part}.{view}.png    per-kind default (medium)
@@ -19,16 +20,20 @@
 //   1. content_id + the requested bin (empty bin means medium)
 //   2. content_id + medium
 //   3. the kind default
-//   4. nothing (placeholder quads)
-// Pivot is the bottom-centre pixel (w/2, h-1) until a manifest names one. PR B's
-// manifest may set an optional [x, y] per part per view; H4's provisional pivot
-// is [12, 20]. It is the point that lands on the slot's attach point.
+//   4. nothing (placeholder quads). A missing file is not a checker.
+// Content ids are matched whole. A quiver file is not a bolt-case file.
+// kit.json may set one pivot [x, y] per sprite that exists. Absent, or outside
+// the cell, the pivot stays bottom-centre (w/2, h-1). H4 cells are 24x24 and
+// H4's provisional pivot is [12, 20] where that sprite is on disk.
+// Optional back_role (quiver | bolt_case | pack | other) is stored per content id.
 #include "presentation/png.hpp"
 
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace eng::presentation {
@@ -59,6 +64,9 @@ public:
     const EquipArtSprite* find(const EquipArtQuery& query) const;
     const EquipArtSprite* sprite_at(std::size_t index) const;
     std::size_t size() const { return sprites_.size(); }
+    // equip_kit@1 items[].back_role, matched on the whole content id. nullopt when
+    // the field is absent, the manifest was not read, or the value is not the enum.
+    std::optional<std::string_view> back_role(std::string_view content_id) const;
 
 private:
     struct Entry {
@@ -71,6 +79,7 @@ private:
     };
     std::vector<EquipArtSprite> sprites_;
     std::vector<Entry> entries_;
+    std::vector<std::pair<std::string, std::string>> roles_;
     const EquipArtSprite* lookup(bool kind_default, std::string_view id, std::string_view bin, EquipArtPart part,
                                  EquipArtView view) const;
 };

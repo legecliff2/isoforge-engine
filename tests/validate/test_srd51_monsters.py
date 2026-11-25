@@ -104,7 +104,7 @@ DEVIATIONS = {
     "azer": "AC: the table lists 15 (natural armor) and 17 (with shield); the SRD line is 17 and the shield is equipped (as lizardfolk). Warhammer's second damage option is the versatile 1d10 + 3 line from the attack text, plus the same 1d6 fire (as salamander Spear).",
     "barbed-devil": "damage_resistances lists cold only: the qualified entry lives in the damage_mitigation trait effect (resistances.nonmagical_not_silvered, as wraith). a6212be says 'nonmagical weapons'; the SRD 5.1 sentence is 'nonmagical attacks that aren't silvered.' Hurl Flame is a ranged spell attack with one range, so range is 150/150.",
     "bearded-devil": "damage_resistances lists cold only: the qualified entry lives in the damage_mitigation trait effect (resistances.nonmagical_not_silvered, as wraith). a6212be says 'nonmagical weapons'; the SRD 5.1 sentence is 'nonmagical attacks that aren't silvered.' Beard damage is the printed 1d8 + 2 (Str derives 1d8 + 3).",
-    "night-hag": "The fixture row was absent. Appended at authoring from 5e-database a6212be index night-hag (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27), reduced like the other rows; the pinned fields match that object. damage_resistances lists cold and fire: the qualified entry lives in the damage_mitigation trait effect (resistances.nonmagical_not_silvered, as barbed devil). a6212be says 'nonmagical weapons'; the SRD 5.1 sentence is 'nonmagical attacks that aren't silvered.' Deception +7, Insight +6, Perception +6, and Stealth +6 are printed totals (each ability modifier + PB + 1). validate_packs.PRINTED_SKILL_TOTALS allowlists them (as priest Religion). Change Shape, Etherealness, and Nightmare Haunting are not attacks.",
+    "night-hag": "The fixture row was absent. Appended at authoring from 5e-database a6212be index night-hag (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27), reduced like the other rows; the pinned fields match that object. damage_resistances lists cold and fire: the qualified entry lives in the damage_mitigation trait effect (resistances.nonmagical_not_silvered, as barbed devil). a6212be says 'nonmagical weapons that aren't silvered'; the SRD 5.1 line is 'Damage Resistances cold, fire; bludgeoning, piercing, and slashing from nonmagical attacks not made with silvered weapons.' Deception +7, Insight +6, Perception +6, and Stealth +6 are printed totals (each ability modifier + PB + 1). validate_packs.PRINTED_SKILL_TOTALS allowlists them (as priest Religion). Change Shape, Etherealness, and Nightmare Haunting are not attacks.",
     "erinyes": "The fixture row was absent (the index was not in the table). Appended at authoring from 5e-database a6212be index erinyes (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27), reduced like the other rows; the pinned fields match that object. damage_resistances lists cold: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (resistances.nonmagical_not_silvered, as wight). SRD 5.1 prints 'nonmagical attacks that aren't silvered'; the authored sentence follows the SRD. Longsword and Longbow each carry the printed extra 3d8 poison. Parry is not an attack. There is no rope of entanglement on this block.",
 }
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
@@ -3949,9 +3949,9 @@ class MonsterTable(unittest.TestCase):
             "kind": "damage_mitigation",
             "resistances": {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]},
         })
-        self.assertIn("nonmagical attacks that aren't silvered",
-                      traits["damage_resistances_nonmagical"]["description"])
-        self.assertNotIn("weapons", traits["damage_resistances_nonmagical"]["description"])
+        self.assertEqual(
+            traits["damage_resistances_nonmagical"]["description"],
+            "Damage Resistances cold, fire; bludgeoning, piercing, and slashing from nonmagical attacks not made with silvered weapons")
         innate = traits["innate_spellcasting"]
         self.assertEqual(innate["name"], "Innate Spellcasting")
         self.assertNotIn("effect", innate)
@@ -4447,10 +4447,19 @@ class MonsterTable(unittest.TestCase):
         self.assertIn("Not regen", trait("lemure", "hellish_rejuvenation")["description"])
         self.assertNotIn("regen", {t.get("effect", {}).get("kind") for t in lemure["traits"]})
         fist = act("lemure", "fist")
+        # #453 asked for damage_ability none so a Strength change cannot rewrite a bare 1d4.
+        # CONTENT_CONVENTIONS §14 reserves none for a print that omits a modifier (Gelatinous
+        # Cube Pseudopod, Camel Bite: Str would add a non-zero bonus the block does not print).
+        # Lemure Str is 10, so the modifier is +0 and "2 (1d4) bludgeoning" is that modifier.
+        # §23 keeps the ability so Strength Drain recomputes it. Commoner Club is the same +0 case.
         self.assertEqual(fist["natural"], {"dice": "1d4", "ability": "str"})
+        self.assertNotIn("damage_ability", fist["natural"])
+        self.assertEqual(fist["ability"], "str")
         self.assertEqual(fist["attack_bonus"]["value"], 3)
         self.assertIn("prints +3", fist["attack_bonus"]["reason"])
         self.assertEqual((fist["to_hit"], fist["damage"]), (3, [{"dice": "1d4", "type": "bludgeoning"}]))
+        self.assertIn("+3 to hit", fist["description"])
+        self.assertIn("2 (1d4) bludgeoning", fist["description"])
         self.assertNotIn("multiattack", {t["id"] for t in lemure["traits"]})
 
         barbed = load("barbed-devil")

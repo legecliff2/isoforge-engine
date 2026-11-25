@@ -1081,3 +1081,163 @@ TEST_CASE("equip draw order: unmapped items on a default body match main") {
     }
     CHECK(render_frame(vm).hash == 0xcfd377e872395730ull);
 }
+
+#ifndef SLICE_EQUIP_ART_ROOT
+#define SLICE_EQUIP_ART_ROOT ""
+#endif
+
+TEST_CASE("shipped equipment kit: mapped ids resolve, unmapped items keep the kind fallback and today's quads") {
+    const eng::presentation::EquipArtTable table = eng::presentation::EquipArtTable::load(SLICE_EQUIP_ART_ROOT);
+    const EquipVisual sword = equip_scene::item(1, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longsword");
+    const EquipVisual club = equip_scene::item(2, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.club");
+    const EquipVisual quiver = equip_scene::item(6, AttachSlot::Back, EquipKind::Other, "srd51.item.quiver");
+    const EquipVisual bolts = equip_scene::item(7, AttachSlot::Back, EquipKind::Other, "srd51.item.case_crossbow_bolt");
+    const EquipVisual other = equip_scene::item(99, AttachSlot::Back, EquipKind::Other, "srd51.item.no_such_pack");
+    const EquipArtChoice sword_c = equip_art_choice(&table, sword, EquipPart::MainHand, Facing::SouthEast, "");
+    const EquipArtChoice club_c = equip_art_choice(&table, club, EquipPart::MainHand, Facing::SouthEast, "medium");
+    // Neither weapon is an H4 content-id sprite. They share the kind fallback (null until a _kind file exists).
+    CHECK(sword_c.sprite == club_c.sprite);
+    const eng::Vec2f hand = attach_points(shared_body_attach(), Facing::SouthEast).main_hand;
+    const std::vector<EquipQuad> sword_q = equip_quads(sword, EquipPart::MainHand, hand);
+    CHECK(sword_q.size() == 2);
+    CHECK(sword_q[0].size.x == 3.f);
+    CHECK(sword_q[0].size.y == 16.f);
+    CHECK(sword_q[1].size.x == 7.f);
+    CHECK(sword_q[1].size.y == 2.f);
+    CHECK_FALSE(sword_q[0].emissive);
+    CHECK_FALSE(sword_c.mirror_x);
+
+    const EquipArtChoice quiver_c = equip_art_choice(&table, quiver, EquipPart::Back, Facing::SouthEast, "medium");
+    const EquipArtChoice bolt_c = equip_art_choice(&table, bolts, EquipPart::Back, Facing::SouthEast, "medium");
+    const EquipArtChoice kind_c = equip_art_choice(&table, other, EquipPart::Back, Facing::SouthEast, "medium");
+    if (quiver_c.sprite != kind_c.sprite && bolt_c.sprite != kind_c.sprite) {
+        REQUIRE(quiver_c.sprite);
+        REQUIRE(bolt_c.sprite);
+        CHECK(quiver_c.sprite != bolt_c.sprite);
+    }
+    const eng::Vec2f back = attach_points(shared_body_attach(), Facing::SouthEast).back;
+    if (quiver_c.sprite == nullptr && bolt_c.sprite == nullptr) {
+        const std::vector<EquipQuad> quiver_q = equip_quads(quiver, EquipPart::Back, back);
+        const std::vector<EquipQuad> bolt_q = equip_quads(bolts, EquipPart::Back, back);
+        CHECK(same_quads(quiver_q, bolt_q));
+        CHECK(quiver_q.size() == 1);
+        CHECK(quiver_q[0].size.x == 14.f);
+        CHECK(quiver_q[0].size.y == 16.f);
+    }
+}
+
+TEST_CASE("equip back: a manifest back_role drives the pick, and a missing field keeps the content id") {
+    const eng::presentation::EquipArtTable shipped = eng::presentation::EquipArtTable::load(SLICE_EQUIP_ART_ROOT);
+    // Shipped kit.json has an empty items list, so no real entry carries back_role.
+    CHECK_FALSE(shipped.back_role("srd51.item.quiver"));
+    CHECK_FALSE(shipped.back_role("srd51.item.backpack"));
+    CHECK_FALSE(shipped.back_role("srd51.item.case_crossbow_bolt"));
+    CHECK(container_back_role("srd51.item.quiver", &shipped) == BackRole::Quiver);
+    CHECK(container_back_role("srd51.item.case_crossbow_bolt", &shipped) == BackRole::BoltCase);
+    CHECK(container_back_role("srd51.item.backpack", &shipped) == BackRole::Pack);
+
+    const fs::path kit = fs::temp_directory_path() / ("isoforge_back_role_" + run_suffix());
+    std::error_code ec;
+    fs::remove_all(kit, ec);
+    fs::create_directories(kit);
+    {
+        std::ofstream out(kit / "kit.json");
+        out << R"({
+            "$schema": "equip_kit@1",
+            "cell": [24, 24],
+            "items": [
+                {"content_id": "srd51.item.rope", "back_role": "pack",
+                 "parts": [{"part": "back", "views": [{"view": "se", "pivot": [12, 20]}]}]},
+                {"content_id": "srd51.item.quiver", "back_role": "other",
+                 "parts": [{"part": "back", "views": [{"view": "se", "pivot": [12, 20]}]}]}
+            ]
+        })";
+    }
+    const eng::presentation::EquipArtTable table = eng::presentation::EquipArtTable::load(kit);
+    CHECK(table.size() == 0);
+    CHECK(container_back_role("srd51.item.rope", &table) == BackRole::Pack);
+    CHECK(container_back_role("srd51.item.quiver", &table) == BackRole::Other);
+    CHECK(container_back_role("srd51.item.backpack", &table) == BackRole::Pack);
+
+    ActorView a;
+    a.equipment = {gear(1, AttachSlot::Back, EquipKind::Other, "srd51.item.rope"),
+                   gear(2, AttachSlot::Back, EquipKind::Other, "srd51.item.quiver")};
+    CHECK(back_winner(a) == 2);   // no manifest: the quiver outranks other gear
+    uint32_t won = 0;
+    for (const EquipLayer& l : equip_layers(a, shared_body_attach(), &table))
+        if (l.part == EquipPart::Back && l.item) won = l.item->item;
+    CHECK(won == 1);   // rope is a pack; the quiver's manifest role is other
+    fs::remove_all(kit, ec);
+}
+
+TEST_CASE("equip art: missing H4 parts fall back to quads, and the neck quad shows only toward") {
+    const eng::presentation::EquipArtTable shipped = eng::presentation::EquipArtTable::load(SLICE_EQUIP_ART_ROOT);
+    const EquipVisual quiver = gear(6, AttachSlot::Back, EquipKind::Other, "srd51.item.quiver");
+    const EquipVisual bolts = gear(7, AttachSlot::Back, EquipKind::Other, "srd51.item.case_crossbow_bolt");
+    const EquipVisual pack = gear(4, AttachSlot::Back, EquipKind::Other, "srd51.item.backpack");
+    const EquipVisual amulet = gear(8, AttachSlot::Neck, EquipKind::Other, "srd51.item.holy_symbol_amulet");
+    const EquipVisual pouch = gear(5, AttachSlot::Hip, EquipKind::Other, "srd51.item.component_pouch");
+    const EquipVisual shield = gear(3, AttachSlot::Back, EquipKind::Shield, "srd51.item.shield");
+    auto missing = [&](const EquipVisual& item, EquipPart part) {
+        const EquipArtChoice choice = equip_art_choice(&shipped, item, part, Facing::SouthEast, "medium");
+        CHECK(choice.sprite == nullptr);
+        const EquipArtChoice away = equip_art_choice(&shipped, item, part, Facing::NorthEast, "medium");
+        CHECK(away.sprite == nullptr);
+        const std::vector<EquipQuad> quads = equip_quads(item, part, {0.f, 0.f});
+        CHECK_FALSE(quads.empty());
+    };
+    missing(quiver, EquipPart::Back);
+    missing(bolts, EquipPart::Back);
+    missing(pack, EquipPart::Back);
+    missing(amulet, EquipPart::Neck);
+    missing(pouch, EquipPart::HipMain);
+    missing(shield, EquipPart::Back);
+
+    ActorView a;
+    a.facing = Facing::SouthEast;
+    a.equipment = {amulet};
+    const EquipLayer* neck = layer_part(equip_layers(a, shared_body_attach(), &shipped), 8, EquipPart::Neck);
+    REQUIRE(neck);
+    CHECK(neck->z == kZWornFront);
+    const AttachPoints se = attach_points(shared_body_attach(), Facing::SouthEast);
+    CHECK(neck->at.x == se.neck.x);
+    CHECK(neck->at.y == se.neck.y);
+    CHECK(equip_quads(*neck->item, neck->part, neck->at).size() == 1);
+    a.facing = Facing::SouthWest;
+    REQUIRE(layer_part(equip_layers(a, shared_body_attach(), &shipped), 8, EquipPart::Neck));
+    a.facing = Facing::NorthEast;
+    CHECK(layer_part(equip_layers(a, shared_body_attach(), &shipped), 8, EquipPart::Neck) == nullptr);
+    a.facing = Facing::NorthWest;
+    CHECK(layer_part(equip_layers(a, shared_body_attach(), &shipped), 8, EquipPart::Neck) == nullptr);
+
+    const fs::path kit = fs::temp_directory_path() / ("isoforge_h4_gap_" + run_suffix());
+    std::error_code ec;
+    fs::remove_all(kit, ec);
+    fs::create_directories(kit);
+    {
+        std::ofstream out(kit / "kit.json");
+        out << R"({
+            "$schema": "equip_kit@1",
+            "cell": [24, 24],
+            "items": [
+                {"content_id": "srd51.item.quiver", "back_role": "quiver",
+                 "parts": [{"part": "back", "views": [{"view": "se", "pivot": [12, 20]}, {"view": "ne", "pivot": [12, 20]}]}]},
+                {"content_id": "srd51.item.holy_symbol_amulet",
+                 "parts": [{"part": "neck", "views": [{"view": "se", "pivot": [12, 20]}]}]},
+                {"content_id": "srd51.item.component_pouch",
+                 "parts": [{"part": "hip", "views": [{"view": "se", "pivot": [12, 20]}]}]},
+                {"content_id": "srd51.item.shield",
+                 "parts": [{"part": "back", "views": [{"view": "se", "pivot": [12, 20]}]}]}
+            ]
+        })";
+    }
+    const eng::presentation::EquipArtTable named = eng::presentation::EquipArtTable::load(kit);
+    CHECK(named.size() == 0);
+    CHECK(equip_art_choice(&named, quiver, EquipPart::Back, Facing::SouthEast, "medium").sprite == nullptr);
+    CHECK(equip_art_choice(&named, amulet, EquipPart::Neck, Facing::SouthEast, "").sprite == nullptr);
+    CHECK(equip_art_choice(&named, pouch, EquipPart::HipOff, Facing::SouthEast, "").sprite == nullptr);
+    CHECK(equip_quads(quiver, EquipPart::Back, se.back).size() == 1);
+    CHECK(equip_quads(amulet, EquipPart::Neck, se.neck).size() == 1);
+    CHECK(equip_quads(pouch, EquipPart::HipMain, se.hip_main).size() == 1);
+    fs::remove_all(kit, ec);
+}
