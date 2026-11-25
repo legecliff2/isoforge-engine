@@ -7,7 +7,7 @@ content_validate_* files; this PR does not register a ctest name):
   python3 tools/validate/run_unittest_file.py tests/validate/test_bestiary_ledger.py
 
 ledger.py and validate_bridge.py must not import Tk. Counts are pinned to the
-ledger after azer, lemure, barbed devil, and bearded devil were authored as honest partials (Heated Body, Hellish Rejuvenation, Barbed Hide, the Hurl Flame ignite clause, Steadfast, the beard's no-regain clause, and Infernal Wound stay description only): 210 authored, 4 deferred.
+ledger after the four insect swarms and azer, lemure, barbed devil, and bearded devil: 214 authored, 4 deferred. Swarms are not parked. The devils are honest partials (Heated Body, Hellish Rejuvenation, Barbed Hide, the Hurl Flame ignite clause, Steadfast, the beard's no-regain clause, and Infernal Wound stay description only). The centipede drop-to-0 sentence and the spider traits stay description only.
 """
 from __future__ import annotations
 
@@ -88,10 +88,10 @@ class LedgerTests(unittest.TestCase):
         for name in ("ledger.py", "validate_bridge.py"):
             self.assertEqual(_imports_tk(EDITOR / name), [], name)
 
-    def test_counts_match_headings_210_and_4(self):
+    def test_counts_match_headings_214_and_4(self):
         book = self.book
-        self.assertEqual(book.authored_expected, 210)
-        self.assertEqual(len(book.authored), 210)
+        self.assertEqual(book.authored_expected, 214)
+        self.assertEqual(len(book.authored), 214)
         self.assertEqual(book.parked_expected, 4)
         self.assertEqual(len(book.parked), 4)
         self.assertEqual(book.count_errors(), ())

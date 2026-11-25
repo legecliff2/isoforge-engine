@@ -1707,7 +1707,7 @@ Product calls, not decided here:
 * **The built-in AI.** It uses the existing area-save policy: it will not catch an ally, and it wants two hostiles, or one when no attack is legal. The sentence does affect allies. Whether the AI should, and whether it should ignore undead when it counts hostiles, is not decided here.
 * **`aged_years` is not hashed.** A fight that differs only in the year counter hashes the same. The d4 still consumes the encounter RNG, which is already hashed.
 
-`srd51.monster.ghost` authors this action with those keys. Greater restoration does not reverse the years. No ability-score aging. `aged_years` is not hashed. Not magical. The built-in AI uses the existing area-save policy. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Etherealness is §51. Not full Ghost support. No new hash tag. Counts are 210 authored and 4 deferred.
+`srd51.monster.ghost` authors this action with those keys. Greater restoration does not reverse the years. No ability-score aging. `aged_years` is not hashed. Not magical. The built-in AI uses the existing area-save policy. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Etherealness is §51. Not full Ghost support. No new hash tag. Counts are 214 authored and 4 deferred.
 
 Deferred, not this action:
 
@@ -1752,7 +1752,7 @@ Product calls, not decided here:
 * **Two guardians, one wearer.** Sequential half-up of the remainder is what keeps "transferred" from handing out more hit points than the wearer took. A ruling that only the first guardian receives the half is not taken.
 * **No sight hook.** Nothing is transferred. A ruling that missing positions count as within 60 feet is not taken.
 
-`srd51.monster.shield_guardian` authors this trait (`radius_ft` 60) with the printed construct stat block. The damage sentence is the trait. Same plane, the telepathic call, and the distance and direction stay descriptive. There is no amulet item. Spell Storing stays description only (HOLD). The Shield reaction is §54. Regeneration is §55 (`regain`). Multiattack is two fist attacks. Not full Shield Guardian support. No new hash tag. Counts are 210 authored and 4 deferred.
+`srd51.monster.shield_guardian` authors this trait (`radius_ft` 60) with the printed construct stat block. The damage sentence is the trait. Same plane, the telepathic call, and the distance and direction stay descriptive. There is no amulet item. Spell Storing stays description only (HOLD). The Shield reaction is §54. Regeneration is §55 (`regain`). Multiattack is two fist attacks. Not full Shield Guardian support. No new hash tag. Counts are 214 authored and 4 deferred.
 
 Deferred, not this trait:
 
@@ -1801,7 +1801,7 @@ Product calls, not decided here:
 * **Incorporeal Movement** is not this action. The creature does not move through creatures or objects.
 * **The built-in AI** does not use the action. Whether it should is not decided here.
 
-`srd51.monster.ghost` authors this action (`kind: etherealness`). Deep Ethereal is not a value. The built-in AI does not use it. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Not full Ghost support. Hash 0xE6 only while some combatant is not Material. No new hash tag. Counts are 210 authored and 4 deferred.
+`srd51.monster.ghost` authors this action (`kind: etherealness`). Deep Ethereal is not a value. The built-in AI does not use it. Possession is §59. Ethereal Sight and Incorporeal Movement stay description only. Not full Ghost support. Hash 0xE6 only while some combatant is not Material. No new hash tag. Counts are 214 authored and 4 deferred.
 
 Deferred, not this action:
 
@@ -1949,7 +1949,7 @@ Product calls, not decided here:
 * **The reactor does not see the d20.** The sentence says "makes an attack", not "makes an attack roll" and not "when hit". `AttackRolled` is the later window.
 * **No sight hook.** The reaction is not offered.
 
-`srd51.monster.shield_guardian` authors this reaction (`ally_attacked`, `ac_bonus` 2) with the `bound` trait. The bonus is for the triggering attack only. A natural 20 still hits. Product choice, separate from the SRD sentence: after one guardian grants +2, later guardians are not offered and do not spend for that attack. A decline offers the next. The bonus is 2 or 0. The wearer is spawn override `bound_wearer`, not an amulet item. Spell Storing stays description only (HOLD). Same plane, the telepathic call, and the distance and direction stay descriptive on Bound. Regeneration is §55. Not full Shield Guardian support. No new hash tag. Counts are 210 authored and 4 deferred.
+`srd51.monster.shield_guardian` authors this reaction (`ally_attacked`, `ac_bonus` 2) with the `bound` trait. The bonus is for the triggering attack only. A natural 20 still hits. Product choice, separate from the SRD sentence: after one guardian grants +2, later guardians are not offered and do not spend for that attack. A decline offers the next. The bonus is 2 or 0. The wearer is spawn override `bound_wearer`, not an amulet item. Spell Storing stays description only (HOLD). Same plane, the telepathic call, and the distance and direction stay descriptive on Bound. Regeneration is §55. Not full Shield Guardian support. No new hash tag. Counts are 214 authored and 4 deferred.
 
 Deferred, not this reaction:
 
@@ -1988,7 +1988,7 @@ Nothing authors `regen` (§31) and `regain` on the same creature. The loader doe
 
 No new `Combat::hash` tag and no new `SIM_EVENTS` tag. `regain` is static. Hit points and `Healed` are already hashed. Next free stays **0xE8**. Replay re-runs the turn. `FormStats` does not carry it. Shapechange is not this trait.
 
-`srd51.monster.shield_guardian` authors this trait (`amount` 10). The a6212be mirror prints "1 hit. point."; that period is a mirror typo. The authored sentence is "at least 1 hit point." Oni prints the same one-sentence shape and is not authored here. Vampire spawn is not this sentence. Spell Storing is not this trait. It stays description only (HOLD) on the shield guardian row. Not full Shield Guardian support. No new hash tag. Counts are 210 authored and 4 deferred.
+`srd51.monster.shield_guardian` authors this trait (`amount` 10). The a6212be mirror prints "1 hit. point."; that period is a mirror typo. The authored sentence is "at least 1 hit point." Oni prints the same one-sentence shape and is not authored here. Vampire spawn is not this sentence. Spell Storing is not this trait. It stays description only (HOLD) on the shield guardian row. Not full Shield Guardian support. No new hash tag. Counts are 214 authored and 4 deferred.
 
 ## 56. Healing Touch (monster@5 action `healing_touch`)
 
@@ -2028,7 +2028,7 @@ No new `Combat::hash` tag and no new `SIM_EVENTS` tag. The dice and the three us
 * A general cure for Lesser Restoration, Lay on Hands, or Greater Restoration. They do not call this cure. Lesser Restoration still ends one listed condition and does not cure a bite disease. Lay on Hands still does not spend 5 points to cure a disease or neutralize a poison. Greater Restoration's hit point maximum option still clears Life Drain only.
 * Legendary actions, including Heal Self. Spell Storing. `unicorn.json`.
 
-This section does not author `srd51.monster.unicorn`. The row stays deferred until legendary actions and the stat block are written. Counts stay 210 authored and 4 deferred.
+This section does not author `srd51.monster.unicorn`. The row stays deferred until legendary actions and the stat block are written. Counts stay 214 authored and 4 deferred.
 
 ## 57. Legendary actions (monster@7)
 
