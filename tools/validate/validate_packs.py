@@ -1430,7 +1430,22 @@ def main(argv: list[str]) -> int:
                 print(r.stdout + r.stderr)
             failed += r.returncode != 0
         scen_failed = validate_scenarios(registry, by_tag)
-    return 1 if failed or cross or scen_failed else 0
+    kit_failed = False
+    if not argv:
+        # equip_kit@1 is presentation art, not a pack document. The default
+        # content_validate run still rejects a bad manifest.
+        import equip_kit
+        live = [p for p in packs if pack_set_key(p) == "live"]
+        kit_errs = equip_kit.validate_live(live)
+        kit_name = "content/art/equipment/kit.json"
+        if kit_errs:
+            kit_failed = True
+            print(f"FAIL {kit_name}")
+            for e in kit_errs:
+                print(f"  {e}")
+        else:
+            print(f"ok   {kit_name}")
+    return 1 if failed or cross or scen_failed or kit_failed else 0
 
 
 if __name__ == "__main__":
