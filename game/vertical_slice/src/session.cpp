@@ -24,6 +24,7 @@
 #include "rules5e/equipment.hpp"
 #include "rules5e/item.hpp"
 #include "rules5e/loadout.hpp"
+#include "rules5e/weapon.hpp"
 #include "world/file_chunk_provider.hpp"
 
 #include <span>
@@ -631,21 +632,22 @@ static std::string_view item_slug(std::string_view id) {
 }
 
 // Carried body slot, or nullopt when this carried item is not drawn. Weapons and shields stay slung on the back.
-// Backpack, quiver and the crossbow bolt case share that rear slot. The belt pouch is the hip. The signal is the
-// content id's last segment: item@2 has no wear-slot field, ItemKind::Other does not separate these four, and
-// `visual` on an item is the light glow. component_pouch is a different slug and is not the belt pouch.
+// Backpack, quiver and the crossbow bolt case share that rear slot. The belt pouch and the component pouch are hip
+// items (the render assigns hip-main or hip-off). A holy-symbol amulet is the neck. The signal is the content id's
+// last segment: item@2 has no wear-slot field, and `visual` on an item is the light glow. Worn armor is not drawn.
 static std::optional<AttachSlot> carried_body_slot(const rules5e::ItemDef& d, std::string_view content_id) {
     if (d.kind == rules5e::ItemKind::Weapon || d.kind == rules5e::ItemKind::Shield) return AttachSlot::Back;
     const std::string_view slug = item_slug(content_id);
     if (slug == "backpack" || slug == "quiver" || slug == "case_crossbow_bolt") return AttachSlot::Back;
-    if (slug == "pouch") return AttachSlot::Hip;
+    if (slug == "pouch" || slug == "component_pouch") return AttachSlot::Hip;
+    if (slug == "holy_symbol_amulet") return AttachSlot::Neck;
     return std::nullopt;
 }
 
 // Loadout -> EquipVisual list (read-only, through sim::Combat::loadout / item_defs): main hand, off hand (a two-handed
 // item, held in both, once at the main hand), then carried body gear in instance order (slung weapons and shields,
-// backpack, quiver, bolt case on the back; the pouch on the hip). Worn armor is not drawn. Lit state and radii are
-// rules5e::light_radii, the same values the light producer publishes.
+// backpack, quiver, bolt case on the back; belt pouch and component pouch on the hip; amulet on the neck). Worn armor
+// is not drawn. Lit state and radii are rules5e::light_radii, the same values the light producer publishes.
 static void equipment_visuals(const sim::Combat& c, sim::CombatantId id, std::vector<EquipVisual>& out) {
     out.clear();
     const rules5e::Loadout* lo = c.loadout(id);
@@ -667,6 +669,7 @@ static void equipment_visuals(const sim::Combat& c, sim::CombatantId id, std::ve
         e.slot = slot;
         e.kind = kind_of(*d);
         e.hands = d->hands;
+        e.versatile = d->weapon.versatile_dice.count > 0 || (d->weapon.properties & rules5e::kWeaponVersatile) != 0;
         const rules5e::LightState r = rules5e::light_radii(*d, h);
         e.lit = (h.flags & rules5e::kHeldLit) != 0;
         e.light_state = rules5e::light_state_index(h.flags);

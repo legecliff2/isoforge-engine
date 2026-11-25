@@ -35,6 +35,7 @@ std::optional<EquipArtPart> parse_part(std::string_view s) {
     if (s == "main_hand") return EquipArtPart::MainHand;
     if (s == "off_hand") return EquipArtPart::OffHand;
     if (s == "held_light") return EquipArtPart::HeldLight;
+    if (s == "neck") return EquipArtPart::Neck;
     return std::nullopt;
 }
 
@@ -52,6 +53,8 @@ bool parse_sprite_name(const std::filesystem::path& file, EquipArtPart& part, Eq
     const auto p = parse_part(std::string_view(stem).substr(0, dot));
     const auto v = parse_view(std::string_view(stem).substr(dot + 1));
     if (!p || !v) return false;
+    // neck is toward-only. The schema accepts neck.se and rejects neck.ne.
+    if (*p == EquipArtPart::Neck && *v == EquipArtView::Away) return false;
     part = *p;
     view = *v;
     return true;
@@ -247,7 +250,7 @@ void collect_parts(bool kind_default, const std::string& id, const Json& parts, 
         const Json* views = field(part, "views");
         if (!part_name || part_name->tag != JsonTag::String || !views || views->tag != JsonTag::Array) continue;
         const auto parsed_part = parse_part(part_name->s);
-        if (!parsed_part) continue;   // neck, and any name this table does not draw
+        if (!parsed_part) continue;   // a part name this table does not draw
         std::string bin = "medium";
         if (const Json* named = field(part, "bin")) {
             if (named->tag == JsonTag::String && !named->s.empty()) bin = named->s;
@@ -259,6 +262,7 @@ void collect_parts(bool kind_default, const std::string& id, const Json& parts, 
             if (pivot->a.size() != 2 || pivot->a[0].tag != JsonTag::Number || pivot->a[1].tag != JsonTag::Number) continue;
             const auto parsed_view = parse_view(view_name->s);
             if (!parsed_view) continue;
+            if (*parsed_part == EquipArtPart::Neck && *parsed_view == EquipArtView::Away) continue;
             if (pivot->a[0].n < 0 || pivot->a[1].n < 0 || pivot->a[0].n > 100000 || pivot->a[1].n > 100000) continue;
             PivotSpec spec;
             spec.kind_default = kind_default;
@@ -273,15 +277,28 @@ void collect_parts(bool kind_default, const std::string& id, const Json& parts, 
     }
 }
 
-std::vector<PivotSpec> pivots_in(const Json& root) {
-    std::vector<PivotSpec> out;
+bool known_back_role(std::string_view role) {
+    return role == "quiver" || role == "bolt_case" || role == "pack" || role == "other";
+}
+
+struct KitNotes {
+    std::vector<PivotSpec> pivots;
+    std::vector<std::pair<std::string, std::string>> roles;
+};
+
+KitNotes notes_in(const Json& root) {
+    KitNotes notes;
     if (const Json* items = field(root, "items")) {
         if (items->tag == JsonTag::Array) {
             for (const Json& item : items->a) {
                 const Json* cid = field(item, "content_id");
                 const Json* parts = field(item, "parts");
-                if (!cid || cid->tag != JsonTag::String || !parts) continue;
-                collect_parts(false, cid->s, *parts, out);
+                if (!cid || cid->tag != JsonTag::String) continue;
+                if (const Json* role = field(item, "back_role")) {
+                    if (role->tag == JsonTag::String && known_back_role(role->s))
+                        notes.roles.emplace_back(cid->s, role->s);
+                }
+                if (parts) collect_parts(false, cid->s, *parts, notes.pivots);
             }
         }
     }
@@ -291,11 +308,11 @@ std::vector<PivotSpec> pivots_in(const Json& root) {
                 const Json* name = field(kind, "kind");
                 const Json* parts = field(kind, "parts");
                 if (!name || name->tag != JsonTag::String || !parts) continue;
-                collect_parts(true, name->s, *parts, out);
+                collect_parts(true, name->s, *parts, notes.pivots);
             }
         }
     }
-    return out;
+    return notes;
 }
 
 std::optional<std::string> read_text(const std::filesystem::path& path) {
@@ -311,13 +328,13 @@ std::optional<std::string> read_text(const std::filesystem::path& path) {
     return text;
 }
 
-std::vector<PivotSpec> load_pivots(const std::filesystem::path& root) {
+KitNotes load_notes(const std::filesystem::path& root) {
     const auto text = read_text(root / "kit.json");
     if (!text) return {};
     KitParser parser(*text);
     const auto root_json = parser.parse();
     if (!root_json) return {};
-    return pivots_in(*root_json);
+    return notes_in(*root_json);
 }
 
 } // namespace
@@ -336,6 +353,12 @@ ImageRgba mirror_sprite_around_pivot(const ImageRgba& src, int pivot_x) {
         }
     }
     return d;
+}
+
+std::optional<std::string_view> EquipArtTable::back_role(std::string_view content_id) const {
+    for (const auto& role : roles_)
+        if (role.first == content_id) return std::string_view(role.second);
+    return std::nullopt;
 }
 
 const EquipArtSprite* EquipArtTable::sprite_at(std::size_t index) const {
@@ -376,6 +399,7 @@ EquipArtTable EquipArtTable::load(const std::filesystem::path& root) {
         auto image = read_png(file);
         if (!image || image->empty()) return;
         EquipArtSprite sprite;
+        // Absent kit.json pivot: bottom-centre. H4 will name [12, 12] in the manifest.
         sprite.pivot_x = int(image->w / 2);
         sprite.pivot_y = int(image->h - 1);
         sprite.image = std::move(*image);
@@ -413,7 +437,9 @@ EquipArtTable EquipArtTable::load(const std::filesystem::path& root) {
             }
         }
     }
-    for (const PivotSpec& spec : load_pivots(root)) {
+    const KitNotes notes = load_notes(root);
+    table.roles_ = notes.roles;
+    for (const PivotSpec& spec : notes.pivots) {
         for (Entry& entry : table.entries_) {
             if (entry.kind_default != spec.kind_default || entry.id != spec.id || entry.bin != spec.bin) continue;
             if (entry.part != spec.part || entry.view != spec.view) continue;
