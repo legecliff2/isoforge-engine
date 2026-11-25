@@ -1,6 +1,6 @@
 # Smoke #28 — Mediums SE idle_00 (fal)
 
-**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #28. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `shrieker`, `violet-fungus`, `swarm-of-bats`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449) and the Group D follow-up:** This note is the production record for smoke #28. The tree now holds 37 medium creatures in Long Dusk Mapping B (26 from #449/#458, plus 11 Group D / couatl kits). From this smoke, the tree includes: `shrieker`, `violet-fungus`, `swarm-of-bats`, `swarm-of-beetles`. Held back (kept local): `chain-devil`, `rakshasa`, `doppelganger`, `mimic`.
 
 **Status: Art Done (shrieker, violet-fungus, swarm-of-bats, swarm-of-beetles) · Anim built for all four, awaiting AD audit**
 
@@ -270,4 +270,4 @@ Swarm of Bats stays the loose airborne flock of large, simple M/V-wing bats (164
 
 **AD sign-off (records, 2026-11-24 CT): Art+Anim PASS (soft notes as recorded above). This batch was passed by AD in chat and reported Done to Producer at the time; this line only writes that verdict into the doc. Supersedes any "awaiting AD audit" status above.**
 
-**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449):** This note is the production record for smoke #28. The art PR ships 26 medium creatures that have content spec rows on main, not the original 40. From this smoke, the PR includes: `shrieker`, `violet-fungus`, `swarm-of-bats`. Held back (kept local, not in the PR): `azer`, `barbed-devil`, `bearded-devil`, `chain-devil`, `erinyes`, `lemure`, `night-hag`, `rakshasa`, `doppelganger`, `mimic`, `swarm-of-beetles`, `swarm-of-centipedes`, `swarm-of-spiders`, `swarm-of-wasps`.
+**PR [#449](https://github.com/legecliff2/isoforge-engine/pull/449) and the Group D follow-up:** This note is the production record for smoke #28. The tree now holds 37 medium creatures in Long Dusk Mapping B (26 from #449/#458, plus 11 Group D / couatl kits). From this smoke, the tree includes: `shrieker`, `violet-fungus`, `swarm-of-bats`, `swarm-of-beetles`. Held back (kept local): `chain-devil`, `rakshasa`, `doppelganger`, `mimic`.
