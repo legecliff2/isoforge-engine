@@ -608,8 +608,21 @@ struct SpellDef {
     uint16_t disease_hours = 0;
     DiceExpr disease_dice{0, 0, 0};
     // appended (B7, Shambling Mound Engulf): this contain refuses a second creature while the user already holds one
-    // (any contain kind). Swallow's one-at-a-time stays contain == 2. Static content: not hashed.
+    // (any contain kind). Swallow's one-at-a-time stays contain == 2 unless contain_unlimited (C-T T5).
+    // Static content: not hashed.
     bool contain_one = false;
+    // C-T T5: capacity "unlimited" on a swallow rider. The one-at-a-time test applies only when this is false.
+    // The attack_effect path leaves it false (toad, frog, behir stay one). Static content. Not hashed.
+    bool contain_unlimited = false;
+    // C-T T6: regurgitate.all. On a failed save, every contain == 2 effect of that container ends. Default false
+    // keeps "regurgitate the creature". Static content. Not hashed. Copied onto the active effect at set_contain.
+    bool regurgitate_all = false;
+    // C-T T8: feet of movement that leave a dead swallower's corpse. 0 = the existing release (freed, prone, kind 1).
+    // Static content. Not hashed.
+    uint16_t contain_exit_ft = 0;
+    // C-T T3: this swallow rider ends the grapple pair after the contain is set. Not set on attack_effect Swallow.
+    // Static content. Not hashed.
+    bool contain_ends_grapple = false;
     // appended (B8, Bulette Deadly Leap, CONTENT_CONVENTIONS §38). Static content: not hashed.
     // requires_jumped_ft > 0: the cast is refused, action unspent, unless TurnBudget::jumped_ft is at least this.
     // has_save_choice: each target saves with the higher save_modifier of save_ability and save_alt (tie: save_ability).

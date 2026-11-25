@@ -313,6 +313,81 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
         out.push_back(e);
         return std::nullopt;
     }
+    if (k == "swallow") {   // C-T T3: on-hit rider of a melee weapon attack. Bite damage, then this contain, then the grapple ends.
+        for (auto it = r.begin(); it != r.end(); ++it) {
+            const std::string key = it.key();
+            if (key != "kind" && key != "damage" && key != "capacity" && key != "regurgitate" && key != "exit_ft")
+                return where + ": swallow rider: unknown key '" + key + "'";
+        }
+        const auto schema = assets::parse_schema_ref(doc.value("$schema", ""));
+        const bool monster5 = schema && schema->type == "monster" && schema->version >= 5;
+        if (!monster5) return where + ": swallow rider needs a monster@5 file";
+        bool melee = false;
+        if (where.size() >= 7 && where.compare(where.size() - 7, 7, " on_hit") == 0) {
+            const std::string head = where.substr(0, where.size() - 7);
+            const auto pos = head.rfind(": ");
+            const std::string aid = pos == std::string::npos ? head : head.substr(pos + 2);
+            for (const Json* act : rc.attacks)
+                if (act && act->value("id", "") == aid && act->value("kind", "") == "melee_weapon_attack") melee = true;
+        }
+        if (!melee) return where + ": swallow rider needs a melee weapon attack";
+        if (!r.contains("capacity") || !r["capacity"].is_string() ||
+            (r["capacity"].get<std::string>() != "one" && r["capacity"].get<std::string>() != "unlimited"))
+            return where + ": swallow rider: capacity is required";
+        const auto dm = r.find("damage");
+        if (dm == r.end() || !dm->is_object()) return where + ": swallow rider needs damage {dice, type}";
+        for (auto it = dm->begin(); it != dm->end(); ++it)
+            if (it.key() != "dice" && it.key() != "type") return where + ": swallow rider needs damage {dice, type}";
+        auto dice = dm->contains("dice") && (*dm)["dice"].is_string() ? parse_dice((*dm)["dice"].get<std::string>()) : std::nullopt;
+        auto ty = dm->contains("type") && (*dm)["type"].is_string() ? damage_type((*dm)["type"].get<std::string>()) : std::nullopt;
+        if (!dice || !ty) return where + ": bad contain damage";
+        int dc = 0, rdmg = 30;
+        bool all = false;
+        if (auto rg = r.find("regurgitate"); rg != r.end()) {
+            if (!rg->is_object()) return where + ": regurgitate is a swallow option {dc, damage}";
+            for (auto it = rg->begin(); it != rg->end(); ++it)
+                if (it.key() != "dc" && it.key() != "damage" && it.key() != "all")
+                    return where + ": regurgitate: unknown key '" + it.key() + "'";
+            dc = geti(*rg, "dc");
+            rdmg = geti(*rg, "damage", 30);
+            if (dc < 1 || dc > 30 || rdmg < 1 || rdmg > 255) return where + ": bad regurgitate (dc 1..30, damage 1..255)";
+            if (rg->contains("all")) {
+                if (!(*rg)["all"].is_boolean()) return where + ": regurgitate.all must be a boolean";
+                all = (*rg)["all"].get<bool>();
+            }
+        }
+        uint16_t exit_ft = 0;
+        if (r.contains("exit_ft")) {
+            const Json& x = r["exit_ft"];
+            if (!x.is_number_integer() || x.get<int64_t>() < 1 || x.get<int64_t>() > 65535) return where + ": bad exit_ft";
+            exit_ft = uint16_t(x.get<int64_t>());
+        }
+        rules5e::SpellDef d;
+        d.content_id = rc.arch + "#swallow." + std::to_string(rc.synth.size());
+        d.id = rules5e::spell_id_of(d.content_id);
+        d.level = 0;
+        d.casting_time = rules5e::CastingTime::Action;
+        d.kind = rules5e::SpellEffectKind::ApplyCondition;
+        d.is_spell = false;
+        d.magical = false;
+        d.targets = 1;
+        d.applies_condition = true;
+        d.condition = rules5e::Condition::Restrained;
+        d.contain = 2;
+        d.contain_dice = *dice;
+        d.contain_damage_type = *ty;
+        d.contain_unlimited = r["capacity"].get<std::string>() == "unlimited";
+        d.regurgitate_dc = int8_t(dc);
+        d.regurgitate_damage = uint8_t(rdmg);
+        d.regurgitate_all = all;
+        d.contain_exit_ft = exit_ft;
+        d.contain_ends_grapple = true;
+        e.kind = RK::ApplyCondition;
+        e.spell_id = d.id;
+        rc.synth.push_back(std::move(d));
+        out.push_back(e);
+        return std::nullopt;
+    }
     if (k == "apply_condition") {   // a synthetic ApplyCondition SpellDef: condition, expiry, duration_rounds
         const auto ap = r.find("apply");
         if (ap == r.end() || !ap->is_array() || ap->size() != 1 || !(*ap)[0].is_object()) return where + ": apply_condition needs exactly one apply[] entry";
@@ -1176,6 +1251,14 @@ std::optional<std::string> compile_pull_action(const std::string& arch, const Js
 // entry needs `escape` (no other duration yet). New content keys (T&C schema pending).
 // 7.2w grab and contain: an apply[] entry's optional `contain` {kind engulf | swallow, damage {dice, type}} and `max_size`
 // (tiny .. gargantuan: the condition skips a larger target). Filled into the effect-shaped fields of `T` (SpellDef or SpellEffect).
+std::optional<int8_t> named_size(const Json& v) {
+    static const char* kSizes[] = {"tiny", "small", "medium", "large", "huge", "gargantuan"};
+    if (!v.is_string()) return std::nullopt;
+    const std::string s = v.get<std::string>();
+    for (int i = 0; i < 6; ++i) if (s == kSizes[i]) return int8_t(i);
+    return std::nullopt;
+}
+
 template <class T>
 std::optional<std::string> read_contain(const Json& x, const std::string& where, T& e) {
     if (auto ms = x.find("max_size"); ms != x.end()) {
@@ -3100,10 +3183,43 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         c.thieves_tools = rogue && tools;
     }
     std::vector<const Json*> attack_actions;   // content action per c.attacks[i]
+    std::vector<std::string> attack_variant_of;   // parallel to c.attacks; empty unless this row is variant_of
+    std::vector<uint8_t> attack_is_variant;
     for (const Json& act : doc.at("actions")) {
         const std::string kind = act.value("kind", "");
         const bool melee = kind == "melee_weapon_attack", ranged = kind == "ranged_weapon_attack";
         if (!melee && !ranged) continue;
+        if (act.contains("variant_of")) {   // C-T T1: copy to_hit, reach, natural and damage. Not the source on_hit.
+            const std::string aid = act.value("id", "?");
+            if (schema_type != "monster" || (declared != 0 && declared < 5))
+                return a.id + ": action " + aid + ": variant_of needs a monster@5 file";
+            if (!act["variant_of"].is_string() || act["variant_of"].get<std::string>().empty())
+                return a.id + ": action " + aid + ": variant_of names no attack of this creature";
+            const std::string src = act["variant_of"].get<std::string>();
+            static const char* kOwn[] = {"id", "name", "kind", "description", "variant_of", "target_requires_any",
+                                         "target_max_size", "on_hit"};
+            static const char* kCopied[] = {"to_hit", "reach", "range", "natural", "damage"};
+            for (auto it = act.begin(); it != act.end(); ++it) {
+                const std::string key = it.key();
+                bool own = false;
+                for (const char* k : kOwn) own = own || key == k;
+                if (own) continue;
+                bool copied = false;
+                for (const char* k : kCopied) copied = copied || key == k;
+                if (copied) return a.id + ": action " + aid + ": variant_of copies " + key + " from " + src;
+                return a.id + ": action " + aid + ": variant_of: unknown key '" + key + "'";
+            }
+            strings_.push_back(act.value("id", ""));
+            rules5e::Attack at{};
+            at.id = strings_.back();
+            c.attacks.push_back(at);
+            a.normal_range_ft.push_back(0);
+            a.long_range_ft.push_back(0);
+            attack_actions.push_back(&act);
+            attack_variant_of.push_back(src);
+            attack_is_variant.push_back(1);
+            continue;
+        }
         // B5: the last grapple rider's no_damage. 1 = this attack lists no damage. -1 = a bad bool.
         int no_dmg = 0;
         if (auto oh = act.find("on_hit"); oh != act.end() && oh->is_array())
@@ -3203,6 +3319,15 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 g |= b;
             }
             at.target_requires_any = g;
+        }
+        // C-T T2: largest Size this attack may name. Static. Not hashed. -1 stays "any".
+        if (auto ms = act.find("target_max_size"); ms != act.end()) {
+            const std::string aid = act.value("id", "?");
+            if (schema_type != "monster" || (declared != 0 && declared < 5))
+                return a.id + ": action " + aid + ": target_max_size needs a monster@5 file";
+            const auto sz = named_size(*ms);
+            if (!sz) return a.id + ": action " + aid + ": bad target_max_size";
+            at.target_max_size = *sz;
         }
         // Batch 3 (Lich ruling): monster@5 `curse` {no_regain_hp: true, save: {ability: con, dc}}: SRD 5.1 mummy Rotting Fist
         // ("must succeed on a DC 12 Constitution saving throw or be cursed with mummy rot. The cursed target can't regain hit
@@ -3350,6 +3475,55 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         a.normal_range_ft.push_back(uint16_t(normal));
         a.long_range_ft.push_back(uint16_t(lng));
         attack_actions.push_back(&act);
+        attack_variant_of.emplace_back();
+        attack_is_variant.push_back(0);
+    }
+    // C-T T1: fill variant rows from the named attack of this creature. The source is never itself a variant.
+    for (std::size_t i = 0; i < c.attacks.size(); ++i) {
+        if (!attack_is_variant[i]) continue;
+        const std::string src = attack_variant_of[i];
+        const std::string aid(c.attacks[i].id);
+        int found = -1;
+        bool names_variant = c.attacks[i].id == src;
+        for (std::size_t k = 0; k < c.attacks.size(); ++k) {
+            if (c.attacks[k].id != src) continue;
+            if (attack_is_variant[k]) names_variant = true;
+            else found = int(k);
+        }
+        if (names_variant) return a.id + ": action " + aid + ": variant_of can't name a variant";
+        if (found < 0) return a.id + ": action " + aid + ": variant_of names no attack of this creature";
+        const rules5e::Attack& from = c.attacks[std::size_t(found)];
+        const bool want_ranged = attack_actions[i]->value("kind", "") == "ranged_weapon_attack";
+        if (from.ranged != want_ranged)
+            return a.id + ": action " + aid + ": variant_of copies kind from " + src;
+        rules5e::Attack at = from;
+        at.id = c.attacks[i].id;
+        at.drain_max_hp = false; at.drain_save_dc = 0; at.drain_damage_type = -1; at.drain_heal_self = false;
+        at.curse_no_regain_dc = 0; at.strength_drain = {};
+        at.target_requires_any = 0; at.grapple_instead_ok = false; at.grapple_no_damage = false;
+        at.target_max_size = -1;
+        const Json& act = *attack_actions[i];
+        if (auto tg = act.find("target_requires_any"); tg != act.end()) {
+            if (!tg->is_array() || tg->empty()) return a.id + ": action " + aid + ": target_requires_any must be a non-empty array";
+            uint8_t g = 0;
+            for (const Json& v : *tg) {
+                const std::string key = v.is_string() ? v.get<std::string>() : "";
+                const uint8_t b = key == "willing" ? rules5e::kTargetGateWilling : key == "grappled_by_self" ? rules5e::kTargetGateGrappledBySelf
+                                : key == "incapacitated" ? rules5e::kTargetGateIncapacitated : key == "restrained" ? rules5e::kTargetGateRestrained : 0;
+                if (b == 0) return a.id + ": action " + aid + ": target_requires_any: unknown gate '" + key + "'";
+                if (g & b) return a.id + ": action " + aid + ": target_requires_any: duplicate gate '" + key + "'";
+                g |= b;
+            }
+            at.target_requires_any = g;
+        }
+        if (auto ms = act.find("target_max_size"); ms != act.end()) {
+            const auto sz = named_size(*ms);
+            if (!sz) return a.id + ": action " + aid + ": bad target_max_size";
+            at.target_max_size = *sz;
+        }
+        c.attacks[i] = at;
+        a.normal_range_ft[i] = a.normal_range_ft[std::size_t(found)];
+        a.long_range_ft[i] = a.long_range_ft[std::size_t(found)];
     }
     if (declared == 0 || declared >= 4)
         if (auto e = compile_resources(a, doc, schema_type == "character", c)) return *e;
@@ -3537,6 +3711,21 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     for (const auto& m : a.multiattack_decls) {
         strings_.push_back(m.id);
         c.multiattacks.push_back({strings_.back(), m.attacks, m.count_dice});
+        // C-T T10: instead {bite: swallow}. The alternate must be a variant_of the slot attack.
+        for (const auto& p : m.instead) {
+            bool in_option = false;
+            uint8_t slot = 0;
+            for (uint8_t ix : m.attacks)
+                if (ix < c.attacks.size() && c.attacks[ix].id == p.slot) { in_option = true; slot = ix; }
+            if (!in_option)
+                return a.id + ": multiattack option '" + m.id + "': instead names no attack of this option";
+            int alt = -1;
+            for (std::size_t i = 0; i < c.attacks.size(); ++i)
+                if (c.attacks[i].id == p.alternate) alt = int(i);
+            if (alt < 0 || std::size_t(alt) >= attack_variant_of.size() || attack_variant_of[std::size_t(alt)] != p.slot)
+                return a.id + ": multiattack option '" + m.id + "': instead: the alternate must be a variant_of that attack";
+            c.multiattacks.back().alternates.push_back({slot, uint8_t(alt)});
+        }
     }
     a.ai = assets::behavior_ai_script(doc);   // monster@2 / character@2
     const std::size_t n_trigger_spells = synth.size();   // the area_save riders' defs come first
@@ -3736,6 +3925,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             rules5e::AttackSequence seq;
             seq.id = strings_.back();
             seq.attacks = c.multiattacks[i].attacks;
+            seq.alternates = c.multiattacks[i].alternates;   // C-T T10: the FP-led copy keeps instead
             seq.after_action = sa->spell_id;
             c.multiattacks.push_back(std::move(seq));
         }

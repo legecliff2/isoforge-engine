@@ -154,8 +154,8 @@ struct Attack {
     // >0 = that many points of proficiency bonus are in `to_hit`.
     // Content-derived. Not hashed. A fight with no possession never reads it.
     int8_t pb_in_to_hit = -1;
-    // C-D D7 / C-T T2: largest Size a redirected attack may name (-1 = no extra cap).
-    // Static content. Not hashed. The loader does not set it until the Swallow contract.
+    // C-D D7 / C-T T2: largest Size this attack may name (-1 = no extra cap).
+    // Static content. Not hashed. The loader sets it from target_max_size (monster@5).
     int8_t target_max_size = -1;
 };
 inline constexpr int8_t kAttackAbilityFinesse = 6;
@@ -240,6 +240,10 @@ struct AttackSequence {
     // Appended (B7, Shambling Mound Engulf): spell id of an ApplyCondition contain applied when every attack in this option
     // hits the same creature. 0 = none. Not a cast and not a free_rider. The both-hits window is TurnBudget (not hashed).
     uint32_t engulf_both = 0;
+    // C-T T10: a slot attack index may be replaced by `instead` (Swallow for the bite). Static. Not hashed.
+    // The request's attack_index is already logged. A lead_action copy inherits the same pairs.
+    struct Alternate { uint8_t slot = 0; uint8_t instead = 0; };
+    std::vector<Alternate> alternates{};
 };
 // The attack index the multiattack in progress requires next, or -1 (none in progress / sequence done).
 inline int multiattack_next(const std::vector<AttackSequence>& ms, uint8_t sequence, uint8_t pos) {
@@ -249,6 +253,13 @@ inline int multiattack_next(const std::vector<AttackSequence>& ms, uint8_t seque
     if (m.after_action != 0) return pos < m.attacks.size() ? m.attacks[pos] : -1;
     if (m.count_dice.count > 0) return m.attacks[0];   // attacks_remaining bounds a rolled count
     return pos < m.attacks.size() ? m.attacks[pos] : -1;
+}
+// C-T T10: `requested` fills `slot` when it is that attack or a listed alternate of it.
+inline bool multiattack_accepts(const AttackSequence& m, uint8_t slot, uint8_t requested) {
+    if (requested == slot) return true;
+    for (const auto& p : m.alternates)
+        if (p.slot == slot && p.instead == requested) return true;
+    return false;
 }
 
 // SRD "Regeneration" (troll, vampire spawn): regains `amount` HP at the start of its turn unless it took damage of

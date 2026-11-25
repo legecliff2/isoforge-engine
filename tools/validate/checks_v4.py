@@ -3948,6 +3948,92 @@ def check_spell_descriptive(doc: dict) -> list[str]:
     return []
 
 
+_SIZES = ("tiny", "small", "medium", "large", "huge", "gargantuan")
+_COPIED_ATTACK_KEYS = ("to_hit", "reach", "range", "natural", "damage")
+_VARIANT_OWN_KEYS = {"id", "name", "kind", "description", "variant_of", "target_requires_any", "target_max_size", "on_hit"}
+
+
+def check_swallow(doc: dict, tag: str) -> list[str]:
+    """C-T TP1 swallow (CONTENT_CONVENTIONS §62). Mirrors the sim loader."""
+    errs: list[str] = []
+    did = doc.get("id", "?")
+    monster5 = tag in MONSTER_SINCE_5
+    actions = [a for _p, a in mechanical_actions(doc) if isinstance(a, dict)]
+    weapon = [a for a in actions if str(a.get("kind", "")).endswith("_attack")]
+    by_id = {a.get("id"): a for a in weapon if isinstance(a.get("id"), str)}
+
+    def gate(where: str, act: dict, key: str) -> None:
+        if key not in act:
+            return
+        if not monster5:
+            errs.append(f"{where}: {did}: {key} needs a monster@5 file")
+
+    for path, act in mechanical_actions(doc):
+        where = f"{path}: {did}: action '{act.get('id', '?')}'"
+        if "variant_of" in act:
+            gate(where, act, "variant_of")
+            src = act.get("variant_of")
+            if not isinstance(src, str) or not src or src not in by_id:
+                errs.append(f"{where}: variant_of names no attack of this creature")
+            elif "variant_of" in by_id[src]:
+                errs.append(f"{where}: variant_of can't name a variant")
+            for key in act:
+                if key in _VARIANT_OWN_KEYS:
+                    continue
+                if key in _COPIED_ATTACK_KEYS:
+                    errs.append(f"{where}: variant_of copies {key} from {src}")
+                else:
+                    errs.append(f"{where}: variant_of: unknown key '{key}'")
+        if "target_max_size" in act:
+            gate(where, act, "target_max_size")
+            if act.get("target_max_size") not in _SIZES:
+                errs.append(f"{where}: bad target_max_size")
+        for j, rider in enumerate(act.get("on_hit") or []):
+            if not isinstance(rider, dict) or rider.get("kind") != "swallow":
+                continue
+            rwhere = f"{path}/on_hit/{j}: {did}"
+            if not monster5:
+                errs.append(f"{rwhere}: swallow rider needs a monster@5 file")
+            if act.get("kind") != "melee_weapon_attack":
+                errs.append(f"{rwhere}: swallow rider needs a melee weapon attack")
+            cap = rider.get("capacity")
+            if cap not in ("one", "unlimited"):
+                errs.append(f"{rwhere}: swallow rider: capacity is required")
+            damage = rider.get("damage")
+            if not isinstance(damage, dict) or "dice" not in damage or "type" not in damage:
+                errs.append(f"{rwhere}: swallow rider needs damage {{dice, type}}")
+
+    for path, _owner, eff in live_effects(doc):
+        if not isinstance(eff, dict) or eff.get("kind") != "multiattack":
+            continue
+        blobs: list[tuple[str, dict]] = []
+        options = eff.get("options")
+        if isinstance(options, list):
+            for j, o in enumerate(options):
+                if isinstance(o, dict):
+                    blobs.append((f"{path}/options/{j}", o))
+        elif "instead" in eff:
+            blobs.append((path, eff))
+        for sub, o in blobs:
+            if "instead" not in o:
+                continue
+            where = f"{sub}: {did}"
+            if not monster5:
+                errs.append(f"{where}: instead needs a monster@5 file")
+            inst = o.get("instead")
+            attacks = o.get("attacks") if isinstance(o.get("attacks"), list) else []
+            if not isinstance(inst, dict) or not inst:
+                errs.append(f"{where}: instead names no attack of this option")
+                continue
+            for slot, alt in inst.items():
+                if slot not in attacks:
+                    errs.append(f"{where}: instead names no attack of this option")
+                named = by_id.get(alt) if isinstance(alt, str) else None
+                if not isinstance(named, dict) or named.get("variant_of") != slot:
+                    errs.append(f"{where}: instead: the alternate must be a variant_of that attack")
+    return errs
+
+
 def check_dragon_kit(doc: dict, tag: str) -> list[str]:
     """C-D dragon kit (CONTENT_CONVENTIONS §61). Mirrors content.cpp compile_save_action and the lead_action loader."""
     errs: list[str] = []

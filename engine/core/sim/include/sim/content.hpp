@@ -149,7 +149,8 @@ struct Archetype {
         rules5e::DiceExpr damage{};
         rules5e::DamageType damage_type = rules5e::DamageType::Bludgeoning;
     };
-    struct MultiattackDecl { std::string id; std::vector<uint8_t> attacks; rules5e::DiceExpr count_dice{0, 0, 0}; std::string free_rider; std::optional<EngulfBothSpec> engulf_both_hits; std::string lead_action; };   // count_dice: batch 3; free_rider: B3b action id; engulf_both_hits: B7; lead_action: C-D D6 save_effect id
+    struct InsteadPair { std::string slot; std::string alternate; };   // C-T T10: multiattack instead {slot attack id: variant id}
+    struct MultiattackDecl { std::string id; std::vector<uint8_t> attacks; rules5e::DiceExpr count_dice{0, 0, 0}; std::string free_rider; std::optional<EngulfBothSpec> engulf_both_hits; std::string lead_action; std::vector<InsteadPair> instead; };   // count_dice: batch 3; free_rider: B3b action id; engulf_both_hits: B7; lead_action: C-D D6 save_effect id; instead: C-T T10
     std::vector<MultiattackDecl> multiattack_decls;
     std::optional<std::string> ai;        // behavior.ai (monster@2 / character@2), pack-relative
     // Script id of behavior.ai, resolved within the archetype's own pack: "pack_id:path".

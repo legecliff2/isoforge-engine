@@ -523,6 +523,11 @@ struct ActiveSpellEffect {
     // EndTurn; always 0 between turns, so not hashed beyond 0xAC's per-effect record, where sim folds it).
     uint16_t container_damage = 0;
     int8_t regurgitate_dc = 0; uint8_t regurgitate_damage = 30;   // derived from the SpellDef
+    // C-T T6 / T8. Derived from the SpellDef at set_contain. Not hashed (static content; the corpse flag is
+    // no_condition, already bit 1 of the 0xAC flags byte). regurgitate_all false keeps one-creature regurgitation.
+    // contain_exit_ft 0 keeps the immediate release on the container's death.
+    bool regurgitate_all = false;
+    uint16_t contain_exit_ft = 0;
     // appended (7.2zc Invisibility): SpellEffect::ends_on of the ApplyCondition that made it (kEndsOn* bits); derived from the
     // SpellDef: not hashed.
     uint8_t ends_on = 0;
@@ -573,7 +578,9 @@ struct ActiveSpellEffect {
 // 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).
 // kind 1 released (the container died: exits prone, sim spends 5 ft of its movement / places it in the container's space);
 // 2 regurgitated (exits prone, sim places it within 10 ft of the container); 3 avoided an Engulf with a successful save
-// (sim pushes it 5 ft back or to a side, out of the cube's space).
+// (sim pushes it 5 ft back or to a side, out of the cube's space);
+// 4 escaped the corpse (C-T T8: rules-internal, not an event and not hashed). The sim exit move that spends the
+// logged destination is TP2. Rules only validate the movement budget and end the effect.
 // altitude PR4 (SRD 5.1 Falling): a creature that fell in rules during the last step (EncounterState::landed; cleared when each
 // step starts): a flyer knocked prone / to speed 0 / losing its fly speed, a revoke_fly, or a forced move with fell_ft. It is
 // at the ground now (alt_ft = 0); sim emits AltitudeChanged{a = 0, b = kAltFall} and records Combat::falls() for each.

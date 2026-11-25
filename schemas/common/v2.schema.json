@@ -999,15 +999,49 @@
             "spend",
             "grapple",
             "forced_move",
-            "apply_modifier"
+            "apply_modifier",
+            "swallow"
           ]
         },
         "damage": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/rider_damage"
-          }
+          "oneOf": [
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/rider_damage" }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["dice", "type"],
+              "properties": {
+                "dice": { "$ref": "../common/v1.schema.json#/$defs/dice" },
+                "type": { "$ref": "../common/v1.schema.json#/$defs/damage_type" }
+              },
+              "description": "C-T T3 swallow rider: acid at the start of each of the swallower's turns."
+            }
+          ]
+        },
+        "capacity": {
+          "enum": ["one", "unlimited"],
+          "description": "C-T T5 swallow rider. Required. one keeps the behir's one-at-a-time. unlimited is the tarrasque (no such sentence)."
+        },
+        "exit_ft": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "C-T T8 swallow rider. Feet of movement to leave the corpse. Omitted means the existing release on death."
+        },
+        "regurgitate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dc"],
+          "properties": {
+            "dc": { "type": "integer", "minimum": 1, "maximum": 30 },
+            "damage": { "type": "integer", "minimum": 1, "maximum": 255 },
+            "all": { "type": "boolean", "description": "C-T T6. true regurgitates every swallowed creature. Omitted is false." }
+          },
+          "description": "C-T T6 swallow rider. Con save at the end of a turn that dealt at least damage (default 30) from one swallowed creature."
         },
         "scale": {
           "$ref": "#/$defs/scaling"
@@ -1553,6 +1587,19 @@
             }
           },
           "description": "VERSION_BUMP_BATCH 7.2zb: apply one modifier to the creature hit (Open Hand: no reactions until the end of your next turn)."
+        },
+        {
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "swallow" } }
+          },
+          "then": {
+            "required": ["damage", "capacity"],
+            "propertyNames": {
+              "enum": ["kind", "damage", "capacity", "regurgitate", "exit_ft"]
+            }
+          },
+          "description": "C-T T3 swallow rider on a melee weapon attack. Compiles to an ApplyCondition contain 2. Not an attack_effect."
         }
       ]
     },
