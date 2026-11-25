@@ -144,7 +144,8 @@ int owner_level(const Json& doc, const Json& per_levels) {
 // rules (kEndsByOwnRules), applied untracked; only save_condition riders pass true.
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
                                                Archetype::SaveAction& sa, const Json& doc, bool& unsupported,
-                                               bool untimed_ok = false, const char* kind_label = "save_effect");
+                                               bool untimed_ok = false, const char* kind_label = "save_effect",
+                                               bool untimed_prone_ok = false);
 
 // What a rider needs beyond its own JSON: the owner's attacks (bonus_attack resolves attack_id) and the list the
 // synthetic Save SpellDefs of area_save riders go to (registered in the SpellBook by ContentLibrary::add).
@@ -1291,7 +1292,7 @@ std::optional<std::string> compile_attack_effect(const std::string& arch_id, con
 
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
                                                Archetype::SaveAction& sa, const Json& doc, bool& unsupported,
-                                               bool untimed_ok, const char* kind_label) {
+                                               bool untimed_ok, const char* kind_label, bool untimed_prone_ok) {
     const std::string aid = act.value("id", "");
     const std::string where = arch_id + ": " + kind_label + " '" + aid + "'";
     // Pack load migrates monster@5 to the current schema (monster@6) before this runs. The keys were introduced at
@@ -1394,7 +1395,9 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             // riders): a condition that ends by its own rules (kEndsByOwnRules: prone) is applied untracked, with no timer.
             const std::string rs = x.value("repeat_save", "");
             const bool has_dur = x.contains("duration");
-            const bool untracked = (untimed_ok && !has_dur && rs.empty() && ends_by_own_rules(*cond)) ||
+            // untimed_prone_ok (C-D D5): a top-level save_effect or a legendary save_effect body may apply prone
+            // with no duration. untimed_ok stays false there; it also marks a save_condition rider.
+            const bool untracked = ((untimed_ok || untimed_prone_ok) && !has_dur && rs.empty() && ends_by_own_rules(*cond)) ||
                                    (has_dur && x["duration"].is_object() && x["duration"].value("kind", "") == "until_cured");
             // 7.2w: an escape {ability str, dc} (Engulf) lasts until the creature escapes: no duration needed
             int esc = 0;
@@ -1775,6 +1778,41 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             d.age_margin = uint8_t(m);
             d.age_dice = *dice;
             d.age_years_per = uint8_t(per);
+        }
+    }
+    // C-D D1a–D4. Static SpellDef fields. Not hashed.
+    if (act.contains("within_ft") || act.contains("total_cover") || act.contains("chooses_targets") ||
+        act.contains("aware_only") || act.contains("repeat_disadvantage_in_sight")) {
+        if (auto wf = act.find("within_ft"); wf != act.end()) {
+            if (has_area) return where + ": within_ft takes no area";
+            if (origin != "self") return where + ": within_ft needs origin self";
+            if (!wf->is_number_integer()) return where + ": bad within_ft";
+            const int n = wf->get<int>();
+            if (n < 5 || n > 65535 || n % 5 != 0) return where + ": bad within_ft";
+            d.within_ft = uint16_t(n);
+            d.range_ft = 0;   // membership is within_ft, not a touch range
+            sa.range_ft = 0;
+        }
+        if (auto tc = act.find("total_cover"); tc != act.end()) {
+            if (d.within_ft == 0) return where + ": total_cover needs within_ft";
+            const std::string v = tc->is_string() ? tc->get<std::string>() : "";
+            if (v != "skip" && v != "no_skip") return where + ": bad total_cover";
+            d.total_cover_saves = v == "no_skip";
+        }
+        if (auto ch = act.find("chooses_targets"); ch != act.end()) {
+            if (!ch->is_boolean() || !ch->get<bool>()) return where + ": chooses_targets must be true";
+            if (d.within_ft == 0) return where + ": chooses_targets needs within_ft";
+            d.chooses_targets = true;
+        }
+        if (auto aw = act.find("aware_only"); aw != act.end()) {
+            if (!aw->is_boolean() || !aw->get<bool>()) return where + ": aware_only must be true";
+            d.aware_only = true;
+        }
+        if (auto rd = act.find("repeat_disadvantage_in_sight"); rd != act.end()) {
+            if (!rd->is_boolean() || !rd->get<bool>()) return where + ": repeat_disadvantage_in_sight must be true";
+            if (!d.applies_condition || d.condition_untracked || d.repeat_save != rules5e::RepeatSave::EndOfTurn)
+                return where + ": repeat_disadvantage_in_sight needs a tracked primary condition with an end-of-turn repeat";
+            d.repeat_los_disadvantage = true;
         }
     }
     if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition && d.control == rules5e::ControlKind::None &&
@@ -3616,7 +3654,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 synth.push_back(std::move(d));
                 continue;
             }
-            if (auto e = compile_save_action(a.id, act, d, sa, doc, unsupported)) return e;
+            if (auto e = compile_save_action(a.id, act, d, sa, doc, unsupported, false, "save_effect", true)) return e;
             if (unsupported) { a.unsupported_features.push_back(act.value("id", "?") + " (save_effect: unsupported usage or condition duration)"); continue; }
             for (const auto& prev : synth)
                 if (prev.id == d.id) return a.id + ": save_effect ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
@@ -3648,6 +3686,11 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 c.possession_blocked_features.push_back(sa.spell_id);
         }
     }
+    // C-D D6: a lead_action cannot share the option with a free rider, a rolled count, or engulf.
+    // Checked before free_rider resolution so that combination is this error, not the free_rider one.
+    for (const auto& m : a.multiattack_decls)
+        if (!m.lead_action.empty() && (!m.free_rider.empty() || m.count_dice.count > 0 || m.engulf_both_hits))
+            return a.id + ": lead_action takes no free_rider, count_dice or engulf_both";
     // B3b: a multiattack option's free_rider names a rider_only save_effect of this creature. Sequences for the decls were
     // pushed before this loop, in the same order; teleport follow-ups are appended during it and are not decls.
     {
@@ -3668,6 +3711,34 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         for (const auto& kv : riders)
             if (!used.count(kv.first))
                 return a.id + ": rider_only save_effect '" + kv.first + "' must be a multiattack free_rider";
+    }
+    // C-D D6: keep the authored option (the attacks, no Frightful Presence) and append a second sequence
+    // whose after_action is that save. Arming takes the first match, so one save may lead only one option.
+    {
+        std::map<std::string, int> used_lead;
+        for (std::size_t i = 0; i < a.multiattack_decls.size(); ++i) {
+            const auto& m = a.multiattack_decls[i];
+            if (m.lead_action.empty()) continue;
+            if (schema_type != "monster" || (declared != 0 && declared < 5))
+                return a.id + ": lead_action needs a monster@5 file";
+            if (!m.free_rider.empty() || m.count_dice.count > 0 || m.engulf_both_hits)
+                return a.id + ": lead_action takes no free_rider, count_dice or engulf_both";
+            if (i >= c.multiattacks.size()) return a.id + ": lead_action has no sequence";
+            const Archetype::SaveAction* sa = nullptr;
+            for (const auto& sact : a.save_actions) if (sact.id == m.lead_action) sa = &sact;
+            bool save_effect = false;
+            if (doc.contains("actions") && doc.at("actions").is_array())
+                for (const Json& act : doc.at("actions"))
+                    if (act.value("id", "") == m.lead_action && act.value("kind", "") == "save_effect") save_effect = true;
+            if (!sa || !save_effect) return a.id + ": lead_action names no save_effect of this creature";
+            if (++used_lead[m.lead_action] > 1) return a.id + ": lead_action: one option per action";
+            strings_.push_back(m.id + ".lead_action");
+            rules5e::AttackSequence seq;
+            seq.id = strings_.back();
+            seq.attacks = c.multiattacks[i].attacks;
+            seq.after_action = sa->spell_id;
+            c.multiattacks.push_back(std::move(seq));
+        }
     }
     // B7: both-hits Engulf. A synthetic ApplyCondition (gelatinous-cube contain, blinded while restrained). Not in
     // spells_known and not a save_action: the multiattack applies it. No Constitution save (the cube's automatic
@@ -3759,7 +3830,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     Archetype::SaveAction sa;
                     bool unsupported = false;
                     std::optional<std::string> err;
-                    if (ak == "save_effect") err = compile_save_action(a.id, body, d, sa, doc, unsupported);
+                    if (ak == "save_effect") err = compile_save_action(a.id, body, d, sa, doc, unsupported, false, "save_effect", true);
                     else if (ak == "attack_effect") err = compile_attack_effect(a.id, body, d, sa, doc, unsupported);
                     else if (ak == "area_effect") err = compile_area_action(a.id, body, d, sa, doc, unsupported, schema_type, declared);
                     else if (ak == "healing_touch") err = compile_healing_touch(a.id, body, declared, schema_type, d, sa);

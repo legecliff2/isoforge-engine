@@ -3946,3 +3946,85 @@ def check_spell_descriptive(doc: dict) -> list[str]:
     if any(isinstance(e, dict) and e.get("kind") == "descriptive" for e in raw) and len(raw) != 1:
         return ["descriptive effect must be the spell's only effect"]
     return []
+
+
+def check_dragon_kit(doc: dict, tag: str) -> list[str]:
+    """C-D dragon kit (CONTENT_CONVENTIONS §61). Mirrors content.cpp compile_save_action and the lead_action loader."""
+    errs: list[str] = []
+    did = doc.get("id", "?")
+    monster5 = tag in MONSTER_SINCE_5
+    save_ids = {a.get("id") for _p, a in mechanical_actions(doc) if a.get("kind") == "save_effect"}
+
+    def check_save(where: str, act: dict) -> None:
+        if act.get("kind") != "save_effect":
+            if any(k in act for k in ("within_ft", "total_cover", "chooses_targets", "aware_only", "repeat_disadvantage_in_sight")):
+                errs.append(f"{where}: within_ft / total_cover / chooses_targets / aware_only / repeat_disadvantage_in_sight are save_effect only")
+            return
+        has_area = isinstance(act.get("area"), dict)
+        origin = act.get("origin", "self")
+        within = act.get("within_ft")
+        if "within_ft" in act:
+            if has_area:
+                errs.append(f"{where}: within_ft takes no area")
+            if origin != "self":
+                errs.append(f"{where}: within_ft needs origin self")
+            if isinstance(within, bool) or not isinstance(within, int) or within < 5 or within > 65535 or within % 5 != 0:
+                errs.append(f"{where}: bad within_ft")
+        if "total_cover" in act:
+            if "within_ft" not in act:
+                errs.append(f"{where}: total_cover needs within_ft")
+            if act.get("total_cover") not in ("skip", "no_skip"):
+                errs.append(f"{where}: bad total_cover")
+        if "chooses_targets" in act:
+            if act.get("chooses_targets") is not True:
+                errs.append(f"{where}: chooses_targets must be true")
+            elif "within_ft" not in act:
+                errs.append(f"{where}: chooses_targets needs within_ft")
+        if "aware_only" in act and act.get("aware_only") is not True:
+            errs.append(f"{where}: aware_only must be true")
+        if "repeat_disadvantage_in_sight" in act:
+            if act.get("repeat_disadvantage_in_sight") is not True:
+                errs.append(f"{where}: repeat_disadvantage_in_sight must be true")
+            else:
+                apply = [x for x in (act.get("apply") or []) if isinstance(x, dict)]
+                prim = apply[0] if apply else None
+                dur = prim.get("duration") if isinstance(prim, dict) else None
+                dk = dur.get("kind") if isinstance(dur, dict) else None
+                rs = (prim.get("repeat_save") if isinstance(prim, dict) else "") or ""
+                end_of_turn = rs == "end_of_turn" or (rs == "" and dk == "until_save")
+                if not isinstance(prim, dict) or dk == "until_cured" or not end_of_turn:
+                    errs.append(f"{where}: repeat_disadvantage_in_sight needs a tracked primary condition with an end-of-turn repeat")
+
+    for path, act in mechanical_actions(doc):
+        check_save(f"{path}: {did}: save_effect '{act.get('id', '')}'", act)
+    for i, opt in enumerate(doc.get("legendary_actions") or []):
+        if isinstance(opt, dict) and isinstance(opt.get("effect"), dict):
+            check_save(f"/legendary_actions/{i}/effect: {did}: save_effect '{opt['effect'].get('id', opt.get('id', ''))}'", opt["effect"])
+
+    leads: dict[str, int] = {}
+    for path, _owner, eff in live_effects(doc):
+        if not isinstance(eff, dict) or eff.get("kind") != "multiattack":
+            continue
+        blobs: list[tuple[str, dict]] = []
+        options = eff.get("options")
+        if isinstance(options, list):
+            for j, o in enumerate(options):
+                if isinstance(o, dict):
+                    blobs.append((f"{path}/options/{j}", o))
+        elif "lead_action" in eff:
+            blobs.append((path, eff))
+        for sub, o in blobs:
+            if "lead_action" not in o:
+                continue
+            if not monster5:
+                errs.append(f"{sub}: {did}: lead_action needs a monster@5 file")
+            if any(k in o for k in ("free_rider", "count_dice", "engulf_both_hits")):
+                errs.append(f"{sub}: {did}: lead_action takes no free_rider, count_dice or engulf_both")
+            name = o.get("lead_action")
+            if not isinstance(name, str) or not name or name not in save_ids:
+                errs.append(f"{sub}: {did}: lead_action names no save_effect of this creature")
+            elif name in leads:
+                errs.append(f"{sub}: {did}: lead_action: one option per action")
+            else:
+                leads[name] = 1
+    return errs

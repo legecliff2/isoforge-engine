@@ -4203,11 +4203,13 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         bool applied = false;
         const bool area = def.area != AreaShape::None;
         for (Combatant* t : T) {
+            if (ctx.zone_excluded && std::find(ctx.zone_excluded->begin(), ctx.zone_excluded->end(), t->id) != ctx.zone_excluded->end())
+                continue;   // C-D D2: not chosen. No save, no event, no immunity, no aging.
             if (t->dead) continue;
             if (possession_target_refusal(*t, &def).size() != 0) continue;   // a possessing ghost is not in the area
             const Cover cov = area ? cover_of(s, a.id, t->id, true, def.id, ctx.has_area_origin, ctx.area_x, ctx.area_y)
                                    : cover_of(s, a.id, t->id, false, def.id);   // 7.2t: per target (Dex saves only)
-            if (cov == Cover::Total) continue;   // an area skips a creature with total cover from its origin (no save, no event)
+            if (cov == Cover::Total && !def.total_cover_saves) continue;   // total cover skips unless the save says it still saves (C-D D1b)
             if (def.control != ControlKind::None && ((def.control_excluded & bit(t->creature_type)) ||
                                                      (def.control_min_int > 0 && t->abilities[Ability::Int] <= def.control_min_int)))
                 continue;   // 7.2v: unaffected (Command: undead; Hideous Laughter: Intelligence 4 or less): no save
@@ -4232,6 +4234,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 emit(ev, EventKind::FeatureTriggered, a.id, t->id, int32_t(def.id), 0, 3);
                 continue;
             }
+            if (def.aware_only && (t->has(Condition::Unconscious) || is_hidden_from(s, a.id, t->id)))
+                continue;   // C-D D3: not aware. No save, no event, no immunity.
             if (def.success_immunity_hours > 0 && std::any_of(s.action_immunities.begin(), s.action_immunities.end(),
                     [&](const ActionImmunity& im) { return im.creature == t->id && im.spell_id == def.id &&
                                                            (im.source == 0 || im.source == a.id) && uint32_t(s.round) < im.until_round; }))
@@ -4412,6 +4416,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     s.effects.back().action_immunity_on_end_scope = def.success_immunity_scope;
                     s.effects.back().repeat_save_magical = def.magical;
                 }
+                s.effects.back().repeat_los_disadvantage = def.repeat_los_disadvantage;   // C-D D4: derived, not hashed
                 // 7.2v: prone and incapacitated. Incapacitated is this effect's own only if it added it, so ending the
                 // laughter never strips an Incapacitated from another source.
                 if (def.control == ControlKind::Laughter && !t->has(Condition::Incapacitated)) {
@@ -5331,7 +5336,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         }
         // B17: an area save skips an excluded type (the cast still happens). A single-target save that names one is refused.
         if (!def.is_spell && def.kind == SpellEffectKind::Save && (def.excluded_types & bit(t->creature_type)) != 0) {
-            if (def.area != AreaShape::None) continue;
+            if (def.area != AreaShape::None || def.within_ft > 0) continue;   // C-D D1a: within_ft skips like an area
             return fail("invalid creature type for this spell");
         }
         if (def.kind == SpellEffectKind::Revive) {
@@ -5346,7 +5351,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
             if (req.command_word > uint8_t(CommandWord::Suicidal)) return fail("command_word: 0..6 for a Charm");
         } else if (def.control == ControlKind::Command ? (req.command_word < 1 || req.command_word > 5) : req.command_word != 0)
             return fail("command_word: 1..5 for a Command spell only");
-        if (def.area == AreaShape::None && t != &a) {
+        if (def.area == AreaShape::None && def.within_ft == 0 && t != &a) {   // C-D D1a: resolution decides total cover
             const bool sw = def.kind == SpellEffectKind::SummonWeapon && !req.summon_tiles.empty();   // from the spawn tile
             if (cover_of(s, a.id, t->id, false, def.id, sw, sw ? req.summon_tiles[0].x : 0, sw ? req.summon_tiles[0].y : 0) == Cover::Total)
                 return fail("target has total cover");
@@ -5370,7 +5375,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     case SpellEffectKind::EndCondition: case SpellEffectKind::DelayedDamage: case SpellEffectKind::SustainedDamage:
     case SpellEffectKind::ForcedMove: case SpellEffectKind::ConditionImmunityFrom: case SpellEffectKind::MaxHpBonus:
     case SpellEffectKind::TempHp:   // 7.2zg
-        if ((def.area == AreaShape::None && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
+        if ((def.area == AreaShape::None && def.within_ft == 0 && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
             return fail("too many targets");
         if (def.kind == SpellEffectKind::SustainedDamage && def.held_object) {   // 7.2zh Heat Metal
             if (T.size() != 1) return fail("heat_metal: no metal object");
@@ -5517,8 +5522,17 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     if (!req.summon_ids.empty() && def.kind != SpellEffectKind::Summon && def.kind != SpellEffectKind::SummonWeapon)
         return fail("summon: not a summon spell");
     if (req.form_archetype != 0 && def.kind != SpellEffectKind::Polymorph) return fail("form_archetype: not a polymorph spell");
-    if ((req.has_zone_dest || !req.zone_excluded.empty()) && def.kind != SpellEffectKind::Zone) return fail("zone: not a zone spell");
-    if (!req.zone_excluded.empty() && !def.zone.chooses_excluded) return fail("zone_excluded: the spell does not let the caster choose");
+    if (req.has_zone_dest && def.kind != SpellEffectKind::Zone) return fail("zone: not a zone spell");
+    if (!req.zone_excluded.empty() && def.kind != SpellEffectKind::Zone && !def.chooses_targets) return fail("zone: not a zone spell");
+    if (!req.zone_excluded.empty() && !def.zone.chooses_excluded && !def.chooses_targets) return fail("zone_excluded: the spell does not let the caster choose");
+    if (def.chooses_targets) {   // C-D D2: each exclusion is in the derived set, once, before anything is spent
+        std::vector<CombatantId> seen;
+        for (CombatantId id : req.zone_excluded) {
+            if (std::find(seen.begin(), seen.end(), id) != seen.end()) return fail("bad zone_excluded");
+            seen.push_back(id);
+            if (std::find(ids.begin(), ids.end(), id) == ids.end()) return fail("chosen creature is not eligible");
+        }
+    }
     if ((req.has_zone_end || req.zone_side != 0 || req.zone_ring) && def.kind != SpellEffectKind::Zone) return fail("zone: not a zone spell");
     if (def.kind == SpellEffectKind::Zone) {   // R-G11 PR 2: wall choices (Wall of Fire)
         if (req.zone_ring && def.zone.ring_size_ft == 0) return fail("zone_ring: the spell has no ring form");
@@ -6548,6 +6562,22 @@ std::string_view legendary_resolve_ref(EncounterState& s, Ctx& ctx, Combatant& a
     return {};
 }
 
+// C-D D7: a legendary use.attack runs the own-turn target refusals. A warded target is not a refusal.
+// has_guess false refuses a hidden target. Nothing here spends the legendary action.
+static std::string_view legendary_attack_target_refusal(const EncounterState& s, const Combatant& a, const Combatant& t,
+                                                 uint8_t attack_index, bool has_guess, bool willing) {
+    if (const auto why = plane_affect_refusal(a, t); !why.empty()) return why;
+    if (cover_of(s, a.id, t.id, false, 0) == Cover::Total) return "target has total cover";
+    if (charmed_by(s, a.id, t.id)) return "a charmed creature cannot attack its charmer";
+    if (is_hidden_from(s, t.id, a.id) && !has_guess) return "target is hidden: guess its tile (has_guess)";
+    if (attack_index >= a.attacks.size()) return "bad attack index";
+    if (const auto why = possession_attack_refusal(a, a.attacks[attack_index]); !why.empty()) return why;
+    if (const auto why = possession_target_refusal(t, nullptr); !why.empty()) return why;
+    if (const auto why = target_gate_refusal(s, a, t, a.attacks[attack_index].target_requires_any, willing); !why.empty()) return why;
+    if (attack_locked(s, a.id, attack_index, t.id)) return "that attack holds a grappled creature: it can't attack another target";
+    return {};
+}
+
 StepResult legendary_action(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     if (s.legendary_window.x == 0) return fail("no legendary window");
     if (req.actor != s.legendary_window.candidate) return fail("not the creature offered a legendary action");
@@ -6567,8 +6597,29 @@ StepResult legendary_action(EncounterState& s, Ctx& ctx, const ActionRequest& re
         if (opt.attack_index >= a->attacks.size()) return fail("bad legendary attack");
         Combatant* t = find_mut(s, req.target);
         if (!t || t == a || t->dead) return fail("bad target");
-        do_attack(s, ctx, *a, *t, a->attacks[opt.attack_index], req.target_within_5ft, out.events,
-                  req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target);
+        if (const auto why = legendary_attack_target_refusal(s, *a, *t, opt.attack_index, req.has_guess, req.target_willing); !why.empty())
+            return fail(why);
+        if (is_hidden_from(s, t->id, a->id) && req.has_guess)
+            ctx.guess_miss = s.hooks.guess_correct && !s.hooks.guess_correct(s, *a, *t, req.guess_x, req.guess_y);
+        // C-D D7 Sanctuary: the own-turn ward, copied step for step. A refusal spends nothing.
+        // A lost attack still uses the option (the spend below). The ward save is before do_attack.
+        const bool warded = ward_index(s, *t, a->id) != 0;
+        Combatant* ward_alt = nullptr;
+        if (req.ward_alternate != 0) {
+            if (!warded) return fail("ward_alternate: the target is not warded");
+            const auto alts = ward_alternate_targets(s, a->id, t->id, 0, opt.attack_index);
+            if (std::find(alts.begin(), alts.end(), req.ward_alternate) == alts.end())
+                return fail("ward_alternate: not a legal alternate target");
+            ward_alt = find_mut(s, req.ward_alternate);
+        }
+        bool lost = false;
+        if (warded && !ward_save(s, *a, ward_index(s, *t, a->id), out.events)) {
+            if (!ward_alt) lost = true;
+            else t = ward_alt;
+        }
+        if (!lost)
+            do_attack(s, ctx, *a, *t, a->attacks[opt.attack_index], req.target_within_5ft, out.events,
+                      req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target);
     } else if (opt.use == LegendaryUse::Check) {
         if (req.target != 0 || !req.targets.empty()) return fail("legendary check or move takes no targets");
         roll_check(s, *a, Skill::Perception, req.dc, req.check_mode, out.events);
@@ -7507,6 +7558,13 @@ void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState&
         q.damage_choice = uint8_t(def.damage_choices.empty() ? 0 : 1);
         q.condition_choice = uint8_t(def.condition_choices.empty() ? 0 : 1);
     };
+    if (d.within_ft > 0) {   // C-D D1a: sim derives the set. Name exclusions in zone_excluded, not as targets.
+        r.target = 0;
+        r.targets.clear();
+        choices(r, d);
+        out.push_back(r);
+        return;
+    }
     auto creature_ok = [&](const Combatant& t) {
         if (!valid_target_type(d, t) || (d.excluded_types & bit(t.creature_type))) return false;
         if (!plane_affect_refusal(a, t).empty()) return false;   // B19: not offered across planes
@@ -7639,6 +7697,8 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (o.use == LegendaryUse::Attack) {
                 for (const auto& t : s.combatants) {
                     if (t.dead || t.id == c->id || side_of(s, t) == side_of(s, *c)) continue;
+                    // C-D D7: the same refusals as the use. A warded target stays listed (the ward is a save).
+                    if (!legendary_attack_target_refusal(s, *c, t, o.attack_index, false, false).empty()) continue;
                     ActionRequest r = base;
                     r.target = t.id;
                     out.push_back(r);
@@ -7646,6 +7706,11 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                 continue;
             }
             const SpellDef* d = o.ref_id != 0 && s.hooks.spells ? s.hooks.spells->find(o.ref_id) : nullptr;
+            if (d && d->within_ft > 0) {   // C-D D1a: one row; sim derives the set. A named target is refused.
+                base.spell_id = d->id;
+                out.push_back(base);
+                continue;
+            }
             if (o.use == LegendaryUse::Spell && (!d || !d->is_spell || d->casting_time != CastingTime::Action)) continue;
             const bool self_only = d && d->range_ft == 0 && d->area == AreaShape::None && d->kind != SpellEffectKind::Heal;
             const bool heal = d && d->kind == SpellEffectKind::Heal;

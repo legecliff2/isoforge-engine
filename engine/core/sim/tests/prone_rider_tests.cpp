@@ -132,7 +132,7 @@ TEST_CASE("prone rider loader: every other untimed condition is still rejected w
     CHECK(e3->find(kUnsupported) != std::string::npos);
 }
 
-TEST_CASE("prone rider loader: a save_effect action with an untimed prone stays listed, not compiled (unchanged)") {
+TEST_CASE("prone rider loader: a save_effect action with an untimed prone compiles untracked (C-D D5)") {
     auto lib = base_lib();
     Json m = wolf("t.wing", knock_prone(11));
     m["actions"][0].erase("on_hit");
@@ -141,7 +141,11 @@ TEST_CASE("prone rider loader: a save_effect action with an untimed prone stays 
                             {"apply", Json::array({{{"condition", "prone"}}})}});
     REQUIRE_FALSE(lib.add(m, "monster"));
     CHECK(lib.find("t.wing")->base.triggers.empty());
-    CHECK_FALSE(lib.find("t.wing")->unsupported_features.empty());
+    CHECK(lib.find("t.wing")->unsupported_features.empty());
+    const auto* d = lib.spells()->find(rules5e::spell_id_of("t.wing#wing"));
+    REQUIRE(d);
+    CHECK(d->condition == Condition::Prone);
+    CHECK(d->condition_untracked);
 }
 
 TEST_CASE("prone rider combat: a hit and a failed save knock the target prone untimed; a passed save does not; both replay") {
