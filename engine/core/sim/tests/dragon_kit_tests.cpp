@@ -831,6 +831,60 @@ TEST_CASE("C-D 12a: Sanctuary on a legendary tail matches the own-turn ward save
     CHECK(rules5e::find(bare->state(), d)->la_cur == la2);
 }
 
+TEST_CASE("C-D 12a filter: ward alternates omit cover, reach, plane, gate, size, and a locked attack") {
+    auto lib = base_lib();
+    std::vector<Vec2i> wall;
+    for (int y = 0; y < 32; ++y) wall.push_back({3, y});
+    // 0 dragon, 1 warded (adjacent), 2 total cover at reach 10, 3 out of reach, 4 adjacent, 5 adjacent on the other plane.
+    auto ch = arena({{"t.dragon", 2, 5, ""}, {kFighter, 2, 6, ""}, {kFighter, 4, 5, ""}, {kFighter, 2, 9, ""},
+                     {kFighter, 1, 5, ""}, {kFighter, 2, 4, ""}}, wall);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 23);
+    REQUIRE(c);
+    const auto dragon = ch.spawns[0].stable_id, warded = ch.spawns[1].stable_id, covered = ch.spawns[2].stable_id,
+               far = ch.spawns[3].stable_id, close = ch.spawns[4].stable_id, other_plane = ch.spawns[5].stable_id;
+    REQUIRE(c->cover_of(rules5e::CoverQuery{dragon, covered, false, 0, false, 0, 0}) == rules5e::Cover::Total);
+    auto& st = CombatTestAccess::state(*c);
+    const uint8_t tail = 2, chomp = 3;
+    for (auto& k : st.combatants) {
+        if (k.id == close) k.size = rules5e::Size::Huge;
+        if (k.id == other_plane) k.plane = rules5e::Plane::BorderEthereal;
+        if (k.id == dragon) k.attacks[tail].target_max_size = int8_t(rules5e::Size::Large);
+    }
+    auto ids = c->ward_alternates(dragon, warded, 0, tail);
+    CHECK(std::find(ids.begin(), ids.end(), covered) == ids.end());
+    CHECK(std::find(ids.begin(), ids.end(), far) == ids.end());
+    CHECK(std::find(ids.begin(), ids.end(), close) == ids.end());
+    CHECK(std::find(ids.begin(), ids.end(), other_plane) == ids.end());
+    // chomp_swallow: not grappled, and larger than Large, are omitted. A grappled Medium is kept.
+    auto chomp_ids = c->ward_alternates(dragon, warded, 0, chomp);
+    CHECK(std::find(chomp_ids.begin(), chomp_ids.end(), close) == chomp_ids.end());
+    for (auto& k : st.combatants) if (k.id == dragon) k.attacks[chomp].target_max_size = int8_t(rules5e::Size::Large);
+    rules5e::SourcedCondition grip;
+    grip.condition = Condition::Grappled;
+    grip.target = close;
+    grip.source = dragon;
+    st.sourced.push_back(grip);
+    for (auto& k : st.combatants) if (k.id == close) k.conditions |= rules5e::bit(Condition::Grappled);
+    auto too_big = c->ward_alternates(dragon, warded, 0, chomp);
+    CHECK(std::find(too_big.begin(), too_big.end(), close) == too_big.end());
+    for (auto& k : st.combatants) if (k.id == close) k.size = rules5e::Size::Medium;
+    auto held = c->ward_alternates(dragon, warded, 0, chomp);
+    CHECK(std::find(held.begin(), held.end(), close) != held.end());
+    CHECK(std::find(held.begin(), held.end(), covered) == held.end());
+    // chomp_bite while an exclusive grapple holds another creature: attack_locked omits everyone.
+    for (auto& k : st.combatants) if (k.id == dragon) k.attacks[tail].target_max_size = -1;
+    rules5e::SourcedCondition lock;
+    lock.condition = Condition::Grappled;
+    lock.target = warded;
+    lock.source = dragon;
+    lock.via_attack = tail;
+    lock.exclusive = true;
+    st.sourced.push_back(lock);
+    for (auto& k : st.combatants) if (k.id == warded) k.conditions |= rules5e::bit(Condition::Grappled);
+    CHECK(c->ward_alternates(dragon, warded, 0, tail).empty());
+}
+
 TEST_CASE("C-D 13: pins, wyrmling digest, schema 14, 0xEC free, pool 42") {
     CHECK(sim::kSimEventSchemaVersion == 14);
     {

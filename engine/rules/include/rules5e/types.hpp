@@ -154,6 +154,9 @@ struct Attack {
     // >0 = that many points of proficiency bonus are in `to_hit`.
     // Content-derived. Not hashed. A fight with no possession never reads it.
     int8_t pb_in_to_hit = -1;
+    // C-D D7 / C-T T2: largest Size a redirected attack may name (-1 = no extra cap).
+    // Static content. Not hashed. The loader does not set it until the Swallow contract.
+    int8_t target_max_size = -1;
 };
 inline constexpr int8_t kAttackAbilityFinesse = 6;
 inline constexpr int8_t kAttackAbilityNone = 7;

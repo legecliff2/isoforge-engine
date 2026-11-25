@@ -9400,6 +9400,13 @@ std::vector<CombatantId> ward_alternate_targets(const EncounterState& s, Combata
         } else {
             const Attack& atk = a->attacks[attack_index];
             if (charmed_by(s, actor, c.id) || is_hidden_from(s, c.id, actor)) continue;
+            // C-D D7: the same refusals as a legendary use.attack, so a Sanctuary redirect cannot
+            // land on a creature the attack itself would refuse. Own-turn Attack uses this list too.
+            if (!plane_affect_refusal(*a, c).empty()) continue;
+            if (!possession_target_refusal(c, nullptr).empty()) continue;
+            if (!target_gate_reason(s, *a, c, atk.target_requires_any, false).empty()) continue;
+            if (atk.target_max_size >= 0 && int(c.size) > int(atk.target_max_size)) continue;
+            if (attack_locked(s, actor, attack_index, c.id)) continue;
             const int reach = atk.ranged ? long_range_ft(atk) : int(atk.reach_or_range_ft);
             if (s.hooks.targets_within && !s.hooks.targets_within(s, {actor, c.id}, reach)) continue;
         }
