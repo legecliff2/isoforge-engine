@@ -365,6 +365,9 @@ public:
     // area_preview is that same template as a tile list (one geometry path).
     std::vector<CombatantId> area_targets(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
                                           std::string* error = nullptr) const;
+    // C-D D1a: every slot, in slot order, other than the caster, the dead and possessors, whose 3D
+    // distance_tiles × 5 is at most `feet`. No line-of-sight gate. Empty sets *error to "no creature within range".
+    std::vector<CombatantId> within_targets(CombatantId caster, int feet, std::string* error = nullptr) const;
     // Tiles of the template area_targets uses, so a preview cannot drift from resolution. Row-scan (y, then x) of the
     // in-bounds tiles that are inside the shape and seen from its origin (the same line of sight area_targets uses).
     // Read-only: no events and no hash change. *error, when non-null, is set only for the aim rejections area_targets

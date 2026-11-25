@@ -508,7 +508,25 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
     return out;
 }
 
+std::vector<CombatantId> Combat::within_targets(CombatantId caster, int feet, std::string* error) const {
+    auto fail = [&](const char* m) { if (error) *error = m; return std::vector<CombatantId>{}; };
+    if (!rules5e::find(state_, caster)) return fail("bad caster");
+    std::vector<CombatantId> out;
+    for (const auto& sl : slots_) {   // slot order, the same walk as area_targets
+        const auto* c = rules5e::find(state_, sl.id);
+        if (sl.id == caster || !c || c->dead || c->possessing != 0) continue;
+        if (distance_tiles(caster, sl.id) * kFeetPerTile <= feet) out.push_back(sl.id);
+    }
+    if (out.empty()) return fail("no creature within range");
+    return out;
+}
+
 bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const {
+    // C-D D1a: replay re-checks the logged list against the replayed positions. No sight gate.
+    if (def.within_ft > 0) {
+        if (caster == target || !rules5e::find(state_, target)) return false;
+        return distance_tiles(caster, target) * kFeetPerTile <= int(def.within_ft);
+    }
     if (def.requires_jumped_ft > 0 || rules5e::is_space_save(def)) {   // B8 landing / B10 Whirlwind / B11 Whelm: footprints overlap
         if (caster == target || !rules5e::find(state_, target)) return false;
         const Spot a = spot(caster), b = spot(target);
@@ -1996,7 +2014,16 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             } else if (opt.use == rules5e::LegendaryUse::Action || opt.use == rules5e::LegendaryUse::Effect ||
                        opt.use == rules5e::LegendaryUse::Spell) {
                 const rules5e::SpellDef* d = spells_ ? spells_->find(opt.ref_id) : nullptr;
-                if (d && d->area != rules5e::AreaShape::None && req.targets.empty()) {
+                if (d && d->within_ft > 0) {
+                    if (req.target != 0 || !req.targets.empty()) {
+                        r.error = "within_ft derives its targets; name exclusions in zone_excluded";
+                        return r;
+                    }
+                    std::string err;
+                    req.targets = within_targets(req.actor, int(d->within_ft), &err);
+                    if (req.targets.empty()) { r.error = err.empty() ? "no creature within range" : err; return r; }
+                    req.target = req.targets[0];
+                } else if (d && d->area != rules5e::AreaShape::None && req.targets.empty()) {
                     std::string err;
                     req.targets = area_targets(req.actor, *d, to, &err);
                     if (!err.empty()) { r.error = err; return r; }
@@ -2176,6 +2203,16 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
         if (req.sustain && (aim || !req.targets.empty())) {   // R-G15 Heat Metal again: one creature, the request's target
             r.error = "sustain takes a single target and no aim";
             return r;
+        }
+        if (const auto* wft = spells_->find(req.spell_id); wft->within_ft > 0 && !req.sustain) {
+            if (aim || req.target != 0 || !req.targets.empty()) {
+                r.error = "within_ft derives its targets; name exclusions in zone_excluded";
+                return r;
+            }
+            std::string err;
+            req.targets = within_targets(actor, int(wft->within_ft), &err);
+            if (req.targets.empty()) { r.error = err.empty() ? "no creature within range" : err; return r; }
+            req.target = req.targets[0];
         }
         if (aim) {   // area template: derive the targets from the aim tile (opt-in; an explicit list wins)
             const auto* def = spells_->find(req.spell_id);
