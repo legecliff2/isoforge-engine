@@ -150,6 +150,9 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         add_test(NAME content_validate_legendary
                  COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_legendary_schema.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME content_validate_swallow
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_swallow_schema.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # item@2 / monster@5 / character@5 (docs/proposals/EQUIPMENT.md 7): identity re-stamps, new shapes, structural checks.
         add_test(NAME content_validate_equip_v5
                  COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_equip_schemas_v5.py"

@@ -1214,6 +1214,14 @@
             }
           }
         },
+        "variant_of": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id",
+          "description": "C-T T1 (monster@5 weapon attack): copy to_hit, reach, the natural block and damage from this attack id of the same creature. on_hit is not copied. The row's own keys are id, name, description, variant_of, target_requires_any, target_max_size and on_hit. Naming a copied key again is a load error."
+        },
+        "target_max_size": {
+          "enum": ["tiny", "small", "medium", "large", "huge", "gargantuan"],
+          "description": "C-T T2 (monster@5 weapon attack): a target larger than this Size is refused before the roll (target is too large). legal_actions omits that row. Static. Not hashed. -1 in the engine means the key is absent."
+        },
         "ability": {
           "enum": [
             "str",
@@ -1521,7 +1529,8 @@
               "kind": {
                 "pattern": "_attack$"
               }
-            }
+            },
+            "not": { "required": ["variant_of"] }
           },
           "then": {
             "required": [
@@ -1530,7 +1539,7 @@
           }
         },
         {
-          "description": "B5: a weapon attack whose on_hit grapple sets no_damage lists no damage array. Every other _attack still requires damage.",
+          "description": "B5: a weapon attack whose on_hit grapple sets no_damage lists no damage array. A variant_of row copies damage. Every other _attack still requires damage.",
           "if": {
             "properties": {
               "kind": {
@@ -1538,27 +1547,23 @@
               }
             },
             "not": {
-              "properties": {
-                "on_hit": {
-                  "contains": {
-                    "type": "object",
-                    "required": [
-                      "kind",
-                      "no_damage"
-                    ],
-                    "properties": {
-                      "kind": {
-                        "const": "grapple"
-                      },
-                      "no_damage": {
-                        "const": true
+              "anyOf": [
+                {
+                  "properties": {
+                    "on_hit": {
+                      "contains": {
+                        "type": "object",
+                        "required": ["kind", "no_damage"],
+                        "properties": {
+                          "kind": { "const": "grapple" },
+                          "no_damage": { "const": true }
+                        }
                       }
                     }
-                  }
-                }
-              },
-              "required": [
-                "on_hit"
+                  },
+                  "required": ["on_hit"]
+                },
+                { "required": ["variant_of"] }
               ]
             }
           },
@@ -1608,7 +1613,8 @@
               "kind": {
                 "pattern": "^melee_"
               }
-            }
+            },
+            "not": { "required": ["variant_of"] }
           },
           "then": {
             "required": [
@@ -1622,7 +1628,8 @@
               "kind": {
                 "pattern": "^ranged_"
               }
-            }
+            },
+            "not": { "required": ["variant_of"] }
           },
           "then": {
             "required": [

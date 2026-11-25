@@ -198,7 +198,8 @@ class AppendOnly(unittest.TestCase):
                           "fling_ft", "impact", "impact_save",   # B10 Whirlwind
                           "grapple", "crush",   # B11 Whelm
                           "dc",   # visible figure Investigation DC
-                          "within_ft", "total_cover", "chooses_targets", "aware_only", "repeat_disadvantage_in_sight"})   # C-D dragon kit
+                          "within_ft", "total_cover", "chooses_targets", "aware_only", "repeat_disadvantage_in_sight",   # C-D dragon kit
+                          "variant_of", "target_max_size"})   # C-T T1 / T2 swallow attack row
         for k, v in c2["action"]["properties"].items():
             if k == "kind":   # monster@5 appends "teleport" (batch 3) then "area_effect"; common@2's enum is a strict prefix
                 m_enum, c_enum = m5["action"]["properties"][k]["enum"], v["enum"]
