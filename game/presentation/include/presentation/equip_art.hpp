@@ -9,32 +9,37 @@
 //   {content_id}/{part}.{view}.png                         medium, the default bin
 //   {content_id}/{bin}/{part}.{view}.png                   size override
 //   _kind/{weapon|shield|light|other}/{part}.{view}.png    per-kind default (medium)
-// part: back, hip, main_hand, off_hand, held_light
+// part: back, hip, main_hand, off_hand, held_light, neck
 // view: se (toward), ne (away). West is a mirror of that view, not its own file.
+// neck is toward-only: neck.se is loaded, neck.ne is rejected. The hip part is the
+// sheathed view and has no side; the renderer assigns hip-main or hip-off.
 // bin: tiny, small, medium, large, huge. A `{bin}` file wins over the flat medium
 // file for that same bin. Any other directory name is ignored.
-// neck is a manifest part (holy symbol amulet, toward view only). This loader does
-// not read it: the table has no neck attach point.
 //
 // Resolution for one part and view:
 //   1. content_id + the requested bin (empty bin means medium)
 //   2. content_id + medium
 //   3. the kind default
-//   4. nothing (placeholder quads)
+//   4. nothing (placeholder quads). A missing file is not a checker.
 // Content ids are matched whole. A quiver file is not a bolt-case file.
-// The pivot is the point that lands on the slot's attach point.
+// kit.json may set one pivot [x, y] per sprite that exists. Absent, or outside
+// the cell, the pivot stays bottom-centre (w/2, h-1). H4 art will declare [12, 12].
+// [12, 20] is not a default.
+// Optional back_role (quiver | bolt_case | pack | other) is stored per content id.
 #include "presentation/png.hpp"
 
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace eng::presentation {
 
 enum class EquipArtView : uint8_t { Toward, Away };   // se, ne
-enum class EquipArtPart : uint8_t { Back, Hip, MainHand, OffHand, HeldLight };
+enum class EquipArtPart : uint8_t { Back, Hip, MainHand, OffHand, HeldLight, Neck };
 
 struct EquipArtSprite {
     ImageRgba image;
@@ -59,6 +64,9 @@ public:
     const EquipArtSprite* find(const EquipArtQuery& query) const;
     const EquipArtSprite* sprite_at(std::size_t index) const;
     std::size_t size() const { return sprites_.size(); }
+    // equip_kit@1 items[].back_role, matched on the whole content id. nullopt when
+    // the field is absent, the manifest was not read, or the value is not the enum.
+    std::optional<std::string_view> back_role(std::string_view content_id) const;
 
 private:
     struct Entry {
@@ -71,6 +79,7 @@ private:
     };
     std::vector<EquipArtSprite> sprites_;
     std::vector<Entry> entries_;
+    std::vector<std::pair<std::string, std::string>> roles_;
     const EquipArtSprite* lookup(bool kind_default, std::string_view id, std::string_view bin, EquipArtPart part,
                                  EquipArtView view) const;
 };

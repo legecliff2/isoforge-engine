@@ -530,7 +530,31 @@ TEST_CASE("equipment art: content id, then medium, then kind, then nothing") {
     std::filesystem::remove_all(kit);
 }
 
-TEST_CASE("equipment art: manifest pivot, exact content ids, kind fallback, neck stays unloaded") {
+TEST_CASE("equipment art: neck.se loads and neck.ne is rejected") {
+    const auto kit = std::filesystem::temp_directory_path() / "isoforge-equip-neck";
+    std::filesystem::remove_all(kit);
+    const auto amulet = kit / "srd51.item.holy_symbol_amulet";
+    std::filesystem::create_directories(amulet);
+    std::filesystem::copy_file(root() / "frames/tiny/se/mon_tiny_se_idle_00.png", amulet / "neck.se.png");
+    std::filesystem::copy_file(root() / "frames/small/ne/mon_small_ne_idle_00.png", amulet / "neck.ne.png");
+    const EquipArtTable table = EquipArtTable::load(kit);
+    CHECK(table.size() == 1);
+    EquipArtQuery q;
+    q.content_id = "srd51.item.holy_symbol_amulet";
+    q.kind = "other";
+    q.part = EquipArtPart::Neck;
+    q.view = EquipArtView::Toward;
+    const EquipArtSprite* toward = table.find(q);
+    REQUIRE(toward);
+    CHECK(toward->image.w == 16);
+    CHECK(toward->pivot_x == 8);
+    CHECK(toward->pivot_y == 15);
+    q.view = EquipArtView::Away;
+    CHECK(table.find(q) == nullptr);
+    std::filesystem::remove_all(kit);
+}
+
+TEST_CASE("equipment art: manifest pivot, exact content ids, kind fallback, neck.se loads") {
     const auto kit = std::filesystem::temp_directory_path() / "isoforge-equip-kit-manifest";
     std::filesystem::remove_all(kit);
     const auto quiver = kit / "srd51.item.quiver";
@@ -565,8 +589,13 @@ TEST_CASE("equipment art: manifest pivot, exact content ids, kind fallback, neck
         })";
     }
     const EquipArtTable table = EquipArtTable::load(kit);
-    // neck.se.png is on disk and in the manifest. This table has no neck part.
-    CHECK(table.size() == 3);
+    // neck.se.png is on disk and in the manifest. neck.ne is not a file.
+    CHECK(table.size() == 4);
+    const auto quiver_role = table.back_role("srd51.item.quiver");
+    REQUIRE(quiver_role);
+    CHECK(*quiver_role == "quiver");
+    CHECK_FALSE(table.back_role("srd51.item.pouch"));
+    CHECK_FALSE(table.back_role("srd51.item.holy_symbol_amulet"));
 
     EquipArtQuery q;
     q.part = EquipArtPart::Back;
@@ -606,6 +635,17 @@ TEST_CASE("equipment art: manifest pivot, exact content ids, kind fallback, neck
     q.content_id = "srd51.item.longsword";
     CHECK(table.find(q) == club);
 
+    q.content_id = "srd51.item.holy_symbol_amulet";
+    q.kind = "other";
+    q.part = EquipArtPart::Neck;
+    q.view = EquipArtView::Toward;
+    const EquipArtSprite* neck = table.find(q);
+    REQUIRE(neck);
+    CHECK(neck->pivot_x == 12);
+    CHECK(neck->pivot_y == 20);
+    q.view = EquipArtView::Away;
+    CHECK(table.find(q) == nullptr);
+
     {
         std::ofstream out(kit / "kit.json");
         out << "{";
@@ -614,10 +654,12 @@ TEST_CASE("equipment art: manifest pivot, exact content ids, kind fallback, neck
     q.content_id = "srd51.item.quiver";
     q.kind = "other";
     q.part = EquipArtPart::Back;
+    q.view = EquipArtView::Toward;
     const EquipArtSprite* still = broken.find(q);
     REQUIRE(still);
     CHECK(still->pivot_x == int(still->image.w / 2));
     CHECK(still->pivot_y == int(still->image.h - 1));
-    CHECK(broken.size() == 3);
+    CHECK(broken.size() == 4);
+    CHECK_FALSE(broken.back_role("srd51.item.quiver"));
     std::filesystem::remove_all(kit);
 }
