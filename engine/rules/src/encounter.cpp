@@ -301,11 +301,36 @@ void end_summon(EncounterState& s, Combatant& c, int32_t reason, std::vector<Eve
 
 void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev);
 // 7.2w: a dead container frees what it engulfed / swallowed (SRD giant toad: the creature is no longer restrained).
+// C-T T8: another restraint still holds `who` once effect `skip` is ignored (release_grapple_restraint's test).
+bool other_restraint(const EncounterState& s, CombatantId who, std::size_t skip) {
+    for (std::size_t k = 0; k < s.effects.size(); ++k) {
+        if (k == skip) continue;
+        const ActiveSpellEffect& o = s.effects[k];
+        if (!o.no_condition && o.target == who && o.condition == Condition::Restrained) return true;
+    }
+    for (const auto& sc : s.sourced)
+        if (sc.condition == Condition::Grappled && sc.target == who && sc.restrains) return true;
+    return false;
+}
 void release_contained(EncounterState& s, std::vector<Event>& ev) {
     for (std::size_t i = 0; i < s.effects.size();) {
-        const ActiveSpellEffect& e = s.effects[i];
+        ActiveSpellEffect& e = s.effects[i];
         const Combatant* c = e.contain != 0 ? find(s, e.caster) : nullptr;
         if (e.contain != 0 && (!c || c->dead)) {
+            // C-T T8: a swallow with exit_ft stays in the corpse. Restrained ends. Blinded and the contain stay.
+            // Already in that state (container dead and no_condition): run once.
+            if (e.contain == 2 && e.contain_exit_ft > 0) {
+                if (e.no_condition) { ++i; continue; }
+                const CombatantId who = e.target;
+                Combatant* t = find_mut(s, who);
+                if (!other_restraint(s, who, i) && t && t->has(Condition::Restrained)) {
+                    remove_condition(*t, Condition::Restrained);
+                    emit(ev, EventKind::ConditionRemoved, who, 0, int32_t(Condition::Restrained));
+                }
+                e.no_condition = true;
+                ++i;
+                continue;
+            }
             const CombatantId who = e.target, box = e.caster;
             const bool swallowed = e.contain == 2;
             end_effect(s, i, ev);
@@ -325,6 +350,7 @@ void set_contain(ActiveSpellEffect& e, const SpellDef& def, Combatant& t, std::v
     e.contain = def.contain; e.damage_when = 3; e.damage = def.contain_dice; e.damage_type = def.contain_damage_type;
     e.magical = def.magical;
     e.regurgitate_dc = def.regurgitate_dc; e.regurgitate_damage = def.regurgitate_damage;
+    e.regurgitate_all = def.regurgitate_all; e.contain_exit_ft = def.contain_exit_ft;   // C-T T6 / T8
     if (def.contain == 2 && !t.has(Condition::Blinded) && !(t.condition_immunities & bit(Condition::Blinded))) {
         e.has_also = true; e.also = Condition::Blinded;
         add_condition(t, Condition::Blinded);
@@ -338,7 +364,8 @@ bool contain_refused(const EncounterState& s, const Combatant& a, const Combatan
     if (!plane_affect_refusal(a, t).empty()) return true;   // B19: a contain does not cross planes (no save)
     if (def.condition_max_size >= 0 && int(t.size) > int(def.condition_max_size)) return true;
     if (def.excludes_formless && t.formless) return true;
-    if (def.contain == 2)
+    // C-T T5: one at a time only when the rider is not capacity "unlimited". attack_effect stays one.
+    if (def.contain == 2 && !def.contain_unlimited)
         for (const auto& e : s.effects) if (e.contain == 2 && e.caster == a.id) return true;
     // B7: Shambling Mound Engulf holds one creature. Any contain this user already has blocks another.
     if (def.contain_one)
@@ -365,13 +392,33 @@ void regurgitation(EncounterState& s, std::vector<Event>& ev) {
         auto r = save_roll(s, *c, Ability::Con, dc, RollMode::Normal, ev, nullptr, 0);
         emit(ev, EventKind::SavingThrowRolled, box, CombatantId(Ability::Con), r.roll.natural, r.roll.total, int32_t(r.success));
         if (r.success) continue;
-        end_effect(s, i, ev);
-        Combatant* t = find_mut(s, who);
-        if (t && !t->dead && !t->has(Condition::Prone) && !(t->condition_immunities & bit(Condition::Prone))) {
-            add_condition(*t, Condition::Prone);
-            emit(ev, EventKind::ConditionAdded, who, 0, int32_t(Condition::Prone));
+        // C-T T6: all ends every swallow of this container, in effect order. Default ends only the due one.
+        if (!s.effects[i].regurgitate_all) {
+            end_effect(s, i, ev);
+            Combatant* t = find_mut(s, who);
+            if (t && !t->dead && !t->has(Condition::Prone) && !(t->condition_immunities & bit(Condition::Prone))) {
+                add_condition(*t, Condition::Prone);
+                emit(ev, EventKind::ConditionAdded, who, 0, int32_t(Condition::Prone));
+            }
+            s.contain_exits.push_back({box, who, 2});
+            continue;
         }
-        s.contain_exits.push_back({box, who, 2});
+        std::vector<CombatantId> freed;
+        std::vector<std::size_t> idx;
+        for (std::size_t k = 0; k < s.effects.size(); ++k)
+            if (s.effects[k].contain == 2 && s.effects[k].caster == box) {
+                idx.push_back(k);
+                freed.push_back(s.effects[k].target);
+            }
+        for (auto it = idx.rbegin(); it != idx.rend(); ++it) end_effect(s, *it, ev);
+        for (CombatantId w : freed) {
+            Combatant* t = find_mut(s, w);
+            if (t && !t->dead && !t->has(Condition::Prone) && !(t->condition_immunities & bit(Condition::Prone))) {
+                add_condition(*t, Condition::Prone);
+                emit(ev, EventKind::ConditionAdded, w, 0, int32_t(Condition::Prone));
+            }
+            s.contain_exits.push_back({box, w, 2});
+        }
     }
 }
 
@@ -4497,9 +4544,12 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
     case SpellEffectKind::ApplyCondition: {   // no save: the condition lasts with the spell
         bool applied = false;
         for (Combatant* t : T) {
-            if (t->dead || immune_to(s, *t, def.condition) || immune_from(s, *t, def.condition, a.id)) continue;
+            if (t->dead) continue;
+            // C-T T4: immunity to restrained does not block a swallow. It skips only adding Restrained.
+            const bool immune_cond = immune_to(s, *t, def.condition) || immune_from(s, *t, def.condition, a.id);
+            if (immune_cond && def.contain != 2) continue;
             if (contain_refused(s, a, *t, def)) continue;   // 7.2w: Net (size, formless), Swallow (size, one at a time)
-            if (!t->has(def.condition)) {
+            if (!immune_cond && !t->has(def.condition)) {
                 add_condition(*t, def.condition);
                 emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
             }
@@ -4510,6 +4560,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                                                       effect_timed(s, def, a.id, t->id),
                                                       lvl, (def.ends_on & kEndsOnDamage) != 0});   // 7.2zg
                 s.effects.back().ends_on = def.ends_on;   // 7.2zc Invisibility; 7.2zd Sanctuary (harmful_cast)
+                if (immune_cond && def.contain == 2) s.effects.back().no_condition = true;   // C-T T4: swallowed, not restrained
                 if (def.has_ward) {   // 7.2zd Sanctuary: the ward save is against the caster's spell save DC
                     s.effects.back().save_ability = def.ward_save;
                     s.effects.back().dc = int16_t(spell_save_dc(a, def));
@@ -4521,6 +4572,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     w.object_vulnerable = def.object_vulnerable; w.object_immune = def.object_immune;
                 }
                 set_contain(s.effects.back(), def, *t, ev);   // 7.2w: Swallow (a rider of the bite)
+                if (def.contain == 2 && def.contain_ends_grapple)   // C-T T3: bite damage, then swallowed, then the grapple ends
+                    end_grapple_pair(s, a.id, t->id, ev);
                 // B7: blinded while restrained (Shambling Mound Engulf). Same one-entry rule as the Save path's `while`.
                 // Swallow (contain 2) already set has_also, so this does not add a second blindness.
                 if (def.has_while && !s.effects.back().has_also &&
@@ -6562,6 +6615,12 @@ std::string_view legendary_resolve_ref(EncounterState& s, Ctx& ctx, Combatant& a
     return {};
 }
 
+// C-T T2: a target larger than the attack's cap is refused before the roll. -1 means no extra cap.
+static std::string_view target_too_large(const Attack& atk, const Combatant& t) {
+    if (atk.target_max_size >= 0 && int(t.size) > int(atk.target_max_size)) return "target is too large";
+    return {};
+}
+
 // C-D D7: a legendary use.attack runs the own-turn target refusals. A warded target is not a refusal.
 // has_guess false refuses a hidden target. Nothing here spends the legendary action.
 static std::string_view legendary_attack_target_refusal(const EncounterState& s, const Combatant& a, const Combatant& t,
@@ -6574,6 +6633,7 @@ static std::string_view legendary_attack_target_refusal(const EncounterState& s,
     if (const auto why = possession_attack_refusal(a, a.attacks[attack_index]); !why.empty()) return why;
     if (const auto why = possession_target_refusal(t, nullptr); !why.empty()) return why;
     if (const auto why = target_gate_refusal(s, a, t, a.attacks[attack_index].target_requires_any, willing); !why.empty()) return why;
+    if (const auto why = target_too_large(a.attacks[attack_index], t); !why.empty()) return why;
     if (attack_locked(s, a.id, attack_index, t.id)) return "that attack holds a grappled creature: it can't attack another target";
     return {};
 }
@@ -6892,6 +6952,19 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         return out;
     case ActionKind::Move: {
         if (req.move_ft <= 0) return fail("move_ft must be positive");
+        // C-T T8: inside a dead swallower, only a Move that spends exit_ft is an exit. The tile is sim's (TP2).
+        // Any other move is refused before the budget check. A short budget then fails as any other move.
+        std::optional<std::size_t> corpse;
+        for (std::size_t i = 0; i < s.effects.size(); ++i) {
+            const ActiveSpellEffect& e = s.effects[i];
+            if (e.contain != 2 || e.target != a.id || e.contain_exit_ft == 0 || !e.no_condition) continue;
+            const Combatant* box = find(s, e.caster);
+            if (box && !box->dead) continue;
+            corpse = i;
+            break;
+        }
+        if (corpse && req.move_ft != int(s.effects[*corpse].contain_exit_ft))
+            return fail("inside a corpse: exit with exit_ft of movement");
         int cost = req.move_ft * (a.has(Condition::Prone) ? 2 : 1);   // crawling
         if (drags_grappled(s, a)) cost *= 2;                           // SRD: half speed while moving a grappled creature
         if (req.move_mode > 4) return fail("bad move_mode");
@@ -6920,6 +6993,18 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         else if (req.squeeze == 2) a.squeezing = false;
         s.budget = b;
         emit(out.events, EventKind::Moved, a.id, 0, req.move_ft, b.movement_ft);
+        if (corpse && *corpse < s.effects.size() && s.effects[*corpse].target == a.id) {
+            // C-T T8: the exit costs exit_ft. Blinded owned by the swallow ends. The creature lands prone.
+            // Kind 4 is rules output, not an event. Sim places the logged tile in TP2.
+            const CombatantId box = s.effects[*corpse].caster, who = s.effects[*corpse].target;
+            end_effect(s, *corpse, out.events);
+            Combatant* t = find_mut(s, who);
+            if (t && !t->dead && !t->has(Condition::Prone) && !(t->condition_immunities & bit(Condition::Prone))) {
+                add_condition(*t, Condition::Prone);
+                emit(out.events, EventKind::ConditionAdded, who, 0, int32_t(Condition::Prone));
+            }
+            s.contain_exits.push_back({box, who, 4});
+        }
         if (!s.zones.empty()) {   // R-G11: the step's zone membership (sim's facts), then other creatures' changes (aura move)
             zone_membership(s, &ctx, a.id, req.zones_entered, req.zones_left, req.zones_within, out.events);
             zone_changes(s, &ctx, req.zone_changes, out.events);
@@ -7262,6 +7347,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (charmed_by(s, f->id, t->id)) return fail("a charmed creature cannot attack its charmer");
             if (req.attack_index >= f->attacks.size()) return fail("bad attack index");
             if (const auto why = target_gate_refusal(s, *f, *t, f->attacks[req.attack_index].target_requires_any, false); !why.empty()) return fail(why);
+            if (const auto why = target_too_large(f->attacks[req.attack_index], *t); !why.empty()) return fail(why);
             if (b.attacks_remaining > 0) --b.attacks_remaining;
             else if (spend_action(b, a, req.kind, false)) {
                 b.loading_fired = 0;
@@ -7304,6 +7390,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (const auto why = possession_attack_refusal(a, a.attacks[req.attack_index]); !why.empty()) return fail(why);
         if (const auto why = possession_target_refusal(*t, nullptr); !why.empty()) return fail(why);
         if (const auto why = target_gate_refusal(s, a, *t, a.attacks[req.attack_index].target_requires_any, req.target_willing); !why.empty()) return fail(why);
+        if (const auto why = target_too_large(a.attacks[req.attack_index], *t); !why.empty()) return fail(why);
         if (attack_locked(s, a.id, req.attack_index, t->id)) return fail("that attack holds a grappled creature: it can't attack another target");
         if (req.grapple_instead && counts_as_incapacitated(a)) return fail("incapacitated");
         if (req.grapple_instead && !a.attacks[req.attack_index].grapple_instead_ok) return fail("grapple_instead needs an instead_of_damage grapple rider");
@@ -7340,7 +7427,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (req.multiattack != 0 && req.multiattack != b.sequence) return fail("another multiattack is in progress");
             if (b.sequence > a.multiattacks.size()) return fail("bad multiattack");
             const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos);
-            if (next < 0 || req.attack_index != uint8_t(next)) return fail("attack out of multiattack sequence");
+            if (next < 0 || !multiattack_accepts(a.multiattacks[std::size_t(b.sequence - 1)], uint8_t(next), req.attack_index))
+                return fail("attack out of multiattack sequence");
             const auto& seq = a.multiattacks[std::size_t(b.sequence - 1)];
             const uint32_t rider = seq.free_rider;   // B3b: arm after the last attack
             ++b.sequence_pos;
@@ -7355,7 +7443,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             const auto& seq = a.multiattacks[std::size_t(req.multiattack - 1)].attacks;
             if (seq.empty()) return fail("bad multiattack");
             for (uint8_t i : seq) if (i >= a.attacks.size()) return fail("bad multiattack");
-            if (req.attack_index != seq[0]) return fail("attack out of multiattack sequence");
+            if (!multiattack_accepts(a.multiattacks[std::size_t(req.multiattack - 1)], seq[0], req.attack_index))
+                return fail("attack out of multiattack sequence");
             if (!spend_action(b, a, req.kind, false)) return fail("no action available");
             b.loading_fired = 0;
             std::size_t n = seq.size();
@@ -7780,25 +7869,41 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         for (const auto& t : s.combatants) {
             if (t.dead || t.id == a.id || side_of(s, t) == side_of(s, a)) continue;
             if (!plane_affect_refusal(a, t).empty()) continue;   // B19: not a legal attack
-            if (const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos); next >= 0) {   // multiattack in progress: only the next declared attack
-                ActionRequest r{a.id, ActionKind::Attack, t.id, uint8_t(next)};
-                r.multiattack = b.sequence;
-                if (!attack_locked(s, a.id, r.attack_index, t.id)) push_attack(r);
+            // C-T T2 / T10: omit a row the gate or the size cap would refuse, and list a slot's alternate.
+            auto row_ok = [&](uint8_t idx) {
+                if (idx >= a.attacks.size()) return false;
+                const Attack& atk = a.attacks[idx];
+                if (!target_gate_refusal(s, a, t, atk.target_requires_any, false).empty()) return false;
+                if (!target_too_large(atk, t).empty()) return false;
+                if (attack_locked(s, a.id, idx, t.id)) return false;
+                return true;
+            };
+            auto offer = [&](uint8_t idx, uint8_t multi) {
+                if (!row_ok(idx)) return;
+                ActionRequest r{a.id, ActionKind::Attack, t.id, idx};
+                r.multiattack = multi;
+                push_attack(r);
+            };
+            if (const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos); next >= 0) {   // multiattack in progress: the next slot, or its alternate
+                const auto& seq = a.multiattacks[std::size_t(b.sequence - 1)];
+                offer(uint8_t(next), b.sequence);
+                for (const auto& alt : seq.alternates)
+                    if (alt.slot == uint8_t(next)) offer(alt.instead, b.sequence);
                 continue;
             }
             for (uint8_t i = 0; i < a.attacks.size(); ++i) {
                 if (!can_act && i < 32 && has_property(a.attacks[i], kWeaponLoading) && (b.loading_fired >> i & 1)) continue;
-                if (attack_locked(s, a.id, i, t.id)) continue;   // Druid gap G: "can't bite another target"
+                if (!row_ok(i)) continue;   // Druid gap G, and C-T T2
                 ActionRequest r{a.id, ActionKind::Attack, t.id, i};
                 push_attack(r);
             }
             if (can_act)   // start any declared multiattack (needs a fresh action)
                 for (std::size_t k = 0; k < a.multiattacks.size(); ++k) {
-                    const auto& seq = a.multiattacks[k].attacks;
-                    if (seq.empty() || a.multiattacks[k].after_action != 0 || attack_locked(s, a.id, seq[0], t.id)) continue;
-                    ActionRequest r{a.id, ActionKind::Attack, t.id, seq[0]};
-                    r.multiattack = uint8_t(k + 1);
-                    push_attack(r);
+                    const auto& seq = a.multiattacks[k];
+                    if (seq.attacks.empty() || seq.after_action != 0) continue;
+                    offer(seq.attacks[0], uint8_t(k + 1));
+                    for (const auto& alt : seq.alternates)
+                        if (alt.slot == seq.attacks[0]) offer(alt.instead, uint8_t(k + 1));
                 }
         }
     }

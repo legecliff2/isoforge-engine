@@ -176,7 +176,7 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
     // Batch 3 (Lich-approved): an option's `count_dice` ("1d4"; monster@5 only) names ONE attack made a rolled number
     // of times (SRD 5.1 violet fungus: "The violet fungus makes 1d4 Rotting Touch attacks.").
     // B7: engulf_both_hits on an option (Shambling Mound). Parsed here; content.cpp compiles the SpellDef.
-    struct Opt { std::string id; const Json* list; const Json* count; std::string rider; std::optional<Archetype::EngulfBothSpec> engulf; std::string lead; };
+    struct Opt { std::string id; const Json* list; const Json* count; std::string rider; std::optional<Archetype::EngulfBothSpec> engulf; std::string lead; std::vector<Archetype::InsteadPair> instead; };
     std::vector<Opt> opts;
     auto count_of = [](const Json& o) -> const Json* { auto c = o.find("count_dice"); return c == o.end() ? nullptr : &*c; };
     auto take_rider = [](const Json& o) -> std::optional<std::string> {
@@ -190,6 +190,22 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
         if (la == o.end()) return std::string{};
         if (!la->is_string() || la->get<std::string>().empty()) return std::nullopt;
         return la->get<std::string>();
+    };
+    // C-T T10. The variant_of check is in content.cpp, once attacks exist. This only reads the object.
+    auto take_instead = [&](const Json& o, const std::string& where)
+        -> std::pair<std::optional<std::string>, std::vector<Archetype::InsteadPair>> {
+        auto it = o.find("instead");
+        if (it == o.end()) return {std::nullopt, {}};
+        if (a.schema_type != "monster" || (ctx.declared_version != 0 && ctx.declared_version < 5))
+            return {where + ": instead needs a monster@5 file", {}};
+        if (!it->is_object() || it->empty()) return {where + ": instead names no attack of this option", {}};
+        std::vector<Archetype::InsteadPair> pairs;
+        for (auto k = it->begin(); k != it->end(); ++k) {
+            if (k.key().empty() || !k.value().is_string() || k.value().get<std::string>().empty())
+                return {where + ": instead: the alternate must be a variant_of that attack", {}};
+            pairs.push_back({k.key(), k.value().get<std::string>()});
+        }
+        return {std::nullopt, std::move(pairs)};
     };
     auto take_engulf = [](const Json& o, const std::string& where)
         -> std::pair<std::optional<std::string>, std::optional<Archetype::EngulfBothSpec>> {
@@ -237,7 +253,9 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
             if (!lead) return f.id + ": multiattack option '" + oid + "': lead_action must name an action";
             auto [eerr, spec] = take_engulf(x, f.id + ": multiattack option '" + oid + "'");
             if (eerr) return *eerr;
-            opts.push_back({oid, &x["attacks"], count_of(x), *rider, spec, *lead});
+            auto [ierr, instead] = take_instead(x, f.id + ": multiattack option '" + oid + "'");
+            if (ierr) return *ierr;
+            opts.push_back({oid, &x["attacks"], count_of(x), *rider, spec, *lead, std::move(instead)});
         }
     } else if (auto at = f.effect.find("attacks"); at != f.effect.end()) {
         auto rider = take_rider(f.effect);
@@ -246,11 +264,13 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
         if (!lead) return f.id + ": multiattack option 'multiattack': lead_action must name an action";
         auto [eerr, spec] = take_engulf(f.effect, f.id + ": multiattack option 'multiattack'");
         if (eerr) return *eerr;
-        opts.push_back({"multiattack", &*at, count_of(f.effect), *rider, spec, *lead});
+        auto [ierr, instead] = take_instead(f.effect, f.id + ": multiattack option 'multiattack'");
+        if (ierr) return *ierr;
+        opts.push_back({"multiattack", &*at, count_of(f.effect), *rider, spec, *lead, std::move(instead)});
     } else {
         return f.id + ": multiattack needs options[] or attacks[]";
     }
-    for (const auto& [oid, list, count, rider, engulf, lead] : opts) {
+    for (const auto& [oid, list, count, rider, engulf, lead, instead] : opts) {
         if (oid.empty()) return f.id + ": multiattack option id is empty";
         for (const auto& d : a.multiattack_decls)
             if (d.id == oid) return f.id + ": duplicate multiattack option '" + oid + "'";
@@ -292,6 +312,7 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
             d.engulf_both_hits = *engulf;
         }
         if (!lead.empty()) d.lead_action = lead;
+        d.instead = instead;
         a.multiattack_decls.push_back(std::move(d));
     }
     return std::nullopt;

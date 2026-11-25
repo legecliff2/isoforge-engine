@@ -1018,7 +1018,7 @@ Chuul Tentacles and Otyugh Tentacle Slam name creatures the monster has grappled
 
 Grapple `max_size` is §5. Chuul's pincer is Large or smaller; an otyugh's tentacle is Medium or smaller.
 
-**Not this key.** A negative gate ("one target not grappled by the user", giant crocodile tail, ankheg Acid Spray) is not `grappled_by_self`. `attack_effect` still has no such gate (giant toad / giant frog Swallow). Otyugh Tentacle Slam is that standalone save on `srd51.monster.otyugh` (`targets` 2, `range_ft` 10, half damage, stunned until the end of the otyugh's next turn). It is not a free rider.
+**Not this key.** A negative gate ("one target not grappled by the user", giant crocodile tail, ankheg Acid Spray) is not `grappled_by_self`. `attack_effect` still has no such gate (giant toad / giant frog Swallow). Swallow's `grappled_by_self` gate and `target_max_size` are on the weapon-attack row (§62), not on `attack_effect`. Otyugh Tentacle Slam is that standalone save on `srd51.monster.otyugh` (`targets` 2, `range_ft` 10, half damage, stunned until the end of the otyugh's next turn). It is not a free rider.
 
 **Multiattack free rider (B3b, chuul Tentacles).** A monster@5 multiattack option may set `free_rider` to the id of a `rider_only: true` save_effect on the same creature. The option is still two (or more) attack indices. When those attacks finish, `TurnBudget::free_rider` is that save's spell id until it is used or another action is spent. The cast does not spend an action. The save's `grappled_by_self` gate is checked at that moment, so a pincer in this same Multiattack that just established the grapple counts, and so does a grapple already held. One use; one named target (`targets` stays 1 for chuul). It is not listed in `legal_actions` and the built-in AI does not cast it as its own action. Outside that window the cast is refused (`only a multiattack rider`) and the action is not spent. A refused target does not consume the use. `count_dice` cannot be combined with `free_rider`. A `rider_only` save that no option names, or a `free_rider` that does not name one, is a load error. Below monster@5 the loader says `multiattack free_rider needs a monster@5 file` or `rider_only needs a monster@5 file`. Not hashed: the cast is an ordinary `CastSpell` in the log, and replay re-arms the window. No new `SIM_EVENTS` tag.
 
@@ -2221,4 +2221,30 @@ The flight is not taken. Wing Attack resolves the save, damage and prone only; t
 **AI (D10).** The built-in policy uses a `chooses_targets` `within_ft` save when at least one hostile is in range and aware, and is neither immune nor already frightened by this user. `zone_excluded` lists every non-hostile in that derived set. That cast arms the `lead_action` sequence. Otherwise the plain option is used. The policy still never spends legendary actions.
 
 **Not this section.** Dragon JSON, Change Shape on the metallic dragons, and the tarrasque's Swallow. Searing Burst waits on its own contract. Awareness beyond Unconscious and hidden-from has no engine fact.
+
+## 62. Swallow (monster@5 weapon-attack variant)
+
+Extends 7.2w. No tarrasque JSON is authored here. The keys are static content and are not hashed. No new `EventKind`. No new hash tag. `kSimEventSchemaVersion` stays 14. Next free hash tag stays **0xEC**. `ContainExit` kind 4 is rules output, cleared each step, not an event. The corpse flag is `no_condition`, already bit 1 of the 0xAC flags byte. The container's death is already state.
+
+**`variant_of` (T1).** On a monster@5 weapon attack, the row copies `to_hit`, reach, the natural block and `damage` from the named attack of the same creature. It does not copy that row's `on_hit`. Its own keys are `id`, `name`, `kind`, `description`, `variant_of`, `target_requires_any`, `target_max_size` and `on_hit`. A copied key named again is `variant_of copies <key> from <id>`. Loader errors: `variant_of names no attack of this creature`, `variant_of can't name a variant`, `variant_of needs a monster@5 file`. It is a weapon attack. A critical hit uses the existing weapon path: the bite's dice double and the modifier does not.
+
+**`target_max_size` (T2).** `tiny` .. `gargantuan` on a monster@5 weapon attack. A larger target is refused before the roll (`target is too large`), next to the existing gate, on the creature's own turn and on a legendary `use.attack`. `legal_actions` omits the row. `ward_alternate_targets` already filters it (C-D D7). Absent means any size (`Attack::target_max_size` -1). `bad target_max_size`. `target_max_size needs a monster@5 file`.
+
+**`on_hit` `swallow` (T3–T6, T8 rules).** Only on a monster@5 melee weapon attack. Keys: `damage {dice, type}`, `capacity` (`one` or `unlimited`, required), `regurgitate {dc, damage, all}` and `exit_ft`. It compiles to an ApplyCondition of restrained with `contain` 2. It resolves after the attack's damage, and only if the target is still alive. A `contain_ends_grapple` row then calls `end_grapple_pair`. The swallow's restrained keeps the condition when that grapple had been the other restraint. Loader errors: `swallow rider needs a melee weapon attack`, `swallow rider needs a monster@5 file`, `swallow rider: capacity is required`.
+
+Immunity to restrained skips only adding Restrained (T4). The creature is still swallowed: blinded unless immune or already blinded, total cover, acid. An `attack_effect` swallow (toad, frog) uses the same ApplyCondition rule. It does not gain `variant_of`, the gate, or `exit_ft`.
+
+`capacity: "unlimited"` sets `SpellDef::contain_unlimited` (T5). `contain_refused` applies the one-at-a-time test only when that flag is false. Omitted on `attack_effect`, so toad, frog and behir stay one.
+
+`regurgitate.all` (T6) ends every `contain == 2` effect of that container on a failed Con save, in effect order, each prone unless immune, each a kind-2 exit. The trigger stays one creature's `container_damage`. The save is not against a spell, so Magic Resistance does not apply. `all` defaults false.
+
+**Corpse (T8, rules).** `exit_ft` > 0: when the container is dead, `release_contained` does not end the effect. It removes Restrained unless another restraint holds the creature, and sets `no_condition`. Blinded and the contain stay. No prone and no `contain_exits` yet. A second pass sees `no_condition` and leaves the effect. There is no acid and no regurgitation, because a dead creature has no turn. Without `exit_ft`, death still frees the creature prone with kind 1.
+
+On its own turn a Move whose `move_ft` is not `exit_ft` is refused: `inside a corpse: exit with exit_ft of movement`. A Move that spends `exit_ft` is checked like any other move, so a slower creature needs a Dash. When that move completes, rules end the effect (owned blinded ends), add Prone unless immune, and push `contain_exits` kind 4. Rules do not see tiles. The logged destination, and sim setting `move_ft`, are the exit move (TP2).
+
+**`instead` (T10).** A multiattack option may set `instead: { "<attack id>": "<variant id>" }`. The key must be an attack in that option (`instead names no attack of this option`). The value must be a `variant_of` of that attack (`instead: the alternate must be a variant_of that attack`). `instead needs a monster@5 file`. The slot accepts either index, including the `lead_action` copy. `legal_actions` lists both. Not hashed.
+
+**Legendary shape (T11).** No new legendary key. `use.attack` names the attack id, including a `variant_of` row, and `cost` is the option's cost. C-D D7 applies the gate, `target_max_size` and `attack_locked` to that attack.
+
+**Not this section.** T9 carry, T7 placement, the sim exit move, and T12 AI are a later PR. Swallowing a creature the bite's damage kills stays deferred: the attack's after-riders do not run on a dead target. Giant toad and giant frog stay `attack_effect` until a follow-up content PR. Reflective Carapace, Siege Monster, and the tarrasque statistics row are not ruled here.
 
