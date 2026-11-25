@@ -93,7 +93,7 @@ struct Shot {
 Shot draw(const ViewModel& vm, double t) {
     render::NullDevice dev;
     dev.set_hash_uploads(true);
-    SliceView view(dev);
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     view.set_present_time(t);
     iso2d::Camera cam;
     cam.viewport_w = 640;
@@ -317,7 +317,7 @@ TEST_CASE("stand-in draw: replaces the pawn, aliases share a frame, the clock ad
 TEST_CASE("stand-in walk plays when the tile changes and idle holds when it does not") {
     render::NullDevice dev;
     dev.set_hash_uploads(true);
-    SliceView view(dev);
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     auto shot = [&](const ViewModel& vm) {
         view.set_present_time(0);
         iso2d::Camera cam;
@@ -340,7 +340,7 @@ TEST_CASE("stand-in walk plays when the tile changes and idle holds when it does
 
 TEST_CASE("large stand-in draws 1:1 on a 2x2; a pawn on that footprint still grows") {
     CaptureDevice dev;
-    SliceView view(dev);
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
 
     auto centre_of = [&](Vec2i tile, int side) {
         const FootprintGeom fp = footprint_geom(tile, side, 64.f, 32.f);
@@ -491,7 +491,7 @@ TEST_CASE("large stand-in draws 1:1 on a 2x2; a pawn on that footprint still gro
 
 TEST_CASE("huge stand-in draws 1:1; an empty bin anchors the label to the body drawn") {
     CaptureDevice dev;
-    SliceView view(dev);
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     auto centre_of = [&](Vec2i tile, int side) {
         const FootprintGeom fp = footprint_geom(tile, side, 64.f, 32.f);
         return std::pair<FootprintGeom, Vec2f>{fp, view.tile_center_px(fp.centre_iso.x, fp.centre_iso.y)};

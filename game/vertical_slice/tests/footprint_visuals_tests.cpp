@@ -279,7 +279,7 @@ TEST_CASE("slice view: a multi-tile base ring is one extra sprite; side 1 is unc
     auto sprites = [](const ViewModel& vm) {
         render::NullDevice dev;
         dev.set_hash_uploads(true);
-        SliceView view(dev);
+        SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
         iso2d::Camera cam;
         cam.viewport_w = 640;
         cam.viewport_h = 360;
@@ -318,7 +318,7 @@ TEST_CASE("slice view: a multi-tile base ring is one extra sprite; side 1 is unc
     }
 
     render::NullDevice dev;
-    SliceView view(dev);
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     ViewModel vm = actor(2, false, false);
     const Vec2f focus = view.actors_focus_px(vm);
     const Vec2f centre = view.tile_center_px(4.5f, 6.5f);   // even centre, between the four tiles

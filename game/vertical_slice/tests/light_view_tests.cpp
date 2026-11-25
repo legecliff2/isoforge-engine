@@ -84,7 +84,7 @@ TEST_CASE("no torches: ambient only (underground = Dark everywhere); render path
     CHECK(vm.light.sources.empty());
     for (uint8_t b : vm.light.chunks[0].samples) CHECK((b & 3) == 0);
     render::NullDevice dev;
-    SliceView v(dev);
+    SliceView v(dev, SLICE_EMPTY_EQUIP_KIT);
     frame(dev, v, vm);
     CHECK(v.light_maps().chunks() == 1);
     CHECK(dev.errors() == 0);
@@ -93,7 +93,7 @@ TEST_CASE("no torches: ambient only (underground = Dark everywhere); render path
 TEST_CASE("render mirrors the real frame: one R8 map, full upload once, minimal rects after, none when unchanged") {
     auto s = open_sim();
     render::NullDevice dev;
-    SliceView v(dev);
+    SliceView v(dev, SLICE_EMPTY_EQUIP_KIT);
     ViewModel vm = s->view();
     frame(dev, v, vm);
     CHECK(v.light_maps().chunks() == 1);
@@ -135,7 +135,7 @@ TEST_CASE("render without a LightFrame and fog masks (when present) still behave
                 c.explored[size_t((y * 32 + x) / 64)] |= uint64_t(1) << ((y * 32 + x) % 64);
             }
     render::NullDevice dev;
-    SliceView v(dev);
+    SliceView v(dev, SLICE_EMPTY_EQUIP_KIT);
     frame(dev, v, vm);
     int far_foes = 0;
     for (const auto& a : vm.actors)
@@ -344,7 +344,7 @@ TEST_CASE("fog: shown team defaults to the player team; team choice and fog off 
     CHECK_FALSE(vo.light.fog);
     CHECK_FALSE(vo.light.chunks[0].has_fog);
     render::NullDevice dev;
-    SliceView v(dev);
+    SliceView v(dev, SLICE_EMPTY_EQUIP_KIT);
     frame(dev, v, vo);
     for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) REQUIRE(fog_at(v, vo, {x, y}) == iso2d::Fog::Visible);
     // Switching the shown team / turning fog on re-uploads every fog map without a new sim frame.
@@ -362,7 +362,7 @@ TEST_CASE("fog: three states render (unseen black, explored dimmed, seen normal)
     set_bit(c.explored, 4, 3);
     for (auto& b : c.samples) b = iso2d::pack_light(iso2d::LightLevel::Bright, 0);
     render::NullDevice dev;
-    SliceView v(dev);
+    SliceView v(dev, SLICE_EMPTY_EQUIP_KIT);
     frame(dev, v, vm);
     iso2d::Fog f{};
     const Color seen = v.tile_tint(vm.light, {3, 3}, &f);
@@ -385,7 +385,7 @@ TEST_CASE("fog: a blocked chunk holds its last light and fog textures; removal f
     c.seen_now = {}; c.explored = {};
     set_bit(c.seen_now, 2, 2); set_bit(c.explored, 2, 2); set_bit(c.explored, 6, 6);
     render::NullDevice dev;
-    SliceView v(dev);
+    SliceView v(dev, SLICE_EMPTY_EQUIP_KIT);
     frame(dev, v, vm);
     const auto tex_l = v.light_maps().texture({0, 0, 0});
     const auto tex_f = v.fog_maps().texture({0, 0, 0});

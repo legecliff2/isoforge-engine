@@ -57,7 +57,7 @@ struct Frame {
 Frame render_frame(const ViewModel& vm) {
     render::NullDevice dev;
     dev.set_hash_uploads(true);
-    SliceView view(dev);
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     iso2d::Camera cam;
     const Vec2f c = view.tile_center_px(8.f, 8.f);
     cam.position = {c.x - 320.f, c.y - 180.f};
@@ -549,7 +549,7 @@ TEST_CASE("area targeting: a static view has no actor, and the cursor picks the 
     CHECK(s->area_spell_ids(1).empty());
 
     render::NullDevice dev;
-    SliceView view(dev);
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     iso2d::Camera cam;
     cam.zoom = 2.f;
     cam.viewport_w = 800;
