@@ -3,8 +3,11 @@
 #include "presentation/standin.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <charconv>
 #include <cstring>
 #include <fstream>
+#include <optional>
 #include <utility>
 
 namespace eng::presentation {
@@ -77,6 +80,240 @@ bool is_file(const std::filesystem::path& p) {
 
 bool known_kind(std::string_view kind) {
     return kind == "weapon" || kind == "shield" || kind == "light" || kind == "other";
+}
+
+// kit.json pivot list. A file this parser cannot read yields no overrides; the
+// validator is what rejects a bad manifest. Sprites still load.
+enum class JsonTag : uint8_t { Null, Bool, Number, String, Array, Object };
+
+struct Json {
+    JsonTag tag = JsonTag::Null;
+    bool b = false;
+    int64_t n = 0;
+    std::string s;
+    std::vector<Json> a;
+    std::vector<std::pair<std::string, Json>> o;
+};
+
+const Json* field(const Json& j, std::string_view key) {
+    if (j.tag != JsonTag::Object) return nullptr;
+    for (const auto& kv : j.o)
+        if (kv.first == key) return &kv.second;
+    return nullptr;
+}
+
+class KitParser {
+public:
+    explicit KitParser(std::string_view text) : text_(text) {}
+
+    std::optional<Json> parse() {
+        Json root;
+        if (!value(root) || !ok_) return std::nullopt;
+        skip();
+        if (i_ != text_.size()) return std::nullopt;
+        return root;
+    }
+
+private:
+    std::string_view text_;
+    std::size_t i_ = 0;
+    bool ok_ = true;
+
+    bool fail() { ok_ = false; return false; }
+    void skip() {
+        while (i_ < text_.size() && std::isspace(static_cast<unsigned char>(text_[i_]))) ++i_;
+    }
+    bool eat(char c) {
+        skip();
+        if (i_ >= text_.size() || text_[i_] != c) return fail();
+        ++i_;
+        return true;
+    }
+    bool value(Json& out) {
+        skip();
+        if (i_ >= text_.size()) return fail();
+        const char c = text_[i_];
+        if (c == '{') return object(out);
+        if (c == '[') return array(out);
+        if (c == '"') return string(out);
+        if (c == 't' || c == 'f') return boolean(out);
+        if (c == 'n') return null_value(out);
+        if (c == '-' || std::isdigit(static_cast<unsigned char>(c))) return number(out);
+        return fail();
+    }
+    bool object(Json& out) {
+        if (!eat('{')) return false;
+        out.tag = JsonTag::Object;
+        skip();
+        if (i_ < text_.size() && text_[i_] == '}') { ++i_; return true; }
+        while (ok_) {
+            Json key;
+            if (!string(key)) return false;
+            if (!eat(':')) return false;
+            Json child;
+            if (!value(child)) return false;
+            out.o.emplace_back(std::move(key.s), std::move(child));
+            skip();
+            if (i_ < text_.size() && text_[i_] == ',') { ++i_; continue; }
+            return eat('}');
+        }
+        return false;
+    }
+    bool array(Json& out) {
+        if (!eat('[')) return false;
+        out.tag = JsonTag::Array;
+        skip();
+        if (i_ < text_.size() && text_[i_] == ']') { ++i_; return true; }
+        while (ok_) {
+            Json child;
+            if (!value(child)) return false;
+            out.a.push_back(std::move(child));
+            skip();
+            if (i_ < text_.size() && text_[i_] == ',') { ++i_; continue; }
+            return eat(']');
+        }
+        return false;
+    }
+    bool string(Json& out) {
+        skip();
+        if (i_ >= text_.size() || text_[i_] != '"') return fail();
+        ++i_;
+        out.tag = JsonTag::String;
+        while (i_ < text_.size()) {
+            const char c = text_[i_++];
+            if (c == '"') return true;
+            if (c != '\\') { out.s.push_back(c); continue; }
+            if (i_ >= text_.size()) return fail();
+            const char e = text_[i_++];
+            if (e == '"' || e == '\\' || e == '/') out.s.push_back(e);
+            else if (e == 'n') out.s.push_back('\n');
+            else if (e == 't') out.s.push_back('\t');
+            else if (e == 'r') out.s.push_back('\r');
+            else return fail();
+        }
+        return fail();
+    }
+    bool take(std::string_view lit) {
+        skip();
+        if (i_ > text_.size() || text_.size() - i_ < lit.size()) return false;
+        if (text_.substr(i_, lit.size()) != lit) return false;
+        i_ += lit.size();
+        return true;
+    }
+    bool boolean(Json& out) {
+        if (take("true")) { out.tag = JsonTag::Bool; out.b = true; return true; }
+        if (take("false")) { out.tag = JsonTag::Bool; out.b = false; return true; }
+        return fail();
+    }
+    bool null_value(Json& out) {
+        if (!take("null")) return fail();
+        out.tag = JsonTag::Null;
+        return true;
+    }
+    bool number(Json& out) {
+        skip();
+        const std::size_t start = i_;
+        if (i_ < text_.size() && text_[i_] == '-') ++i_;
+        if (i_ >= text_.size() || !std::isdigit(static_cast<unsigned char>(text_[i_]))) return fail();
+        while (i_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[i_]))) ++i_;
+        if (i_ < text_.size() && (text_[i_] == '.' || text_[i_] == 'e' || text_[i_] == 'E')) return fail();
+        int64_t n = 0;
+        const auto res = std::from_chars(text_.data() + start, text_.data() + i_, n);
+        if (res.ec != std::errc()) return fail();
+        out.tag = JsonTag::Number;
+        out.n = n;
+        return true;
+    }
+};
+
+struct PivotSpec {
+    bool kind_default = false;
+    std::string id;
+    std::string bin = "medium";
+    EquipArtPart part = EquipArtPart::MainHand;
+    EquipArtView view = EquipArtView::Toward;
+    int x = 0;
+    int y = 0;
+};
+
+void collect_parts(bool kind_default, const std::string& id, const Json& parts, std::vector<PivotSpec>& out) {
+    if (parts.tag != JsonTag::Array) return;
+    for (const Json& part : parts.a) {
+        const Json* part_name = field(part, "part");
+        const Json* views = field(part, "views");
+        if (!part_name || part_name->tag != JsonTag::String || !views || views->tag != JsonTag::Array) continue;
+        const auto parsed_part = parse_part(part_name->s);
+        if (!parsed_part) continue;   // neck, and any name this table does not draw
+        std::string bin = "medium";
+        if (const Json* named = field(part, "bin")) {
+            if (named->tag == JsonTag::String && !named->s.empty()) bin = named->s;
+        }
+        for (const Json& view : views->a) {
+            const Json* view_name = field(view, "view");
+            const Json* pivot = field(view, "pivot");
+            if (!view_name || view_name->tag != JsonTag::String || !pivot || pivot->tag != JsonTag::Array) continue;
+            if (pivot->a.size() != 2 || pivot->a[0].tag != JsonTag::Number || pivot->a[1].tag != JsonTag::Number) continue;
+            const auto parsed_view = parse_view(view_name->s);
+            if (!parsed_view) continue;
+            if (pivot->a[0].n < 0 || pivot->a[1].n < 0 || pivot->a[0].n > 100000 || pivot->a[1].n > 100000) continue;
+            PivotSpec spec;
+            spec.kind_default = kind_default;
+            spec.id = id;
+            spec.bin = bin;
+            spec.part = *parsed_part;
+            spec.view = *parsed_view;
+            spec.x = static_cast<int>(pivot->a[0].n);
+            spec.y = static_cast<int>(pivot->a[1].n);
+            out.push_back(std::move(spec));
+        }
+    }
+}
+
+std::vector<PivotSpec> pivots_in(const Json& root) {
+    std::vector<PivotSpec> out;
+    if (const Json* items = field(root, "items")) {
+        if (items->tag == JsonTag::Array) {
+            for (const Json& item : items->a) {
+                const Json* cid = field(item, "content_id");
+                const Json* parts = field(item, "parts");
+                if (!cid || cid->tag != JsonTag::String || !parts) continue;
+                collect_parts(false, cid->s, *parts, out);
+            }
+        }
+    }
+    if (const Json* kinds = field(root, "kinds")) {
+        if (kinds->tag == JsonTag::Array) {
+            for (const Json& kind : kinds->a) {
+                const Json* name = field(kind, "kind");
+                const Json* parts = field(kind, "parts");
+                if (!name || name->tag != JsonTag::String || !parts) continue;
+                collect_parts(true, name->s, *parts, out);
+            }
+        }
+    }
+    return out;
+}
+
+std::optional<std::string> read_text(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return std::nullopt;
+    in.seekg(0, std::ios::end);
+    const auto n = in.tellg();
+    if (n < 0) return std::nullopt;
+    std::string text(static_cast<std::size_t>(n), '\0');
+    in.seekg(0);
+    if (n > 0) in.read(text.data(), n);
+    if (!in) return std::nullopt;
+    return text;
+}
+
+std::vector<PivotSpec> load_pivots(const std::filesystem::path& root) {
+    const auto text = read_text(root / "kit.json");
+    if (!text) return {};
+    KitParser parser(*text);
+    const auto root_json = parser.parse();
+    if (!root_json) return {};
+    return pivots_in(*root_json);
 }
 
 } // namespace
@@ -170,6 +407,18 @@ EquipArtTable EquipArtTable::load(const std::filesystem::path& root) {
             for (const std::filesystem::path& file : sorted_children(item_child)) {
                 if (is_file(file)) add(false, name, bin, file);
             }
+        }
+    }
+    for (const PivotSpec& spec : load_pivots(root)) {
+        for (Entry& entry : table.entries_) {
+            if (entry.kind_default != spec.kind_default || entry.id != spec.id || entry.bin != spec.bin) continue;
+            if (entry.part != spec.part || entry.view != spec.view) continue;
+            if (entry.sprite >= table.sprites_.size()) continue;
+            EquipArtSprite& sprite = table.sprites_[entry.sprite];
+            if (spec.x < 0 || spec.y < 0) continue;
+            if (uint32_t(spec.x) >= sprite.image.w || uint32_t(spec.y) >= sprite.image.h) continue;
+            sprite.pivot_x = spec.x;
+            sprite.pivot_y = spec.y;
         }
     }
     return table;

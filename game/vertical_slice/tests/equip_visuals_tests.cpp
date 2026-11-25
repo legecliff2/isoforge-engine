@@ -650,3 +650,47 @@ TEST_CASE("equip art: choice follows content id and view, and leaves the attach 
     CHECK(still[0].color.r < 0.7f);
     fs::remove_all(art, ec);
 }
+
+#ifndef SLICE_EQUIP_ART_ROOT
+#define SLICE_EQUIP_ART_ROOT ""
+#endif
+
+TEST_CASE("shipped equipment kit: mapped ids resolve, unmapped items keep the kind fallback and today's quads") {
+    const eng::presentation::EquipArtTable table = eng::presentation::EquipArtTable::load(SLICE_EQUIP_ART_ROOT);
+    const EquipVisual sword = equip_scene::item(1, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longsword");
+    const EquipVisual club = equip_scene::item(2, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.club");
+    const EquipVisual quiver = equip_scene::item(6, AttachSlot::Back, EquipKind::Other, "srd51.item.quiver");
+    const EquipVisual bolts = equip_scene::item(7, AttachSlot::Back, EquipKind::Other, "srd51.item.case_crossbow_bolt");
+    const EquipVisual other = equip_scene::item(99, AttachSlot::Back, EquipKind::Other, "srd51.item.no_such_pack");
+    const EquipArtChoice sword_c = equip_art_choice(&table, sword, EquipPart::MainHand, Facing::SouthEast, "");
+    const EquipArtChoice club_c = equip_art_choice(&table, club, EquipPart::MainHand, Facing::SouthEast, "medium");
+    // Neither weapon is an H4 content-id sprite. They share the kind fallback (null until a _kind file exists).
+    CHECK(sword_c.sprite == club_c.sprite);
+    const eng::Vec2f hand = attach_points(Facing::SouthEast).main_hand;
+    const std::vector<EquipQuad> sword_q = equip_quads(sword, EquipPart::MainHand, hand);
+    CHECK(sword_q.size() == 2);
+    CHECK(sword_q[0].size.x == 3.f);
+    CHECK(sword_q[0].size.y == 16.f);
+    CHECK(sword_q[1].size.x == 7.f);
+    CHECK(sword_q[1].size.y == 2.f);
+    CHECK_FALSE(sword_q[0].emissive);
+    CHECK_FALSE(sword_c.mirror_x);
+
+    const EquipArtChoice quiver_c = equip_art_choice(&table, quiver, EquipPart::Back, Facing::SouthEast, "medium");
+    const EquipArtChoice bolt_c = equip_art_choice(&table, bolts, EquipPart::Back, Facing::SouthEast, "medium");
+    const EquipArtChoice kind_c = equip_art_choice(&table, other, EquipPart::Back, Facing::SouthEast, "medium");
+    if (quiver_c.sprite != kind_c.sprite && bolt_c.sprite != kind_c.sprite) {
+        REQUIRE(quiver_c.sprite);
+        REQUIRE(bolt_c.sprite);
+        CHECK(quiver_c.sprite != bolt_c.sprite);
+    }
+    const eng::Vec2f back = attach_points(Facing::SouthEast).back;
+    if (quiver_c.sprite == nullptr && bolt_c.sprite == nullptr) {
+        const std::vector<EquipQuad> quiver_q = equip_quads(quiver, EquipPart::Back, back);
+        const std::vector<EquipQuad> bolt_q = equip_quads(bolts, EquipPart::Back, back);
+        CHECK(same_quads(quiver_q, bolt_q));
+        CHECK(quiver_q.size() == 1);
+        CHECK(quiver_q[0].size.x == 14.f);
+        CHECK(quiver_q[0].size.y == 16.f);
+    }
+}

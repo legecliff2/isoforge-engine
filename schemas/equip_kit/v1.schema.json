@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/equip_kit/v1.schema.json",
+  "title": "equip_kit@1",
+  "description": "Equipment art kit manifest (presentation only). equip_kit@1 is the first version of this document: there is no earlier body to migrate, the same way item@1, spell@1 and manifest@1 have no inbound migration. It is not a sim content document, it is not registered in the engine schema registry, and it is not folded into Combat::hash, log_hash, or chunk content_hash. A later mechanical change to an existing field would be equip_kit@2 with an identity migration of this body. Loose PNGs stay in the PR A layout under the kit root ({content_id}/{part}.{view}.png, optional {content_id}/{bin}/ for a size override, _kind/{weapon|shield|light|other}/ for the kind fallback). view is se (toward) or ne (away). West is an engine mirror and has no file or field. One pivot per sprite; absent means bottom-centre of the cell (width/2, height-1). H4 cells are 24x24 and H4's provisional pivot is [12, 20] where that art names one. Do not author a non-medium bin until that art exists. back_role is optional per content_id (quiver, bolt_case, pack, other). Shields and two-handed weapons omit it. neck is the holy-symbol amulet part and has the toward view only. Per-body attach tables are not this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "cell"],
+  "$defs": {
+    "content_id": {
+      "$ref": "../common/v1.schema.json#/$defs/content_id"
+    },
+    "part_name": {
+      "enum": ["back", "hip", "main_hand", "off_hand", "held_light", "neck"],
+      "description": "PR A parts, plus neck for a holy symbol amulet. hip is the sheathed or belt view; the renderer assigns the side. There is no hip-main, hip-off, hip-left, or hip-right."
+    },
+    "view_name": {
+      "enum": ["se", "ne"],
+      "description": "se is toward, ne is away. sw and nw are not stored."
+    },
+    "bin_name": {
+      "enum": ["tiny", "small", "medium", "large", "huge"],
+      "description": "Optional size-bin override. Omitted means the flat medium file. A non-medium bin is the second key and falls back to medium in the loader. Do not populate one until that art exists."
+    },
+    "pivot": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {"type": "integer", "minimum": 0, "description": "Column from the left."},
+        {"type": "integer", "minimum": 0, "description": "Row from the top."}
+      ],
+      "description": "The one pixel that sits on the attach point. The validator requires it inside the cell. Absent: bottom-centre."
+    },
+    "region": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "w", "h"],
+      "description": "Rectangle in the optional atlas. The loader still reads the loose PNG. name, when set, is the content id's last segment plus the view (quiver.se), matched whole, not as a substring.",
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9_]+\\.(se|ne)$"},
+        "x": {"type": "integer", "minimum": 0},
+        "y": {"type": "integer", "minimum": 0},
+        "w": {"type": "integer", "minimum": 1},
+        "h": {"type": "integer", "minimum": 1}
+      }
+    },
+    "sprite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["view"],
+      "properties": {
+        "view": {"$ref": "#/$defs/view_name"},
+        "pivot": {"$ref": "#/$defs/pivot"},
+        "region": {"$ref": "#/$defs/region"}
+      }
+    },
+    "part": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["part", "views"],
+      "properties": {
+        "part": {"$ref": "#/$defs/part_name"},
+        "bin": {"$ref": "#/$defs/bin_name"},
+        "views": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/sprite"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["part"],
+            "properties": {"part": {"const": "neck"}}
+          },
+          "then": {
+            "properties": {
+              "views": {
+                "minItems": 1,
+                "maxItems": 1,
+                "items": {
+                  "properties": {"view": {"const": "se"}}
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_id", "parts"],
+      "properties": {
+        "content_id": {"$ref": "#/$defs/content_id"},
+        "back_role": {
+          "enum": ["quiver", "bolt_case", "pack", "other"],
+          "description": "Optional. Set on a quiver, a bolt case, or a backpack. Omit it on a shield or a two-handed weapon."
+        },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/part"}
+        }
+      }
+    },
+    "kind_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "parts"],
+      "description": "Kind fallback, medium only, at _kind/{kind}/{part}.{view}.png. No back_role and no size bin: the loader does not read those on a kind.",
+      "properties": {
+        "kind": {"enum": ["weapon", "shield", "light", "other"]},
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/part"}
+        }
+      }
+    }
+  },
+  "properties": {
+    "$schema": {"const": "equip_kit@1"},
+    "description": {"type": "string"},
+    "cell": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {"type": "integer", "minimum": 1},
+        {"type": "integer", "minimum": 1}
+      ],
+      "description": "Sprite cell in pixels. H4 is [24, 24]. Every loose PNG and every atlas region is this size."
+    },
+    "atlas": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+\\.png$",
+      "description": "Optional atlas PNG in this directory. Tools may pack the loose PNGs into it. The loader reads the loose files."
+    },
+    "items": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/entry"},
+      "description": "One entry per content_id. Empty when no sprite file exists yet. Ids are matched whole."
+    },
+    "kinds": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/kind_entry"}
+    }
+  }
+}
