@@ -1032,10 +1032,29 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // else the first all-ranged option under those constraints when can_shoot is true for its first attack.
     // Mixed melee+ranged options are never started. after_action sequences are never started.
     uint8_t multi = 0;   // ActionRequest::multiattack to send (0 = continue / plain attack)
+    // C-T T12: in a bite slot, Swallow when the target is grappled by this creature, Large or smaller, and alive.
+    // Otherwise the listed attack (the bite). No alternate means the index is unchanged.
+    auto swallow_slot = [&](const rules5e::AttackSequence& seq, uint8_t slot) -> uint8_t {
+        if (seq.alternates.empty() || !t || t->dead) return slot;
+        if (int(t->size) > int(rules5e::Size::Large)) return slot;
+        if (!t->has(rules5e::Condition::Grappled) ||
+            rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) != self)
+            return slot;
+        for (const auto& alt : seq.alternates) {
+            if (alt.slot != slot || alt.instead >= me->attacks.size()) continue;
+            const rules5e::Attack& sw = me->attacks[alt.instead];
+            if ((sw.target_requires_any & rules5e::kTargetGateGrappledBySelf) == 0) continue;
+            if (sw.target_max_size >= 0 && int(t->size) > int(sw.target_max_size)) continue;
+            if (!possession_attack_ok(*me, alt.instead)) continue;
+            return alt.instead;
+        }
+        return slot;
+    };
     if (s.budget.sequence != 0 && s.budget.sequence <= me->multiattacks.size()) {
         if (const int next = rules5e::multiattack_next(me->multiattacks, s.budget.sequence, s.budget.sequence_pos); next >= 0) {
             if (!possession_attack_ok(*me, uint8_t(next))) return end;
-            ai = uint8_t(next);
+            const auto& seq = me->multiattacks[s.budget.sequence - 1];
+            ai = swallow_slot(seq, uint8_t(next));
         }
     } else {
         auto pure = [&](const rules5e::AttackSequence& seq, bool ranged) {
@@ -1051,9 +1070,11 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             if (ranged_i < 0 && pure(me->multiattacks[i], true)) ranged_i = int(i);
         }
         if (melee_i >= 0) {
-            const uint8_t a0 = me->multiattacks[std::size_t(melee_i)].attacks[0];
-            if (c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[a0].reach_or_range_ft)) {
-                ai = a0;
+            const auto& seq = me->multiattacks[std::size_t(melee_i)];
+            const uint8_t a0 = seq.attacks[0];
+            const uint8_t use = swallow_slot(seq, a0);
+            if (c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[use].reach_or_range_ft)) {
+                ai = use;
                 multi = uint8_t(melee_i + 1);
             }
         }
@@ -1255,7 +1276,7 @@ bool choose_grapple_instead(const Combat& c, const rules5e::ActionRequest& q) {
 }
 
 Command next_command(const Combat& c, std::optional<CombatantId> target) {
-    if (c.state().legendary_window.x != 0) {   // the built-in policy always passes
+    if (c.state().legendary_window.x != 0) {   // C-T T12: the built-in policy never spends a legendary action
         Command pass;
         pass.request = {c.state().legendary_window.candidate, ActionKind::LegendaryAction};
         return pass;
@@ -1323,7 +1344,7 @@ RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_comman
         return p ? p->decide_reaction(cc, n) : ReactionDecision{n.window_seq, false, 0};
     };
     while (!c.ended() && rr.commands < max_commands) {
-        if (c.state().legendary_window.x != 0) {   // pass, then the queue moves; the built-in policy does not spend
+        if (c.state().legendary_window.x != 0) {   // C-T T12: pass, then the queue moves; the policy does not spend
             Command pass;
             pass.request = {c.state().legendary_window.candidate, ActionKind::LegendaryAction};
             auto r = c.submit(pass);
