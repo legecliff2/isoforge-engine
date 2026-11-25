@@ -695,7 +695,7 @@ TEST_CASE("Change Shape own-actions gate: save action and feature are refused, a
     REQUIRE_MESSAGE(mended.ok, mended.error);
 }
 
-TEST_CASE("Change Shape pool: the fourteen exclusion groups stay out, and test 16 pins the 42 S1 ids in byte order") {
+TEST_CASE("Change Shape pool: the fourteen exclusion groups stay out, and a CR 4 select pool is the 42 S1 ids in byte order") {
     ContentLibrary small;
     auto eligible = [](const std::string& id, const char* cr) {
         Json m = goblin_base(id);
@@ -812,7 +812,8 @@ TEST_CASE("Change Shape pool: the fourteen exclusion groups stay out, and test 1
     CHECK(std::find(ff->forms.begin(), ff->forms.end(), "test.pool.resources") == ff->forms.end());
     CHECK(a->feature_specs.at(1).form_choices == 2);
 
-    // The pack: 112 humanoid or beast at CR 4 or lower, 88 after D4, then D4(e) and D4(f) leave 42.
+    // The pack: 116 humanoid or beast at CR 4 or lower (the four insect swarms are beasts), 88 after D4
+    // (the swarm tag drops them), then D4(e) and D4(f) leave 42.
     ContentLibrary pack;
     const auto dir = std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/srd51.core";
     REQUIRE(pack.load_pack(dir.string()).empty());
@@ -840,7 +841,10 @@ TEST_CASE("Change Shape pool: the fourteen exclusion groups stay out, and test 1
     for (const char* absent : {"srd51.monster.acolyte", "srd51.monster.cult_fanatic", "srd51.monster.deep_gnome",
                                "srd51.monster.drow", "srd51.monster.druid", "srd51.monster.priest",
                                "srd51.monster.wereboar", "srd51.monster.wererat", "srd51.monster.weretiger",
-                               "srd51.monster.werewolf", "srd51.monster.swarm_of_rats", "srd51.monster.bandit_captain",
+                               "srd51.monster.werewolf", "srd51.monster.swarm_of_rats",
+                               "srd51.monster.swarm_of_insects", "srd51.monster.swarm_of_beetles",
+                               "srd51.monster.swarm_of_centipedes", "srd51.monster.swarm_of_spiders",
+                               "srd51.monster.swarm_of_wasps", "srd51.monster.bandit_captain",
                                "srd51.monster.noble", "srd51.monster.knight", "srd51.monster.wolf",
                                "srd51.monster.goblin", "srd51.monster.spy", "srd51.monster.orc",
                                "srd51.monster.berserker", "srd51.monster.boar", "srd51.monster.giant_boar"})
@@ -1606,7 +1610,7 @@ bool attack_named(const rules5e::Attack& at, const char* needle) {
 
 }  // namespace
 
-TEST_CASE("Change Shape test 16: the real couatl's pool is the 42 pinned ids, and Change Shape is available at spawn") {
+TEST_CASE("Change Shape test 16: srd51.monster.couatl's pool is the 42 pinned ids, and Change Shape is available at spawn") {
     CouatlPool c;
     CHECK_FALSE(c.who->base.shapechanger);
     CHECK(c.who->base.creature_type == rules5e::CreatureType::Celestial);
@@ -1794,4 +1798,121 @@ TEST_CASE("Change Shape D7b: the real couatl's form attacks are magical while tr
     CHECK((me->attacks[0].qualifiers & rules5e::kAttackMagical) != 0);
     CHECK((me->attacks[1].qualifiers & rules5e::kAttackMagical) != 0);
     for (const auto& at : form->base.attacks) CHECK((at.qualifiers & rules5e::kAttackMagical) == 0);
+}
+
+TEST_CASE("Change Shape M1: the real couatl's Bite poison rider does not fire from a form attack; revert restores it") {
+    // The M1 fixture drops the sting rider (AttackIs on attack 0) for the form and puts it back on
+    // revert. This is the same rule on srd51.monster.couatl: Bite's on_hit is a Constitution DC 13
+    // save that poisons. Ape's fist is attack 0 of a pool form, the slot that rider indexed.
+    CouatlPool c;
+    const Archetype* form = c.lib.find("srd51.monster.ape");
+    REQUIRE(form);
+    REQUIRE_FALSE(form->base.attacks.empty());
+    CHECK(form->base.attacks[0].id != "bite");
+    std::size_t ape = c.pool->forms.size();
+    for (std::size_t i = 0; i < c.pool->forms.size(); ++i)
+        if (c.pool->forms[i] == "srd51.monster.ape") ape = i;
+    REQUIRE(ape < c.pool->forms.size());
+    // The goblin has 7 hit points, so one fist or the bite can drop it before the restored rider
+    // rolls. The thug has 32 and AC 11, and is not immune to poison.
+    auto chunk = arena({{"srd51.monster.couatl", {4, 4}}, {"srd51.monster.thug", {5, 4}}}, {"", "foes"});
+    ecs::Registry reg;
+    auto combat = Combat::create(reg, chunk, c.lib, 11);
+    REQUIRE(combat);
+    const CombatantId self = chunk.spawns[0].stable_id;
+    const CombatantId foe = chunk.spawns[1].stable_id;
+    reach(*combat, self);
+    const auto* before = rules5e::find(combat->state(), self);
+    REQUIRE(before);
+    REQUIRE(before->attacks.size() == 2);
+    CHECK(before->attacks[0].id == "bite");
+    uint32_t bite_rider = 0;
+    for (const auto& t : before->triggers) {
+        bool attack_is_bite = false;
+        for (const auto& p : t.when)
+            if (p.kind == rules5e::PredicateKind::AttackIs && p.a == 0) attack_is_bite = true;
+        if (!attack_is_bite) continue;
+        REQUIRE(bite_rider == 0);
+        REQUIRE(t.effects.size() == 1);
+        CHECK(t.effects[0].kind == rules5e::RiderKind::SaveCondition);
+        const rules5e::SpellDef* spell = c.lib.spells()->find(t.effects[0].spell_id);
+        REQUIRE(spell);
+        CHECK(spell->save_ability == rules5e::Ability::Con);
+        CHECK(spell->fixed_dc == 13);
+        CHECK(spell->applies_condition);
+        CHECK(spell->condition == rules5e::Condition::Poisoned);
+        bite_rider = t.id;
+    }
+    REQUIRE(bite_rider != 0);
+    Command u;
+    u.request = {self, ActionKind::UseFeature};
+    u.request.feature_id = c.fid;
+    u.request.form_archetype = uint8_t(ape + 1);
+    auto tr = combat->submit(u);
+    REQUIRE_MESSAGE(tr.ok, tr.error);
+    const auto* shaped = rules5e::find(combat->state(), self);
+    REQUIRE(shaped);
+    CHECK(shaped->form == FormKind::Shapechanger);
+    REQUIRE_FALSE(shaped->attacks.empty());
+    CHECK(shaped->attacks[0].id == form->base.attacks[0].id);
+    for (const auto& t : shaped->triggers) CHECK(t.id != bite_rider);
+    Command done;
+    done.request = {self, ActionKind::EndTurn};
+    REQUIRE(combat->submit(done).ok);
+    auto con_saves_since = [&](std::size_t mark) {
+        int n = 0;
+        for (std::size_t i = mark; i < combat->events().size(); ++i) {
+            const auto& e = combat->events()[i];
+            if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::SavingThrowRolled && e.rules.actor == foe &&
+                e.rules.target == CombatantId(rules5e::Ability::Con))
+                ++n;
+        }
+        return n;
+    };
+    auto hit = [&](uint8_t attack) {
+        for (int n = 0; n < 8; ++n) {
+            reach(*combat, self);
+            const auto mark = combat->events().size();
+            Command atk;
+            atk.request = {self, ActionKind::Attack, foe, attack};
+            auto r = combat->submit(atk);
+            REQUIRE_MESSAGE(r.ok, r.error);
+            bool landed = false;
+            for (std::size_t i = mark; i < combat->events().size(); ++i) {
+                const auto& e = combat->events()[i];
+                if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::AttackResolved && e.rules.actor == self &&
+                    (e.rules.c & 1))
+                    landed = true;
+            }
+            if (landed) return mark;
+            Command end;
+            end.request = {self, ActionKind::EndTurn};
+            REQUIRE(combat->submit(end).ok);
+        }
+        FAIL("attack did not hit");
+        return combat->events().size();
+    };
+    const auto form_mark = hit(0);   // ape fist, the slot the own Bite rider indexed
+    CHECK(con_saves_since(form_mark) == 0);
+    Command end;
+    end.request = {self, ActionKind::EndTurn};
+    REQUIRE(combat->submit(end).ok);
+    reach(*combat, self);
+    Command rev;
+    rev.request = {self, ActionKind::Revert};
+    REQUIRE(combat->submit(rev).ok);
+    const auto* back = rules5e::find(combat->state(), self);
+    REQUIRE(back);
+    CHECK(back->form == FormKind::None);
+    REQUIRE(back->attacks.size() == 2);
+    CHECK(back->attacks[0].id == "bite");
+    bool restored = false;
+    for (const auto& t : back->triggers)
+        if (t.id == bite_rider) restored = true;
+    CHECK(restored);
+    Command spent;
+    spent.request = {self, ActionKind::EndTurn};
+    REQUIRE(combat->submit(spent).ok);
+    const auto own_mark = hit(0);
+    CHECK(con_saves_since(own_mark) > 0);
 }
