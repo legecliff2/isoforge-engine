@@ -6993,7 +6993,19 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         else if (req.squeeze == 2) a.squeezing = false;
         s.budget = b;
         emit(out.events, EventKind::Moved, a.id, 0, req.move_ft, b.movement_ft);
-        if (corpse && *corpse < s.effects.size() && s.effects[*corpse].target == a.id) {
+        // Re-find: an opportunity attack on the way out can insert or drop an earlier effect.
+        if (corpse) {
+            corpse.reset();
+            for (std::size_t i = 0; i < s.effects.size(); ++i) {
+                const ActiveSpellEffect& e = s.effects[i];
+                if (e.contain != 2 || e.target != a.id || e.contain_exit_ft == 0 || !e.no_condition) continue;
+                const Combatant* box = find(s, e.caster);
+                if (box && !box->dead) continue;
+                corpse = i;
+                break;
+            }
+        }
+        if (corpse) {
             // C-T T8: the exit costs exit_ft. Blinded owned by the swallow ends. The creature lands prone.
             // Kind 4 is rules output, not an event. Sim places the logged tile in TP2.
             const CombatantId box = s.effects[*corpse].caster, who = s.effects[*corpse].target;
