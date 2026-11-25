@@ -23,7 +23,8 @@ if(ENGINE_BUILD_TESTS)
         SLICE_PACK_ROOT="${PROJECT_SOURCE_DIR}/content/packs" SLICE_PACK="sample.vertical_slice"
         SLICE_CLIP_FILE="${PROJECT_SOURCE_DIR}/content/packs/srd51.core/art/clips.json"
         SLICE_STANDIN_ROOT="${PROJECT_SOURCE_DIR}/content/art/monster_standins"
-        SLICE_EQUIP_ART_ROOT="${PROJECT_SOURCE_DIR}/content/art/equipment")
+        SLICE_EQUIP_ART_ROOT="${PROJECT_SOURCE_DIR}/content/art/equipment"
+        SLICE_H4_EQUIP_FIXTURE="${PROJECT_SOURCE_DIR}/game/vertical_slice/tests/fixtures/h4_equip_kit")
     _engine_warnings(vertical_slice_tests)
     add_test(NAME vertical_slice_tests COMMAND vertical_slice_tests)
 

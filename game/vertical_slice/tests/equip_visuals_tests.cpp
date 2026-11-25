@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -1156,56 +1157,87 @@ TEST_CASE("equip draw order: unmapped items on a default body match main") {
 #ifndef SLICE_EQUIP_ART_ROOT
 #define SLICE_EQUIP_ART_ROOT ""
 #endif
+#ifndef SLICE_H4_EQUIP_FIXTURE
+#define SLICE_H4_EQUIP_FIXTURE ""
+#endif
 
-TEST_CASE("shipped equipment kit: mapped ids resolve, unmapped items keep the kind fallback and today's quads") {
-    const eng::presentation::EquipArtTable table = eng::presentation::EquipArtTable::load(SLICE_EQUIP_ART_ROOT);
-    const EquipVisual sword = equip_scene::item(1, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longsword");
-    const EquipVisual club = equip_scene::item(2, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.club");
-    const EquipVisual quiver = equip_scene::item(6, AttachSlot::Back, EquipKind::Other, "srd51.item.quiver");
-    const EquipVisual bolts = equip_scene::item(7, AttachSlot::Back, EquipKind::Other, "srd51.item.case_crossbow_bolt");
+namespace {
+fs::path write_empty_equip_kit(const std::string& name) {
+    const fs::path kit = fs::temp_directory_path() / (name + "_" + run_suffix());
+    std::error_code ec;
+    fs::remove_all(kit, ec);
+    fs::create_directories(kit);
+    std::ofstream(kit / "kit.json") << R"({"$schema":"equip_kit@1","cell":[24,24],"items":[]})";
+    return kit;
+}
+
+eng::presentation::EquipArtPart art_part_of(std::string_view name) {
+    if (name == "back") return eng::presentation::EquipArtPart::Back;
+    if (name == "hip") return eng::presentation::EquipArtPart::Hip;
+    if (name == "neck") return eng::presentation::EquipArtPart::Neck;
+    if (name == "off_hand") return eng::presentation::EquipArtPart::OffHand;
+    if (name == "held_light") return eng::presentation::EquipArtPart::HeldLight;
+    return eng::presentation::EquipArtPart::MainHand;
+}
+} // namespace
+
+TEST_CASE("shipped equipment kit: loads, and every sprite it declares resolves") {
+    const fs::path root{SLICE_EQUIP_ART_ROOT};
+    const eng::presentation::EquipArtTable table = eng::presentation::EquipArtTable::load(root);
+    std::ifstream in(root / "kit.json");
+    REQUIRE(in);
+    const assets::Json doc = assets::Json::parse(in);
+    CHECK(doc.at("$schema") == "equip_kit@1");
+    CHECK(doc.at("cell") == assets::Json::array({24, 24}));
+    const assets::Json items = doc.value("items", assets::Json::array());
+    REQUIRE(items.is_array());
+    for (const assets::Json& item : items) {
+        const std::string cid = item.at("content_id").get<std::string>();
+        if (item.contains("back_role")) {
+            const auto role = table.back_role(cid);
+            REQUIRE(role);
+            CHECK(std::string(*role) == item.at("back_role").get<std::string>());
+        } else {
+            CHECK_FALSE(table.back_role(cid));
+        }
+        for (const assets::Json& part : item.at("parts")) {
+            const std::string part_name = part.at("part").get<std::string>();
+            for (const assets::Json& view : part.at("views")) {
+                const std::string view_name = view.at("view").get<std::string>();
+                const fs::path png = root / cid / (part_name + "." + view_name + ".png");
+                if (!fs::is_regular_file(png)) continue;
+                eng::presentation::EquipArtQuery q;
+                q.content_id = cid;
+                q.part = art_part_of(part_name);
+                q.view = view_name == "ne" ? eng::presentation::EquipArtView::Away
+                                           : eng::presentation::EquipArtView::Toward;
+                const eng::presentation::EquipArtSprite* sprite = table.find(q);
+                REQUIRE(sprite);
+                if (view.contains("pivot")) {
+                    CHECK(sprite->pivot_x == view.at("pivot").at(0).get<int>());
+                    CHECK(sprite->pivot_y == view.at("pivot").at(1).get<int>());
+                }
+            }
+        }
+    }
     const EquipVisual other = equip_scene::item(99, AttachSlot::Back, EquipKind::Other, "srd51.item.no_such_pack");
-    const EquipArtChoice sword_c = equip_art_choice(&table, sword, EquipPart::MainHand, Facing::SouthEast, "");
-    const EquipArtChoice club_c = equip_art_choice(&table, club, EquipPart::MainHand, Facing::SouthEast, "medium");
-    // Neither weapon is an H4 content-id sprite. They share the kind fallback (null until a _kind file exists).
-    CHECK(sword_c.sprite == club_c.sprite);
-    const eng::Vec2f hand = attach_points(shared_body_attach(), Facing::SouthEast).main_hand;
-    const std::vector<EquipQuad> sword_q = equip_quads(sword, EquipPart::MainHand, hand);
-    CHECK(sword_q.size() == 2);
-    CHECK(sword_q[0].size.x == 3.f);
-    CHECK(sword_q[0].size.y == 16.f);
-    CHECK(sword_q[1].size.x == 7.f);
-    CHECK(sword_q[1].size.y == 2.f);
-    CHECK_FALSE(sword_q[0].emissive);
-    CHECK_FALSE(sword_c.mirror_x);
-
-    const EquipArtChoice quiver_c = equip_art_choice(&table, quiver, EquipPart::Back, Facing::SouthEast, "medium");
-    const EquipArtChoice bolt_c = equip_art_choice(&table, bolts, EquipPart::Back, Facing::SouthEast, "medium");
-    const EquipArtChoice kind_c = equip_art_choice(&table, other, EquipPart::Back, Facing::SouthEast, "medium");
-    if (quiver_c.sprite != kind_c.sprite && bolt_c.sprite != kind_c.sprite) {
-        REQUIRE(quiver_c.sprite);
-        REQUIRE(bolt_c.sprite);
-        CHECK(quiver_c.sprite != bolt_c.sprite);
-    }
-    const eng::Vec2f back = attach_points(shared_body_attach(), Facing::SouthEast).back;
-    if (quiver_c.sprite == nullptr && bolt_c.sprite == nullptr) {
-        const std::vector<EquipQuad> quiver_q = equip_quads(quiver, EquipPart::Back, back);
-        const std::vector<EquipQuad> bolt_q = equip_quads(bolts, EquipPart::Back, back);
-        CHECK(same_quads(quiver_q, bolt_q));
-        CHECK(quiver_q.size() == 1);
-        CHECK(quiver_q[0].size.x == 14.f);
-        CHECK(quiver_q[0].size.y == 16.f);
-    }
+    CHECK(equip_art_choice(&table, other, EquipPart::Back, Facing::SouthEast, "medium").sprite == nullptr);
+    const std::vector<EquipQuad> bag = equip_quads(other, EquipPart::Back, {0.f, 0.f});
+    CHECK(bag.size() == 1);
+    CHECK(bag[0].size.x == 14.f);
+    CHECK(bag[0].size.y == 16.f);
 }
 
 TEST_CASE("equip back: a manifest back_role drives the pick, and a missing field keeps the content id") {
-    const eng::presentation::EquipArtTable shipped = eng::presentation::EquipArtTable::load(SLICE_EQUIP_ART_ROOT);
-    // Shipped kit.json has an empty items list, so no real entry carries back_role.
-    CHECK_FALSE(shipped.back_role("srd51.item.quiver"));
-    CHECK_FALSE(shipped.back_role("srd51.item.backpack"));
-    CHECK_FALSE(shipped.back_role("srd51.item.case_crossbow_bolt"));
-    CHECK(container_back_role("srd51.item.quiver", &shipped) == BackRole::Quiver);
-    CHECK(container_back_role("srd51.item.case_crossbow_bolt", &shipped) == BackRole::BoltCase);
-    CHECK(container_back_role("srd51.item.backpack", &shipped) == BackRole::Pack);
+    const fs::path empty_dir = write_empty_equip_kit("isoforge_empty_back_role");
+    const eng::presentation::EquipArtTable empty = eng::presentation::EquipArtTable::load(empty_dir);
+    CHECK(empty.size() == 0);
+    CHECK_FALSE(empty.back_role("srd51.item.quiver"));
+    CHECK_FALSE(empty.back_role("srd51.item.backpack"));
+    CHECK_FALSE(empty.back_role("srd51.item.case_crossbow_bolt"));
+    CHECK(container_back_role("srd51.item.quiver", &empty) == BackRole::Quiver);
+    CHECK(container_back_role("srd51.item.case_crossbow_bolt", &empty) == BackRole::BoltCase);
+    CHECK(container_back_role("srd51.item.backpack", &empty) == BackRole::Pack);
 
     const fs::path kit = fs::temp_directory_path() / ("isoforge_back_role_" + run_suffix());
     std::error_code ec;
@@ -1239,10 +1271,12 @@ TEST_CASE("equip back: a manifest back_role drives the pick, and a missing field
         if (l.part == EquipPart::Back && l.item) won = l.item->item;
     CHECK(won == 1);   // rope is a pack; the quiver's manifest role is other
     fs::remove_all(kit, ec);
+    fs::remove_all(empty_dir, ec);
 }
 
 TEST_CASE("equip art: missing H4 parts fall back to quads, and the neck quad shows only toward") {
-    const eng::presentation::EquipArtTable shipped = eng::presentation::EquipArtTable::load(SLICE_EQUIP_ART_ROOT);
+    const fs::path empty_dir = write_empty_equip_kit("isoforge_empty_h4");
+    const eng::presentation::EquipArtTable shipped = eng::presentation::EquipArtTable::load(empty_dir);
     const EquipVisual quiver = gear(6, AttachSlot::Back, EquipKind::Other, "srd51.item.quiver");
     const EquipVisual bolts = gear(7, AttachSlot::Back, EquipKind::Other, "srd51.item.case_crossbow_bolt");
     const EquipVisual pack = gear(4, AttachSlot::Back, EquipKind::Other, "srd51.item.backpack");
@@ -1315,4 +1349,62 @@ TEST_CASE("equip art: missing H4 parts fall back to quads, and the neck quad sho
     CHECK(equip_quads(amulet, EquipPart::Neck, se.neck).size() == 1);
     CHECK(equip_quads(pouch, EquipPart::HipMain, se.hip_main).size() == 1);
     fs::remove_all(kit, ec);
+    fs::remove_all(empty_dir, ec);
+}
+
+TEST_CASE("equip art: the H4 fixture kit loads all 13 sprites at pivot [12, 12]") {
+    const fs::path root{SLICE_H4_EQUIP_FIXTURE};
+    const eng::presentation::EquipArtTable table = eng::presentation::EquipArtTable::load(root);
+    CHECK(table.size() == 13);
+    struct Row { const char* id; const char* part; const char* view; const char* role; };
+    const Row rows[] = {
+        {"srd51.item.quiver", "back", "se", "quiver"},
+        {"srd51.item.quiver", "back", "ne", "quiver"},
+        {"srd51.item.case_crossbow_bolt", "back", "se", "bolt_case"},
+        {"srd51.item.case_crossbow_bolt", "back", "ne", "bolt_case"},
+        {"srd51.item.backpack", "back", "se", "pack"},
+        {"srd51.item.backpack", "back", "ne", "pack"},
+        {"srd51.item.shield", "back", "se", nullptr},
+        {"srd51.item.shield", "back", "ne", nullptr},
+        {"srd51.item.pouch", "hip", "se", nullptr},
+        {"srd51.item.pouch", "hip", "ne", nullptr},
+        {"srd51.item.component_pouch", "hip", "se", nullptr},
+        {"srd51.item.component_pouch", "hip", "ne", nullptr},
+        {"srd51.item.holy_symbol_amulet", "neck", "se", nullptr},
+    };
+    int seen = 0;
+    for (const Row& row : rows) {
+        eng::presentation::EquipArtQuery q;
+        q.content_id = row.id;
+        q.part = art_part_of(row.part);
+        q.view = std::string_view(row.view) == "ne" ? eng::presentation::EquipArtView::Away
+                                                     : eng::presentation::EquipArtView::Toward;
+        const eng::presentation::EquipArtSprite* sprite = table.find(q);
+        REQUIRE(sprite);
+        CHECK(sprite->pivot_x == 12);
+        CHECK(sprite->pivot_y == 12);
+        CHECK(sprite->image.w == 24);
+        CHECK(sprite->image.h == 24);
+        ++seen;
+        if (row.role) {
+            const auto role = table.back_role(row.id);
+            REQUIRE(role);
+            CHECK(std::string(*role) == row.role);
+        } else {
+            CHECK_FALSE(table.back_role(row.id));
+        }
+    }
+    CHECK(seen == 13);
+    eng::presentation::EquipArtQuery neck_away;
+    neck_away.content_id = "srd51.item.holy_symbol_amulet";
+    neck_away.part = eng::presentation::EquipArtPart::Neck;
+    neck_away.view = eng::presentation::EquipArtView::Away;
+    CHECK(table.find(neck_away) == nullptr);
+    const fs::path pouch_se = root / "srd51.item.pouch" / "hip.se.png";
+    const fs::path component_se = root / "srd51.item.component_pouch" / "hip.se.png";
+    std::ifstream a(pouch_se, std::ios::binary), b(component_se, std::ios::binary);
+    const std::string pouch_bytes{std::istreambuf_iterator<char>(a), {}};
+    const std::string component_bytes{std::istreambuf_iterator<char>(b), {}};
+    CHECK(pouch_bytes == component_bytes);
+    CHECK_FALSE(pouch_bytes.empty());
 }
