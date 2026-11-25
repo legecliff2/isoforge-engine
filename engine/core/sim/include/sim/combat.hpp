@@ -525,6 +525,15 @@ private:
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
     SubmitResult do_step(Vec2i to, bool allow_squeeze = false, int16_t alt_to = 0, uint16_t jump_ft = 0);
+    // C-T T9: a contain==2 swallower, or 0. Engulf (contain==1) is not carried. The corpse state still counts.
+    rules5e::CombatantId swallow_container(rules5e::CombatantId id) const;
+    // Position used for distance_tiles, reach, within_ft and area templates: the container's footprint, else its own.
+    Spot query_spot(rules5e::CombatantId id) const;
+    int query_height(rules5e::CombatantId id) const;
+    // Stored tile and altitude follow the container. Replay runs the same code; no new event kind.
+    void sync_swallowed();
+    // C-T T7: kind-2 exits, in order. Kind 1 and kind 4 are not placed here.
+    void place_regurgitated();
     // altitude PR2: the altitude consequences of a committed Move step (Moved handler; replay runs the same code).
     void step_altitude(const rules5e::ActionRequest& q, int from_ground_ft, int from_abs_ft, bool was_airborne);
     std::vector<Fall> falls_;
