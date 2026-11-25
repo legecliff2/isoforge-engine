@@ -26,15 +26,16 @@ struct TileView {
 // ---- Equipment visuals: a plain-data copy of what the sim's loadout shows on a creature (sim::Combat::loadout). ----
 // Where an item is drawn on its holder's sprite. MainHand / OffHand: the item is held in that hand (a two-handed item is
 // listed once, MainHand). Back: a carried weapon or shield slung on the back, or carried rear gear (backpack, quiver,
-// crossbow bolt case). Hip: a carried belt pouch. Worn armor is not drawn. equipment_visuals picks Back vs Hip from the
-// content id; item@2 has no wear-slot field, and these four are all ItemKind::Other.
-enum class AttachSlot : uint8_t { Back, MainHand, OffHand, Hip };
+// crossbow bolt case). Hip: a belt pouch or a component pouch. Neck: a holy-symbol amulet. Worn armor is not drawn.
+// equipment_visuals picks Back, Hip, and Neck from the content id; item@2 has no wear-slot field.
+enum class AttachSlot : uint8_t { Back, MainHand, OffHand, Hip, Neck };
 enum class EquipKind : uint8_t { Weapon, Shield, Light, Other };
 struct EquipVisual {
     uint32_t    item = 0;            // item instance id (stable; tie-break inside a slot)
     AttachSlot  slot = AttachSlot::MainHand;
     EquipKind   kind = EquipKind::Other;
     uint8_t     hands = 1;           // 2: two-handed (held in both hands, drawn at the main hand)
+    bool        versatile = false;   // weapon property or versatile_damage; presentation copy, not a sim field
     bool        lit = false;         // kHeldLit (lights / a torch)
     uint8_t     light_state = 0;     // rules5e::light_state_index
     uint16_t    bright_ft = 0, dim_ft = 0;   // rules5e::light_radii now (0 / 0 while unlit): the same numbers the glow uses
