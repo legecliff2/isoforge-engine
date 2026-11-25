@@ -92,13 +92,16 @@ struct Json {
     int64_t n = 0;
     std::string s;
     std::vector<Json> a;
-    std::vector<std::pair<std::string, Json>> o;
+    // Parallel arrays, not pair<string, Json>: libstdc++ 14 rejects a
+    // std::pair member while Json is still incomplete (Clang -Werror).
+    std::vector<std::string> keys;
+    std::vector<Json> vals;
 };
 
 const Json* field(const Json& j, std::string_view key) {
     if (j.tag != JsonTag::Object) return nullptr;
-    for (const auto& kv : j.o)
-        if (kv.first == key) return &kv.second;
+    for (std::size_t n = 0; n < j.keys.size(); ++n)
+        if (j.keys[n] == key) return &j.vals[n];
     return nullptr;
 }
 
@@ -152,7 +155,8 @@ private:
             if (!eat(':')) return false;
             Json child;
             if (!value(child)) return false;
-            out.o.emplace_back(std::move(key.s), std::move(child));
+            out.keys.push_back(std::move(key.s));
+            out.vals.push_back(std::move(child));
             skip();
             if (i_ < text_.size() && text_[i_] == ',') { ++i_; continue; }
             return eat('}');
