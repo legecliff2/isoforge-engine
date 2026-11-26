@@ -2,5 +2,92 @@
   "$schema": "equip_kit@1",
   "description": "Loose equipment PNGs under this directory, in the PR A layout. Lists only sprites that exist. H4 cells are 24 by 24. No non-medium bin is authored. A pivot is written only for a sprite that exists; the loader uses bottom-centre when the pivot is absent.",
   "cell": [24, 24],
-  "items": []
+  "items": [
+    {
+      "content_id": "srd51.item.quiver",
+      "back_role": "quiver",
+      "parts": [
+        {
+          "part": "back",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
+        }
+      ]
+    },
+    {
+      "content_id": "srd51.item.case_crossbow_bolt",
+      "back_role": "bolt_case",
+      "parts": [
+        {
+          "part": "back",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
+        }
+      ]
+    },
+    {
+      "content_id": "srd51.item.backpack",
+      "back_role": "pack",
+      "parts": [
+        {
+          "part": "back",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
+        }
+      ]
+    },
+    {
+      "content_id": "srd51.item.shield",
+      "parts": [
+        {
+          "part": "back",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
+        }
+      ]
+    },
+    {
+      "content_id": "srd51.item.pouch",
+      "parts": [
+        {
+          "part": "hip",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
+        }
+      ]
+    },
+    {
+      "content_id": "srd51.item.component_pouch",
+      "parts": [
+        {
+          "part": "hip",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
+        }
+      ]
+    },
+    {
+      "content_id": "srd51.item.holy_symbol_amulet",
+      "parts": [
+        {
+          "part": "neck",
+          "views": [
+            {"view": "se", "pivot": [12, 12]}
+          ]
+        }
+      ]
+    }
+  ]
 }

@@ -24,6 +24,7 @@ if(ENGINE_BUILD_TESTS)
         SLICE_CLIP_FILE="${PROJECT_SOURCE_DIR}/content/packs/srd51.core/art/clips.json"
         SLICE_STANDIN_ROOT="${PROJECT_SOURCE_DIR}/content/art/monster_standins"
         SLICE_EQUIP_ART_ROOT="${PROJECT_SOURCE_DIR}/content/art/equipment"
+        SLICE_EMPTY_EQUIP_KIT="${PROJECT_SOURCE_DIR}/game/vertical_slice/tests/fixtures/empty_equip_kit"
         SLICE_H4_EQUIP_FIXTURE="${PROJECT_SOURCE_DIR}/game/vertical_slice/tests/fixtures/h4_equip_kit")
     _engine_warnings(vertical_slice_tests)
     add_test(NAME vertical_slice_tests COMMAND vertical_slice_tests)
@@ -31,16 +32,22 @@ if(ENGINE_BUILD_TESTS)
     # Overlay perf benchmark (fog + many glows). Built with the tests, never run by ctest (wall-clock, machine dependent).
     add_executable(vertical_slice_overlay_bench tests/overlay_bench.cpp)
     target_link_libraries(vertical_slice_overlay_bench PRIVATE vertical_slice_view eng::render_null)
+    target_compile_definitions(vertical_slice_overlay_bench PRIVATE
+        SLICE_EMPTY_EQUIP_KIT="${PROJECT_SOURCE_DIR}/game/vertical_slice/tests/fixtures/empty_equip_kit")
     _engine_warnings(vertical_slice_overlay_bench)
 
     # Offscreen snapshot of the equipment scene (CPU rasteriser behind IRenderDevice). Built with the tests, never run by ctest.
     add_executable(vertical_slice_equip_snapshot tests/equip_snapshot.cpp)
     target_link_libraries(vertical_slice_equip_snapshot PRIVATE vertical_slice_view)
+    target_compile_definitions(vertical_slice_equip_snapshot PRIVATE
+        SLICE_EMPTY_EQUIP_KIT="${PROJECT_SOURCE_DIR}/game/vertical_slice/tests/fixtures/empty_equip_kit")
     _engine_warnings(vertical_slice_equip_snapshot)
 
     # Offscreen snapshot of a 2x2 / 3x3 / 4x4 footprint. Built with the tests, never run by ctest.
     add_executable(vertical_slice_footprint_snapshot tests/footprint_snapshot.cpp)
     target_link_libraries(vertical_slice_footprint_snapshot PRIVATE vertical_slice_view)
+    target_compile_definitions(vertical_slice_footprint_snapshot PRIVATE
+        SLICE_EMPTY_EQUIP_KIT="${PROJECT_SOURCE_DIR}/game/vertical_slice/tests/fixtures/empty_equip_kit")
     _engine_warnings(vertical_slice_footprint_snapshot)
 endif()
 

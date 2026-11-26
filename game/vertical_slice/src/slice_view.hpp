@@ -16,7 +16,10 @@ namespace slice {
 
 class SliceView {
 public:
+    // Loads the shipped equipment kit (SLICE_EQUIP_ART_ROOT).
     explicit SliceView(eng::render::IRenderDevice&);
+    // Loads `equip_kit_root` instead. Tests pass the empty kit or the H4 fixture.
+    explicit SliceView(eng::render::IRenderDevice&, std::string_view equip_kit_root);
     ~SliceView();
 
     // World px of the centre of tile (x, y) at elevation 0.

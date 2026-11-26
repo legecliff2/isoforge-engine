@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
     if (side < 1) { std::fprintf(stderr, "side must be >= 1\n"); return 2; }
     const uint32_t W = 1100, H = 760;
     SoftDevice dev(W, H);
-    slice::SliceView view(dev);
+    slice::SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     const slice::ViewModel vm = scene(side);
     const slice::FootprintGeom fp = slice::footprint_geom(vm.actors[1].tile, side, 64.f, 32.f);
     iso2d::Camera cam;

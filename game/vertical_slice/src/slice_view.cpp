@@ -362,8 +362,8 @@ struct SliceView::EquipArt {
         return it->second;
     }
 
-    explicit EquipArt(IRenderDevice& d) : dev(d) {
-        table = presentation::EquipArtTable::load(SLICE_EQUIP_ART_ROOT);
+    explicit EquipArt(IRenderDevice& d, std::string_view root) : dev(d) {
+        table = presentation::EquipArtTable::load(std::filesystem::path{root});
         authored.resize(table.size());
         mirrored.resize(table.size());
         for (size_t i = 0; i < table.size(); ++i) {
@@ -394,9 +394,11 @@ struct SliceView::EquipArt {
     }
 };
 
-SliceView::SliceView(IRenderDevice& dev)
+SliceView::SliceView(IRenderDevice& dev) : SliceView(dev, SLICE_EQUIP_ART_ROOT) {}
+
+SliceView::SliceView(IRenderDevice& dev, std::string_view equip_kit_root)
     : world_(dev, 8192), ui_(dev, 8192), lights_(dev), fogs_(dev), tex_(std::make_unique<Textures>(dev)),
-      standins_(std::make_unique<StandinCache>(dev)), equip_art_(std::make_unique<EquipArt>(dev)) {}
+      standins_(std::make_unique<StandinCache>(dev)), equip_art_(std::make_unique<EquipArt>(dev, equip_kit_root)) {}
 
 // Mirrors the LightFrame into per-chunk R8 light and fog maps. The tracked set (sampled + blocked
 // chunks) is reconciled against the snapshot (robust to skipped frames). Blocked chunks are kept

@@ -22,7 +22,7 @@ void frame(render::NullDevice& dev, SliceView& v, const ViewModel& vm) {
 }
 uint32_t sprites_of(const ViewModel& vm) {
     render::NullDevice dev;
-    SliceView v(dev);
+    SliceView v(dev, SLICE_EMPTY_EQUIP_KIT);
     frame(dev, v, vm);
     CHECK(dev.errors() == 0);
     return v.world_sprites();

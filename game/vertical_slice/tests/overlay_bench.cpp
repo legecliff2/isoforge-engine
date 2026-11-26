@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
       for (int pass = 0; pass < 2; ++pass) {   // pass 0 timed (no hashing), pass 1 hashes uploads (untimed)
         render::NullDevice dev;
         dev.set_hash_uploads(pass == 1);
-        SliceView view(dev);
+        SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
         iso2d::Camera cam;
         { const Vec2f c = view.tile_center_px(32.f, 32.f); cam.position = {c.x - 640.f, c.y - 360.f}; }
         std::vector<double> ms;
