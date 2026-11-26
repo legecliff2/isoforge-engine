@@ -669,8 +669,7 @@ TEST_CASE("T12: multiattack uses Swallow when the bite target is grappled, Large
     CHECK(plain.request.attack_index == uint8_t(bite));
     CHECK(plain.request.multiattack == 1);
     hold(*c, self, prey);
-    // The built-in policy shoves a held creature prone before it attacks. Swallow is the multiattack choice
-    // once that shove is not the next action. Prone keeps the existing shove from preempting it.
+    // Prone does not block Swallow. The held target is still the bite slot's alternate.
     for (auto& k : CombatTestAccess::state(*c).combatants)
         if (k.id == prey) k.conditions |= rules5e::bit(Condition::Prone);
     Command sw = next_command(*c, prey);
@@ -692,4 +691,48 @@ TEST_CASE("T12: multiattack uses Swallow when the bite target is grappled, Large
     for (auto& k : CombatTestAccess::state(*c).combatants) if (k.id == prey) { k.hp = 0; k.dead = true; }
     Command done = next_command(*c, prey);
     CHECK(done.request.kind == ActionKind::EndTurn);
+}
+
+TEST_CASE("T12: a grappled not-prone legal target is Swallowed, and a shove remains when Swallow is not legal") {
+    ContentLibrary lib;
+    REQUIRE(lib.load(sample_set()).empty());
+    REQUIRE_FALSE(lib.add(ai_monster(), "monster"));
+    REQUIRE_FALSE(lib.add(victim(), "monster"));
+    auto ch = flat_chunk({{"t.swallow.ai", Vec2i{4, 4}}, {"t.swallow.victim", Vec2i{5, 4}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 1);
+    REQUIRE(c);
+    wake(*c);
+    const CombatantId self = ch.spawns[0].stable_id, prey = ch.spawns[1].stable_id;
+    to_actor(*c, self);
+    const auto& me = *rules5e::find(c->state(), self);
+    const int bite = index_of(me, "bite"), swallow = index_of(me, "swallow");
+    REQUIRE(bite >= 0);
+    REQUIRE(swallow >= 0);
+    hold(*c, self, prey);
+    REQUIRE_FALSE(rules5e::find(c->state(), prey)->has(Condition::Prone));
+    Command sw = next_command(*c, prey);
+    CHECK(sw.request.kind == ActionKind::Attack);
+    CHECK(sw.request.special == 0);
+    CHECK(sw.request.attack_index == uint8_t(swallow));
+    CHECK(sw.request.multiattack == 1);
+    CHECK(sw.request.target == prey);
+    // Too large for swallow_slot: the held, not-prone creature is still shoved prone.
+    for (auto& k : CombatTestAccess::state(*c).combatants) if (k.id == prey) k.size = rules5e::Size::Huge;
+    REQUIRE_FALSE(rules5e::find(c->state(), prey)->has(Condition::Prone));
+    Command huge = next_command(*c, prey);
+    CHECK(huge.request.kind == ActionKind::Attack);
+    CHECK(huge.request.special == 2);
+    CHECK(huge.request.target == prey);
+    // No alternate, so Swallow is not a choice. The same shove stands.
+    for (auto& k : CombatTestAccess::state(*c).combatants) if (k.id == prey) k.size = rules5e::Size::Medium;
+    for (auto& k : CombatTestAccess::state(*c).combatants)
+        if (k.id == self)
+            for (auto& seq : k.multiattacks) seq.alternates.clear();
+    REQUIRE_FALSE(rules5e::find(c->state(), prey)->has(Condition::Prone));
+    Command shoved = next_command(*c, prey);
+    CHECK(shoved.request.kind == ActionKind::Attack);
+    CHECK(shoved.request.special == 2);
+    CHECK(shoved.request.target == prey);
+    CHECK(shoved.request.attack_index != uint8_t(swallow));
 }
