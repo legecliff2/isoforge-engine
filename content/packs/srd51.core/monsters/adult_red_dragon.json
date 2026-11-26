@@ -1,0 +1,269 @@
+{
+  "$schema": "monster@7",
+  "derive": true,
+  "id": "srd51.monster.adult_red_dragon",
+  "name": "Adult Red Dragon",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "huge",
+  "type": "dragon",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 19,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 19,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 256,
+    "formula": "19d12+133"
+  },
+  "speed": {
+    "walk": 40,
+    "climb": 40,
+    "fly": 80
+  },
+  "abilities": {
+    "str": 27,
+    "dex": 10,
+    "con": 25,
+    "int": 16,
+    "wis": 13,
+    "cha": 21
+  },
+  "saving_throws": {
+    "dex": 6,
+    "con": 13,
+    "wis": 7,
+    "cha": 11
+  },
+  "skills": {
+    "perception": 13,
+    "stealth": 6
+  },
+  "damage_immunities": [
+    "fire"
+  ],
+  "senses": {
+    "blindsight": 60,
+    "darkvision": 120,
+    "passive_perception": 23
+  },
+  "languages": [
+    "Common",
+    "Draconic"
+  ],
+  "challenge": {
+    "rating": "17",
+    "xp": 18000
+  },
+  "proficiency_bonus": 6,
+  "resources": [
+    {
+      "id": "legendary_resistance",
+      "name": "Legendary Resistance",
+      "max": 3,
+      "recharge": "long_rest"
+    }
+  ],
+  "traits": [
+    {
+      "id": "legendary_resistance",
+      "name": "Legendary Resistance (3/Day)",
+      "description": "If the dragon fails a saving throw, it can choose to succeed instead. (resources id legendary_resistance, max 3, recharge long_rest. The loader sets Combatant::legendary_pool. The spend is automatic, product choice M4. This trait has no effect.)"
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The dragon can use its Frightful Presence. It then makes three attacks: one with its bite and two with its claws. (lead_action frightful_presence, CONTENT_CONVENTIONS §61.)",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "bite_claws",
+            "attacks": [
+              "bite",
+              "claw",
+              "claw"
+            ],
+            "lead_action": "frightful_presence"
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d10",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 14,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d10+8",
+          "type": "piercing"
+        },
+        {
+          "dice": "2d6",
+          "type": "fire"
+        }
+      ],
+      "description": "Melee Weapon Attack: +14 to hit, reach 10 ft., one target. Hit: 19 (2d10 + 8) piercing damage plus 7 (2d6) fire damage."
+    },
+    {
+      "id": "claw",
+      "name": "Claw",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 14,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+8",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +14 to hit, reach 5 ft., one target. Hit: 15 (2d6 + 8) slashing damage."
+    },
+    {
+      "id": "tail",
+      "name": "Tail",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d8",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 14,
+      "reach": 15,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+8",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +14 to hit, reach 15 ft., one target. Hit: 17 (2d8 + 8) bludgeoning damage."
+    },
+    {
+      "id": "frightful_presence",
+      "name": "Frightful Presence",
+      "kind": "save_effect",
+      "description": "Each creature of the dragon's choice that is within 120 feet of the dragon and aware of it must succeed on a DC 19 Wisdom saving throw or become frightened for 1 minute. A creature can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success. If a creature's saving throw is successful or the effect ends for it, the creature is immune to the dragon's Frightful Presence for the next 24 hours. (Frightful Presence, CONTENT_CONVENTIONS §61: save_effect, within_ft 120, total_cover no_skip, chooses_targets, aware_only, Wisdom DC 19, frightened 10 rounds, repeat_save end_of_turn, immune_on_success 24 hours same_source, immune_on_end. Not magical. Model limitation, not exact SRD: a creature on the far side of a wall, with no Hide result, stays eligible, and so does a creature swallowed by another monster.)",
+      "origin": "self",
+      "within_ft": 120,
+      "total_cover": "no_skip",
+      "chooses_targets": true,
+      "aware_only": true,
+      "save": {
+        "ability": "wis",
+        "dc": 19
+      },
+      "apply": [
+        {
+          "condition": "frightened",
+          "duration": {
+            "kind": "rounds",
+            "n": 10
+          },
+          "repeat_save": "end_of_turn"
+        }
+      ],
+      "immune_on_success": {
+        "hours": 24,
+        "scope": "same_source"
+      },
+      "immune_on_end": true
+    },
+    {
+      "id": "fire_breath",
+      "name": "Fire Breath",
+      "kind": "save_effect",
+      "description": "The dragon exhales fire in a 60-foot cone. Each creature in that area must make a DC 21 Dexterity saving throw, taking 63 (18d6) fire damage on a failed save, or half as much damage on a successful one.",
+      "save": {
+        "ability": "dex",
+        "dc": 21
+      },
+      "origin": "self",
+      "area": {
+        "shape": "cone",
+        "size_ft": 60
+      },
+      "damage": [
+        {
+          "dice": "18d6",
+          "type": "fire"
+        }
+      ],
+      "on_success": "half",
+      "usage": {
+        "kind": "recharge",
+        "min": 5
+      }
+    }
+  ],
+  "legendary_actions_per_round": 3,
+  "legendary_actions": [
+    {
+      "id": "detect",
+      "name": "Detect",
+      "description": "The dragon makes a Wisdom (Perception) check.",
+      "use": {
+        "check": "perception"
+      }
+    },
+    {
+      "id": "tail_attack",
+      "name": "Tail Attack",
+      "description": "The dragon makes a tail attack.",
+      "use": {
+        "attack": "tail"
+      }
+    },
+    {
+      "id": "wing_attack",
+      "name": "Wing Attack (Costs 2 Actions)",
+      "cost": 2,
+      "description": "The dragon beats its wings. Each creature within 10 feet of the dragon must succeed on a DC 22 Dexterity saving throw or take 15 (2d6 + 8) bludgeoning damage and be knocked prone. The dragon can then fly up to half its flying speed. The flight is not taken. Wing Attack resolves the save, damage and prone only; the dragon does not fly afterward. Deferred (legendary fly move, Q4).",
+      "effect": {
+        "id": "wing_attack",
+        "name": "Wing Attack",
+        "kind": "save_effect",
+        "within_ft": 10,
+        "save": {
+          "ability": "dex",
+          "dc": 22
+        },
+        "damage": [
+          {
+            "dice": "2d6+8",
+            "type": "bludgeoning"
+          }
+        ],
+        "on_success": "none",
+        "apply": [
+          {
+            "condition": "prone"
+          }
+        ]
+      }
+    }
+  ]
+}

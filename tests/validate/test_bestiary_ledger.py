@@ -7,7 +7,7 @@ content_validate_* files; this PR does not register a ctest name):
   python3 tools/validate/run_unittest_file.py tests/validate/test_bestiary_ledger.py
 
 ledger.py and validate_bridge.py must not import Tk. Counts are pinned to the
-ledger after the four insect swarms, azer, lemure, barbed devil, bearded devil, erinyes, and night hag: 216 authored, 4 deferred. Swarms are not parked. The devils, erinyes, and night hag are honest partials. Parry stays uncompiled and the longbow poison is until_cured. Innate Spellcasting, Night Hag Items, Etherealness, and Nightmare Haunting stay description only. The centipede drop-to-0 sentence and the spider traits stay description only.
+ledger after the four insect swarms, azer, lemure, barbed devil, bearded devil, erinyes, night hag, and the five L1 adult chromatic dragons: 221 authored, 4 deferred. Swarms are not parked. The devils, erinyes, and night hag are honest partials. Parry stays uncompiled and the longbow poison is until_cured. Innate Spellcasting, Night Hag Items, Etherealness, and Nightmare Haunting stay description only. The centipede drop-to-0 sentence and the spider traits stay description only.
 """
 from __future__ import annotations
 
@@ -88,10 +88,10 @@ class LedgerTests(unittest.TestCase):
         for name in ("ledger.py", "validate_bridge.py"):
             self.assertEqual(_imports_tk(EDITOR / name), [], name)
 
-    def test_counts_match_headings_216_and_4(self):
+    def test_counts_match_headings_221_and_4(self):
         book = self.book
-        self.assertEqual(book.authored_expected, 216)
-        self.assertEqual(len(book.authored), 216)
+        self.assertEqual(book.authored_expected, 221)
+        self.assertEqual(len(book.authored), 221)
         self.assertEqual(book.parked_expected, 4)
         self.assertEqual(len(book.parked), 4)
         self.assertEqual(book.count_errors(), ())
