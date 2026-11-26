@@ -171,7 +171,7 @@ TEST_CASE("debug equip view: scripted equip, unequip and light / hood / douse th
 
     // The panel draws through SliceView (null backend), and only while open.
     render::NullDevice dev;
-    SliceView view(dev);
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     iso2d::Camera cam;
     auto ui_with = [&](bool open) {
         if (v.open() != open) v.handle(Cmd::Toggle, s);

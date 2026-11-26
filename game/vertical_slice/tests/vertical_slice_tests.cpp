@@ -6,6 +6,10 @@
 
 #include <algorithm>
 
+#ifndef SLICE_EMPTY_EQUIP_KIT
+#define SLICE_EMPTY_EQUIP_KIT ""
+#endif
+
 using namespace slice;
 
 TEST_CASE("palette classification") {
@@ -65,7 +69,7 @@ TEST_CASE("view renders a snapshot without touching game state (null device)") {
     REQUIRE(s);
     eng::render::NullDevice dev;
     {
-        SliceView view(dev);
+        SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
         const ViewModel vm = s->view();
         REQUIRE(dev.begin_frame());
         view.prepare(vm, eng::iso2d::Camera{{0, 0}, 1280, 720, 1.5f}, 1280, 720);
@@ -87,7 +91,7 @@ TEST_CASE("camera focus: centre of the combatants' bounding box") {
     auto s = Session::open({{SLICE_PACK_ROOT}, {SLICE_PACK}, 1, false}, &err);
     REQUIRE(s);
     eng::render::NullDevice dev;
-    SliceView view(dev);
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     ViewModel vm = s->view();   // fighter (10,15), goblin (20,15)
     const eng::Vec2f f = view.actors_focus_px(vm);
     const eng::Vec2f a = view.tile_center_px(10, 15), b = view.tile_center_px(20, 15);
@@ -131,7 +135,7 @@ TEST_CASE("slice view: 3x3 and 4x4 chunk views draw every sprite, in the same or
             }
         auto run = [&] {
             eng::render::NullDevice dev;
-            SliceView v(dev);
+            SliceView v(dev, SLICE_EMPTY_EQUIP_KIT);
             std::vector<eng::render::NullDrawCall> draws;
             for (int f = 0; f < 2; ++f) {
                 REQUIRE(dev.begin_frame());

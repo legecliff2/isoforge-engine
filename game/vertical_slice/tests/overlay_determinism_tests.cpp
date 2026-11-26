@@ -21,10 +21,14 @@ uint64_t frame_hash(const render::NullFrameStats& st) {
     for (const auto& d : st.draws) { mix(d.texture.index); mix(d.index_count); mix(d.first_index); mix(uint64_t(uint32_t(d.vertex_offset))); }
     return h;
 }
+#ifndef SLICE_EMPTY_EQUIP_KIT
+#define SLICE_EMPTY_EQUIP_KIT ""
+#endif
 std::vector<uint64_t> run(int glows, int frames) {
     render::NullDevice dev;
     dev.set_hash_uploads(true);
-    SliceView view(dev);
+    // Empty kit: light-map texture ids stay on the recorded goldens.
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     iso2d::Camera cam;
     const Vec2f c = view.tile_center_px(32.f, 32.f);
     cam.position = {c.x - 640.f, c.y - 360.f};

@@ -39,10 +39,14 @@ uint64_t frame_hash(const render::NullFrameStats& st) {
     return h;
 }
 struct Frame { uint64_t hash = 0; uint32_t world_sprites = 0; };
+#ifndef SLICE_EMPTY_EQUIP_KIT
+#define SLICE_EMPTY_EQUIP_KIT ""
+#endif
 Frame render_frame(const ViewModel& vm) {
     render::NullDevice dev;
     dev.set_hash_uploads(true);
-    SliceView view(dev);
+    // Placeholder quads. The empty kit keeps these goldens off the shipped art.
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     iso2d::Camera cam;
     const Vec2f c = view.tile_center_px(4.5f, 4.5f);
     cam.position = {c.x - 320.f, c.y - 180.f};
