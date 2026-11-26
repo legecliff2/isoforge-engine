@@ -39,7 +39,7 @@ struct Frame {
 Frame render_frame(const ViewModel& vm) {
     render::NullDevice dev;
     dev.set_hash_uploads(true);
-    SliceView view(dev);
+    SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     iso2d::Camera cam;
     const Vec2f c = view.tile_center_px(4.5f, 4.5f);
     cam.position = {c.x - 320.f, c.y - 180.f};

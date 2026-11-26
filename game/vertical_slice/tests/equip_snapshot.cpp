@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
     const float zoom = argc > 2 ? float(std::atof(argv[2])) : 3.f;
     const uint32_t W = 960, H = 540;
     SoftDevice dev(W, H);
-    slice::SliceView view(dev);
+    slice::SliceView view(dev, SLICE_EMPTY_EQUIP_KIT);
     const slice::ViewModel vm = slice::equip_scene::build();
     iso2d::Camera cam;
     cam.zoom = zoom;

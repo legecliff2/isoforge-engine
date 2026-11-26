@@ -473,7 +473,7 @@ std::vector<Vec2i> Combat::area_preview(CombatantId caster, const rules5e::Spell
     auto fail = [&](const char* m) { if (error) *error = m; return std::vector<Vec2i>{}; };
     if (def.area == AreaShape::None) return fail("spell has no area");
     if (!rules5e::find(state_, caster)) return fail("bad caster");
-    const auto tmpl = make_area_template(grid_, spot(caster), def, aim, error);
+    const auto tmpl = make_area_template(grid_, query_spot(caster), def, aim, error);
     if (!tmpl) return {};
     int x0 = 0, x1 = -1, y0 = 0, y1 = -1;
     tmpl->tile_box(x0, x1, y0, y1);
@@ -491,13 +491,13 @@ std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e:
     auto fail = [&](const char* m) { if (error) *error = m; return std::vector<CombatantId>{}; };
     if (def.area == AreaShape::None) return fail("spell has no area");
     if (!rules5e::find(state_, caster)) return fail("bad caster");
-    const auto tmpl = make_area_template(grid_, spot(caster), def, aim, error);
+    const auto tmpl = make_area_template(grid_, query_spot(caster), def, aim, error);
     if (!tmpl) return {};
     std::vector<CombatantId> out;
     for (const auto& sl : slots_) {
         const auto* c = rules5e::find(state_, sl.id);
         if (sl.id == caster || !c || c->dead || c->possessing != 0) continue;
-        const Spot s = spot(sl.id);
+        const Spot s = query_spot(sl.id);   // C-T T9: a swallowed creature fills its container's footprint
         bool hit = false;
         for (int y = 0; y < s.n && !hit; ++y)
             for (int x = 0; x < s.n && !hit; ++x)
@@ -590,6 +590,7 @@ CombatantId Combat::occupant_at(Vec2i t, CombatantId except, int mover_abs_ft) c
     for (const auto& s : slots_) {
         const auto* c = rules5e::find(state_, s.id);
         if (s.id == except || !c || c->dead || s.archetype->swarm) continue;
+        if (swallow_container(s.id)) continue;   // C-T T9: a swallowed creature occupies no tile
         const Spot sp = spot(s.id);
         if (t.x >= sp.p.x && t.x < sp.p.x + sp.n && t.y >= sp.p.y && t.y < sp.p.y + sp.n) {
             // altitude PR2: a creature whose vertical span does not overlap the mover's is not in its way.
@@ -614,6 +615,7 @@ bool Combat::forbids_stop(CombatantId id, Vec2i anchor, int n) const {
     for (const auto& s : slots_) {
         const auto* c = rules5e::find(state_, s.id);
         if (s.id == id || !c || c->dead || s.archetype->swarm) continue;
+        if (swallow_container(s.id)) continue;   // C-T T9: inside, so it does not forbid a stop
         const Spot sp = spot(s.id);
         if (rect_distance(anchor, n, sp.p, sp.n) != 0) continue;
         if (!spans_overlap(abs_ft, n, abs_height_ft(s.id), sp.n)) continue;
@@ -699,9 +701,103 @@ std::vector<Vec2i> Combat::footprint_tiles_at(CombatantId id, Vec2i anchor) cons
     return out;
 }
 
+rules5e::CombatantId Combat::swallow_container(rules5e::CombatantId id) const {
+    if (id == 0) return 0;
+    for (const auto& e : state_.effects)
+        if (e.contain == 2 && e.target == id) return e.caster;
+    return 0;
+}
+Combat::Spot Combat::query_spot(CombatantId id) const {
+    if (const rules5e::CombatantId box = swallow_container(id); box != 0 && slot(box)) return spot(box);
+    return spot(id);
+}
+int Combat::query_height(CombatantId id) const {
+    if (const rules5e::CombatantId box = swallow_container(id); box != 0 && slot(box)) return abs_height_ft(box);
+    return abs_height_ft(id);
+}
+void Combat::sync_swallowed() {
+    // The stored anchor follows the container, including a corpse. Engulf is not in this loop.
+    // A kind-2 or kind-4 exit has already ended the effect, so this does not pull a freed creature back.
+    for (const auto& e : state_.effects) {
+        if (e.contain != 2) continue;
+        Slot* sl = nullptr;
+        for (auto& s : slots_) if (s.id == e.target) sl = &s;
+        if (!sl || sl->gone || !reg_->alive(sl->entity) || !slot(e.caster)) continue;
+        const Vec2i anchor = pos(e.caster);
+        const Vec2i cur = pos(e.target);
+        if (cur.x != anchor.x || cur.y != anchor.y) {
+            if (TilePos* tp = reg_->get<TilePos>(sl->entity)) { tp->x = anchor.x; tp->y = anchor.y; }
+            else reg_->emplace(sl->entity, TilePos{anchor.x, anchor.y});
+            SimEvent se;
+            se.kind = SimEvent::Kind::TileMoved;
+            se.actor = e.target;
+            se.tile = anchor;
+            events_.push_back(se);
+        }
+        const auto* box = rules5e::find(state_, e.caster);
+        set_altitude(e.target, box ? box->alt_ft : 0, kAltMove);
+    }
+}
+void Combat::place_regurgitated() {
+    // C-T T7 / Q-T4. Kind 2 only, in contain_exits order. Nothing is logged: the tile is a pure
+    // function of the board. Kind 1 stays where carry left it. Kind 4 is the logged exit tile.
+    if (state_.contain_exits.empty()) return;
+    int x0 = 0, y0 = 0, x1 = -1, y1 = -1;
+    grid_.world_bounds(x0, y0, x1, y1);
+    for (const auto& ex : state_.contain_exits) {
+        if (ex.kind != 2) continue;
+        Slot* sl = nullptr;
+        for (auto& s : slots_) if (s.id == ex.creature) sl = &s;
+        if (!sl || sl->gone || !reg_->alive(sl->entity) || !slot(ex.container)) continue;
+        const Spot anchor = spot(ex.container);
+        const int box_h = abs_height_ft(ex.container);
+        const int fp = std::max(1, footprint_size(ex.creature));
+        const auto* who = rules5e::find(state_, ex.creature);
+        const int alt = who ? int(who->alt_ft) : 0;
+        const auto occ = occupied_except(ex.creature);
+        auto free_at = [&](Vec2i p) {
+            if (!grid_.footprint_walkable(p, fp)) return false;
+            for (int dy = 0; dy < fp; ++dy)
+                for (int dx = 0; dx < fp; ++dx)
+                    if (std::find(occ.begin(), occ.end(), Vec2i{p.x + dx, p.y + dy}) != occ.end()) return false;
+            return true;
+        };
+        auto dist_at = [&](Vec2i p) {
+            const int h = grid_.footprint_ground_ft(p, fp) + alt;
+            return rect_distance(p, fp, h, anchor.p, anchor.n, box_h);
+        };
+        // Row scan (y, then x). The first tile at the smallest 3D distance wins a tie.
+        auto choose = [&](bool within_10) -> std::optional<Vec2i> {
+            std::optional<Vec2i> best;
+            int best_d = 0;
+            for (int y = y0; y <= y1; ++y)
+                for (int x = x0; x <= x1; ++x) {
+                    const Vec2i p{x, y};
+                    const int d = dist_at(p);
+                    if (within_10 && d > 2) continue;
+                    if (!free_at(p)) continue;
+                    if (!best || d < best_d) { best = p; best_d = d; }
+                }
+            return best;
+        };
+        std::optional<Vec2i> chosen = choose(true);
+        if (!chosen) chosen = choose(false);
+        if (!chosen) continue;   // no walkable tile anywhere: the contract is silent, so the creature stays
+        if (pos(ex.creature).x == chosen->x && pos(ex.creature).y == chosen->y) continue;
+        if (TilePos* tp = reg_->get<TilePos>(sl->entity)) { tp->x = chosen->x; tp->y = chosen->y; }
+        else reg_->emplace(sl->entity, TilePos{chosen->x, chosen->y});
+        SimEvent se;
+        se.kind = SimEvent::Kind::TileMoved;
+        se.actor = ex.creature;
+        se.tile = *chosen;
+        events_.push_back(se);
+    }
+}
+
 int Combat::distance_tiles(CombatantId a, CombatantId b) const {
-    const Spot sa = spot(a), sb = spot(b);
-    return rect_distance(sa.p, sa.n, abs_height_ft(a), sb.p, sb.n, abs_height_ft(b));   // altitude PR3: 3D
+    // C-T T9: a swallowed creature is measured from its container's footprint and altitude.
+    const Spot sa = query_spot(a), sb = query_spot(b);
+    return rect_distance(sa.p, sa.n, query_height(a), sb.p, sb.n, query_height(b));   // altitude PR3: 3D
 }
 
 
@@ -725,6 +821,7 @@ rules5e::Cover Combat::cover_between(Vec2i origin, int origin_n, int origin_ft, 
         if (const auto* ac = rules5e::find(state_, sl.id); ac && ac->possessing != 0) continue;
         const auto* c = rules5e::find(state_, sl.id);
         if (!c || c->dead) continue;
+        if (swallow_container(sl.id)) continue;   // C-T T9: it does not stand in the way
         const Spot s = spot(sl.id);
         const int lo = abs_height_ft(sl.id), hi = lo + body_height_ft(s.n);
         for (int y = 0; y < s.n; ++y)
@@ -950,6 +1047,7 @@ std::vector<Vec2i> Combat::occupied_except(CombatantId id) const {
     for (const auto& s : slots_) {
         const auto* c = rules5e::find(state_, s.id);
         if (s.id == id || !c || c->dead || c->possessing != 0) continue;
+        if (swallow_container(s.id)) continue;   // C-T T9: no tile of its own
         // EC swarm (SRD Swarm): a swarm can occupy another creature's space and vice versa, so a swarm mover sees no other
         // creature's tiles and a swarm's tiles block no one. Without swarms this is the old list.
         if (s.archetype->swarm || mover_swarm) continue;
@@ -996,8 +1094,9 @@ bool Combat::leaves_reach(CombatantId mover, Vec2i from, Vec2i to, int alt_delta
         const int reach = melee_reach_tiles(s.id);
         if (reach == 0) continue;
         // Nearest-tile distances between the footprints: the mover's before and after the step.
-        const Spot rs = spot(s.id), f = spot_at(mover, from), t = spot_at(mover, to);
-        const int zr = abs_height_ft(s.id);
+        // C-T T9: a swallowed reactor's reach is its container's footprint and altitude.
+        const Spot rs = query_spot(s.id), f = spot_at(mover, from), t = spot_at(mover, to);
+        const int zr = query_height(s.id);
         if (spot_distance(f, zf, rs, zr) <= reach && spot_distance(t, zt, rs, zr) > reach) return true;
     }
     return false;
@@ -1733,6 +1832,9 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     // A flyer a forced move kept aloft (absolute height preserved). After the fall events, and after the tile is the
     // destination, so the event's tile matches. fall_check already ran against the pre-move alt_ft.
     for (const auto& a : forced_alt_) set_altitude(a.id, a.alt_ft, kAltForced);
+    // C-T T9 then T7. Carry first, while the effect still exists. Kind 2 is placed after the effect has ended.
+    sync_swallowed();
+    place_regurgitated();
     if (split < evs.size()) sync_ecs();
     for (auto& sl : slots_)   // gone summons: the entity goes at the end of the step (never mid-step)
         if (sl.gone && reg_->alive(sl.entity)) { reg_->destroy(sl.entity); sl.entity = ecs::kNullEntity; }
@@ -2331,6 +2433,51 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to, uint1
     }
     if (state_.budget.gaze_pending) { r.error = "gaze pending: answer with GazeResponse first"; return r; }
     if (state_.budget.appearance_pending) { r.error = "appearance pending: answer with AppearanceResponse first"; return r; }
+    // C-T T8 / Q-T3. Inside a dead swallower the only move is an exit: one Move of exit_ft, logged `to`
+    // an unoccupied tile in the corpse's footprint or within 5 ft (1 tile, 3D). Any other move is refused.
+    if (const rules5e::CombatantId box = swallow_container(mover)) {
+        const rules5e::ActiveSpellEffect* hold = nullptr;
+        for (const auto& e : state_.effects) {
+            if (e.contain != 2 || e.target != mover || e.contain_exit_ft == 0 || !e.no_condition || e.caster != box) continue;
+            const auto* corpse = rules5e::find(state_, e.caster);
+            if (corpse && !corpse->dead) continue;
+            hold = &e;
+            break;
+        }
+        if (hold) {
+            if (alt_to != 0 || jump_ft != 0) { r.error = "inside a corpse: exit with exit_ft of movement"; return r; }
+            const int fp = std::max(1, footprint_size(mover));
+            const auto* me = rules5e::find(state_, mover);
+            const int alt = me ? int(me->alt_ft) : 0;
+            const Spot corpse = spot(box);
+            const int zh = abs_height_ft(box);
+            const int h = grid_.footprint_ground_ft(to, fp) + alt;
+            const bool near = rect_distance(to, fp, h, corpse.p, corpse.n, zh) <= 1;
+            if (!near || !grid_.footprint_walkable(to, fp) || !space_free(mover, to)) {
+                r.error = "inside a corpse: exit with exit_ft of movement";
+                return r;
+            }
+            if (const rules5e::CombatantId src = rules5e::condition_source(state_, mover, rules5e::Condition::Frightened)) {
+                const Spot ss = spot(src);
+                if (rect_distance(to, fp, ss.p, ss.n) < rect_distance(pos(mover), fp, ss.p, ss.n)) {
+                    r.error = "frightened: cannot move closer to the source";
+                    return r;
+                }
+            }
+            ActionRequest mv{mover, ActionKind::Move};
+            mv.move_ft = int16_t(hold->contain_exit_ft);
+            mv.move_tiles = uint8_t(std::min(255, rect_distance(pos(mover), fp, to, fp)));
+            mv.leaves_reach = leaves_reach(mover, pos(mover), to);
+            if (!state_.zones.empty()) {
+                zone_lists(mover, spot(mover), Spot{to, fp}, mv);
+                mv.zone_changes = zone_changes_for(mover, spot(mover), Spot{to, fp});
+            }
+            step_to_ = to;
+            set_step_context(mv);
+            clear_forced();
+            return finish(rules5e::step(state_, mv));
+        }
+    }
     const Vec2i from = pos(mover);
     if (alt_to != 0) {   // altitude PR2: vertical movement in place (5 ft per 5 ft from the shared budget)
         if (to != from) { r.error = "alt_to: a vertical move is a Step to the mover's own tile"; return r; }
@@ -3192,6 +3339,7 @@ std::vector<Vec2i> Combat::occupied_except(CombatantId id, int abs_ft) const {
     for (const auto& s : slots_) {
         const auto* c = rules5e::find(state_, s.id);
         if (s.id == id || !c || c->dead || c->possessing != 0 || s.archetype->swarm || mover_swarm) continue;
+        if (swallow_container(s.id)) continue;   // C-T T9: no tile of its own
         if (!spans_overlap(abs_ft, n, abs_height_ft(s.id), footprint_size(s.id))) continue;
         for (Vec2i t : footprint_tiles(s.id)) out.push_back(t);
     }
