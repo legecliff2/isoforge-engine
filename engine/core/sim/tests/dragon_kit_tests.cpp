@@ -1,4 +1,5 @@
-// C-D dragon kit (contract v0.2). Fixture creatures only: no authored dragon JSON.
+// C-D dragon kit (contract v0.2). These cases stay on fixture creatures.
+// The five adult chromatic stat blocks are adult_chromatic_dragon_tests.cpp.
 #include <doctest/doctest.h>
 
 #include <filesystem>
