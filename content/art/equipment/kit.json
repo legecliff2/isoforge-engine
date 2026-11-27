@@ -1,6 +1,6 @@
 {
   "$schema": "equip_kit@1",
-  "description": "Loose equipment PNGs under this directory, in the PR A layout. Lists only sprites that exist. H4 cells are 24 by 24. No non-medium bin is authored. A pivot is written only for a sprite that exists; the loader uses bottom-centre when the pivot is absent.",
+  "description": "Loose equipment PNGs under this directory, in the PR A layout. Lists only sprites that exist. H4 cells are 24 by 24. Medium is the flat file. Small is a size-bin override at {content_id}/small/. A pivot is written only for a sprite that exists; the loader uses bottom-centre when the pivot is absent.",
   "cell": [24, 24],
   "items": [
     {
@@ -9,6 +9,14 @@
       "parts": [
         {
           "part": "back",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
+        },
+        {
+          "part": "back",
+          "bin": "small",
           "views": [
             {"view": "se", "pivot": [12, 12]},
             {"view": "ne", "pivot": [12, 12]}
@@ -26,6 +34,14 @@
             {"view": "se", "pivot": [12, 12]},
             {"view": "ne", "pivot": [12, 12]}
           ]
+        },
+        {
+          "part": "back",
+          "bin": "small",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
         }
       ]
     },
@@ -35,6 +51,14 @@
       "parts": [
         {
           "part": "back",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
+        },
+        {
+          "part": "back",
+          "bin": "small",
           "views": [
             {"view": "se", "pivot": [12, 12]},
             {"view": "ne", "pivot": [12, 12]}
@@ -51,6 +75,14 @@
             {"view": "se", "pivot": [12, 12]},
             {"view": "ne", "pivot": [12, 12]}
           ]
+        },
+        {
+          "part": "back",
+          "bin": "small",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
         }
       ]
     },
@@ -59,6 +91,14 @@
       "parts": [
         {
           "part": "hip",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
+        },
+        {
+          "part": "hip",
+          "bin": "small",
           "views": [
             {"view": "se", "pivot": [12, 12]},
             {"view": "ne", "pivot": [12, 12]}
@@ -75,6 +115,14 @@
             {"view": "se", "pivot": [12, 12]},
             {"view": "ne", "pivot": [12, 12]}
           ]
+        },
+        {
+          "part": "hip",
+          "bin": "small",
+          "views": [
+            {"view": "se", "pivot": [12, 12]},
+            {"view": "ne", "pivot": [12, 12]}
+          ]
         }
       ]
     },
@@ -83,6 +131,13 @@
       "parts": [
         {
           "part": "neck",
+          "views": [
+            {"view": "se", "pivot": [12, 12]}
+          ]
+        },
+        {
+          "part": "neck",
+          "bin": "small",
           "views": [
             {"view": "se", "pivot": [12, 12]}
           ]
