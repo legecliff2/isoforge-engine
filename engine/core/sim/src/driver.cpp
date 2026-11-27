@@ -934,11 +934,48 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         if (!rules5e::is_conscious(*t))
             if (auto b = retarget_bonus_grant(c, self, *me)) return *b;
     }
+    // C-T T12: in a bite slot, Swallow when the target is grappled by this creature, Large or smaller, and alive.
+    // Otherwise the listed attack (the bite). No alternate means the index is unchanged.
+    auto swallow_slot = [&](const rules5e::AttackSequence& seq, uint8_t slot) -> uint8_t {
+        if (seq.alternates.empty() || !t || t->dead) return slot;
+        if (int(t->size) > int(rules5e::Size::Large)) return slot;
+        if (!t->has(rules5e::Condition::Grappled) ||
+            rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) != self)
+            return slot;
+        for (const auto& alt : seq.alternates) {
+            if (alt.slot != slot || alt.instead >= me->attacks.size()) continue;
+            const rules5e::Attack& sw = me->attacks[alt.instead];
+            if ((sw.target_requires_any & rules5e::kTargetGateGrappledBySelf) == 0) continue;
+            if (sw.target_max_size >= 0 && int(t->size) > int(sw.target_max_size)) continue;
+            if (!possession_attack_ok(*me, alt.instead)) continue;
+            return alt.instead;
+        }
+        return slot;
+    };
+    auto pure = [&](const rules5e::AttackSequence& seq, bool ranged) {
+        if (seq.after_action != 0 || seq.attacks.empty()) return false;
+        for (uint8_t k : seq.attacks)
+            if (k >= me->attacks.size() || me->attacks[k].ranged != ranged || !usable(k) || !possession_attack_ok(*me, k))
+                return false;
+        return true;
+    };
+    // A legal Swallow target on the melee Multiattack this policy would start. The test is swallow_slot's.
+    auto legal_swallow_target = [&]() -> bool {
+        if (!t || t->dead || s.budget.sequence != 0) return false;
+        int melee_i = -1;
+        for (std::size_t i = 0; i < me->multiattacks.size() && i < 255; ++i)
+            if (melee_i < 0 && pure(me->multiattacks[i], false)) melee_i = int(i);
+        if (melee_i < 0) return false;
+        const auto& seq = me->multiattacks[std::size_t(melee_i)];
+        for (uint8_t slot : seq.attacks)
+            if (swallow_slot(seq, slot) != slot) return true;
+        return false;
+    };
     // R-G8 grapple / shove / escape. These come up once a grapple is on the board. Content does grapple
     // (ankheg bite, giant toad bite, and others):
     //  * held (Grappled with a recorded holder) and the target is out of reach: Escape (takes the action);
     //  * the target holds one of my allies and is within 5 ft: Shove it 5 ft away (breaks the hold when the push lands);
-    //  * I hold the target and it is not prone: Shove it prone.
+    //  * I hold the target and it is not prone: Shove it prone, unless it is a legal Swallow target.
     {
         const bool fresh_action = s.budget.action && s.budget.attacks_remaining == 0 && s.budget.sequence == 0;
         const bool attack_open = s.budget.action || s.budget.attacks_remaining > 0;
@@ -959,8 +996,10 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         if (attack_open && adjacent && rules5e::is_conscious(*t) && s.budget.sequence == 0) {
             for (CombatantId held : rules5e::grappled_by(s, t->id))
                 if (held != self && !c.hostile(self, held)) return special(3, t->id);
+            // A shove is not a Multiattack slot (special_action refuses one while a multiattack is declared
+            // or in progress). Taking it would drop the rest of the Multiattack, including Swallow.
             if (rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) == self &&
-                !(t->conditions & rules5e::bit(rules5e::Condition::Prone)))
+                !(t->conditions & rules5e::bit(rules5e::Condition::Prone)) && !legal_swallow_target())
                 return special(2, t->id);
         }
     }
@@ -1032,24 +1071,6 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // else the first all-ranged option under those constraints when can_shoot is true for its first attack.
     // Mixed melee+ranged options are never started. after_action sequences are never started.
     uint8_t multi = 0;   // ActionRequest::multiattack to send (0 = continue / plain attack)
-    // C-T T12: in a bite slot, Swallow when the target is grappled by this creature, Large or smaller, and alive.
-    // Otherwise the listed attack (the bite). No alternate means the index is unchanged.
-    auto swallow_slot = [&](const rules5e::AttackSequence& seq, uint8_t slot) -> uint8_t {
-        if (seq.alternates.empty() || !t || t->dead) return slot;
-        if (int(t->size) > int(rules5e::Size::Large)) return slot;
-        if (!t->has(rules5e::Condition::Grappled) ||
-            rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) != self)
-            return slot;
-        for (const auto& alt : seq.alternates) {
-            if (alt.slot != slot || alt.instead >= me->attacks.size()) continue;
-            const rules5e::Attack& sw = me->attacks[alt.instead];
-            if ((sw.target_requires_any & rules5e::kTargetGateGrappledBySelf) == 0) continue;
-            if (sw.target_max_size >= 0 && int(t->size) > int(sw.target_max_size)) continue;
-            if (!possession_attack_ok(*me, alt.instead)) continue;
-            return alt.instead;
-        }
-        return slot;
-    };
     if (s.budget.sequence != 0 && s.budget.sequence <= me->multiattacks.size()) {
         if (const int next = rules5e::multiattack_next(me->multiattacks, s.budget.sequence, s.budget.sequence_pos); next >= 0) {
             if (!possession_attack_ok(*me, uint8_t(next))) return end;
@@ -1057,13 +1078,6 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             ai = swallow_slot(seq, uint8_t(next));
         }
     } else {
-        auto pure = [&](const rules5e::AttackSequence& seq, bool ranged) {
-            if (seq.after_action != 0 || seq.attacks.empty()) return false;
-            for (uint8_t k : seq.attacks)
-                if (k >= me->attacks.size() || me->attacks[k].ranged != ranged || !usable(k) || !possession_attack_ok(*me, k))
-                    return false;
-            return true;
-        };
         int melee_i = -1, ranged_i = -1;
         for (std::size_t i = 0; i < me->multiattacks.size() && i < 255; ++i) {
             if (melee_i < 0 && pure(me->multiattacks[i], false)) melee_i = int(i);
