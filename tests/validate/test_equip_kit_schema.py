@@ -87,6 +87,12 @@ def flat(cid: str, part: str, view_names: tuple[str, ...] = ("se", "ne"), bin_na
     return tuple(f"{cid}/{leaf}{part}.{name}.png" for name in view_names)
 
 
+def body_bins() -> set[str]:
+    """Size bins equip_kit@1 allows. The schema enum is the bin field's allow-list."""
+    schema = json.loads((ROOT / "schemas" / "equip_kit" / "v1.schema.json").read_text(encoding="utf-8"))
+    return set(schema["$defs"]["bin_name"]["enum"])
+
+
 class EquipKitSchema(unittest.TestCase):
     def test_v1_is_the_first_version_and_optional_fields_may_be_absent(self):
         # No equip_kit@0, and no engine migration: the first published body is @1.
@@ -212,12 +218,18 @@ class EquipKitSchema(unittest.TestCase):
         self.assertFalse(any("unknown content_id" in e for e in errs), errs)
 
     def test_size_bin_is_optional_and_a_kind_has_no_bin(self):
-        # The second key is legal. The shipped manifest does not use it.
+        # The second key is a known body bin. small is one of them. The shipped manifest may name one.
+        allowed = body_bins()
+        self.assertIn("small", allowed)
         doc = base(items=[entry("srd51.item.backpack", "back", role="pack", bin_name="large", pivot=[12, 20])])
         files = flat("srd51.item.backpack", "back", bin_name="large")
         self.assertEqual(check(doc, files=files), [])
+        small = base(items=[entry("srd51.item.backpack", "back", role="pack", bin_name="small", pivot=[12, 20])])
+        self.assertEqual(check(small, files=flat("srd51.item.backpack", "back", bin_name="small")), [])
+        self.assertNotIn("gargantuan", allowed)
         errs = check(base(items=[entry("srd51.item.backpack", "back", role="pack", bin_name="gargantuan")]))
         self.assertTrue(errs, errs)
+        self.assertTrue(any("gargantuan" in e for e in errs), errs)
         kind = {"kind": "weapon", "parts": [{"part": "main_hand", "bin": "large",
                                              "views": views(("se", "ne"))}]}
         errs = check(base(kinds=[kind]))
@@ -259,7 +271,10 @@ class EquipKitSchema(unittest.TestCase):
                     found += bins(value)
             return found
 
-        self.assertEqual(bins(doc), [])
+        allowed = body_bins()
+        self.assertIn("small", allowed)
+        used = bins(doc)
+        self.assertTrue(set(used) <= allowed, used)
 
 
 if __name__ == "__main__":
