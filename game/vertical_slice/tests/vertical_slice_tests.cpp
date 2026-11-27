@@ -34,9 +34,11 @@ TEST_CASE("static view: chunk tiles, walls and both spawns through the world mod
     bool fighter = false, goblin = false;
     for (auto& a : v.actors) {
         fighter |= a.name == "FIGHTER" && a.is_pc && a.tile == eng::Vec2i{10, 15} && a.hp_max > 0 && a.footprint == 1 &&
-                   a.kit == "paperdoll" && a.visual_kind == "paperdoll" && a.standin_bin.empty() && a.facing == Facing::SouthEast;
+                   a.kit == "paperdoll" && a.visual_kind == "paperdoll" && a.standin_bin.empty() &&
+                   a.body_size == BodySize::Medium && a.facing == Facing::SouthEast;
         goblin |= a.name == "GOBLIN" && !a.is_pc && a.tile == eng::Vec2i{20, 15} && a.hp_max > 0 && a.footprint == 1 &&
-                  a.kit == "paperdoll" && a.visual_kind == "paperdoll" && a.standin_bin.empty() && a.facing == Facing::SouthEast;
+                  a.kit == "paperdoll" && a.visual_kind == "paperdoll" && a.standin_bin.empty() &&
+                  a.body_size == BodySize::Small && a.facing == Facing::SouthEast;
     }
     CHECK(fighter);
     CHECK(goblin);
@@ -50,7 +52,14 @@ TEST_CASE("sim view: stepping the headless fight to the end updates the snapshot
     ViewModel v0 = s->view();
     CHECK(v0.sim_live);
     CHECK_FALSE(v0.turn.empty());
-    for (const ActorView& a : v0.actors) CHECK(a.footprint == 1);   // sample fight is Medium; side comes from Combat
+    for (const ActorView& a : v0.actors) CHECK(a.footprint == 1);   // sample fight is 1x1; side comes from Combat
+    bool saw_fighter = false, saw_goblin = false;
+    for (const ActorView& a : v0.actors) {
+        if (a.name == "FIGHTER") { CHECK(a.body_size == BodySize::Medium); saw_fighter = true; }
+        if (a.name == "GOBLIN") { CHECK(a.body_size == BodySize::Small); saw_goblin = true; }
+    }
+    CHECK(saw_fighter);
+    CHECK(saw_goblin);
     int steps = 0;
     while (!s->ended() && steps < 5000 && s->step()) ++steps;
     CHECK_MESSAGE(s->error().empty(), s->error());

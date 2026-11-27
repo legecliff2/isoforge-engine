@@ -355,7 +355,7 @@ struct SliceView::EquipArt {
     std::map<std::string, BodyAttach, std::less<>> attach;
 
     const BodyAttach& body_attach(const ActorView& a) {
-        const std::string bin = a.standin_bin.empty() ? std::string("medium") : a.standin_bin;
+        const std::string bin(attach_table_bin(a));
         const std::string key = a.visual_kind + "|" + a.content_id + "|" + bin;
         const auto [it, inserted] = attach.try_emplace(key);
         if (inserted) it->second = load_body_attach(SLICE_STANDIN_ROOT, a.content_id, bin, a.visual_kind);
@@ -754,7 +754,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             // Equipment layers (equip_visuals.hpp): fixed z around the body inside the actor's sort key.
             for (const EquipLayer& l : equip_layers(a, equip_art_->body_attach(a), &equip_art_->table)) {
                 if (l.part == EquipPart::Body) { world_.draw(p, iso, actor_sort, 1, a.id, kZBody); continue; }
-                const EquipArtChoice art = equip_art_choice(&equip_art_->table, *l.item, l.part, a.facing, a.standin_bin);
+                const EquipArtChoice art = equip_art_choice(&equip_art_->table, *l.item, l.part, a.facing, equip_size_bin(a));
                 if (art.sprite && art.sprite->key < equip_art_->authored.size()) {
                     const TextureId tex = art.mirror_x ? equip_art_->mirrored[art.sprite->key] : equip_art_->authored[art.sprite->key];
                     if (tex.valid()) {
