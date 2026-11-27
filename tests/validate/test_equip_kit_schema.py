@@ -58,22 +58,22 @@ def base(**kw) -> dict:
     return doc
 
 
-def views(names: tuple[str, ...], pivot=None, region_for=None) -> list[dict]:
+def views(names: tuple[str, ...], pivot=None, region_for=None, part: str = "") -> list[dict]:
     out = []
     for name in names:
         view = {"view": name}
         if pivot is not None:
             view["pivot"] = pivot
         if region_for is not None:
-            # region_for is (slug, x). Name is slug.view, matched whole.
-            view["region"] = {"name": f"{region_for[0]}.{name}", "x": region_for[1], "y": 0, "w": 24, "h": 24}
+            # region_for is (slug, x). Name is slug_part.view, matched whole.
+            view["region"] = {"name": f"{region_for[0]}_{part}.{name}", "x": region_for[1], "y": 0, "w": 24, "h": 24}
         out.append(view)
     return out
 
 
 def entry(cid: str, part: str, role: str | None = None, view_names: tuple[str, ...] = ("se", "ne"),
           pivot=None, bin_name: str | None = None, region_for=None) -> dict:
-    part_doc = {"part": part, "views": views(view_names, pivot, region_for)}
+    part_doc = {"part": part, "views": views(view_names, pivot, region_for, part)}
     if bin_name:
         part_doc["bin"] = bin_name
     doc = {"content_id": cid, "parts": [part_doc]}
@@ -208,7 +208,7 @@ class EquipKitSchema(unittest.TestCase):
         bolt["parts"][0]["views"][1]["region"]["x"] = 24
         errs = check(base(atlas="equip.png", items=[bolt]),
                      files=flat("srd51.item.case_crossbow_bolt", "back"), atlas=("equip.png", 48, 24))
-        self.assertTrue(any("case_crossbow_bolt.se" in e for e in errs), errs)
+        self.assertTrue(any("case_crossbow_bolt_back.se" in e for e in errs), errs)
         self.assertFalse(any("unknown content_id" in e for e in errs), errs)
 
     def test_size_bin_is_optional_and_a_kind_has_no_bin(self):
