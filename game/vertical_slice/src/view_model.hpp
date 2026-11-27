@@ -45,6 +45,10 @@ struct EquipVisual {
 // Art authors 8 facings. M0 keeps these 4. SouthWest and NorthWest are the west mirror.
 enum class Facing : uint8_t { SouthEast, SouthWest, NorthEast, NorthWest };
 
+// SRD size category copied onto the view. The numeric order matches rules5e::Size and
+// sim::CreatureSize (Tiny 0 through Gargantuan 5). Presentation only; never written back into sim.
+enum class BodySize : uint8_t { Tiny, Small, Medium, Large, Huge, Gargantuan };
+
 // Tile step -> the 4 iso facings. +x is screen down-right (SouthEast), +y is screen down-left
 // (SouthWest). Equal |dx| and |dy| follow x. A zero step returns nullopt (the caller keeps the last facing).
 // Presentation only: nothing here is written into sim.
@@ -71,8 +75,9 @@ struct ActorView {
     // Core M0 visual{kind,kit,standin_bin,art_root,size_short}. Copied from the archetype.
     // kit is visual.kit, else presentation.sprite, else "paperdoll" or "standin.<standin_bin>".
     // Empty kit when M0 has no bin (huge / gargantuan). Not written into sim.
-    // size_short is stored and not applied. clip is the clip-clock request (Render).
-    // There is no hard_land field: that name is only a registry alias.
+    // size_short is stored. Plates and scale stay off while kSizeShortRuntime is false.
+    // clip is the clip-clock request (Render). There is no hard_land field: that name
+    // is only a registry alias.
     std::string visual_kind;   // "paperdoll", "standin", or "unbinned"
     std::string kit;
     std::string standin_bin;   // tiny | small | medium | large; empty otherwise
@@ -81,7 +86,11 @@ struct ActorView {
     // reads for the display name. Empty when that archetype is missing. Stand-in art
     // looks up srd/{slug}/{bin} from this id, then the shared bin kit. Not a sim field.
     std::string content_id;
-    bool        size_short = false;   // authored; M0 does not apply plates or scale
+    bool        size_short = false;   // authored; plates and scale are not applied in M0
+    // Live SRD size. A fight copies Combatant::size (a form change included). A static
+    // spawn copies the archetype size. Small maps to the short paperdoll body when the
+    // short-body hook is on. Medium and every other category keep the medium table.
+    BodySize    body_size = BodySize::Medium;
     std::string clip;
     std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)
     // Visible figure (CONTENT_CONVENTIONS §52). Body art stays the true form: kit / visual_kind /

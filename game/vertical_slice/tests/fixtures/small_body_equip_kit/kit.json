@@ -1,0 +1,13 @@
+{
+  "$schema": "equip_kit@1",
+  "cell": [24, 24],
+  "items": [
+    {
+      "content_id": "srd51.item.longsword",
+      "parts": [
+        {"part": "main_hand", "views": [{"view": "se", "pivot": [12, 12]}, {"view": "ne", "pivot": [12, 12]}]},
+        {"part": "main_hand", "bin": "small", "views": [{"view": "se", "pivot": [4, 8]}, {"view": "ne", "pivot": [4, 8]}]}
+      ]
+    }
+  ]
+}

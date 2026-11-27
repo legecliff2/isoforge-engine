@@ -2,6 +2,7 @@
 
 #include "presentation/equip_art.hpp"
 #include "presentation/standin.hpp"
+#include "sim/presentation.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -186,6 +187,31 @@ void push_hip(std::vector<EquipLayer>& out, const EquipVisual& e, EquipPart part
 }
 
 } // namespace
+
+namespace {
+bool g_force_short_body_hook = false;
+
+bool paperdoll_short(const ActorView& a) {
+    return a.size_short || a.body_size == BodySize::Small;
+}
+} // namespace
+
+bool short_body_hook_on() { return eng::sim::kSizeShortRuntime || g_force_short_body_hook; }
+
+ShortBodyHookForce::ShortBodyHookForce(bool on) : previous_(g_force_short_body_hook) { g_force_short_body_hook = on; }
+
+ShortBodyHookForce::~ShortBodyHookForce() { g_force_short_body_hook = previous_; }
+
+std::string_view attach_table_bin(const ActorView& a) {
+    if (a.visual_kind == "paperdoll" && short_body_hook_on()) return paperdoll_short(a) ? "small" : "medium";
+    if (a.standin_bin.empty()) return "medium";
+    return a.standin_bin;
+}
+
+std::string_view equip_size_bin(const ActorView& a) {
+    if (a.visual_kind == "paperdoll" && short_body_hook_on()) return paperdoll_short(a) ? "small" : "medium";
+    return a.standin_bin;
+}
 
 AttachPoints attach_points(const BodyAttach& body, Facing facing) {
     AttachPoints p = facing_shows_back(facing) ? body.ne : body.se;

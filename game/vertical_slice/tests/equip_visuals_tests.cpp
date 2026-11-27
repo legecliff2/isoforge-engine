@@ -25,6 +25,7 @@
 #include "render_null/null_device.hpp"
 #include "rules5e/equipment.hpp"
 #include "session.hpp"
+#include "sim/presentation.hpp"
 #include "slice_view.hpp"
 
 using namespace eng;
@@ -1411,4 +1412,189 @@ TEST_CASE("equip art: the H4 fixture kit loads all 13 sprites at pivot [12, 12]"
     const std::string component_bytes{std::istreambuf_iterator<char>(b), {}};
     CHECK(pouch_bytes == component_bytes);
     CHECK_FALSE(pouch_bytes.empty());
+}
+
+#ifndef SLICE_SMALL_BODY_EQUIP_KIT
+#define SLICE_SMALL_BODY_EQUIP_KIT ""
+#endif
+
+namespace {
+Frame render_kit(const ViewModel& vm, const fs::path& kit) {
+    render::NullDevice dev;
+    dev.set_hash_uploads(true);
+    SliceView view(dev, kit.string());
+    iso2d::Camera cam;
+    const Vec2f c = view.tile_center_px(4.5f, 4.5f);
+    cam.position = {c.x - 320.f, c.y - 180.f};
+    cam.viewport_w = 640;
+    cam.viewport_h = 360;
+    REQUIRE(dev.begin_frame());
+    view.prepare(vm, cam, 640, 360);
+    auto& cl = dev.command_list();
+    cl.begin_pass(render::TargetId{}, Color{0, 0, 0, 1});
+    view.submit(cl);
+    cl.end_pass();
+    dev.end_frame();
+    CHECK(dev.errors() == 0);
+    return {frame_hash(dev.last_frame()), view.world_sprites()};
+}
+
+ViewModel one_pawn(ActorView actor) {
+    ViewModel vm;
+    TileView t;
+    t.tile = actor.tile;
+    t.kind = TileKind::Floor;
+    vm.tiles.push_back(t);
+    vm.actors.push_back(std::move(actor));
+    return vm;
+}
+
+ActorView paperdoll_at(BodySize size, bool short_flag) {
+    ActorView a;
+    a.id = 1;
+    a.name = "PAWN";
+    a.tile = {3, 4};
+    a.hp = a.hp_max = 12;
+    a.visual_kind = "paperdoll";
+    a.kit = "paperdoll";
+    a.facing = Facing::SouthEast;
+    a.body_size = size;
+    a.size_short = short_flag;
+    a.equipment = {gear(10, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longsword")};
+    return a;
+}
+} // namespace
+
+TEST_CASE("paperdoll short body: hook stays off, and a forced seam picks the small table and override") {
+    CHECK_FALSE(eng::sim::kSizeShortRuntime);
+    CHECK_FALSE(short_body_hook_on());
+
+    const ActorView small = paperdoll_at(BodySize::Small, false);
+    const ActorView flagged = paperdoll_at(BodySize::Medium, true);
+    const ActorView medium = paperdoll_at(BodySize::Medium, false);
+    CHECK(std::string(attach_table_bin(small)) == "medium");
+    CHECK(std::string(attach_table_bin(flagged)) == "medium");
+    CHECK(equip_size_bin(small).empty());
+    CHECK(equip_size_bin(flagged).empty());
+
+    ActorView wolf;
+    wolf.visual_kind = "standin";
+    wolf.standin_bin = "large";
+    wolf.body_size = BodySize::Small;
+    wolf.size_short = true;
+    CHECK(std::string(attach_table_bin(wolf)) == "large");
+    CHECK(std::string(equip_size_bin(wolf)) == "large");
+
+    const fs::path standins{SLICE_STANDIN_ROOT};
+    const BodyAttach shipped_small = load_body_attach(standins, small.content_id, "small", "paperdoll");
+    REQUIRE(shipped_small.loaded);
+    const AttachPoints se = attach_points(shipped_small, Facing::SouthEast);
+    CHECK(se.main_hand.x == 4.f);
+    CHECK(se.main_hand.y == 6.f);
+    CHECK(se.off_hand.x == -4.f);
+    CHECK(se.off_hand.y == 6.f);
+    CHECK(se.back.x == -2.f);
+    CHECK(se.back.y == -6.f);
+    CHECK(se.hip_main.x == 1.f);
+    CHECK(se.hip_main.y == -3.f);
+    CHECK(se.hip_off.x == -5.f);
+    CHECK(se.hip_off.y == -3.f);
+    CHECK(se.neck.x == 1.f);
+    CHECK(se.neck.y == -8.f);
+    const AttachPoints sw = attach_points(shipped_small, Facing::SouthWest);
+    CHECK(sw.neck.x == -1.f);
+    CHECK(sw.neck.y == -8.f);
+    CHECK(sw.main_hand.x == -4.f);
+    const AttachPoints ne = attach_points(shipped_small, Facing::NorthEast);
+    CHECK(ne.main_hand.y == 6.f);
+    CHECK(ne.back.x == -1.f);
+    CHECK(ne.back.y == -6.f);
+    CHECK(ne.hip_main.x == 4.f);
+    CHECK(ne.hip_off.x == -6.f);
+    CHECK(ne.neck.x == -1.f);   // stored; away facings still draw no neck
+    CHECK(ne.neck.y == -8.f);
+    const AttachPoints nw = attach_points(shipped_small, Facing::NorthWest);
+    CHECK(nw.neck.x == 1.f);
+    CHECK(nw.main_hand.x == -4.f);
+
+    ActorView necked = small;
+    necked.equipment = {gear(8, AttachSlot::Neck, EquipKind::Other, "srd51.item.holy_symbol_amulet")};
+    const std::vector<EquipLayer> toward = equip_layers(necked, shipped_small);
+    const EquipLayer* neck = layer_part(toward, 8, EquipPart::Neck);
+    REQUIRE(neck);
+    CHECK(neck->z == kZWornFront);
+    CHECK(neck->at.x == 1.f);
+    CHECK(neck->at.y == -8.f);
+    necked.facing = Facing::NorthEast;
+    CHECK(layer_part(equip_layers(necked, shipped_small), 8, EquipPart::Neck) == nullptr);
+    necked.facing = Facing::NorthWest;
+    CHECK(layer_part(equip_layers(necked, shipped_small), 8, EquipPart::Neck) == nullptr);
+
+    const fs::path kit{SLICE_SMALL_BODY_EQUIP_KIT};
+    const eng::presentation::EquipArtTable table = eng::presentation::EquipArtTable::load(kit);
+    REQUIRE(table.size() == 4);
+    const EquipVisual sword = gear(10, AttachSlot::MainHand, EquipKind::Weapon, "srd51.item.longsword");
+    const EquipArtChoice medium_art = equip_art_choice(&table, sword, EquipPart::MainHand, Facing::SouthEast, equip_size_bin(small));
+    REQUIRE(medium_art.sprite);
+    CHECK(medium_art.sprite->pivot_x == 12);
+    CHECK(medium_art.sprite->pivot_y == 12);
+
+    const Frame bare_off = render_kit(one_pawn([&] {
+        ActorView a = paperdoll_at(BodySize::Small, true);
+        a.equipment.clear();
+        return a;
+    }()), kit);
+    const Frame armed_off = render_kit(one_pawn(small), kit);
+    const Frame medium_off = render_kit(one_pawn(medium), kit);
+    CHECK(armed_off.hash == medium_off.hash);
+
+    {
+        ShortBodyHookForce force;
+        CHECK(short_body_hook_on());
+        CHECK(std::string(attach_table_bin(small)) == "small");
+        CHECK(std::string(attach_table_bin(flagged)) == "small");
+        CHECK(std::string(equip_size_bin(small)) == "small");
+        CHECK(std::string(equip_size_bin(flagged)) == "small");
+        for (BodySize size : {BodySize::Tiny, BodySize::Medium, BodySize::Large, BodySize::Huge, BodySize::Gargantuan}) {
+            const ActorView other = paperdoll_at(size, false);
+            CHECK(std::string(attach_table_bin(other)) == "medium");
+            CHECK(std::string(equip_size_bin(other)) == "medium");
+        }
+        CHECK(std::string(attach_table_bin(wolf)) == "large");
+        CHECK(std::string(equip_size_bin(wolf)) == "large");
+
+        const std::string bin(attach_table_bin(small));
+        const BodyAttach chosen = load_body_attach(standins, small.content_id, bin, small.visual_kind);
+        CHECK(attach_points(chosen, Facing::SouthEast).main_hand.y == 6.f);
+        CHECK(attach_points(chosen, Facing::SouthEast).neck.y == -8.f);
+        const BodyAttach still_medium = load_body_attach(standins, medium.content_id, std::string(attach_table_bin(medium)), medium.visual_kind);
+        CHECK(attach_points(still_medium, Facing::SouthEast).main_hand.y == 3.f);
+        CHECK(attach_points(still_medium, Facing::SouthEast).neck.y == -11.f);
+
+        const EquipArtChoice small_art = equip_art_choice(&table, sword, EquipPart::MainHand, Facing::SouthEast, equip_size_bin(small));
+        REQUIRE(small_art.sprite);
+        CHECK(small_art.sprite->pivot_x == 4);
+        CHECK(small_art.sprite->pivot_y == 8);
+        CHECK(small_art.sprite != medium_art.sprite);
+        const EquipArtChoice medium_still = equip_art_choice(&table, sword, EquipPart::MainHand, Facing::SouthEast, equip_size_bin(medium));
+        CHECK(medium_still.sprite == medium_art.sprite);
+
+        const Frame bare_on = render_kit(one_pawn([&] {
+            ActorView a = paperdoll_at(BodySize::Small, true);
+            a.equipment.clear();
+            return a;
+        }()), kit);
+        CHECK(bare_on.hash == bare_off.hash);
+        const Frame armed_on = render_kit(one_pawn(small), kit);
+        const Frame flagged_on = render_kit(one_pawn(flagged), kit);
+        const Frame medium_on = render_kit(one_pawn(medium), kit);
+        const Frame tiny_on = render_kit(one_pawn(paperdoll_at(BodySize::Tiny, false)), kit);
+        CHECK(armed_on.hash != armed_off.hash);
+        CHECK(flagged_on.hash == armed_on.hash);
+        CHECK(medium_on.hash == armed_off.hash);
+        CHECK(tiny_on.hash == armed_off.hash);
+    }
+    CHECK_FALSE(short_body_hook_on());
+    CHECK(std::string(attach_table_bin(small)) == "medium");
+    CHECK(render_kit(one_pawn(small), kit).hash == armed_off.hash);
 }

@@ -46,6 +46,15 @@ TileKind classify_tile(const std::string& id) {
 }
 
 namespace {
+static_assert(static_cast<uint8_t>(rules5e::Size::Tiny) == static_cast<uint8_t>(BodySize::Tiny));
+static_assert(static_cast<uint8_t>(rules5e::Size::Small) == static_cast<uint8_t>(BodySize::Small));
+static_assert(static_cast<uint8_t>(rules5e::Size::Medium) == static_cast<uint8_t>(BodySize::Medium));
+static_assert(static_cast<uint8_t>(rules5e::Size::Large) == static_cast<uint8_t>(BodySize::Large));
+static_assert(static_cast<uint8_t>(rules5e::Size::Huge) == static_cast<uint8_t>(BodySize::Huge));
+static_assert(static_cast<uint8_t>(rules5e::Size::Gargantuan) == static_cast<uint8_t>(BodySize::Gargantuan));
+static_assert(static_cast<uint8_t>(sim::CreatureSize::Tiny) == static_cast<uint8_t>(BodySize::Tiny));
+static_assert(static_cast<uint8_t>(sim::CreatureSize::Gargantuan) == static_cast<uint8_t>(BodySize::Gargantuan));
+
 // Clip-clock request. Core fills visual_*; this only names the clip the clock plays.
 void note_clip(ActorView& a) {
     if (a.dead) a.clip = "death";
@@ -705,6 +714,8 @@ void apply_visible_figure(const ::rules5e::EncounterState& st, uint32_t viewer, 
     actor.illusion_discerned = fig.discerned;
 }
 
+static BodySize body_size_from(uint8_t raw) { return static_cast<BodySize>(raw); }
+
 void copy_visual(const sim::Archetype* arch, ActorView& a) {
     if (!arch) return;
     a.content_id = arch->id;
@@ -712,6 +723,8 @@ void copy_visual(const sim::Archetype* arch, ActorView& a) {
     a.standin_bin = arch->visual.standin_bin;
     a.art_root = arch->visual.art_root;
     a.size_short = arch->visual.size_short;
+    // Archetype size. A live combatant overwrites this with Combatant::size. Read only.
+    a.body_size = body_size_from(static_cast<uint8_t>(arch->base.size));
     switch (arch->visual.kind) {
     case sim::VisualKind::Paperdoll: a.visual_kind = "paperdoll"; break;
     case sim::VisualKind::Standin: a.visual_kind = "standin"; break;
@@ -754,6 +767,7 @@ ViewModel Session::view() const {
             a.down = !cb.dead && !rules5e::is_conscious(cb);
             a.invisible = cb.has(rules5e::Condition::Invisible);
             copy_visual(arch, a);
+            a.body_size = body_size_from(static_cast<uint8_t>(cb.size));
             apply_visible_figure(c.state(), eye, a);
             if (auto fit = m.feed.facing.find(cb.id); fit != m.feed.facing.end()) a.facing = fit->second;
             // is_outlined is rules-internal; scan modifiers (ModStat::Outlined / Faerie Fire).

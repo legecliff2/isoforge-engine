@@ -58,10 +58,13 @@ TEST_CASE("session view: Core classifies the humanoid goblin and the fighter as 
     CHECK(pc->standin_bin.empty());
     CHECK(pc->clip.empty());
     CHECK(pc->content_id == "srd51.character.fighter_1");
+    CHECK(pc->body_size == BodySize::Medium);
+    CHECK_FALSE(pc->size_short);
     CHECK(gob->visual_kind == "paperdoll");
     CHECK(gob->kit == "paperdoll");
     CHECK(gob->standin_bin.empty());
     CHECK(gob->content_id == "srd51.monster.goblin");
+    CHECK(gob->body_size == BodySize::Small);
     CHECK_FALSE(gob->size_short);
 }
 
