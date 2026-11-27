@@ -1,5 +1,5 @@
 {
- "_source": "5e-bits/5e-database commit a6212be, src/2014/en/5e-SRD-Monsters.json (fields copied verbatim; see tests/validate/test_srd51_monsters.py for the two documented deviations). The invisible-stalker row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index invisible-stalker (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Slam attack_bonus plus damage dice and type. Those fields match that object. The sea-hag row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index sea-hag (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claws attack_bonus plus damage dice and type. Death Glare and Illusory Appearance are not attack rows. Those fields match that object. The water-elemental row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index water-elemental (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Slam attack_bonus plus damage dice and type. Whelm is not an attack row. Those fields match that object. The green-hag row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index green-hag (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claws attack_bonus plus damage dice and type. Illusory Appearance and Invisible Passage are not attack rows. Those fields match that object. The succubus row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index succubus-incubus (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claw (Fiend Form Only) attack_bonus plus damage dice and type. Charm, Draining Kiss, and Etherealness are not attack rows. Those fields match that object. The ghost row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index ghost (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Withering Touch attack_bonus plus damage dice and type. Etherealness, Horrifying Visage, and Possession are not attack rows. Those fields match that object. The shield-guardian row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index shield-guardian (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Fist attack_bonus plus damage dice and type. Multiattack is not an attack row. Shield is a reaction, not an attack row. Those fields match that object. The swarm-of-beetles, swarm-of-centipedes, swarm-of-spiders, and swarm-of-wasps rows were absent from this file while the variants were out of scope. They were appended when the stat blocks were authored, reduced from that same commit's indexes (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Bites attack_bonus plus damage dice and type. Those fields match those objects. The swarm-of-spiders condition-immunity list is the mirror list, which omits grappled. The azer, lemure, barbed-devil, and bearded-devil rows were absent from this file. They were appended when the stat blocks were authored, reduced from that same commit's indexes azer, lemure, barbed-devil, and bearded-devil (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac values, hp, hp_roll (hit_points_roll), cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and each weapon or natural attack's attack_bonus plus damage dice and type. Azer ac is 15 and 17 (natural, then shield), as lizardfolk. Azer Warhammer's second damage option is the versatile 1d10 + 3 line from the attack text, plus the same 1d6 fire, as salamander Spear. Multiattack, Devil's Sight, Hellish Rejuvenation, Barbed Hide, Steadfast, Magic Resistance, and Infernal Wound are not attack rows. Those fields match those objects. The erinyes row was absent from this file. It was appended when the stat block was authored, reduced from that same commit's index erinyes (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Longsword and Longbow attack_bonus plus damage dice and type (both longsword grips, and the printed extra 3d8 poison). Multiattack is not an attack row. Parry is a reaction, not an attack row. Those fields match that object. The night-hag row was absent from this file. It was appended when the stat block was authored, reduced from that same commit's index night-hag (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll (hit_points_roll), cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claws (Hag Form Only) attack_bonus plus damage dice and type. Change Shape, Etherealness, and Nightmare Haunting are not attack rows. Those fields match that object.",
+ "_source": "5e-bits/5e-database commit a6212be, src/2014/en/5e-SRD-Monsters.json (fields copied verbatim; see tests/validate/test_srd51_monsters.py for the two documented deviations). The invisible-stalker row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index invisible-stalker (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Slam attack_bonus plus damage dice and type. Those fields match that object. The sea-hag row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index sea-hag (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claws attack_bonus plus damage dice and type. Death Glare and Illusory Appearance are not attack rows. Those fields match that object. The water-elemental row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index water-elemental (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Slam attack_bonus plus damage dice and type. Whelm is not an attack row. Those fields match that object. The green-hag row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index green-hag (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claws attack_bonus plus damage dice and type. Illusory Appearance and Invisible Passage are not attack rows. Those fields match that object. The succubus row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index succubus-incubus (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claw (Fiend Form Only) attack_bonus plus damage dice and type. Charm, Draining Kiss, and Etherealness are not attack rows. Those fields match that object. The ghost row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index ghost (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Withering Touch attack_bonus plus damage dice and type. Etherealness, Horrifying Visage, and Possession are not attack rows. Those fields match that object. The shield-guardian row was absent from this file while the monster was deferred, which is why earlier tests asserted the index was not in the table. It was appended when the stat block was authored, reduced from that same commit's index shield-guardian (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Fist attack_bonus plus damage dice and type. Multiattack is not an attack row. Shield is a reaction, not an attack row. Those fields match that object. The swarm-of-beetles, swarm-of-centipedes, swarm-of-spiders, and swarm-of-wasps rows were absent from this file while the variants were out of scope. They were appended when the stat blocks were authored, reduced from that same commit's indexes (src/2014/en/5e-SRD-Monsters.json, a6212beb4b27): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Bites attack_bonus plus damage dice and type. Those fields match those objects. The swarm-of-spiders condition-immunity list is the mirror list, which omits grappled. The azer, lemure, barbed-devil, and bearded-devil rows were absent from this file. They were appended when the stat blocks were authored, reduced from that same commit's indexes azer, lemure, barbed-devil, and bearded-devil (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac values, hp, hp_roll (hit_points_roll), cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and each weapon or natural attack's attack_bonus plus damage dice and type. Azer ac is 15 and 17 (natural, then shield), as lizardfolk. Azer Warhammer's second damage option is the versatile 1d10 + 3 line from the attack text, plus the same 1d6 fire, as salamander Spear. Multiattack, Devil's Sight, Hellish Rejuvenation, Barbed Hide, Steadfast, Magic Resistance, and Infernal Wound are not attack rows. Those fields match those objects. The erinyes row was absent from this file. It was appended when the stat block was authored, reduced from that same commit's index erinyes (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Longsword and Longbow attack_bonus plus damage dice and type (both longsword grips, and the printed extra 3d8 poison). Multiattack is not an attack row. Parry is a reaction, not an attack row. Those fields match that object. The night-hag row was absent from this file. It was appended when the stat block was authored, reduced from that same commit's index night-hag (a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll (hit_points_roll), cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Claws (Hag Form Only) attack_bonus plus damage dice and type. Change Shape, Etherealness, and Nightmare Haunting are not attack rows. Those fields match that object The adult-white-dragon, adult-black-dragon, adult-green-dragon, adult-blue-dragon, and adult-red-dragon rows were absent from this file. They were appended when the stat blocks were authored, reduced from that same commit's indexes (src/2014/en/5e-SRD-Monsters.json, a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f): name, size, type, ac value, hp, hp_roll, cr, xp, speed, the six abilities, damage lists, condition-immunity indexes, and Bite, Claw, and Tail attack_bonus plus damage dice and type. Frightful Presence, the breath weapon, and legendary actions are not attack rows. Adult red Fire Breath is tagged success_type none in that object; the action text says half. Those pinned fields match those objects..",
  "monsters": {
   "commoner": {
    "name": "Commoner",
@@ -10942,6 +10942,374 @@
       ]
      }
     ]
-   }
+   },
+  "adult-white-dragon": {
+   "name": "Adult White Dragon",
+   "size": "Huge",
+   "type": "dragon",
+   "ac": [
+    18
+   ],
+   "hp": 200,
+   "hp_roll": "16d12+96",
+   "cr": 13,
+   "xp": 10000,
+   "speed": {
+    "walk": "40 ft.",
+    "burrow": "30 ft.",
+    "fly": "80 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    22,
+    10,
+    22,
+    8,
+    12,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "cold"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 11,
+     "damage_options": [
+      [
+       [
+        "2d10+6",
+        "piercing"
+       ],
+       [
+        "1d8",
+        "cold"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 11,
+     "damage_options": [
+      [
+       [
+        "2d6+6",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tail",
+     "attack_bonus": 11,
+     "damage_options": [
+      [
+       [
+        "2d8+6",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "adult-black-dragon": {
+   "name": "Adult Black Dragon",
+   "size": "Huge",
+   "type": "dragon",
+   "ac": [
+    19
+   ],
+   "hp": 195,
+   "hp_roll": "17d12+85",
+   "cr": 14,
+   "xp": 11500,
+   "speed": {
+    "walk": "40 ft.",
+    "fly": "80 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    23,
+    14,
+    21,
+    14,
+    13,
+    17
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "acid"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 11,
+     "damage_options": [
+      [
+       [
+        "2d10+6",
+        "piercing"
+       ],
+       [
+        "1d8",
+        "acid"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 11,
+     "damage_options": [
+      [
+       [
+        "2d6+6",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tail",
+     "attack_bonus": 11,
+     "damage_options": [
+      [
+       [
+        "2d8+6",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "adult-green-dragon": {
+   "name": "Adult Green Dragon",
+   "size": "Huge",
+   "type": "dragon",
+   "ac": [
+    19
+   ],
+   "hp": 207,
+   "hp_roll": "18d12+90",
+   "cr": 15,
+   "xp": 13000,
+   "speed": {
+    "walk": "40 ft.",
+    "fly": "80 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    23,
+    12,
+    21,
+    18,
+    15,
+    17
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 11,
+     "damage_options": [
+      [
+       [
+        "2d10+6",
+        "piercing"
+       ],
+       [
+        "2d6",
+        "poison"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 11,
+     "damage_options": [
+      [
+       [
+        "2d6+6",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tail",
+     "attack_bonus": 11,
+     "damage_options": [
+      [
+       [
+        "2d8+6",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "adult-blue-dragon": {
+   "name": "Adult Blue Dragon",
+   "size": "Huge",
+   "type": "dragon",
+   "ac": [
+    19
+   ],
+   "hp": 225,
+   "hp_roll": "18d12+108",
+   "cr": 16,
+   "xp": 15000,
+   "speed": {
+    "walk": "40 ft.",
+    "burrow": "30 ft.",
+    "fly": "80 ft."
+   },
+   "abilities": [
+    25,
+    10,
+    23,
+    16,
+    15,
+    19
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "lightning"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 12,
+     "damage_options": [
+      [
+       [
+        "2d10+7",
+        "piercing"
+       ],
+       [
+        "1d10",
+        "lightning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 12,
+     "damage_options": [
+      [
+       [
+        "2d6+7",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tail",
+     "attack_bonus": 12,
+     "damage_options": [
+      [
+       [
+        "2d8+7",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "adult-red-dragon": {
+   "name": "Adult Red Dragon",
+   "size": "Huge",
+   "type": "dragon",
+   "ac": [
+    19
+   ],
+   "hp": 256,
+   "hp_roll": "19d12+133",
+   "cr": 17,
+   "xp": 18000,
+   "speed": {
+    "walk": "40 ft.",
+    "climb": "40 ft.",
+    "fly": "80 ft."
+   },
+   "abilities": [
+    27,
+    10,
+    25,
+    16,
+    13,
+    21
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "fire"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 14,
+     "damage_options": [
+      [
+       [
+        "2d10+8",
+        "piercing"
+       ],
+       [
+        "2d6",
+        "fire"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 14,
+     "damage_options": [
+      [
+       [
+        "2d6+8",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tail",
+     "attack_bonus": 14,
+     "damage_options": [
+      [
+       [
+        "2d8+8",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  }
  }
 }
