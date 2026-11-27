@@ -2256,5 +2256,13 @@ On its own turn a Move whose `move_ft` is not `exit_ft` is refused: `inside a co
 
 **AI (T12).** In a multiattack slot that has a `grappled_by_self` alternate, the built-in policy uses that alternate when the target is grappled by the user, Large or smaller (and not above the alternate's `target_max_size`), and alive. Otherwise it uses the listed attack. It still never spends a legendary action.
 
+**Limitations.**
+
+The altitude (`alt_ft`) a carried creature takes from its swallower is kept when it is regurgitated. The contract names a tile, not a landing altitude.
+
+The built-in policy does not shove a held creature prone when a legal Swallow target exists. Legal is the same test as the Swallow choice: a slot of the melee Multiattack the policy would start has a `grappled_by_self` alternate, the target is grappled by this creature, Large or smaller and not above that alternate's `target_max_size`, and alive, and the loadout allows the alternate. A shove is not a Multiattack slot, so taking it drops the rest of the Multiattack. When no legal Swallow target exists, a held creature that is not prone is still shoved prone.
+
+There is no nested or recursive swallow footprint. A swallowed creature that is itself a container gets none.
+
 **Not this section.** Swallowing a creature the bite's damage kills stays deferred: the attack's after-riders do not run on a dead target. Giant toad and giant frog stay `attack_effect` until a follow-up content PR. Line of sight, zones, and outbound targeting from inside are not given a new rule. Reflective Carapace, Siege Monster, and the tarrasque statistics row are not ruled here. A map with no walkable tile at all is not given a placement.
 
