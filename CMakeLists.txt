@@ -161,6 +161,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         add_test(NAME content_validate_equip_kit
                  COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_equip_kit_schema.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # Column-0 warning and part-qualified atlas region names.
+        add_test(NAME content_validate_equip_kit_atlas
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/test_equip_kit.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # batch 3 small monster riders: monster@5 arms + validator mirrors of the sim loader refusals.
         add_test(NAME content_validate_batch3_riders
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_monster_batch3_riders.py"
@@ -206,7 +210,7 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         # compiled script_check, so every job keeps it.
         set_tests_properties(content_validate_negative content_validate_packset content_validate_tests
                              content_validate_lint content_validate_arms content_validate_migrations content_validate_legendary
-                             content_validate_equip_kit
+                             content_validate_equip_kit content_validate_equip_kit_atlas
                              content_validate_srd51_monsters content_validate_srd51_classes
                              content_validate_srd51_spells content_validate_v4 content_validate_equipment
                              content_validate_spell_batch3 content_validate_spell_batch_zg content_validate_spell_batch_zi content_validate_spell_batch_zj content_validate_spell_imbue_mirror

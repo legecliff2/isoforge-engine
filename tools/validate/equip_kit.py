@@ -13,7 +13,10 @@ Beyond the schema this checks:
   * every other part has both se and ne
   * a pivot lies inside the cell, and inside the PNG
   * an atlas region lies inside the atlas and matches the cell
+  * a region name is the content id's last segment, the part, and the view,
+    so two parts of one item do not share a name; a repeated name is an error
   * loose PNGs are the PR A paths, are the cell size, and are 8-bit RGBA
+  * a non-transparent pixel in column 0 is a warning: the west mirror clips it
   * every recognized PNG on disk is listed, and every listed sprite is on disk
 """
 from __future__ import annotations
@@ -29,7 +32,8 @@ PARTS = ("back", "hip", "main_hand", "off_hand", "held_light", "neck")
 VIEWS_BOTH = ("se", "ne")
 BINS = ("tiny", "small", "medium", "large", "huge")
 KINDS = ("weapon", "shield", "light", "other")
-# Last-segment region names the scope calls out. Matched with equality.
+# Region names are {slug}_{part}.{view} (and _{bin} when a size bin is set),
+# matched whole. The part is what keeps back.se and off_hand.se apart.
 REQUIRED_BACK_ROLE = {
     "srd51.item.quiver": "quiver",
     "srd51.item.case_crossbow_bolt": "bolt_case",
@@ -75,6 +79,149 @@ def sprite_rel(content_id: str, kind: str, part: str, view: str, bin_name: str) 
 
 def _slug(content_id: str) -> str:
     return content_id.rsplit(".", 1)[-1]
+
+
+def region_name(owner: str, part: str, view: str, bin_name: str = "") -> str:
+    """Atlas region for one sprite, unique per content id (or kind), part, view, and bin.
+
+    Files are ``{content_id}/{part}.{view}.png``. A name made of only the last
+    segment and the view (``shield.se``) drops the part, so ``back.se`` and a
+    later ``off_hand.se`` collide. The part is in the name. A size bin, when
+    the sprite has one, is in the name too, because that cell is a different
+    sprite and the flat name stays put. equip_kit@1 allows one token before
+    ``.se`` or ``.ne``, so the pieces are joined with underscores
+    (``shield_back.se``). Matched whole, not as a substring.
+    """
+    slug = _slug(owner)
+    stem = f"{slug}_{part}"
+    if bin_name:
+        stem = f"{stem}_{bin_name}"
+    return f"{stem}.{view}"
+
+
+def column0_warning(label: str, count: int) -> str:
+    """``count`` pixels in column 0 are not fully transparent.
+
+    The west mirror flips around the pivot column and clips column 0, so ink
+    there is dropped on the mirrored facing.
+    """
+    noun = "pixel" if count == 1 else "pixels"
+    return (
+        f"{label}: column 0 has {count} non-transparent {noun}; "
+        "the west mirror flips around the pivot column and clips column 0"
+    )
+
+
+def _paeth(left: int, up: int, up_left: int) -> int:
+    estimate = left + up - up_left
+    dl, du, dul = abs(estimate - left), abs(estimate - up), abs(estimate - up_left)
+    if dl <= du and dl <= dul:
+        return left
+    if du <= dul:
+        return up
+    return up_left
+
+
+def _png_rgba(path: Path) -> tuple[int, int, bytes] | str:
+    """(width, height, tightly packed 8-bit RGBA) or an error string.
+
+    Non-interlaced color type 6 only. This is how column 0 is scanned; the
+    header check does not see pixels.
+    """
+    try:
+        data = path.read_bytes()
+    except OSError as e:
+        return f"unreadable PNG ({e})"
+    if len(data) < 8 or data[:8] != _PNG_SIG:
+        return "not a PNG"
+    width = height = 0
+    depth = color = interlace = -1
+    idat = bytearray()
+    i = 8
+    while i + 12 <= len(data):
+        length = struct.unpack(">I", data[i:i + 4])[0]
+        tag = data[i + 4:i + 8]
+        start = i + 8
+        end = start + length
+        if end + 4 > len(data):
+            return "PNG chunk is short"
+        chunk = data[start:end]
+        if tag == b"IHDR":
+            if length < 13:
+                return "PNG IHDR is short"
+            width, height, depth, color, _compression, _filter, interlace = struct.unpack(">IIBBBBB", chunk[:13])
+        elif tag == b"IDAT":
+            idat += chunk
+        elif tag == b"IEND":
+            break
+        i = end + 4
+    if depth != 8 or color != 6 or interlace != 0 or width <= 0 or height <= 0:
+        return "PNG is not 8-bit non-interlaced RGBA"
+    if width > 16384 or height > 16384:
+        return "PNG is too large to scan"
+    try:
+        raw = zlib.decompress(bytes(idat))
+    except zlib.error:
+        return "PNG pixels could not be read"
+    channels = 4
+    stride = width * channels
+    if len(raw) < height * (stride + 1):
+        return "PNG pixels could not be read"
+    out = bytearray(height * stride)
+    prev = bytearray(stride)
+    pos = 0
+    for y in range(height):
+        filter_ty = raw[pos]
+        pos += 1
+        row = bytearray(raw[pos:pos + stride])
+        pos += stride
+        if filter_ty > 4:
+            return "PNG pixels could not be read"
+        for x in range(stride):
+            left = row[x - channels] if x >= channels else 0
+            up = prev[x]
+            up_left = prev[x - channels] if x >= channels else 0
+            value = row[x]
+            if filter_ty == 1:
+                value = (value + left) & 255
+            elif filter_ty == 2:
+                value = (value + up) & 255
+            elif filter_ty == 3:
+                value = (value + ((left + up) // 2)) & 255
+            elif filter_ty == 4:
+                value = (value + _paeth(left, up, up_left)) & 255
+            row[x] = value
+        out[y * stride:(y + 1) * stride] = row
+        prev = row
+    return width, height, bytes(out)
+
+
+def column0_opaque_count(path: Path) -> int | str:
+    """Pixels in column 0 whose alpha is not 0, or an error string.
+
+    Alpha 0 is fully transparent. That is the empty column the west mirror
+    expects: the mirrored facing never reads column 0.
+    """
+    decoded = _png_rgba(path)
+    if isinstance(decoded, str):
+        return decoded
+    width, height, rgba = decoded
+    count = 0
+    for y in range(height):
+        if rgba[(y * width) * 4 + 3] != 0:
+            count += 1
+    return count
+
+
+def _report_column0(label: str, path: Path, errs: list[str]) -> None:
+    count = column0_opaque_count(path)
+    if isinstance(count, str):
+        errs.append(f"{label}: {count}")
+        return
+    # No strict mode: ink in column 0 is dropped by the mirror, and the sprite
+    # still loads. Say which file and how many pixels.
+    if count:
+        print("warning " + column0_warning(label, count))
 
 
 def item_docs(packs: list[Path]) -> dict[str, dict]:
@@ -142,6 +289,7 @@ def _add_sprite_key(keys: set[tuple], where: str, cid: str, kind: str, part: dic
 
 def _check_entry_rules(doc: dict, items: dict[str, dict], errs: list[str]) -> set[tuple]:
     keys: set[tuple] = set()
+    seen_regions: dict[str, str] = {}
     seen_ids: set[str] = set()
     for i, entry in enumerate(doc.get("items") or []):
         if not isinstance(entry, dict):
@@ -179,7 +327,7 @@ def _check_entry_rules(doc: dict, items: dict[str, dict], errs: list[str]) -> se
         for part in parts:
             if not isinstance(part, dict):
                 continue
-            _check_part(where, cid, "", part, doc, errs)
+            _check_part(where, cid, "", part, doc, errs, seen_regions)
             _add_sprite_key(keys, where, cid, "", part, errs)
     seen_kinds: set[str] = set()
     for i, entry in enumerate(doc.get("kinds") or []):
@@ -198,12 +346,13 @@ def _check_entry_rules(doc: dict, items: dict[str, dict], errs: list[str]) -> se
         for part in entry.get("parts") or []:
             if not isinstance(part, dict):
                 continue
-            _check_part(where, "", kind, part, doc, errs)
+            _check_part(where, "", kind, part, doc, errs, seen_regions)
             _add_sprite_key(keys, where, "", kind, part, errs)
     return keys
 
 
-def _check_part(where: str, cid: str, kind: str, part: dict, doc: dict, errs: list[str]) -> None:
+def _check_part(where: str, cid: str, kind: str, part: dict, doc: dict, errs: list[str],
+                seen_regions: dict[str, str]) -> None:
     part_name = part.get("part")
     views = part.get("views") if isinstance(part.get("views"), list) else []
     names = [v.get("view") for v in views if isinstance(v, dict)]
@@ -218,7 +367,6 @@ def _check_part(where: str, cid: str, kind: str, part: dict, doc: dict, errs: li
     cell = doc.get("cell")
     cell_w = cell[0] if isinstance(cell, list) and len(cell) == 2 else 0
     cell_h = cell[1] if isinstance(cell, list) and len(cell) == 2 else 0
-    slug = _slug(cid) if cid else kind
     for view in views:
         if not isinstance(view, dict):
             continue
@@ -229,10 +377,19 @@ def _check_part(where: str, cid: str, kind: str, part: dict, doc: dict, errs: li
             if cell_w <= 0 or cell_h <= 0 or not (0 <= x < cell_w and 0 <= y < cell_h):
                 errs.append(f"{label}.{view_name}: pivot [{x}, {y}] is outside the {cell_w}x{cell_h} cell")
         region = view.get("region")
-        if isinstance(region, dict) and isinstance(view_name, str):
+        if isinstance(region, dict) and isinstance(view_name, str) and isinstance(part_name, str):
             name = region.get("name")
-            if isinstance(name, str) and slug and name != f"{slug}.{view_name}":
-                errs.append(f"{label}.{view_name}: region name {name!r} is not {slug}.{view_name}")
+            owner = cid or kind
+            if isinstance(name, str) and owner:
+                bin_name = part.get("bin") if isinstance(part.get("bin"), str) else ""
+                expected = region_name(owner, part_name, view_name, bin_name)
+                if name != expected:
+                    errs.append(f"{label}.{view_name}: region name {name!r} is not {expected}")
+                prior = seen_regions.get(name)
+                if prior is not None:
+                    errs.append(f"{label}.{view_name}: duplicate region name {name!r} (also {prior})")
+                else:
+                    seen_regions[name] = f"{label}.{view_name}"
 
 
 def _check_files(root: Path, doc: dict, keys: set[tuple], errs: list[str]) -> None:
@@ -272,6 +429,8 @@ def _check_files(root: Path, doc: dict, keys: set[tuple], errs: list[str]) -> No
                 errs.append(f"{label}: {info}")
             else:
                 _check_png_info(label, info, cell_w, cell_h, errs, cell_sized=True)
+                if info[2] == 8 and info[3] == 6 and info[4] == 0:
+                    _report_column0(label, path, errs)
                 pivot = view.get("pivot")
                 if isinstance(pivot, list) and len(pivot) == 2 and all(isinstance(n, int) and not isinstance(n, bool) for n in pivot):
                     x, y = pivot
