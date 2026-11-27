@@ -7,7 +7,7 @@ _engine_warnings(vertical_slice_session)
 
 add_library(vertical_slice_view STATIC src/slice_view.cpp src/equip_visuals.cpp src/aoe_overlay.cpp)
 target_include_directories(vertical_slice_view PUBLIC src)
-target_link_libraries(vertical_slice_view PUBLIC eng::iso2d eng::render_api PRIVATE presentation eng::assets)
+target_link_libraries(vertical_slice_view PUBLIC eng::iso2d eng::render_api PRIVATE presentation eng::assets eng::sim)
 target_compile_definitions(vertical_slice_view PRIVATE
     SLICE_STANDIN_ROOT="${PROJECT_SOURCE_DIR}/content/art/monster_standins"
     SLICE_EQUIP_ART_ROOT="${PROJECT_SOURCE_DIR}/content/art/equipment"
@@ -25,7 +25,8 @@ if(ENGINE_BUILD_TESTS)
         SLICE_STANDIN_ROOT="${PROJECT_SOURCE_DIR}/content/art/monster_standins"
         SLICE_EQUIP_ART_ROOT="${PROJECT_SOURCE_DIR}/content/art/equipment"
         SLICE_EMPTY_EQUIP_KIT="${PROJECT_SOURCE_DIR}/game/vertical_slice/tests/fixtures/empty_equip_kit"
-        SLICE_H4_EQUIP_FIXTURE="${PROJECT_SOURCE_DIR}/game/vertical_slice/tests/fixtures/h4_equip_kit")
+        SLICE_H4_EQUIP_FIXTURE="${PROJECT_SOURCE_DIR}/game/vertical_slice/tests/fixtures/h4_equip_kit"
+        SLICE_SMALL_BODY_EQUIP_KIT="${PROJECT_SOURCE_DIR}/game/vertical_slice/tests/fixtures/small_body_equip_kit")
     _engine_warnings(vertical_slice_tests)
     add_test(NAME vertical_slice_tests COMMAND vertical_slice_tests)
 

@@ -83,12 +83,40 @@ inline BodyAttach shared_body_attach() { return {}; }
 //     "ne": { ... } }
 // A missing key keeps that shared point. Offsets are screen px from the token anchor.
 // visual_kind "paperdoll" reads {standin_root}/../paperdoll/{bin}/attach.json first (the humanoid
-// doll, not the generic blob). Anything else reads the per-monster kit srd/{dir}/{bin}/attach.json.
-// Both then fall through to frames/{bin}/attach.json, then the shared table. frames/{bin} stays the
-// generic medium blob and does not carry the humanoid points.
+// doll, not the generic blob). `bin` is attach_table_bin. Anything else reads the per-monster kit
+// srd/{dir}/{bin}/attach.json. Both then fall through to frames/{bin}/attach.json, then the shared
+// table. frames/{bin} stays the generic medium blob and does not carry the humanoid points.
+// Neck stays toward-only (se, sw). An authored ne neck point is stored and not drawn.
 BodyAttach load_body_attach(const std::filesystem::path& standin_root, std::string_view monster_id, std::string_view bin,
                             std::string_view visual_kind = {});
 AttachPoints attach_points(const BodyAttach& body, Facing facing);
+
+// Seam (short_body_hook): paperdoll/small and {content_id}/small/ stay unused while
+// eng::sim::kSizeShortRuntime is false. The 28x44 pawn keeps the medium table.
+// Tests force the hook for one scope. Production does not construct this.
+class ShortBodyHookForce {
+public:
+    explicit ShortBodyHookForce(bool on = true);
+    ~ShortBodyHookForce();
+    ShortBodyHookForce(const ShortBodyHookForce&) = delete;
+    ShortBodyHookForce& operator=(const ShortBodyHookForce&) = delete;
+
+private:
+    bool previous_ = false;
+};
+
+// True when kSizeShortRuntime is set, or a ShortBodyHookForce is active.
+bool short_body_hook_on();
+
+// Bin for load_body_attach. Hook off, and every non-paperdoll: standin_bin, or "medium"
+// when that is empty. Hook on and paperdoll: "small" when size_short is set or body_size
+// is Small; "medium" for Medium and every other category.
+std::string_view attach_table_bin(const ActorView& actor);
+
+// Bin for equip_art_choice. Hook off: standin_bin (empty on a paperdoll, which the table
+// reads as medium). Hook on and paperdoll: "small" or "medium" from the same body rule,
+// so a short body can select {content_id}/small/.
+std::string_view equip_size_bin(const ActorView& actor);
 
 struct EquipLayer {
     EquipPart part = EquipPart::Body;
